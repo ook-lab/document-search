@@ -14,6 +14,7 @@ if str(project_root) not in sys.path:
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
+from loguru import logger
 
 app = Flask(__name__)
 CORS(app)
@@ -28,6 +29,28 @@ processing_status = {
     'failed_count': 0,
     'logs': []
 }
+
+
+# loguruのカスタムハンドラー：ログをprocessing_statusに送信
+def log_to_processing_status(message):
+    """loguruのログをprocessing_statusに追加"""
+    log_record = message.record
+    level = log_record['level'].name
+    msg = log_record['message']
+
+    # ログレベルに応じてフィルタリング（INFOのみ表示）
+    if level in ['INFO', 'WARNING', 'ERROR']:
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        formatted_msg = f"[{timestamp}] {msg}"
+        processing_status['logs'].append(formatted_msg)
+
+        # ログは最大100件まで保持
+        if len(processing_status['logs']) > 100:
+            processing_status['logs'] = processing_status['logs'][-100:]
+
+
+# loguruにカスタムハンドラーを追加
+logger.add(log_to_processing_status, format="{message}")
 
 
 @app.route('/')
