@@ -252,6 +252,10 @@ def start_processing():
         def background_processing():
             global processing_status
 
+            # スレッド内でloguruハンドラーを追加（スレッドセーフ）
+            from loguru import logger as thread_logger
+            handler_id = thread_logger.add(log_to_processing_status, format="{message}")
+
             async def process_all():
                 for i, doc in enumerate(docs, 1):
                     # 停止フラグをチェック
@@ -303,6 +307,9 @@ def start_processing():
                     f"[{datetime.now().strftime('%H:%M:%S')}] ❌ エラー: {str(e)}"
                 )
                 print(f"[ERROR] バックグラウンド処理エラー: {e}")
+            finally:
+                # ハンドラーを削除
+                thread_logger.remove(handler_id)
 
         # 別スレッドで処理を開始
         thread = threading.Thread(target=background_processing, daemon=True)
