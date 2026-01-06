@@ -253,10 +253,6 @@
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 20px;
-            display: none;
-        }
-
-        .progress-section.active {
             display: block;
         }
 
@@ -323,10 +319,6 @@
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 0.85em;
-            display: none;
-        }
-
-        .log-window.active {
             display: block;
         }
 
@@ -539,9 +531,6 @@
                     const memoryUsage = document.getElementById('memory-usage');
 
                     if (data.processing) {
-                        // 進捗セクションを表示
-                        progressSection.classList.add('active');
-                        logWindow.classList.add('active');
 
                         // 進捗バーを更新
                         const percent = data.total_count > 0
@@ -691,8 +680,6 @@
             document.getElementById('start-btn').disabled = true;
             document.getElementById('status-message').style.display = 'none';
             document.getElementById('result-summary').classList.remove('active');
-            document.getElementById('progress-section').classList.add('active');
-            document.getElementById('log-window').classList.add('active');
 
             // 進捗ポーリング開始（1秒ごと）
             if (progressInterval) {
@@ -727,8 +714,6 @@
                     document.getElementById('loading').classList.remove('active');
                     document.getElementById('start-btn').disabled = false;
                     document.getElementById('stop-btn').style.display = 'none';
-                    document.getElementById('progress-section').classList.remove('active');
-                    document.getElementById('log-window').classList.remove('active');
 
                     // ポーリング停止
                     if (progressInterval) {
@@ -741,8 +726,6 @@
                 document.getElementById('loading').classList.remove('active');
                 document.getElementById('start-btn').disabled = false;
                 document.getElementById('stop-btn').style.display = 'none';
-                document.getElementById('progress-section').classList.remove('active');
-                document.getElementById('log-window').classList.remove('active');
 
                 // ポーリング停止
                 if (progressInterval) {
