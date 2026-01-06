@@ -25,11 +25,17 @@ from .stage_i_synthesis import StageISynthesis
 from .stage_j_chunking import StageJChunking
 from .stage_k_embedding import StageKEmbedding
 
-# 家計簿専用のDB保存ハンドラー
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent))
-from K_kakeibo.kakeibo_db_handler import KakeiboDBHandler
+# 家計簿専用のDB保存ハンドラー (オプショナル)
+try:
+    import sys
+    from pathlib import Path
+    sys.path.append(str(Path(__file__).parent.parent))
+    from K_kakeibo.kakeibo_db_handler import KakeiboDBHandler
+    KAKEIBO_AVAILABLE = True
+except ImportError:
+    logger.warning("K_kakeibo module not available, kakeibo features will be disabled")
+    KakeiboDBHandler = None
+    KAKEIBO_AVAILABLE = False
 
 
 class UnifiedDocumentPipeline:
@@ -87,7 +93,7 @@ class UnifiedDocumentPipeline:
         self.stage_k = StageKEmbedding(self.llm_client, self.db)
 
         # 家計簿専用のDB保存ハンドラー
-        self.kakeibo_db_handler = KakeiboDBHandler(self.db)
+        self.kakeibo_db_handler = KakeiboDBHandler(self.db) if KAKEIBO_AVAILABLE else None
 
         logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（設定ベース, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
 
@@ -241,15 +247,18 @@ class UnifiedDocumentPipeline:
                 stageH_result = self.stage_h_kakeibo.process(stage_f_output)
 
                 # 家計簿専用のDB保存
-                logger.info("[DB保存] 家計簿データをDBに保存...")
-                kakeibo_save_result = self.kakeibo_db_handler.save_receipt(
-                    stage_h_output=stageH_result,
-                    file_name=file_name,
-                    drive_file_id=source_id,
-                    model_name=stage_h_config['model'],
-                    source_folder=workspace
-                )
-                logger.info(f"[DB保存完了] receipt_id={kakeibo_save_result['receipt_id']}")
+                if self.kakeibo_db_handler:
+                    logger.info("[DB保存] 家計簿データをDBに保存...")
+                    kakeibo_save_result = self.kakeibo_db_handler.save_receipt(
+                        stage_h_output=stageH_result,
+                        file_name=file_name,
+                        drive_file_id=source_id,
+                        model_name=stage_h_config['model'],
+                        source_folder=workspace
+                    )
+                    logger.info(f"[DB保存完了] receipt_id={kakeibo_save_result['receipt_id']}")
+                else:
+                    logger.warning("K_kakeibo module not available, skipping kakeibo DB save")
 
                 # 家計簿は Rawdata_FILE_AND_MAIL に保存せず、ここで終了
                 return {

@@ -27,6 +27,9 @@ COPY G_cloud_run/templates/ ./templates/
 # プロジェクトルートからの共通モジュール
 COPY A_common/ ./A_common/
 COPY C_ai_common/ ./C_ai_common/
+# ドキュメント処理用のファイル
+COPY process_queued_documents.py .
+COPY G_unified_pipeline/ ./G_unified_pipeline/
 
 # Note: PlaywrightはローカルのGmail取り込みのみで使用。Cloud Runでは不要。
 

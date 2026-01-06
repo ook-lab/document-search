@@ -24,21 +24,29 @@ class GoogleDriveConnector:
         # logger.info("Google Driveコネクタ初期化完了")
     
     def _authenticate(self):
-        """サービスアカウント認証の実行（環境変数を優先、Streamlit Secretsは補助）"""
-        # 優先順位1: 環境変数 GOOGLE_APPLICATION_CREDENTIALS
+        """サービスアカウント認証（環境変数ファイル -> ADC -> Streamlit Secrets の順で試行）"""
+        # 1. 環境変数 (ローカル開発用: JSONファイルパス指定)
         if CREDENTIALS_PATH and os.path.exists(CREDENTIALS_PATH):
             try:
                 creds = service_account.Credentials.from_service_account_file(
                     CREDENTIALS_PATH, scopes=SCOPES
                 )
                 logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH}")
-                # credentialsを渡すだけ（内部でHTTPクライアントが自動生成される）
-                # タイムアウトはリトライ処理で対処
                 return build('drive', 'v3', credentials=creds)
             except Exception as e:
-                logger.warning(f"環境変数からの認証失敗、Streamlit Secretsにフォールバック: {e}")
+                logger.warning(f"環境変数からの認証失敗: {e}")
 
-        # 優先順位2: Streamlit Secrets (デプロイ環境用)
+        # 2. Application Default Credentials (ADC) (★Cloud Run用: これを追加！★)
+        try:
+            import google.auth
+            # Cloud Run等の環境では自動的に認証情報を取得（ファイル不要）
+            creds, project = google.auth.default(scopes=SCOPES)
+            logger.info("ADC (Application Default Credentials) で認証成功")
+            return build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            logger.warning(f"ADC認証失敗: {e}")
+
+        # 3. Streamlit Secrets (Streamlit Cloud用)
         try:
             import streamlit as st
             if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
@@ -49,16 +57,16 @@ class GoogleDriveConnector:
                 logger.info("Streamlit Secretsから認証成功")
                 return build('drive', 'v3', credentials=creds)
         except ImportError:
-            # Streamlitがインストールされていない場合はスキップ
             pass
         except Exception as e:
             logger.warning(f"Streamlit Secretsからの認証失敗: {e}")
 
-        # どちらも失敗した場合
+        # 全て失敗した場合
         raise FileNotFoundError(
             f"認証情報が見つかりません。以下のいずれかを設定してください:\n"
             f"1. 環境変数 GOOGLE_APPLICATION_CREDENTIALS (現在: {CREDENTIALS_PATH})\n"
-            f"2. Streamlit Secrets の gcp_service_account"
+            f"2. Cloud Run のサービスアカウントに権限が付与されているか (ADC)\n"
+            f"3. Streamlit Secrets が設定されているか"
         )
 
     def list_files_in_folder(self, folder_id: str, mime_type_filter: str = None) -> List[Dict[str, Any]]:
