@@ -24,7 +24,7 @@ surya-ocr==0.17.0
 
 numpy>=1.26.2
 sentence-transformers==5.1.2
-torch==2.5.1
+torch>=2.7.0,<3.0.0
 pyarrow==22.0.0
 pgvector==0.2.4
 
