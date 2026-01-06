@@ -127,8 +127,8 @@ def log_to_processing_status(message):
             processing_status['logs'] = processing_status['logs'][-100:]
 
 
-# loguruにカスタムハンドラーを追加
-logger.add(log_to_processing_status, format="{message}")
+# loguruにカスタムハンドラーを追加（スレッド内で個別に追加するためここでは追加しない）
+# logger.add(log_to_processing_status, format="{message}")
 
 
 @app.route('/')

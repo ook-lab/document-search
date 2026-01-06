@@ -491,6 +491,10 @@
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshStats();
+
+            // 進捗とリソース情報を常に監視（1秒ごと）
+            updateProgress();
+            progressInterval = setInterval(updateProgress, 1000);
         });
 
         // ワークスペース一覧を読み込む
