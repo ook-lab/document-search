@@ -15,6 +15,8 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from loguru import logger
+import psutil
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -29,6 +31,82 @@ processing_status = {
     'failed_count': 0,
     'logs': []
 }
+
+# CPU使用率計算用の前回の値
+_last_cpu_stats = {'usage_usec': 0, 'timestamp': time.time()}
+
+
+def get_cgroup_memory():
+    """cgroupからメモリ使用率を取得（Cloud Run対応）"""
+    try:
+        # cgroup v2
+        with open('/sys/fs/cgroup/memory.current', 'r') as f:
+            current = int(f.read().strip())
+        with open('/sys/fs/cgroup/memory.max', 'r') as f:
+            max_mem = f.read().strip()
+            # 'max'の場合は無制限なので、システム全体のメモリを使用
+            if max_mem == 'max':
+                max_mem = psutil.virtual_memory().total
+            else:
+                max_mem = int(max_mem)
+
+        percent = (current / max_mem) * 100
+        used_gb = current / (1024 ** 3)
+        total_gb = max_mem / (1024 ** 3)
+
+        return {
+            'percent': round(percent, 1),
+            'used_gb': round(used_gb, 2),
+            'total_gb': round(total_gb, 2)
+        }
+    except Exception as e:
+        # cgroupが使えない場合はpsutilにフォールバック
+        logger.debug(f"cgroup memory読み取り失敗、psutilを使用: {e}")
+        memory = psutil.virtual_memory()
+        return {
+            'percent': round(memory.percent, 1),
+            'used_gb': round(memory.used / (1024 ** 3), 2),
+            'total_gb': round(memory.total / (1024 ** 3), 2)
+        }
+
+
+def get_cgroup_cpu():
+    """cgroupからCPU使用率を取得（Cloud Run対応）"""
+    global _last_cpu_stats
+
+    try:
+        # cgroup v2のcpu.statから使用時間を取得
+        with open('/sys/fs/cgroup/cpu.stat', 'r') as f:
+            lines = f.readlines()
+            usage_usec = 0
+            for line in lines:
+                if line.startswith('usage_usec'):
+                    usage_usec = int(line.split()[1])
+                    break
+
+        current_time = time.time()
+
+        # 前回との差分から使用率を計算
+        time_delta = current_time - _last_cpu_stats['timestamp']
+        usage_delta = usage_usec - _last_cpu_stats['usage_usec']
+
+        # 使用率 = (CPU時間の増加量 / 経過時間) * 100
+        # usage_usecはマイクロ秒単位なので、秒に変換
+        if time_delta > 0:
+            cpu_percent = (usage_delta / (time_delta * 1_000_000)) * 100
+            # 複数CPUコアの場合、100%を超えることがあるので制限
+            cpu_percent = min(cpu_percent, 100.0)
+        else:
+            cpu_percent = 0.0
+
+        # 次回のために保存
+        _last_cpu_stats = {'usage_usec': usage_usec, 'timestamp': current_time}
+
+        return round(cpu_percent, 1)
+    except Exception as e:
+        # cgroupが使えない場合はpsutilにフォールバック
+        logger.debug(f"cgroup CPU読み取り失敗、psutilを使用: {e}")
+        return round(psutil.cpu_percent(interval=0.1), 1)
 
 
 # loguruのカスタムハンドラー：ログをprocessing_statusに送信
@@ -80,16 +158,9 @@ def get_process_progress():
     処理進捗とシステムリソースを取得
     """
     try:
-        import psutil
-
-        # CPU使用率
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-
-        # メモリ使用率
-        memory = psutil.virtual_memory()
-        memory_percent = memory.percent
-        memory_used_gb = memory.used / (1024 ** 3)
-        memory_total_gb = memory.total / (1024 ** 3)
+        # cgroupからリソース情報を取得（Cloud Run対応）
+        cpu_percent = get_cgroup_cpu()
+        memory_info = get_cgroup_memory()
 
         return jsonify({
             'success': True,
@@ -101,10 +172,10 @@ def get_process_progress():
             'failed_count': processing_status['failed_count'],
             'logs': processing_status['logs'][-50:],  # 最新50件
             'system': {
-                'cpu_percent': round(cpu_percent, 1),
-                'memory_percent': round(memory_percent, 1),
-                'memory_used_gb': round(memory_used_gb, 2),
-                'memory_total_gb': round(memory_total_gb, 2)
+                'cpu_percent': cpu_percent,
+                'memory_percent': memory_info['percent'],
+                'memory_used_gb': memory_info['used_gb'],
+                'memory_total_gb': memory_info['total_gb']
             }
         })
     except Exception as e:
