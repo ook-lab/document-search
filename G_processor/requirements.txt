@@ -18,7 +18,7 @@ Pillow
 pytesseract==0.3.10
 pypdf==3.17.4
 pdf2image==1.17.0
-opencv-python-headless==4.12.0.88
+opencv-python-headless==4.11.0.86
 paddleocr==3.3.2
 surya-ocr==0.17.0
 
