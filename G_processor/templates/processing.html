@@ -160,29 +160,26 @@
             padding: 15px;
             border-radius: 8px;
             margin-top: 20px;
-            display: block;
+            display: none;
         }
 
         .status-message.success {
             background: #d1fae5;
             color: #065f46;
-            display: block;
         }
 
         .status-message.error {
             background: #fee2e2;
             color: #991b1b;
-            display: block;
         }
 
         .status-message.info {
             background: #dbeafe;
             color: #1e40af;
-            display: block;
         }
 
         .loading {
-            display: block;
+            display: none;
             text-align: center;
             padding: 20px;
         }
@@ -256,7 +253,7 @@
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 20px;
-            display: block;
+            display: none;
         }
 
         .progress-section.active {
@@ -326,7 +323,7 @@
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 0.85em;
-            display: block;
+            display: none;
         }
 
         .log-window.active {
@@ -760,6 +757,7 @@
             const messageBox = document.getElementById('status-message');
             messageBox.className = 'status-message ' + type;
             messageBox.textContent = message;
+            messageBox.style.display = 'block';
         }
 
         // 自動更新（30秒ごと）
