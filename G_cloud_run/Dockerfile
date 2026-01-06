@@ -18,7 +18,7 @@ WORKDIR /app
 # 4. プロジェクトルート全体をコピー（親ディレクトリから）
 # ビルドコンテキストはプロジェクトルート (document_management_system/) です
 # まずrequirements.txtだけコピーしてインストール（キャッシュ効率化）
-COPY G_cloud_run/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. 必要なモジュールとアプリケーションファイルをコピー
