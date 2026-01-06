@@ -19,11 +19,12 @@ pytesseract==0.3.10
 pypdf==3.17.4
 pdf2image==1.17.0
 opencv-python-headless==4.12.0.88
-# paddleocr==3.3.2  # Gmail処理ではハイブリッドOCR無効のためコメントアウト
-# surya-ocr==0.17.0  # Gmail処理ではハイブリッドOCR無効のためコメントアウト
+paddleocr==3.3.2
+surya-ocr==0.17.0
 
 numpy>=1.26.2,<2.0.0
 sentence-transformers==5.1.2
+torch==2.5.1
 pyarrow==22.0.0
 pgvector==0.2.4
 
