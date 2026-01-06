@@ -28,6 +28,7 @@ COPY C_ai_common/ ./C_ai_common/
 # ドキュメント処理用のファイル
 COPY process_queued_documents.py .
 COPY G_unified_pipeline/ ./G_unified_pipeline/
+COPY K_kakeibo/ ./K_kakeibo/
 
 # 6. ポート環境変数を設定
 ENV PORT=8080
