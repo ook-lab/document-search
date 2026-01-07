@@ -534,8 +534,28 @@
                     const cpuUsage = document.getElementById('cpu-usage');
                     const memoryUsage = document.getElementById('memory-usage');
 
-                    if (data.processing) {
+                    // 常にシステムリソースを更新（processing状態に関わらず）
+                    if (data.system) {
+                        cpuUsage.textContent = data.system.cpu_percent + '%';
+                        memoryUsage.textContent = data.system.memory_percent + '% (' +
+                            data.system.memory_used_gb + '/' +
+                            data.system.memory_total_gb + ' GB)';
+                    }
 
+                    // 常にログを更新（processing状態に関わらず）
+                    if (data.logs && data.logs.length > 0) {
+                        logWindow.innerHTML = data.logs.map(log => {
+                            let className = 'log-entry';
+                            if (log.includes('✅') || log.includes('成功')) className += ' success';
+                            if (log.includes('❌') || log.includes('失敗')) className += ' error';
+                            return `<div class="${className}">${escapeHtml(log)}</div>`;
+                        }).join('');
+
+                        // 自動スクロール
+                        logWindow.scrollTop = logWindow.scrollHeight;
+                    }
+
+                    if (data.processing) {
                         // 進捗バーを更新
                         const percent = data.total_count > 0
                             ? Math.round((data.current_index / data.total_count) * 100)
@@ -545,27 +565,6 @@
 
                         // 現在のファイル名を更新
                         currentFile.textContent = data.current_file || '処理中...';
-
-                        // システムリソースを更新
-                        if (data.system) {
-                            cpuUsage.textContent = data.system.cpu_percent + '%';
-                            memoryUsage.textContent = data.system.memory_percent + '% (' +
-                                data.system.memory_used_gb + '/' +
-                                data.system.memory_total_gb + ' GB)';
-                        }
-
-                        // ログを更新
-                        if (data.logs && data.logs.length > 0) {
-                            logWindow.innerHTML = data.logs.map(log => {
-                                let className = 'log-entry';
-                                if (log.includes('✅') || log.includes('成功')) className += ' success';
-                                if (log.includes('❌') || log.includes('失敗')) className += ' error';
-                                return `<div class="${className}">${escapeHtml(log)}</div>`;
-                            }).join('');
-
-                            // 自動スクロール
-                            logWindow.scrollTop = logWindow.scrollHeight;
-                        }
                     } else {
                         // 処理が完了したらポーリング停止
                         if (progressInterval) {
