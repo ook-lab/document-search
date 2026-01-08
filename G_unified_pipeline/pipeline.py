@@ -131,7 +131,16 @@ class UnifiedDocumentPipeline:
             # Stage E: Pre-processing
             # ============================================
             logger.info("[Stage E] Pre-processing開始...")
-            stage_e_result = self.stage_e.extract_text(file_path, mime_type)
+
+            # extra_metadata から既に抽出済みのテキスト（attachment_text）を取得
+            # HTMLファイル等、Ingestion時にテキスト抽出済みの場合に使用
+            pre_extracted_text = extra_metadata.get('attachment_text', '') if extra_metadata else ''
+
+            stage_e_result = self.stage_e.extract_text(
+                file_path,
+                mime_type,
+                pre_extracted_text=pre_extracted_text
+            )
 
             # Stage E の結果をチェック
             if not stage_e_result.get('success'):

@@ -445,6 +445,14 @@
                         <div class="label">🧠 メモリ使用率</div>
                         <div class="value" id="memory-usage">-</div>
                     </div>
+                    <div class="resource-card">
+                        <div class="label">⚡ 並列処理</div>
+                        <div class="value" id="parallel-info">-</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">⚡ 処理速度</div>
+                        <div class="value" id="throttle-info" style="font-size: 0.9em;">-</div>
+                    </div>
                 </div>
             </div>
 
@@ -492,9 +500,13 @@
             loadWorkspaces();
             refreshStats();
 
-            // 進捗とリソース情報を常に監視（1秒ごと）
+            // 初回のみリソース情報を取得（ポーリングは処理開始時のみ）
             updateProgress();
-            progressInterval = setInterval(updateProgress, 1000);
+
+            // ワークスペース変更時に統計を自動更新
+            document.getElementById('workspace').addEventListener('change', function() {
+                refreshStats();
+            });
         });
 
         // ワークスペース一覧を読み込む
@@ -542,6 +554,28 @@
                             data.system.memory_total_gb + ' GB)';
                     }
 
+                    // リソース制御情報を更新
+                    const parallelInfo = document.getElementById('parallel-info');
+                    const throttleInfo = document.getElementById('throttle-info');
+
+                    if (data.resource_control) {
+                        parallelInfo.textContent = data.resource_control.current_parallel + '/' +
+                            data.resource_control.max_parallel + '件';
+
+                        // スロットル表示をアイコン付きに変更
+                        const delay = data.resource_control.throttle_delay;
+                        if (delay === 0) {
+                            throttleInfo.textContent = '🟢 フルスピード';
+                        } else if (delay < 1.5) {
+                            throttleInfo.textContent = '🟡 減速中（' + delay.toFixed(1) + '秒）';
+                        } else {
+                            throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
+                        }
+                    } else {
+                        parallelInfo.textContent = '-';
+                        throttleInfo.textContent = '-';
+                    }
+
                     // 常にログを更新（processing状態に関わらず）
                     if (data.logs && data.logs.length > 0) {
                         logWindow.innerHTML = data.logs.map(log => {
@@ -565,29 +599,27 @@
 
                         // 現在のファイル名を更新
                         currentFile.textContent = data.current_file || '処理中...';
-                    } else {
-                        // 処理が完了したらポーリング停止
-                        if (progressInterval) {
-                            clearInterval(progressInterval);
-                            progressInterval = null;
+                    } else if (progressInterval) {
+                        // 処理が完了した場合、ポーリングを停止（Cloud Run課金を停止）
+                        clearInterval(progressInterval);
+                        progressInterval = null;
 
-                            // 処理完了メッセージを表示
-                            if (data.success_count > 0 || data.failed_count > 0) {
-                                showMessage('success', `✅ 処理が完了しました！成功: ${data.success_count}件, 失敗: ${data.failed_count}件`);
+                        // 処理完了メッセージを表示（結果がある場合のみ）
+                        if (data.success_count > 0 || data.failed_count > 0) {
+                            showMessage('success', `✅ 処理が完了しました！成功: ${data.success_count}件, 失敗: ${data.failed_count}件`);
 
-                                // 結果サマリーを表示
-                                document.getElementById('result-processed').textContent = data.success_count + data.failed_count;
-                                document.getElementById('result-success').textContent = data.success_count;
-                                document.getElementById('result-failed').textContent = data.failed_count;
-                                document.getElementById('result-summary').classList.add('active');
+                            // 結果サマリーを表示
+                            document.getElementById('result-processed').textContent = data.success_count + data.failed_count;
+                            document.getElementById('result-success').textContent = data.success_count;
+                            document.getElementById('result-failed').textContent = data.failed_count;
+                            document.getElementById('result-summary').classList.add('active');
 
-                                // 統計を更新
-                                refreshStats();
+                            // 統計を更新
+                            refreshStats();
 
-                                // ボタンを有効化/非表示
-                                document.getElementById('start-btn').disabled = false;
-                                document.getElementById('stop-btn').style.display = 'none';
-                            }
+                            // ボタンを有効化/非表示
+                            document.getElementById('start-btn').disabled = false;
+                            document.getElementById('stop-btn').style.display = 'none';
                         }
                     }
                 }
@@ -684,13 +716,6 @@
             document.getElementById('status-message').style.display = 'none';
             document.getElementById('result-summary').classList.remove('active');
 
-            // 進捗ポーリング開始（1秒ごと）
-            if (progressInterval) {
-                clearInterval(progressInterval);
-            }
-            progressInterval = setInterval(updateProgress, 1000);
-            updateProgress(); // 即座に一回実行
-
             try {
                 const response = await fetch('/api/process/start', {
                     method: 'POST',
@@ -710,6 +735,14 @@
                     showMessage('info', '▶️ 処理を開始しました（' + data.total_count + '件）');
                     document.getElementById('loading').classList.remove('active');
                     document.getElementById('stop-btn').style.display = 'block';
+
+                    // 進捗ポーリング開始（1秒ごと）
+                    if (progressInterval) {
+                        clearInterval(progressInterval);
+                    }
+                    progressInterval = setInterval(updateProgress, 1000);
+                    updateProgress(); // 即座に一回実行して初期化メッセージを表示
+
                     // 処理はバックグラウンドで継続中
                     // ポーリングで進捗を監視
                 } else {
@@ -746,8 +779,9 @@
             messageBox.style.display = 'block';
         }
 
-        // 自動更新（30秒ごと）
-        setInterval(refreshStats, 30000);
+        // 自動更新は削除（Cloud Run課金削減のため）
+        // 統計情報は「統計情報を更新」ボタンで手動更新
+        // 処理中のポーリングは処理開始時のみ有効化され、完了時に自動停止します
     </script>
 </body>
 </html>

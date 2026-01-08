@@ -15,11 +15,12 @@ PyMuPDF>=1.24.0
 python-docx==1.1.0
 python-pptx==0.6.21
 openpyxl==3.1.2
-Pillow
+Pillow>=10.2.0,<11.0.0
 pytesseract==0.3.10
 pypdf==3.17.4
 pdf2image==1.17.0
 opencv-python-headless==4.11.0.86
+paddlex>=3.3.0
 paddleocr==3.3.2
 surya-ocr==0.17.0
 

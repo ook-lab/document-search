@@ -76,6 +76,7 @@ class StageISynthesis:
 
             # 結果をJSON形式で取得
             content = response.get("content", "")
+            logger.info(f"[Stage I] ===== LLMレスポンス全文 ===== {content[:500]}")
             result = self._parse_result(content)
 
             # Stage H のタグとマージ
@@ -142,9 +143,23 @@ class StageISynthesis:
             json_match = re.search(r'```json\s*\n(.*?)\n```', content, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
-                return json.loads(json_str)
+                result = json.loads(json_str)
+                logger.info(f"[Stage I] JSON解析成功")
+                return result
+
+            # ```json ブロックがない場合、直接JSON文字列を探す
+            # { で始まる部分を探す
+            json_start = content.find('{')
+            json_end = content.rfind('}')
+            if json_start >= 0 and json_end > json_start:
+                json_str = content[json_start:json_end + 1]
+                result = json.loads(json_str)
+                logger.info(f"[Stage I] JSON解析成功（直接抽出）")
+                return result
+        except json.JSONDecodeError as e:
+            logger.warning(f"[Stage I] JSON解析失敗（フォールバックに移行）: {e}")
         except Exception as e:
-            logger.warning(f"[Stage I] JSON解析失敗: {e}")
+            logger.warning(f"[Stage I] JSON抽出失敗（フォールバックに移行）: {e}")
 
         # JSON形式でない場合、テキストから抽出
         result = {

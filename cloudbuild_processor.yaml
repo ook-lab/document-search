@@ -36,12 +36,19 @@ steps:
       - '--platform'
       - 'managed'
       - '--memory'
-      - '16Gi'
+      - '16Gi'  # TODO: 実際の使用率を確認して最適化（例: 12Giでも十分なら課金30%削減）
       - '--cpu'
       - '4'
       - '--timeout'
       - '3600'
       - '--allow-unauthenticated'
+      - '--cpu-throttling'  # アイドル時はCPU割り当てを停止（課金削減）
+      - '--min-instances'
+      - '0'  # 処理がない時はコンテナ停止（課金削減）
+      - '--max-instances'
+      - '10'  # 最大インスタンス数を制限
+      - '--concurrency'
+      - '1'  # 1コンテナで1リクエストのみ処理（メモリ大量使用のため）
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'

@@ -29,7 +29,14 @@ processing_status = {
     'current_file': '',
     'success_count': 0,
     'failed_count': 0,
-    'logs': []
+    'logs': [],
+    # アダプティブリソース制御情報
+    'resource_control': {
+        'max_parallel': 3,
+        'current_parallel': 0,
+        'throttle_delay': 0.0,
+        'adjustment_count': 0
+    }
 }
 
 # CPU使用率計算用の前回の値
@@ -39,16 +46,16 @@ _last_cpu_stats = {'usage_usec': 0, 'timestamp': time.time()}
 def get_cgroup_memory():
     """cgroupからメモリ使用率を取得（Cloud Run対応）"""
     try:
-        # cgroup v2
-        with open('/sys/fs/cgroup/memory.current', 'r') as f:
+        # Cloud Run: cgroup v1 のメモリ情報を取得
+        with open('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'r') as f:
             current = int(f.read().strip())
-        with open('/sys/fs/cgroup/memory.max', 'r') as f:
-            max_mem = f.read().strip()
-            # 'max'の場合は無制限なので、システム全体のメモリを使用
-            if max_mem == 'max':
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+            max_mem = int(f.read().strip())
+
+            # 非常に大きい値の場合は無制限なので、システム全体のメモリを使用
+            # (通常、9223372036854771712 などの値)
+            if max_mem > 1e15:
                 max_mem = psutil.virtual_memory().total
-            else:
-                max_mem = int(max_mem)
 
         percent = (current / max_mem) * 100
         used_gb = current / (1024 ** 3)
@@ -71,42 +78,177 @@ def get_cgroup_memory():
 
 
 def get_cgroup_cpu():
-    """cgroupからCPU使用率を取得（Cloud Run対応）"""
+    """CPU使用率を取得（Cloud Run対応）"""
     global _last_cpu_stats
 
     try:
-        # cgroup v2のcpu.statから使用時間を取得
-        with open('/sys/fs/cgroup/cpu.stat', 'r') as f:
-            lines = f.readlines()
-            usage_usec = 0
-            for line in lines:
-                if line.startswith('usage_usec'):
-                    usage_usec = int(line.split()[1])
-                    break
+        # Cloud Run: cgroup v1 の cpuacct.usage から取得（ナノ秒単位）
+        with open('/sys/fs/cgroup/cpuacct/cpuacct.usage', 'r') as f:
+            usage_nsec = int(f.read().strip())
 
         current_time = time.time()
 
+        # 初回呼び出しの場合は初期化のみ
+        if _last_cpu_stats['usage_usec'] == 0:
+            _last_cpu_stats = {'usage_usec': usage_nsec, 'timestamp': current_time}
+            return 0.0
+
         # 前回との差分から使用率を計算
         time_delta = current_time - _last_cpu_stats['timestamp']
-        usage_delta = usage_usec - _last_cpu_stats['usage_usec']
+        usage_delta = usage_nsec - _last_cpu_stats['usage_usec']
 
-        # 使用率 = (CPU時間の増加量 / 経過時間) * 100
-        # usage_usecはマイクロ秒単位なので、秒に変換
         if time_delta > 0:
-            cpu_percent = (usage_delta / (time_delta * 1_000_000)) * 100
-            # 複数CPUコアの場合、100%を超えることがあるので制限
-            cpu_percent = min(cpu_percent, 100.0)
+            # usage_deltaはナノ秒、time_deltaは秒
+            # CPU使用率 = (使用時間の増加 / 経過時間)
+            cpu_percent = (usage_delta / (time_delta * 1_000_000_000)) * 100
+            cpu_percent = max(0.0, min(cpu_percent, 400.0))  # 0-400%の範囲
         else:
             cpu_percent = 0.0
 
         # 次回のために保存
-        _last_cpu_stats = {'usage_usec': usage_usec, 'timestamp': current_time}
+        _last_cpu_stats = {'usage_usec': usage_nsec, 'timestamp': current_time}
 
         return round(cpu_percent, 1)
     except Exception as e:
-        # cgroupが使えない場合はpsutilにフォールバック
-        logger.debug(f"cgroup CPU読み取り失敗、psutilを使用: {e}")
-        return round(psutil.cpu_percent(interval=0.1), 1)
+        # cpuacct.usage読み取り失敗時は0を返す
+        return 0.0
+
+
+class AdaptiveResourceManager:
+    """アダプティブリソース制御マネージャー
+
+    メモリ使用率に基づいて並列数とスロットル遅延を動的に調整します。
+
+    制御ロジック:
+    1. 並列数制御（1-5件）
+       - メモリ < 60% → 並列数を増やす
+       - メモリ > 90% → 並列数を減らす
+
+    2. スロットル遅延（0-3秒）
+       - メモリ > 85% → 減速開始
+       - メモリ < 70% → 減速緩和
+    """
+
+    def __init__(self, initial_max_parallel=3, min_parallel=1, max_parallel=5):
+        """初期化
+
+        Args:
+            initial_max_parallel: 初期並列数（デフォルト: 3）
+            min_parallel: 最小並列数（デフォルト: 1）
+            max_parallel: 最大並列数（デフォルト: 5）
+        """
+        self.max_parallel = initial_max_parallel
+        self.min_parallel = min_parallel
+        self.max_parallel_limit = max_parallel
+        self.throttle_delay = 0.0  # スロットル遅延（秒）
+
+        # しきい値
+        self.memory_low = 60.0   # 余裕あり → 並列数増加
+        self.memory_high = 85.0  # 逼迫 → 減速開始
+        self.memory_critical = 90.0  # 危険 → 並列数削減
+        self.memory_recover = 70.0  # 回復 → 減速緩和
+
+        # 調整ステップ
+        self.parallel_step = 1
+        self.throttle_step = 0.5  # 秒
+        self.max_throttle = 3.0   # 最大スロットル遅延
+
+        # 統計
+        self.adjustment_count = 0
+        self.last_adjustment_time = time.time()
+
+        # メモリ使用率の履歴（移動平均用）
+        self.memory_history = []
+        self.history_size = 3  # 直近3回分を保持
+
+        from loguru import logger
+        self.logger = logger
+
+    def adjust_resources(self, memory_percent):
+        """リソース使用率に基づいて並列数とスロットルを調整
+
+        Args:
+            memory_percent: 現在のメモリ使用率（%）
+
+        Returns:
+            dict: 調整情報 {'max_parallel': int, 'throttle_delay': float, 'adjusted': bool}
+        """
+        # 履歴に追加
+        self.memory_history.append(memory_percent)
+        if len(self.memory_history) > self.history_size:
+            self.memory_history.pop(0)  # 古いデータを削除
+
+        # 移動平均を計算（直近3回の平均）
+        memory_avg = sum(self.memory_history) / len(self.memory_history)
+
+        # 移動平均で判断（瞬間値ではなく）
+        memory_percent = memory_avg
+
+        original_parallel = self.max_parallel
+        original_throttle = self.throttle_delay
+        adjusted = False
+
+        # フェーズ3: 並列数削減（緊急時）- 最優先
+        if memory_percent > self.memory_critical:
+            if self.max_parallel > self.min_parallel:
+                self.max_parallel = max(self.max_parallel - self.parallel_step, self.min_parallel)
+                adjusted = True
+                self.logger.warning(
+                    f"[リソース制御] 🚨 メモリ逼迫 ({memory_percent:.1f}%) → 並列数削減: {original_parallel} → {self.max_parallel}"
+                )
+
+        # フェーズ2: 減速制御
+        if memory_percent > self.memory_high:
+            # 逼迫 → 減速
+            if self.throttle_delay < self.max_throttle:
+                self.throttle_delay = min(self.throttle_delay + self.throttle_step, self.max_throttle)
+                adjusted = True
+                self.logger.info(
+                    f"[リソース制御] ⚠️ メモリ高使用 ({memory_percent:.1f}%) → 減速: {original_throttle:.1f}秒 → {self.throttle_delay:.1f}秒"
+                )
+        elif memory_percent < self.memory_recover and self.throttle_delay > 0:
+            # 回復 → 減速緩和
+            self.throttle_delay = max(self.throttle_delay - self.throttle_step, 0.0)
+            adjusted = True
+            self.logger.info(
+                f"[リソース制御] ✅ メモリ回復 ({memory_percent:.1f}%) → 減速緩和: {original_throttle:.1f}秒 → {self.throttle_delay:.1f}秒"
+            )
+
+        # フェーズ1: 並列数増加（余裕がある場合）
+        if memory_percent < self.memory_low and self.throttle_delay == 0:
+            # 余裕あり かつ 減速なし → 並列数を増やす
+            if self.max_parallel < self.max_parallel_limit:
+                self.max_parallel = min(self.max_parallel + self.parallel_step, self.max_parallel_limit)
+                adjusted = True
+                self.logger.info(
+                    f"[リソース制御] ⬆️ メモリ余裕 ({memory_percent:.1f}%) → 並列数増加: {original_parallel} → {self.max_parallel}"
+                )
+
+        if adjusted:
+            self.adjustment_count += 1
+            self.last_adjustment_time = time.time()
+
+        return {
+            'max_parallel': self.max_parallel,
+            'throttle_delay': self.throttle_delay,
+            'adjusted': adjusted,
+            'memory_percent': memory_percent
+        }
+
+    async def apply_throttle(self):
+        """スロットル遅延を適用"""
+        if self.throttle_delay > 0:
+            import asyncio
+            await asyncio.sleep(self.throttle_delay)
+
+    def get_status(self):
+        """現在の状態を取得"""
+        return {
+            'max_parallel': self.max_parallel,
+            'throttle_delay': self.throttle_delay,
+            'adjustment_count': self.adjustment_count,
+            'last_adjustment': self.last_adjustment_time
+        }
 
 
 # loguruのカスタムハンドラー：ログをprocessing_statusに送信
@@ -122,9 +264,9 @@ def log_to_processing_status(message):
         formatted_msg = f"[{timestamp}] {msg}"
         processing_status['logs'].append(formatted_msg)
 
-        # ログは最大100件まで保持
-        if len(processing_status['logs']) > 100:
-            processing_status['logs'] = processing_status['logs'][-100:]
+        # ログは最大300件まで保持
+        if len(processing_status['logs']) > 300:
+            processing_status['logs'] = processing_status['logs'][-300:]
 
 
 # loguruにカスタムハンドラーを追加（スレッド内で個別に追加するためここでは追加しない）
@@ -170,13 +312,14 @@ def get_process_progress():
             'current_file': processing_status['current_file'],
             'success_count': processing_status['success_count'],
             'failed_count': processing_status['failed_count'],
-            'logs': processing_status['logs'][-50:],  # 最新50件
+            'logs': processing_status['logs'][-150:],  # 最新150件
             'system': {
                 'cpu_percent': cpu_percent,
                 'memory_percent': memory_info['percent'],
                 'memory_used_gb': memory_info['used_gb'],
                 'memory_total_gb': memory_info['total_gb']
-            }
+            },
+            'resource_control': processing_status['resource_control']
         })
     except Exception as e:
         return jsonify({
@@ -289,7 +432,6 @@ def start_processing():
         }), 400
 
     try:
-        from process_queued_documents import DocumentProcessor
         import threading
         import asyncio
 
@@ -298,26 +440,44 @@ def start_processing():
         limit = data.get('limit', 100)
         preserve_workspace = data.get('preserve_workspace', True)
 
+        # 進捗状況を初期化（処理開始をすぐに表示）
+        processing_status['is_processing'] = True
+        processing_status['current_index'] = 0
+        processing_status['total_count'] = 0
+        processing_status['current_file'] = '初期化中...'
+        processing_status['success_count'] = 0
+        processing_status['failed_count'] = 0
+        processing_status['logs'] = [
+            f"[{datetime.now().strftime('%H:%M:%S')}] 処理開始準備中...",
+            f"[{datetime.now().strftime('%H:%M:%S')}] ワークスペース: {workspace}, 制限: {limit}件"
+        ]
+
+        # DocumentProcessorをインポート
+        processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] モジュール読み込み中...")
+        from process_queued_documents import DocumentProcessor
+
+        processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] プロセッサ初期化中...")
         processor = DocumentProcessor()
 
         # pending ドキュメントを取得
+        processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] ドキュメント取得中...")
         docs = processor.get_pending_documents(workspace, limit)
 
         if not docs:
+            processing_status['is_processing'] = False
+            processing_status['current_file'] = ''
+            processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] 処理対象のドキュメントがありません")
             return jsonify({
                 'success': True,
                 'message': '処理対象のドキュメントがありません',
                 'processed': 0
             })
 
-        # 進捗状況を初期化
-        processing_status['is_processing'] = True
-        processing_status['current_index'] = 0
+        # ドキュメント数を更新
         processing_status['total_count'] = len(docs)
         processing_status['current_file'] = ''
-        processing_status['success_count'] = 0
-        processing_status['failed_count'] = 0
-        processing_status['logs'] = [f"[{datetime.now().strftime('%H:%M:%S')}] 処理開始: {len(docs)}件"]
+        processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] {len(docs)}件のドキュメントを取得しました")
+        processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] バックグラウンド処理を開始します...")
 
         # バックグラウンド処理関数
         def background_processing():
@@ -328,29 +488,75 @@ def start_processing():
             handler_id = thread_logger.add(log_to_processing_status, format="{message}")
 
             async def process_all():
-                for i, doc in enumerate(docs, 1):
+                # アダプティブリソースマネージャーを初期化
+                resource_manager = AdaptiveResourceManager(initial_max_parallel=3, min_parallel=1, max_parallel=10)
+
+                # 並列数制御用のセマフォ（動的に調整）
+                # NOTE: セマフォは固定値なので、タスク内で制御ロジックを実装
+                active_tasks = []
+                processed_count = 0
+
+                # リソース監視タスク
+                async def monitor_resources():
+                    """リソース監視タスク：メモリ使用率をチェックして並列数を調整"""
+                    while processing_status['is_processing']:
+                        try:
+                            memory_info = get_cgroup_memory()
+                            memory_percent = memory_info['percent']
+
+                            # リソース調整
+                            status = resource_manager.adjust_resources(memory_percent)
+
+                            # 実行中のタスク数を更新（完了したタスクは除外）
+                            running_tasks = [t for t in active_tasks if not t.done()]
+                            processing_status['resource_control']['current_parallel'] = len(running_tasks)
+
+                            # リソース制御情報を更新
+                            processing_status['resource_control']['max_parallel'] = status['max_parallel']
+                            processing_status['resource_control']['throttle_delay'] = status['throttle_delay']
+                            processing_status['resource_control']['adjustment_count'] = resource_manager.adjustment_count
+
+                            # 調整ログを表示（調整があった場合のみ）
+                            if status['adjusted']:
+                                processing_status['logs'].append(
+                                    f"[{datetime.now().strftime('%H:%M:%S')}] 🔧 並列数={len(running_tasks)}/{status['max_parallel']}, "
+                                    f"遅延={status['throttle_delay']:.1f}s, メモリ={memory_percent:.1f}%"
+                                )
+                        except Exception as e:
+                            thread_logger.error(f"リソース監視エラー: {e}")
+
+                        await asyncio.sleep(2)  # 2秒ごとに監視
+
+                # 個別ドキュメント処理タスク
+                async def process_single_document(doc, index):
+                    """個別ドキュメントを処理"""
+                    nonlocal processed_count
+
                     # 停止フラグをチェック
                     if not processing_status['is_processing']:
-                        processing_status['logs'].append(
-                            f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 処理が中断されました"
-                        )
-                        break
+                        return False
 
                     file_name = doc.get('file_name', 'unknown')
                     title = doc.get('title', '') or '(タイトル未生成)'
 
                     # 進捗を更新
-                    processing_status['current_index'] = i
+                    processing_status['current_index'] = index
                     processing_status['current_file'] = title
                     processing_status['logs'].append(
-                        f"[{datetime.now().strftime('%H:%M:%S')}] [{i}/{len(docs)}] 処理中: {title}"
+                        f"[{datetime.now().strftime('%H:%M:%S')}] [{index}/{len(docs)}] 処理中: {title}"
                     )
 
-                    # ログは最大100件まで保持
-                    if len(processing_status['logs']) > 100:
-                        processing_status['logs'] = processing_status['logs'][-100:]
+                    # ログは最大300件まで保持
+                    if len(processing_status['logs']) > 300:
+                        processing_status['logs'] = processing_status['logs'][-300:]
 
+                    # ドキュメント処理
                     success = await processor.process_document(doc, preserve_workspace)
+
+                    # スロットル遅延を適用
+                    await resource_manager.apply_throttle()
+
+                    processed_count += 1
 
                     if success:
                         processing_status['success_count'] += 1
@@ -362,6 +568,48 @@ def start_processing():
                         processing_status['logs'].append(
                             f"[{datetime.now().strftime('%H:%M:%S')}] ❌ 失敗: {title}"
                         )
+
+                    return success
+
+                # リソース監視タスクを開始
+                monitor_task = asyncio.create_task(monitor_resources())
+
+                try:
+                    # ドキュメントを処理
+                    for i, doc in enumerate(docs, 1):
+                        # 停止フラグをチェック
+                        if not processing_status['is_processing']:
+                            processing_status['logs'].append(
+                                f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ 処理が中断されました"
+                            )
+                            break
+
+                        # 並列数制御：active_tasksが max_parallel 未満になるまで待機
+                        while len(active_tasks) >= resource_manager.max_parallel:
+                            # 完了したタスクを削除
+                            done_tasks = [t for t in active_tasks if t.done()]
+                            for t in done_tasks:
+                                active_tasks.remove(t)
+
+                            if len(active_tasks) >= resource_manager.max_parallel:
+                                # まだ並列数が上限に達している場合は少し待機
+                                await asyncio.sleep(0.1)
+
+                        # 新しいタスクを開始
+                        task = asyncio.create_task(process_single_document(doc, i))
+                        active_tasks.append(task)
+
+                        # 現在の並列数を更新
+                        processing_status['resource_control']['current_parallel'] = len(active_tasks)
+
+                    # すべてのタスクが完了するまで待機
+                    if active_tasks:
+                        await asyncio.gather(*active_tasks, return_exceptions=True)
+
+                finally:
+                    # リソース監視タスクを停止
+                    processing_status['is_processing'] = False  # 監視ループを終了
+                    await monitor_task
 
             try:
                 asyncio.run(process_all())
