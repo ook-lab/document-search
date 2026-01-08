@@ -2,7 +2,6 @@
 .env
 .env.bak
 venv/
-venv_old_delete_later/
 
 # Rakuten Seiyu credentials
 rakuten_seiyu_cookies.json

@@ -450,8 +450,8 @@
                         <div class="value" id="parallel-info">-</div>
                     </div>
                     <div class="resource-card">
-                        <div class="label">⚡ 処理速度</div>
-                        <div class="value" id="throttle-info" style="font-size: 0.9em;">-</div>
+                        <div class="label">⏱️ スロットル</div>
+                        <div class="value" id="throttle-info">-</div>
                     </div>
                 </div>
             </div>
@@ -502,11 +502,6 @@
 
             // 初回のみリソース情報を取得（ポーリングは処理開始時のみ）
             updateProgress();
-
-            // ワークスペース変更時に統計を自動更新
-            document.getElementById('workspace').addEventListener('change', function() {
-                refreshStats();
-            });
         });
 
         // ワークスペース一覧を読み込む
@@ -561,16 +556,7 @@
                     if (data.resource_control) {
                         parallelInfo.textContent = data.resource_control.current_parallel + '/' +
                             data.resource_control.max_parallel + '件';
-
-                        // スロットル表示をアイコン付きに変更
-                        const delay = data.resource_control.throttle_delay;
-                        if (delay === 0) {
-                            throttleInfo.textContent = '🟢 フルスピード';
-                        } else if (delay < 1.5) {
-                            throttleInfo.textContent = '🟡 減速中（' + delay.toFixed(1) + '秒）';
-                        } else {
-                            throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
-                        }
+                        throttleInfo.textContent = data.resource_control.throttle_delay.toFixed(1) + '秒';
                     } else {
                         parallelInfo.textContent = '-';
                         throttleInfo.textContent = '-';
@@ -716,6 +702,13 @@
             document.getElementById('status-message').style.display = 'none';
             document.getElementById('result-summary').classList.remove('active');
 
+            // 進捗ポーリング開始（1秒ごと）
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            progressInterval = setInterval(updateProgress, 1000);
+            updateProgress(); // 即座に一回実行
+
             try {
                 const response = await fetch('/api/process/start', {
                     method: 'POST',
@@ -735,14 +728,6 @@
                     showMessage('info', '▶️ 処理を開始しました（' + data.total_count + '件）');
                     document.getElementById('loading').classList.remove('active');
                     document.getElementById('stop-btn').style.display = 'block';
-
-                    // 進捗ポーリング開始（1秒ごと）
-                    if (progressInterval) {
-                        clearInterval(progressInterval);
-                    }
-                    progressInterval = setInterval(updateProgress, 1000);
-                    updateProgress(); // 即座に一回実行して初期化メッセージを表示
-
                     // 処理はバックグラウンドで継続中
                     // ポーリングで進捗を監視
                 } else {
