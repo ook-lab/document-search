@@ -744,6 +744,35 @@ def stop_processing():
     })
 
 
+@app.route('/api/process/reset', methods=['POST'])
+def reset_processing():
+    """
+    処理フラグを強制リセット（複数インスタンス問題対策）
+    """
+    global processing_status
+
+    processing_status['is_processing'] = False
+    processing_status['current_index'] = 0
+    processing_status['total_count'] = 0
+    processing_status['current_file'] = ''
+    processing_status['success_count'] = 0
+    processing_status['failed_count'] = 0
+    processing_status['logs'] = [
+        f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました"
+    ]
+    processing_status['resource_control'] = {
+        'current_parallel': 0,
+        'max_parallel': 3,
+        'throttle_delay': 0.0,
+        'adjustment_count': 0
+    }
+
+    return jsonify({
+        'success': True,
+        'message': '処理フラグをリセットしました'
+    })
+
+
 if __name__ == '__main__':
     # 開発環境での実行
     port = int(os.environ.get('PORT', 5000))

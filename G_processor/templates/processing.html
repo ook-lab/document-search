@@ -422,8 +422,12 @@
                     ⏹️ 処理を停止
                 </button>
 
+                <button class="btn btn-secondary" onclick="resetProcessing()" style="margin-top: 10px; background: #f59e0b;">
+                    🔄 強制リセット
+                </button>
+
                 <button class="btn btn-secondary" onclick="refreshStats()" style="margin-top: 10px;">
-                    🔄 統計情報を更新
+                    📊 統計情報を更新
                 </button>
             </div>
 
@@ -707,6 +711,32 @@
             }
         }
 
+        // 強制リセット
+        async function resetProcessing() {
+            if (!confirm('処理フラグを強制リセットしますか？\n\n「既に処理が実行中です」エラーが解消されない場合に使用してください。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/process/reset', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showMessage('info', '🔄 ' + data.message);
+                    document.getElementById('stop-btn').style.display = 'none';
+                    document.getElementById('start-btn').disabled = false;
+                    updateProgress();
+                } else {
+                    showMessage('error', '❌ ' + (data.error || 'リセットに失敗しました'));
+                }
+            } catch (error) {
+                showMessage('error', '❌ リセット中にエラーが発生しました: ' + error.message);
+            }
+        }
+
         // 処理を開始
         async function startProcessing() {
             const workspace = document.getElementById('workspace').value || 'all';
@@ -750,13 +780,19 @@
                 } else {
                     showMessage('error', '❌ エラー: ' + (data.error || '不明なエラー'));
                     document.getElementById('loading').classList.remove('active');
-                    document.getElementById('start-btn').disabled = false;
-                    document.getElementById('stop-btn').style.display = 'none';
 
-                    // ポーリング停止
-                    if (progressInterval) {
-                        clearInterval(progressInterval);
-                        progressInterval = null;
+                    // 「既に処理が実行中」の場合はポーリング継続
+                    if (data.error && data.error.includes('既に処理が実行中')) {
+                        document.getElementById('stop-btn').style.display = 'block';
+                        // ポーリングは継続（停止しない）
+                    } else {
+                        document.getElementById('start-btn').disabled = false;
+                        document.getElementById('stop-btn').style.display = 'none';
+                        // ポーリング停止
+                        if (progressInterval) {
+                            clearInterval(progressInterval);
+                            progressInterval = null;
+                        }
                     }
                 }
             } catch (error) {
