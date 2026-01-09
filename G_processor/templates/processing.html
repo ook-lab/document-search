@@ -750,12 +750,7 @@
             document.getElementById('status-message').style.display = 'none';
             document.getElementById('result-summary').classList.remove('active');
 
-            // 進捗ポーリング開始（1秒ごと）
-            if (progressInterval) {
-                clearInterval(progressInterval);
-            }
-            progressInterval = setInterval(updateProgress, 1000);
-            // 注: updateProgress()はAPI成功後に呼ぶ（ここで呼ぶとis_processing=falseでポーリング停止される）
+            // 注: ポーリングはAPI成功後にupdateProgress()内で開始される
 
             try {
                 const response = await fetch('/api/process/start', {
@@ -776,17 +771,18 @@
                     showMessage('info', '▶️ 処理を開始しました（' + data.total_count + '件）');
                     document.getElementById('loading').classList.remove('active');
                     document.getElementById('stop-btn').style.display = 'block';
-                    // 処理はバックグラウンドで継続中
-                    // ポーリングで進捗を監視
+                    // API成功後にupdateProgress()を呼ぶ
+                    // is_processing=trueなのでポーリングが開始される
+                    updateProgress();
                 } else {
                     showMessage('error', '❌ エラー: ' + (data.error || '不明なエラー'));
                     document.getElementById('loading').classList.remove('active');
-                    // ポーリングは継続（停止しない）
+                    document.getElementById('start-btn').disabled = false;
                 }
             } catch (error) {
                 showMessage('error', '❌ 処理中にエラーが発生しました: ' + error.message);
                 document.getElementById('loading').classList.remove('active');
-                // ポーリングは継続（停止しない）
+                document.getElementById('start-btn').disabled = false;
             }
         }
 
