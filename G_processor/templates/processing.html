@@ -755,7 +755,7 @@
                 clearInterval(progressInterval);
             }
             progressInterval = setInterval(updateProgress, 1000);
-            updateProgress(); // 即座に一回実行
+            // 注: updateProgress()はAPI成功後に呼ぶ（ここで呼ぶとis_processing=falseでポーリング停止される）
 
             try {
                 const response = await fetch('/api/process/start', {
