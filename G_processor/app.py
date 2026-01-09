@@ -147,14 +147,20 @@ class AdaptiveResourceManager:
 
     メモリ使用率に基づいて並列数とスロットル遅延を動的に調整します。
 
-    制御ロジック:
-    1. 並列数制御（1-5件）
-       - メモリ < 60% → 並列数を増やす
-       - メモリ > 90% → 並列数を減らす
+    制御ロジック（総メモリ量に応じて閾値を自動調整）:
 
-    2. スロットル遅延（0-3秒）
-       - メモリ > 85% → 減速開始
-       - メモリ < 70% → 減速緩和
+    16GB環境（保守的）:
+    - 並列数制御: memory < 60% → 増加, > 90% → 削減
+    - スロットル: > 85% → 減速開始, < 70% → 減速緩和
+
+    32GB環境（攻めの設定）:
+    - 並列数制御: memory < 70% → 増加, > 95% → 削減
+    - スロットル: > 90% → 減速開始, < 80% → 減速緩和
+
+    32GBの利点:
+    - 95%まで使っても残り1.6GB（16GBの90%と同等）
+    - 並列数を20-30まで増やせる可能性
+    - 処理時間短縮でコストメリット
     """
 
     def __init__(self, initial_max_parallel=3, min_parallel=1, max_parallel=5, history_size=3):
@@ -171,11 +177,37 @@ class AdaptiveResourceManager:
         self.max_parallel_limit = max_parallel
         self.throttle_delay = 0.0  # スロットル遅延（秒）
 
-        # しきい値
-        self.memory_low = 60.0   # 余裕あり → 並列数増加
-        self.memory_high = 85.0  # 逼迫 → 減速開始
-        self.memory_critical = 90.0  # 危険 → 並列数削減
-        self.memory_recover = 70.0  # 回復 → 減速緩和
+        # 総メモリ量を取得して閾値を動的に設定
+        total_memory_gb = 16.0  # デフォルト
+        try:
+            mem_info = get_cgroup_memory()
+            total_memory_gb = mem_info['total_gb']
+        except:
+            pass
+
+        # しきい値をメモリサイズに応じて調整
+        if total_memory_gb >= 32:
+            # 32GB以上: 攻めの設定（残り1.6GB = 95%まで許容）
+            self.memory_low = 70.0   # 余裕あり → 並列数増加
+            self.memory_high = 90.0  # 逼迫 → 減速開始
+            self.memory_critical = 95.0  # 危険 → 並列数削減
+            self.memory_recover = 80.0  # 回復 → 減速緩和
+        elif total_memory_gb >= 24:
+            # 24GB: 中間設定
+            self.memory_low = 65.0
+            self.memory_high = 87.0
+            self.memory_critical = 92.0
+            self.memory_recover = 75.0
+        else:
+            # 16GB以下: 保守的設定（デフォルト）
+            self.memory_low = 60.0   # 余裕あり → 並列数増加
+            self.memory_high = 85.0  # 逼迫 → 減速開始
+            self.memory_critical = 90.0  # 危険 → 並列数削減
+            self.memory_recover = 70.0  # 回復 → 減速緩和
+
+        from loguru import logger
+        self.logger = logger
+        self.logger.info(f"[INIT] AdaptiveResourceManager: total_memory={total_memory_gb:.1f}GB, thresholds=[{self.memory_low}%, {self.memory_high}%, {self.memory_critical}%]")
 
         # 調整ステップ
         self.parallel_step = 1
@@ -518,6 +550,9 @@ def start_processing():
 
             async def process_all():
                 # アダプティブリソースマネージャーを初期化
+                # 現在: 16GBで max_parallel=10
+                # TODO: 32GBの場合は max_parallel=20-30 に増やすことでコストメリットが期待できる
+                # [MEMORY PER DOC] ログで1ドキュメントあたりのメモリ消費を確認してから調整
                 resource_manager = AdaptiveResourceManager(initial_max_parallel=3, min_parallel=1, max_parallel=10)
 
                 # 並列数制御用のセマフォ（動的に調整）
@@ -564,6 +599,9 @@ def start_processing():
                     file_name = doc.get('file_name', 'unknown')
                     title = doc.get('title', '') or '(タイトル未生成)'
 
+                    # 処理前のメモリを記録
+                    mem_before = get_cgroup_memory()
+
                     # 進捗を更新
                     processing_status['current_index'] = index
                     processing_status['current_file'] = title
@@ -577,6 +615,12 @@ def start_processing():
 
                     # ドキュメント処理
                     success = await processor.process_document(doc, preserve_workspace)
+
+                    # 処理後のメモリを記録（最初の3件のみログ出力）
+                    if index <= 3:
+                        mem_after = get_cgroup_memory()
+                        mem_delta = mem_after['used_gb'] - mem_before['used_gb']
+                        logger.info(f"[MEMORY PER DOC] Doc#{index}: before={mem_before['used_gb']:.2f}GB, after={mem_after['used_gb']:.2f}GB, delta={mem_delta:.2f}GB, parallel={len(active_tasks)}")
 
                     # スロットル遅延を適用
                     await resource_manager.apply_throttle()
