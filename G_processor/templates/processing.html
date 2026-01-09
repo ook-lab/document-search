@@ -506,15 +506,23 @@
 
     <script>
         let progressInterval = null;
+        let lastActivityTime = Date.now();  // 最後にアクティビティがあった時刻
 
         // ページ読み込み時に統計を取得
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshStats();
 
-            // 初回のみリソース情報を取得（ポーリングは処理開始時のみ）
-            updateProgress();
+            // 常時ポーリングを開始（処理中は1秒、待機中は5秒間隔）
+            startPolling();
         });
+
+        // ポーリング開始（常時実行、間隔は状態に応じて調整）
+        function startPolling() {
+            if (!progressInterval) {
+                progressInterval = setInterval(updateProgress, 1000);
+            }
+        }
 
         // ワークスペース一覧を読み込む
         async function loadWorkspaces() {
@@ -626,12 +634,12 @@
                     const isProcessing = data.processing ||
                         (data.resource_control && data.resource_control.current_parallel > 0);
 
-                    if (isProcessing) {
-                        // 処理中: 1秒ポーリング開始
-                        if (!progressInterval) {
-                            progressInterval = setInterval(updateProgress, 1000);
-                        }
+                    // アクティビティがあれば時刻を更新
+                    if (isProcessing || (data.logs && data.logs.length > 0)) {
+                        lastActivityTime = Date.now();
+                    }
 
+                    if (isProcessing) {
                         // 進捗バーを更新
                         const percent = data.total_count > 0
                             ? Math.round((data.current_index / data.total_count) * 100)
@@ -646,12 +654,7 @@
                         document.getElementById('start-btn').disabled = true;
                         document.getElementById('stop-btn').style.display = 'block';
                     } else {
-                        // 処理中でない: ポーリング停止
-                        if (progressInterval) {
-                            clearInterval(progressInterval);
-                            progressInterval = null;
-                        }
-
+                        // 処理中でない場合もポーリングは継続（ログとメモリを更新し続ける）
                         currentFile.textContent = '待機中';
                         document.getElementById('start-btn').disabled = false;
                         document.getElementById('stop-btn').style.display = 'none';
@@ -819,7 +822,7 @@
 
         // ページ読み込み時に初回更新
         document.addEventListener('DOMContentLoaded', function() {
-            updateProgress();
+            startPolling();
         });
     </script>
 </body>
