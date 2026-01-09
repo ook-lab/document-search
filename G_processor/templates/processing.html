@@ -606,28 +606,15 @@
 
                         // 現在のファイル名を更新
                         currentFile.textContent = data.current_file || '処理中...';
-                    } else if (progressInterval) {
-                        // 処理が完了した場合、ポーリングを停止（Cloud Run課金を停止）
-                        clearInterval(progressInterval);
-                        progressInterval = null;
 
-                        // 処理完了メッセージを表示（結果がある場合のみ）
-                        if (data.success_count > 0 || data.failed_count > 0) {
-                            showMessage('success', `✅ 処理が完了しました！成功: ${data.success_count}件, 失敗: ${data.failed_count}件`);
-
-                            // 結果サマリーを表示
-                            document.getElementById('result-processed').textContent = data.success_count + data.failed_count;
-                            document.getElementById('result-success').textContent = data.success_count;
-                            document.getElementById('result-failed').textContent = data.failed_count;
-                            document.getElementById('result-summary').classList.add('active');
-
-                            // 統計を更新
-                            refreshStats();
-
-                            // ボタンを有効化/非表示
-                            document.getElementById('start-btn').disabled = false;
-                            document.getElementById('stop-btn').style.display = 'none';
-                        }
+                        // ボタン状態を更新
+                        document.getElementById('start-btn').disabled = true;
+                        document.getElementById('stop-btn').style.display = 'block';
+                    } else {
+                        // 処理中でない場合
+                        currentFile.textContent = '待機中';
+                        document.getElementById('start-btn').disabled = false;
+                        document.getElementById('stop-btn').style.display = 'none';
                     }
                 }
             } catch (error) {
@@ -780,32 +767,12 @@
                 } else {
                     showMessage('error', '❌ エラー: ' + (data.error || '不明なエラー'));
                     document.getElementById('loading').classList.remove('active');
-
-                    // 「既に処理が実行中」の場合はポーリング継続
-                    if (data.error && data.error.includes('既に処理が実行中')) {
-                        document.getElementById('stop-btn').style.display = 'block';
-                        // ポーリングは継続（停止しない）
-                    } else {
-                        document.getElementById('start-btn').disabled = false;
-                        document.getElementById('stop-btn').style.display = 'none';
-                        // ポーリング停止
-                        if (progressInterval) {
-                            clearInterval(progressInterval);
-                            progressInterval = null;
-                        }
-                    }
+                    // ポーリングは継続（停止しない）
                 }
             } catch (error) {
                 showMessage('error', '❌ 処理中にエラーが発生しました: ' + error.message);
                 document.getElementById('loading').classList.remove('active');
-                document.getElementById('start-btn').disabled = false;
-                document.getElementById('stop-btn').style.display = 'none';
-
-                // ポーリング停止
-                if (progressInterval) {
-                    clearInterval(progressInterval);
-                    progressInterval = null;
-                }
+                // ポーリングは継続（停止しない）
             }
         }
 
