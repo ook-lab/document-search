@@ -58,23 +58,30 @@ def get_cgroup_memory():
                 max_mem = psutil.virtual_memory().total
 
         # キャッシュメモリを除外して正確な使用量を計算
-        cache_memory = 0
+        # Kubernetesの標準: working_set = usage - total_inactive_file
+        inactive_file = 0
+        total_cache = 0
         try:
             with open('/sys/fs/cgroup/memory/memory.stat', 'r') as f:
                 for line in f:
                     parts = line.strip().split()
                     if len(parts) == 2:
                         key, value = parts
-                        # total_inactive_file は回収可能なキャッシュメモリ
                         if key == 'total_inactive_file':
-                            cache_memory = int(value)
-                            break
+                            inactive_file = int(value)
+                        elif key == 'total_cache' or key == 'cache':
+                            total_cache = int(value)
 
-            # デバッグログ（初回のみ）
-            if cache_memory > 0:
-                logger.debug(f"[MEMORY DEBUG] usage_in_bytes={current/(1024**3):.2f}GB, cache={cache_memory/(1024**3):.2f}GB, actual={( current-cache_memory)/(1024**3):.2f}GB")
+            # デバッグログで両方の計算方法を確認
+            if inactive_file > 0 or total_cache > 0:
+                logger.info(f"[MEMORY DEBUG] usage={current/(1024**3):.2f}GB, inactive_file={inactive_file/(1024**3):.2f}GB, total_cache={total_cache/(1024**3):.2f}GB")
+                logger.info(f"[MEMORY DEBUG] working_set(inactive除外)={(current-inactive_file)/(1024**3):.2f}GB, working_set(全cache除外)={(current-total_cache)/(1024**3):.2f}GB")
         except Exception as e:
             logger.debug(f"[MEMORY DEBUG] memory.stat読み取り失敗: {e}")
+
+        # Kubernetes標準の計算式を使用（total_inactive_fileを除外）
+        # これは「すぐに解放可能なキャッシュ」を除いた実使用量
+        cache_memory = inactive_file
 
         # キャッシュを除いた実際の使用量
         actual_used = current - cache_memory
