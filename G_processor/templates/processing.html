@@ -548,10 +548,17 @@
         }
 
         // 進捗状況を取得
+        let lastLogCount = 0;  // 前回のログ件数を記録
         async function updateProgress() {
             try {
                 const response = await fetch('/api/process/progress');
                 const data = await response.json();
+
+                // デバッグ: APIレスポンスを確認
+                console.log('[Polling]', new Date().toLocaleTimeString(),
+                    'logs:', data.logs?.length || 0,
+                    'memory:', data.system?.memory_percent,
+                    'processing:', data.processing);
 
                 if (data.success) {
                     const progressSection = document.getElementById('progress-section');
@@ -640,15 +647,22 @@
                     }
 
                     if (isProcessing) {
-                        // 進捗バーを更新
-                        const percent = data.total_count > 0
-                            ? Math.round((data.current_index / data.total_count) * 100)
-                            : 0;
-                        progressBar.style.width = percent + '%';
-                        progressBar.textContent = `${data.current_index}/${data.total_count} (${percent}%)`;
+                        // 進捗バーを更新（ステージ進捗を考慮）
+                        const completedDocs = (data.success_count || 0) + (data.failed_count || 0);
+                        const stageProgress = data.stage_progress || 0;
+                        const totalCount = data.total_count || 1;
 
-                        // 現在のファイル名を更新
-                        currentFile.textContent = data.current_file || '処理中...';
+                        // 全体進捗 = (完了ドキュメント + 現在ステージ進捗) / 総ドキュメント
+                        const overallProgress = (completedDocs + stageProgress) / totalCount;
+                        const percent = Math.round(overallProgress * 100);
+
+                        progressBar.style.width = percent + '%';
+                        progressBar.textContent = `${completedDocs}/${totalCount} (${percent}%)`;
+
+                        // 現在のファイル名 + ステージを更新
+                        const stage = data.current_stage || '';
+                        const fileName = data.current_file || '処理中...';
+                        currentFile.textContent = stage ? `${fileName} [${stage}]` : fileName;
 
                         // ボタン状態を更新
                         document.getElementById('start-btn').disabled = true;

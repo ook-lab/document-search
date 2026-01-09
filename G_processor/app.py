@@ -342,6 +342,9 @@ processing_status = {
     'success_count': 0,
     'failed_count': 0,
     'logs': [],
+    # ステージ進捗（ドキュメント内の進捗）
+    'current_stage': '',
+    'stage_progress': 0.0,  # 0.0 - 1.0
     # アダプティブリソース制御情報
     'resource_control': {
         'max_parallel': 3,
@@ -626,7 +629,7 @@ class AdaptiveResourceManager:
 
 # loguruのカスタムハンドラー：ログをprocessing_statusに送信
 def log_to_processing_status(message):
-    """loguruのログをprocessing_statusに追加"""
+    """loguruのログをprocessing_statusに追加 + ステージ検出"""
     log_record = message.record
     level = log_record['level'].name
     msg = log_record['message']
@@ -636,6 +639,27 @@ def log_to_processing_status(message):
         timestamp = datetime.now().strftime('%H:%M:%S')
         formatted_msg = f"[{timestamp}] {msg}"
         processing_status['logs'].append(formatted_msg)
+
+        # ステージ検出（ログメッセージから現在のステージを推測）
+        msg_lower = msg.lower()
+        if 'stage h' in msg_lower or '構造化' in msg_lower:
+            processing_status['current_stage'] = 'Stage H: 構造化'
+            processing_status['stage_progress'] = 0.3
+        elif 'stage j' in msg_lower or 'チャンク' in msg_lower:
+            processing_status['current_stage'] = 'Stage J: チャンク化'
+            processing_status['stage_progress'] = 0.5
+        elif 'stage k' in msg_lower or 'embedding' in msg_lower or 'embed' in msg_lower:
+            processing_status['current_stage'] = 'Stage K: Embedding'
+            processing_status['stage_progress'] = 0.7
+        elif '成功' in msg or '✅' in msg:
+            processing_status['current_stage'] = '完了'
+            processing_status['stage_progress'] = 1.0
+        elif '失敗' in msg or '❌' in msg:
+            processing_status['current_stage'] = '失敗'
+            processing_status['stage_progress'] = 1.0
+        elif 'ダウンロード' in msg_lower or 'download' in msg_lower:
+            processing_status['current_stage'] = 'ダウンロード中'
+            processing_status['stage_progress'] = 0.1
 
         # ログは最大300件まで保持
         if len(processing_status['logs']) > 300:
@@ -692,6 +716,9 @@ def get_process_progress():
             'success_count': progress['success_count'],
             'failed_count': progress['failed_count'],
             'logs': progress['logs'],  # 最新150件
+            # ステージ進捗（ローカルから取得）
+            'current_stage': processing_status.get('current_stage', ''),
+            'stage_progress': processing_status.get('stage_progress', 0.0),
             'system': {
                 'cpu_percent': cpu_percent,
                 'memory_percent': memory_info['percent'],
@@ -834,6 +861,8 @@ def start_processing():
         processing_status['current_file'] = '初期化中...'
         processing_status['success_count'] = 0
         processing_status['failed_count'] = 0
+        processing_status['current_stage'] = ''
+        processing_status['stage_progress'] = 0.0
         processing_status['logs'] = [
             f"[{datetime.now().strftime('%H:%M:%S')}] 処理開始準備中...",
             f"[{datetime.now().strftime('%H:%M:%S')}] ワークスペース: {workspace}, 制限: {limit}件"
@@ -890,9 +919,9 @@ def start_processing():
                 active_tasks = []
                 processed_count = 0
 
-                # リソース監視タスク
+                # リソース監視 + ログ同期タスク
                 async def monitor_resources():
-                    """リソース監視タスク：メモリ使用率をチェックして並列数を調整"""
+                    """リソース監視タスク：メモリ使用率をチェックして並列数を調整 + ログを定期同期"""
                     while processing_status['is_processing']:
                         try:
                             memory_info = get_cgroup_memory()
@@ -915,10 +944,20 @@ def start_processing():
                             worker_status = get_worker_status()
                             processing_status['resource_control']['current_parallel'] = worker_status['current_workers']
 
+                            # ログをSupabaseに定期同期（2秒ごと）
+                            update_progress_to_supabase(
+                                processing_status['current_index'],
+                                processing_status['total_count'],
+                                processing_status['current_file'],
+                                processing_status['success_count'],
+                                processing_status['failed_count'],
+                                processing_status['logs']
+                            )
+
                         except Exception as e:
                             logger.error(f"リソース監視エラー: {e}")
 
-                        await asyncio.sleep(2)  # 2秒ごとに監視
+                        await asyncio.sleep(2)  # 2秒ごとに監視 + ログ同期
 
                 # 個別ドキュメント処理タスク
                 async def process_single_document(doc, index):
@@ -1134,6 +1173,8 @@ def reset_processing():
     processing_status['current_file'] = ''
     processing_status['success_count'] = 0
     processing_status['failed_count'] = 0
+    processing_status['current_stage'] = ''
+    processing_status['stage_progress'] = 0.0
     processing_status['logs'] = [
         f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました（Supabase + ローカル）"
     ]
