@@ -773,6 +773,11 @@
             messageBox.style.display = 'block';
         }
 
+        // ページ読み込み時に初回更新
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProgress(); // リソース情報を即座に表示
+        });
+
         // 自動更新は削除（Cloud Run課金削減のため）
         // 統計情報は「統計情報を更新」ボタンで手動更新
         // 処理中のポーリングは処理開始時のみ有効化され、完了時に自動停止します
