@@ -135,13 +135,20 @@ def clear_all_workers() -> bool:
     """全ワーカーをクリア（処理終了時）"""
     try:
         client = get_supabase_client()
-        # 全ワーカーを削除
-        client.table('processing_workers').delete().neq('instance_id', '').execute()
-        # current_workersを0に更新
+        # ステップ1: 全レコードのIDを取得
+        result = client.table('processing_workers').select('id').execute()
+        ids = [row['id'] for row in result.data] if result.data else []
+
+        # ステップ2: IDが存在する場合のみ削除
+        if ids:
+            client.table('processing_workers').delete().in_('id', ids).execute()
+
+        # ステップ3: current_workersを0に更新
         client.table('processing_lock').update({
             'current_workers': 0
         }).eq('id', 1).execute()
-        logger.info("全ワーカーをクリアしました")
+
+        logger.info(f"全ワーカーをクリアしました（削除件数: {len(ids)}件）")
         return True
     except Exception as e:
         logger.error(f"全ワーカークリアエラー: {e}")
@@ -161,6 +168,63 @@ def update_worker_count() -> int:
     except Exception as e:
         logger.error(f"ワーカー数更新エラー: {e}")
         return 0
+
+
+def update_progress_to_supabase(current_index: int, total_count: int, current_file: str,
+                                 success_count: int, failed_count: int, logs: list):
+    """進捗情報をSupabaseに保存（複数インスタンス共有用）"""
+    try:
+        client = get_supabase_client()
+        # 最新150件のログのみ保存
+        latest_logs = logs[-150:] if len(logs) > 150 else logs
+        client.table('processing_lock').update({
+            'current_index': current_index,
+            'total_count': total_count,
+            'current_file': current_file,
+            'success_count': success_count,
+            'failed_count': failed_count,
+            'logs': latest_logs,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', 1).execute()
+        return True
+    except Exception as e:
+        logger.error(f"進捗更新エラー: {e}")
+        return False
+
+
+def get_progress_from_supabase() -> dict:
+    """Supabaseから進捗情報を取得（複数インスタンス共有用）"""
+    try:
+        client = get_supabase_client()
+        result = client.table('processing_lock').select('*').eq('id', 1).execute()
+        if result.data:
+            data = result.data[0]
+            return {
+                'current_index': data.get('current_index', 0),
+                'total_count': data.get('total_count', 0),
+                'current_file': data.get('current_file', ''),
+                'success_count': data.get('success_count', 0),
+                'failed_count': data.get('failed_count', 0),
+                'logs': data.get('logs', [])
+            }
+        return {
+            'current_index': 0,
+            'total_count': 0,
+            'current_file': '',
+            'success_count': 0,
+            'failed_count': 0,
+            'logs': []
+        }
+    except Exception as e:
+        logger.error(f"進捗取得エラー: {e}")
+        return {
+            'current_index': 0,
+            'total_count': 0,
+            'current_file': '',
+            'success_count': 0,
+            'failed_count': 0,
+            'logs': []
+        }
 
 
 def get_worker_status() -> dict:
@@ -568,15 +632,18 @@ def get_process_progress():
         # Supabaseからワーカー状況を取得（複数インスタンス対応）
         worker_status = get_worker_status()
 
+        # Supabaseから進捗情報を取得（複数インスタンス共有）
+        progress = get_progress_from_supabase()
+
         return jsonify({
             'success': True,
-            'processing': worker_status['is_processing'] or processing_status['is_processing'],
-            'current_index': processing_status['current_index'],
-            'total_count': processing_status['total_count'],
-            'current_file': processing_status['current_file'],
-            'success_count': processing_status['success_count'],
-            'failed_count': processing_status['failed_count'],
-            'logs': processing_status['logs'][-150:],  # 最新150件
+            'processing': worker_status['is_processing'],
+            'current_index': progress['current_index'],
+            'total_count': progress['total_count'],
+            'current_file': progress['current_file'],
+            'success_count': progress['success_count'],
+            'failed_count': progress['failed_count'],
+            'logs': progress['logs'],  # 最新150件
             'system': {
                 'cpu_percent': cpu_percent,
                 'memory_percent': memory_info['percent'],
@@ -725,6 +792,9 @@ def start_processing():
             f"[{datetime.now().strftime('%H:%M:%S')}] ワークスペース: {workspace}, 制限: {limit}件"
         ]
 
+        # Supabaseに初期状態を保存
+        update_progress_to_supabase(0, 0, '初期化中...', 0, 0, processing_status['logs'])
+
         # DocumentProcessorをインポート
         processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] モジュール読み込み中...")
         from process_queued_documents import DocumentProcessor
@@ -834,6 +904,14 @@ def start_processing():
                         if len(processing_status['logs']) > 300:
                             processing_status['logs'] = processing_status['logs'][-300:]
 
+                        # Supabaseに進捗を保存
+                        update_progress_to_supabase(
+                            index, len(docs), title,
+                            processing_status['success_count'],
+                            processing_status['failed_count'],
+                            processing_status['logs']
+                        )
+
                         # ドキュメント処理
                         success = await processor.process_document(doc, preserve_workspace)
 
@@ -858,6 +936,14 @@ def start_processing():
                             processing_status['logs'].append(
                                 f"[{datetime.now().strftime('%H:%M:%S')}] ❌ 失敗: {title}"
                             )
+
+                        # Supabaseに結果を保存
+                        update_progress_to_supabase(
+                            index, len(docs), title,
+                            processing_status['success_count'],
+                            processing_status['failed_count'],
+                            processing_status['logs']
+                        )
 
                         return success
                     finally:
@@ -913,6 +999,16 @@ def start_processing():
                 processing_status['current_file'] = ''
                 processing_status['logs'].append(
                     f"[{datetime.now().strftime('%H:%M:%S')}] 処理完了: 成功={processing_status['success_count']}, 失敗={processing_status['failed_count']}"
+                )
+
+                # Supabaseに完了状態を保存
+                update_progress_to_supabase(
+                    processing_status['current_index'],
+                    processing_status['total_count'],
+                    '',
+                    processing_status['success_count'],
+                    processing_status['failed_count'],
+                    processing_status['logs']
                 )
             except Exception as e:
                 processing_status['is_processing'] = False
