@@ -37,3 +37,5 @@ temp/
 nul
 *.backup
 *_debug.html
+venv_old_delete_later/
+builds.json

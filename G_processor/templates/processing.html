@@ -782,13 +782,25 @@
         }
 
         // ページ読み込み時に初回更新
-        document.addEventListener('DOMContentLoaded', function() {
-            updateProgress(); // リソース情報を即座に表示
+        document.addEventListener('DOMContentLoaded', async function() {
+            await updateProgress(); // リソース情報を即座に表示
+
+            // 既に処理が実行中の場合、自動更新を開始
+            const response = await fetch('/api/process/progress');
+            const data = await response.json();
+            if (data.processing) {
+                console.log('処理が既に実行中です。自動更新を開始します。');
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                }
+                progressInterval = setInterval(updateProgress, 1000);
+                document.getElementById('stop-btn').style.display = 'block';
+                document.getElementById('start-btn').disabled = true;
+            }
         });
 
-        // 自動更新は削除（Cloud Run課金削減のため）
-        // 統計情報は「統計情報を更新」ボタンで手動更新
-        // 処理中のポーリングは処理開始時のみ有効化され、完了時に自動停止します
+        // 待機中は自動更新なし（Cloud Run課金削減）
+        // 処理中のみ1秒間隔で自動更新（処理開始時 or ページ読み込み時に処理中なら開始）
     </script>
 </body>
 </html>
