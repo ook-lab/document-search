@@ -57,8 +57,29 @@ def get_cgroup_memory():
             if max_mem > 1e15:
                 max_mem = psutil.virtual_memory().total
 
-        percent = (current / max_mem) * 100
-        used_gb = current / (1024 ** 3)
+        # キャッシュメモリを除外して正確な使用量を計算
+        cache_memory = 0
+        try:
+            with open('/sys/fs/cgroup/memory/memory.stat', 'r') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) == 2:
+                        key, value = parts
+                        # total_inactive_file は回収可能なキャッシュメモリ
+                        if key == 'total_inactive_file':
+                            cache_memory = int(value)
+                            break
+
+            # デバッグログ（初回のみ）
+            if cache_memory > 0:
+                logger.debug(f"[MEMORY DEBUG] usage_in_bytes={current/(1024**3):.2f}GB, cache={cache_memory/(1024**3):.2f}GB, actual={( current-cache_memory)/(1024**3):.2f}GB")
+        except Exception as e:
+            logger.debug(f"[MEMORY DEBUG] memory.stat読み取り失敗: {e}")
+
+        # キャッシュを除いた実際の使用量
+        actual_used = current - cache_memory
+        percent = (actual_used / max_mem) * 100
+        used_gb = actual_used / (1024 ** 3)
         total_gb = max_mem / (1024 ** 3)
 
         return {
