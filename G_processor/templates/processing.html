@@ -817,23 +817,10 @@
             messageBox.style.display = 'block';
         }
 
-        // ページ読み込み時に初回更新と自動更新開始
-        document.addEventListener('DOMContentLoaded', async function() {
-            // 処理状況を取得
-            const response = await fetch('/api/process/progress');
-            const data = await response.json();
-
-            // 画面を更新
-            await updateProgress();
-
-            // 処理中またはワーカーがいる場合、自動更新を開始
-            const isActive = data.processing || (data.resource_control && data.resource_control.current_parallel > 0);
-            if (isActive) {
-                console.log('処理中です。自動更新を開始します。current_parallel=' + (data.resource_control ? data.resource_control.current_parallel : 0));
-                progressInterval = setInterval(updateProgress, 1000);
-                document.getElementById('stop-btn').style.display = 'block';
-                document.getElementById('start-btn').disabled = true;
-            }
+        // ページ読み込み時に自動更新開始
+        document.addEventListener('DOMContentLoaded', function() {
+            updateProgress();
+            progressInterval = setInterval(updateProgress, 1000);
         });
     </script>
 </body>
