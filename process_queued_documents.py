@@ -207,6 +207,8 @@ class DocumentProcessor:
         display_name = title if title else '(タイトル未生成)'
         source_type = doc.get('source_type', '')
 
+        completed_or_failed = False  # 処理が完了または失敗したかのフラグ
+
         try:
             # 処理中にマーク
             self.mark_as_processing(document_id)
@@ -258,9 +260,11 @@ class DocumentProcessor:
                         logger.warning(f" PNG削除処理でエラー（処理は継続）: {e}")
 
                 self.mark_as_completed(document_id)
+                completed_or_failed = True
                 logger.info(f"[OK] 処理成功: {display_name}")
             else:
                 self.mark_as_failed(document_id, error_msg)
+                completed_or_failed = True
                 logger.error( f"[FAIL] 処理失敗: {display_name} - {error_msg}")
 
             return success
@@ -269,7 +273,19 @@ class DocumentProcessor:
             error_msg = f"処理中にエラー: {str(e)}"
             logger.error( f"[FAIL] {error_msg}")
             self.mark_as_failed(document_id, error_msg)
+            completed_or_failed = True
             return False
+
+        finally:
+            # 中断時はpendingに差し戻し（completed_or_failedがFalseの場合）
+            if not completed_or_failed:
+                logger.warning(f"[ROLLBACK] 処理未完了のためpendingに差し戻し: {display_name}")
+                try:
+                    self.db.client.table('Rawdata_FILE_AND_MAIL').update({
+                        'processing_status': 'pending'
+                    }).eq('id', document_id).execute()
+                except Exception as e:
+                    logger.error(f"差し戻しエラー: {e}")
 
     async def _process_text_only(
         self,

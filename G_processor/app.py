@@ -128,6 +128,7 @@ def unregister_worker(doc_id: str) -> bool:
         client.table('processing_workers').delete().eq('instance_id', worker_id).execute()
         # current_workersを更新
         update_worker_count()
+        logger.info(f"ワーカー解除: {worker_id}")
         return True
     except Exception as e:
         logger.error(f"ワーカー解除エラー: {e}")
@@ -161,25 +162,45 @@ def clear_all_workers() -> bool:
 
 
 def reset_stuck_documents() -> int:
-    """processing状態のまま残っているドキュメントをpendingにリセット"""
+    """
+    processing状態でスタックしているドキュメントをpendingにリセット
+
+    スタック判定:
+    - processing_status='processing'
+    - かつ processing_workers テーブルに存在しない
+
+    Returns:
+        リセットした件数
+    """
     try:
         from A_common.database.client import DatabaseClient
         db = DatabaseClient(use_service_role=True)
-        
+
         # processing状態のドキュメントを取得
         result = db.client.table('Rawdata_FILE_AND_MAIL').select('id').eq('processing_status', 'processing').execute()
-        stuck_ids = [row['id'] for row in result.data] if result.data else []
-        
+        processing_ids = [row['id'] for row in result.data] if result.data else []
+
+        if not processing_ids:
+            return 0
+
+        # processing_workersから実際に処理中のdoc_idを取得
+        workers_result = db.client.table('processing_workers').select('doc_id').execute()
+        active_doc_ids = [row['doc_id'] for row in workers_result.data] if workers_result.data else []
+
+        # スタックしているドキュメント = processingだがワーカーに存在しない
+        stuck_ids = [doc_id for doc_id in processing_ids if doc_id not in active_doc_ids]
+
         if stuck_ids:
             # pendingにリセット
             db.client.table('Rawdata_FILE_AND_MAIL').update({
                 'processing_status': 'pending'
             }).in_('id', stuck_ids).execute()
-            logger.info(f"stuck状態のドキュメントをリセットしました（{len(stuck_ids)}件）")
+            logger.info(f"スタック状態のドキュメントをリセットしました（{len(stuck_ids)}件）")
             return len(stuck_ids)
+
         return 0
     except Exception as e:
-        logger.error(f"stuck状態リセットエラー: {e}")
+        logger.error(f"reset_stuck_documents エラー: {e}")
         return 0
 
 def update_worker_count() -> int:
@@ -731,6 +752,12 @@ def get_workspaces():
 def get_process_stats():
     """
     処理キューの統計情報を取得
+
+    ステータスの意味:
+    - pending: 未処理（まだバッチに選ばれていない）
+    - processing: このバッチの処理対象として選択済み（重複防止マーク）
+    - completed: 処理完了
+    - failed: 処理失敗
     """
     try:
         from A_common.database.client import DatabaseClient
@@ -747,26 +774,16 @@ def get_process_stats():
 
         stats = {
             'pending': 0,
-            'processing': 0,
+            'processing': 0,  # バッチに選ばれた件数
             'completed': 0,
-            'failed': 0,
-            'null': 0
+            'failed': 0
         }
 
         for doc in response.data:
             status = doc.get('processing_status')
-            if status is None:
-                stats['null'] += 1
-            else:
+            # nullは無視（pending/processing/completed/failedのみカウント）
+            if status in stats:
                 stats[status] = stats.get(status, 0) + 1
-
-        stats['total'] = len(response.data)
-
-        processed = stats['completed'] + stats['failed']
-        if processed > 0:
-            stats['success_rate'] = round(stats['completed'] / processed * 100, 1)
-        else:
-            stats['success_rate'] = 0.0
 
         return jsonify({
             'success': True,
@@ -774,7 +791,7 @@ def get_process_stats():
         })
 
     except Exception as e:
-        print(f"[ERROR] 統計取得エラー: {e}")
+        logger.error(f"統計取得エラー: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -806,6 +823,9 @@ def start_processing():
 
         # Supabaseにロックを設定
         set_processing_lock(True)
+
+        # loguruハンドラーを追加（process_queued_documents.pyのログをキャッチ）
+        handler_id = logger.add(log_to_processing_status, format="{message}")
 
         # 進捗状況を初期化（処理開始をすぐに表示）
         processing_status['is_processing'] = True
@@ -858,10 +878,6 @@ def start_processing():
         def background_processing():
             global processing_status
 
-            # スレッド内でloguruハンドラーを追加（スレッドセーフ）
-            from loguru import logger as thread_logger
-            handler_id = thread_logger.add(log_to_processing_status, format="{message}")
-
             async def process_all():
                 # アダプティブリソースマネージャーを初期化
                 # 現在: 16GBで max_parallel=10
@@ -900,7 +916,7 @@ def start_processing():
                             processing_status['resource_control']['current_parallel'] = worker_status['current_workers']
 
                         except Exception as e:
-                            thread_logger.error(f"リソース監視エラー: {e}")
+                            logger.error(f"リソース監視エラー: {e}")
 
                         await asyncio.sleep(2)  # 2秒ごとに監視
 
@@ -1049,7 +1065,7 @@ def start_processing():
                 print(f"[ERROR] バックグラウンド処理エラー: {e}")
             finally:
                 # ハンドラーを削除
-                thread_logger.remove(handler_id)
+                logger.remove(handler_id)
                 # Supabaseロック解放
                 set_processing_lock(False)
 

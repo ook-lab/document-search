@@ -363,11 +363,11 @@
             <h2 style="margin-bottom: 20px; color: #1f2937;">📊 処理キューの状態</h2>
             <div class="stats-grid">
                 <div class="stat-card pending">
-                    <div class="label">⏳ 待機中</div>
+                    <div class="label">📝 未処理</div>
                     <div class="value" id="stat-pending">-</div>
                 </div>
                 <div class="stat-card processing">
-                    <div class="label">🔄 処理中</div>
+                    <div class="label">📋 バッチ処理対象</div>
                     <div class="value" id="stat-processing">-</div>
                 </div>
                 <div class="stat-card completed">
@@ -377,18 +377,6 @@
                 <div class="stat-card failed">
                     <div class="label">❌ 失敗</div>
                     <div class="value" id="stat-failed">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">📝 未処理</div>
-                    <div class="value" id="stat-null">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">📦 合計</div>
-                    <div class="value" id="stat-total">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="label">✨ 成功率</div>
-                    <div class="value" id="stat-success-rate">-</div>
                 </div>
             </div>
 
@@ -415,7 +403,7 @@
                 </div>
 
                 <button class="btn btn-primary" id="start-btn" onclick="confirmStart()">
-                    ▶️ 処理を開始
+                    ➕ キューに追加
                 </button>
 
                 <button class="btn btn-secondary" id="stop-btn" onclick="stopProcessing()" style="margin-top: 10px; background: #dc2626; display: none;">
@@ -438,6 +426,26 @@
                     <div class="progress-bar" id="progress-bar">0%</div>
                 </div>
                 <div class="current-file" id="current-file">準備中...</div>
+
+                <!-- バッチ処理状況 -->
+                <div class="resource-grid" style="margin-bottom: 15px;">
+                    <div class="resource-card">
+                        <div class="label">📋 バッチ処理対象</div>
+                        <div class="value" id="batch-total">0</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">✅ 処理済み</div>
+                        <div class="value" id="batch-processed">0</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">⏳ 処理待ち</div>
+                        <div class="value" id="queue-waiting">0</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">⚡ 実行中</div>
+                        <div class="value"><span id="active-workers">0</span>/<span id="max-workers">10</span></div>
+                    </div>
+                </div>
 
                 <!-- システムリソース -->
                 <div class="resource-grid">
@@ -490,8 +498,8 @@
 
             <!-- 情報ボックス -->
             <div class="info-box">
-                <p><strong>注意:</strong> 処理には時間がかかる場合があります。ブラウザを閉じずにお待ちください。</p>
-                <p><strong>ヒント:</strong> 処理を開始すると、待機中のドキュメントがOCR処理され、データベースに登録されます。</p>
+                <p><strong>注意:</strong> 処理には時間がかかる場合があります。ブラウザを閉じても処理は継続されます。</p>
+                <p><strong>ヒント:</strong> 「キューに追加」ボタンを押すと、未処理のドキュメントがバッチ処理対象としてマークされ、システムが自動的に並列処理を開始します。</p>
             </div>
         </div>
     </div>
@@ -558,8 +566,23 @@
                     const throttleInfo = document.getElementById('throttle-info');
 
                     if (data.resource_control) {
-                        parallelInfo.textContent = data.resource_control.current_parallel + '/' +
-                            data.resource_control.max_parallel + '件';
+                        const currentParallel = data.resource_control.current_parallel || 0;
+                        const maxParallel = data.resource_control.max_parallel || 10;
+
+                        parallelInfo.textContent = currentParallel + '/' + maxParallel + '件';
+
+                        // バッチ処理状況を更新
+                        const totalCount = data.total_count || 0;
+                        const successCount = data.success_count || 0;
+                        const failedCount = data.failed_count || 0;
+                        const processed = successCount + failedCount;
+                        const queueWaiting = Math.max(0, totalCount - processed - currentParallel);
+
+                        document.getElementById('batch-total').textContent = totalCount;
+                        document.getElementById('batch-processed').textContent = processed;
+                        document.getElementById('queue-waiting').textContent = queueWaiting;
+                        document.getElementById('active-workers').textContent = currentParallel;
+                        document.getElementById('max-workers').textContent = maxParallel;
 
                         // スロットル表示をアイコン付きに変更
                         const delay = data.resource_control.throttle_delay;
@@ -659,9 +682,6 @@
                     document.getElementById('stat-processing').textContent = stats.processing || 0;
                     document.getElementById('stat-completed').textContent = stats.completed || 0;
                     document.getElementById('stat-failed').textContent = stats.failed || 0;
-                    document.getElementById('stat-null').textContent = stats.null || 0;
-                    document.getElementById('stat-total').textContent = stats.total || 0;
-                    document.getElementById('stat-success-rate').textContent = (stats.success_rate || 0).toFixed(1) + '%';
 
                     // 処理開始ボタンの状態を更新
                     const startBtn = document.getElementById('start-btn');
@@ -683,7 +703,7 @@
             const workspace = document.getElementById('workspace').value || 'all';
             const limit = parseInt(document.getElementById('limit').value) || 100;
 
-            const message = `${limit}件のドキュメント処理を開始しますか？\n\nワークスペース: ${workspace}\n処理件数: ${limit}件\n\nこの処理には時間がかかる場合があります。`;
+            const message = `${limit}件のドキュメントをキューに追加しますか？\n\nワークスペース: ${workspace}\n処理件数: ${limit}件\n\nキューに追加後、システムが自動的に並列処理を開始します。`;
 
             if (confirm(message)) {
                 startProcessing();
