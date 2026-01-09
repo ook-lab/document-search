@@ -573,15 +573,23 @@
 
                     // 常にログを更新（processing状態に関わらず）
                     if (data.logs && data.logs.length > 0) {
-                        logWindow.innerHTML = data.logs.map(log => {
-                            let className = 'log-entry';
-                            if (log.includes('✅') || log.includes('成功')) className += ' success';
-                            if (log.includes('❌') || log.includes('失敗')) className += ' error';
-                            return `<div class="${className}">${escapeHtml(log)}</div>`;
-                        }).join('');
+                        try {
+                            logWindow.innerHTML = data.logs.map(log => {
+                                let className = 'log-entry';
+                                if (log.includes('✅') || log.includes('成功')) className += ' success';
+                                if (log.includes('❌') || log.includes('失敗')) className += ' error';
+                                return `<div class="${className}">${escapeHtml(log)}</div>`;
+                            }).join('');
 
-                        // 自動スクロール
-                        logWindow.scrollTop = logWindow.scrollHeight;
+                            // 自動スクロール
+                            logWindow.scrollTop = logWindow.scrollHeight;
+                        } catch (err) {
+                            console.error('ログ表示エラー:', err);
+                            logWindow.innerHTML = '<div class="log-entry" style="color: #ef4444;">ログ表示エラー: ' + err.message + '</div>';
+                        }
+                    } else if (!data.processing) {
+                        // 待機中はメッセージを表示
+                        logWindow.innerHTML = '<div class="log-entry" style="color: #9ca3af;">待機中... 処理を開始するとここにログが表示されます。</div>';
                     }
 
                     if (data.processing) {
