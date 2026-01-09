@@ -11,7 +11,7 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from loguru import logger
@@ -21,7 +21,74 @@ import time
 app = Flask(__name__)
 CORS(app)
 
-# 処理進捗の管理
+# Supabaseクライアント（処理ロック用）
+_supabase_client = None
+
+def get_supabase_client():
+    """Supabaseクライアントを取得（シングルトン）"""
+    global _supabase_client
+    if _supabase_client is None:
+        from A_common.database.client import DatabaseClient
+        db = DatabaseClient(use_service_role=True)
+        _supabase_client = db.client
+    return _supabase_client
+
+
+def get_processing_lock():
+    """Supabaseから処理ロック状態を取得"""
+    try:
+        client = get_supabase_client()
+        result = client.table('processing_lock').select('*').eq('id', 1).execute()
+        if result.data:
+            lock = result.data[0]
+            # 5分以上更新がなければ期限切れとみなす
+            if lock.get('is_processing') and lock.get('updated_at'):
+                from datetime import datetime, timezone
+                updated_at = datetime.fromisoformat(lock['updated_at'].replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                if (now - updated_at).total_seconds() > 300:  # 5分
+                    logger.warning(f"処理ロックが期限切れ（{(now - updated_at).total_seconds():.0f}秒経過）。自動リセット。")
+                    set_processing_lock(False)
+                    return False
+            return lock.get('is_processing', False)
+        return False
+    except Exception as e:
+        logger.error(f"処理ロック取得エラー: {e}")
+        return False
+
+
+def set_processing_lock(is_processing: bool):
+    """Supabaseに処理ロック状態を設定"""
+    try:
+        client = get_supabase_client()
+        data = {
+            'is_processing': is_processing,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        if is_processing:
+            data['started_at'] = datetime.now(timezone.utc).isoformat()
+        client.table('processing_lock').update(data).eq('id', 1).execute()
+        logger.info(f"処理ロック設定: {is_processing}")
+        return True
+    except Exception as e:
+        logger.error(f"処理ロック設定エラー: {e}")
+        return False
+
+
+def update_processing_lock():
+    """処理中のロックタイムスタンプを更新（ハートビート）"""
+    try:
+        client = get_supabase_client()
+        client.table('processing_lock').update({
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }).eq('id', 1).execute()
+        return True
+    except Exception as e:
+        logger.error(f"ロック更新エラー: {e}")
+        return False
+
+
+# 処理進捗の管理（ローカルキャッシュ、表示用）
 processing_status = {
     'is_processing': False,
     'current_index': 0,
@@ -485,8 +552,8 @@ def start_processing():
     """
     global processing_status
 
-    # 既に処理中の場合はエラー
-    if processing_status['is_processing']:
+    # Supabaseでロック状態をチェック（複数インスタンス対応）
+    if get_processing_lock():
         return jsonify({
             'success': False,
             'error': '既に処理が実行中です'
@@ -500,6 +567,9 @@ def start_processing():
         workspace = data.get('workspace', 'all')
         limit = data.get('limit', 100)
         preserve_workspace = data.get('preserve_workspace', True)
+
+        # Supabaseにロックを設定
+        set_processing_lock(True)
 
         # 進捗状況を初期化（処理開始をすぐに表示）
         processing_status['is_processing'] = True
@@ -528,6 +598,7 @@ def start_processing():
             processing_status['is_processing'] = False
             processing_status['current_file'] = ''
             processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] 処理対象のドキュメントがありません")
+            set_processing_lock(False)  # ロック解放
             return jsonify({
                 'success': True,
                 'message': '処理対象のドキュメントがありません',
@@ -698,6 +769,8 @@ def start_processing():
             finally:
                 # ハンドラーを削除
                 thread_logger.remove(handler_id)
+                # Supabaseロック解放
+                set_processing_lock(False)
 
         # 別スレッドで処理を開始
         thread = threading.Thread(target=background_processing, daemon=True)
@@ -712,6 +785,7 @@ def start_processing():
 
     except Exception as e:
         processing_status['is_processing'] = False
+        set_processing_lock(False)  # ロック解放
         print(f"[ERROR] 処理開始エラー: {e}")
         return jsonify({
             'success': False,
@@ -726,7 +800,8 @@ def stop_processing():
     """
     global processing_status
 
-    if not processing_status['is_processing']:
+    # ローカルまたはSupabaseのロックをチェック
+    if not processing_status['is_processing'] and not get_processing_lock():
         return jsonify({
             'success': False,
             'error': '実行中の処理がありません'
@@ -734,6 +809,7 @@ def stop_processing():
 
     # 停止フラグを立てる
     processing_status['is_processing'] = False
+    set_processing_lock(False)  # Supabaseロック解放
     processing_status['logs'].append(
         f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ ユーザーによって停止されました"
     )
@@ -747,10 +823,14 @@ def stop_processing():
 @app.route('/api/process/reset', methods=['POST'])
 def reset_processing():
     """
-    処理フラグを強制リセット（複数インスタンス問題対策）
+    処理フラグを強制リセット（Supabase + ローカル両方）
     """
     global processing_status
 
+    # Supabaseロック解放
+    set_processing_lock(False)
+
+    # ローカル状態もリセット
     processing_status['is_processing'] = False
     processing_status['current_index'] = 0
     processing_status['total_count'] = 0
@@ -758,7 +838,7 @@ def reset_processing():
     processing_status['success_count'] = 0
     processing_status['failed_count'] = 0
     processing_status['logs'] = [
-        f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました"
+        f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました（Supabase + ローカル）"
     ]
     processing_status['resource_control'] = {
         'current_parallel': 0,
