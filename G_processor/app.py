@@ -135,20 +135,20 @@ def clear_all_workers() -> bool:
     """全ワーカーをクリア（処理終了時）"""
     try:
         client = get_supabase_client()
-        # ステップ1: 全レコードのIDを取得
-        result = client.table('processing_workers').select('id').execute()
-        ids = [row['id'] for row in result.data] if result.data else []
+        # ステップ1: 全レコードのinstance_idを取得
+        result = client.table('processing_workers').select('instance_id').execute()
+        instance_ids = [row['instance_id'] for row in result.data] if result.data else []
 
-        # ステップ2: IDが存在する場合のみ削除
-        if ids:
-            client.table('processing_workers').delete().in_('id', ids).execute()
+        # ステップ2: instance_idが存在する場合のみ削除
+        if instance_ids:
+            client.table('processing_workers').delete().in_('instance_id', instance_ids).execute()
 
         # ステップ3: current_workersを0に更新
         client.table('processing_lock').update({
             'current_workers': 0
         }).eq('id', 1).execute()
 
-        logger.info(f"全ワーカーをクリアしました（削除件数: {len(ids)}件）")
+        logger.info(f"全ワーカーをクリアしました（削除件数: {len(instance_ids)}件）")
         return True
     except Exception as e:
         logger.error(f"全ワーカークリアエラー: {e}")
@@ -653,8 +653,8 @@ def get_process_progress():
             'resource_control': {
                 'current_parallel': worker_status['current_workers'],
                 'max_parallel': worker_status['max_parallel'],
-                'throttle_delay': processing_status['resource_control']['throttle_delay'],
-                'adjustment_count': processing_status['resource_control']['adjustment_count']
+                'throttle_delay': 0.0,
+                'adjustment_count': 0
             },
             'workers': worker_status['workers']  # 処理中のドキュメント一覧
         })
@@ -797,13 +797,16 @@ def start_processing():
 
         # DocumentProcessorをインポート
         processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] モジュール読み込み中...")
+        update_progress_to_supabase(0, 0, 'モジュール読み込み中...', 0, 0, processing_status['logs'])
         from process_queued_documents import DocumentProcessor
 
         processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] プロセッサ初期化中...")
+        update_progress_to_supabase(0, 0, 'プロセッサ初期化中...', 0, 0, processing_status['logs'])
         processor = DocumentProcessor()
 
         # pending ドキュメントを取得
         processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] ドキュメント取得中...")
+        update_progress_to_supabase(0, 0, 'ドキュメント取得中...', 0, 0, processing_status['logs'])
         docs = processor.get_pending_documents(workspace, limit)
 
         if not docs:
@@ -822,6 +825,7 @@ def start_processing():
         processing_status['current_file'] = ''
         processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] {len(docs)}件のドキュメントを取得しました")
         processing_status['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] バックグラウンド処理を開始します...")
+        update_progress_to_supabase(0, len(docs), 'バックグラウンド処理開始', 0, 0, processing_status['logs'])
 
         # バックグラウンド処理関数
         def background_processing():
