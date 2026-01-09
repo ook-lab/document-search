@@ -591,9 +591,12 @@
                             console.error('ログ表示エラー:', err);
                             logWindow.innerHTML = '<div class="log-entry" style="color: #ef4444;">ログ表示エラー: ' + err.message + '</div>';
                         }
-                    } else if (!data.processing) {
-                        // 待機中はメッセージを表示
-                        logWindow.innerHTML = '<div class="log-entry" style="color: #9ca3af;">待機中... 処理を開始するとここにログが表示されます。</div>';
+                    } else if (!data.processing && (!data.resource_control || data.resource_control.current_parallel === 0)) {
+                        // 完全に待機中のみメッセージを表示（ログがない && 処理中でない && ワーカーもいない）
+                        // ログがある場合は上書きしない
+                        if (logWindow.innerHTML.trim() === '' || logWindow.innerHTML.includes('待機中...')) {
+                            logWindow.innerHTML = '<div class="log-entry" style="color: #9ca3af;">待機中... 処理を開始するとここにログが表示されます。</div>';
+                        }
                     }
 
                     // 処理中かどうか判定（processing または ワーカーがいる）

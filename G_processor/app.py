@@ -67,9 +67,12 @@ def set_processing_lock(is_processing: bool):
         }
         if is_processing:
             data['started_at'] = datetime.now(timezone.utc).isoformat()
+            # 処理開始時: processing状態のまま残っているドキュメントをpendingにリセット
+            reset_stuck_documents()
         else:
-            # 処理終了時は全ワーカーをクリア
+            # 処理終了時: 全ワーカーをクリア & processing状態のドキュメントをリセット
             clear_all_workers()
+            reset_stuck_documents()
         client.table('processing_lock').update(data).eq('id', 1).execute()
         logger.info(f"処理ロック設定: {is_processing}")
         return True
@@ -154,6 +157,30 @@ def clear_all_workers() -> bool:
         logger.error(f"全ワーカークリアエラー: {e}")
         return False
 
+
+
+
+def reset_stuck_documents() -> int:
+    """processing状態のまま残っているドキュメントをpendingにリセット"""
+    try:
+        from A_common.database.client import DatabaseClient
+        db = DatabaseClient(use_service_role=True)
+        
+        # processing状態のドキュメントを取得
+        result = db.client.table('Rawdata_FILE_AND_MAIL').select('id').eq('processing_status', 'processing').execute()
+        stuck_ids = [row['id'] for row in result.data] if result.data else []
+        
+        if stuck_ids:
+            # pendingにリセット
+            db.client.table('Rawdata_FILE_AND_MAIL').update({
+                'processing_status': 'pending'
+            }).in_('id', stuck_ids).execute()
+            logger.info(f"stuck状態のドキュメントをリセットしました（{len(stuck_ids)}件）")
+            return len(stuck_ids)
+        return 0
+    except Exception as e:
+        logger.error(f"stuck状態リセットエラー: {e}")
+        return 0
 
 def update_worker_count() -> int:
     """現在のワーカー数をカウントしてSupabaseに保存"""
