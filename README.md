@@ -397,3 +397,4 @@ python -c "import os; print(os.getenv('GOOGLE_API_KEY'))"
 2. 環境変数の設定を確認
 3. Supabase のテーブル構造を確認
 4. 最新版にアップデート
+
