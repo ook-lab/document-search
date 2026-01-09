@@ -27,6 +27,7 @@ from datetime import datetime
 from pathlib import Path
 import mimetypes
 
+from loguru import logger
 from A_common.database.client import DatabaseClient
 from A_common.connectors.google_drive import GoogleDriveConnector
 from G_unified_pipeline import UnifiedDocumentPipeline
@@ -70,7 +71,7 @@ class DocumentProcessor:
                 'processing_status': 'processing'
             }).eq('id', document_id).execute()
         except Exception as e:
-            print("ERROR:", f"処理中マークエラー: {e}")
+            logger.error( f"処理中マークエラー: {e}")
 
     def mark_as_completed(self, document_id: str):
         """完了にマーク"""
@@ -79,7 +80,7 @@ class DocumentProcessor:
                 'processing_status': 'completed'
             }).eq('id', document_id).execute()
         except Exception as e:
-            print("ERROR:", f"完了マークエラー: {e}")
+            logger.error( f"完了マークエラー: {e}")
 
     def mark_as_failed(self, document_id: str, error_message: str = ""):
         """失敗にマーク"""
@@ -101,7 +102,7 @@ class DocumentProcessor:
 
             self.db.client.table('Rawdata_FILE_AND_MAIL').update(update_data).eq('id', document_id).execute()
         except Exception as e:
-            print("ERROR:", f"失敗マークエラー: {e}")
+            logger.error( f"失敗マークエラー: {e}")
 
     def get_queue_stats(self, workspace: str = 'all') -> Dict[str, int]:
         """
@@ -148,7 +149,7 @@ class DocumentProcessor:
             return stats
 
         except Exception as e:
-            print(f"ERROR: 統計取得エラー: {e}")
+            logger.error(f" 統計取得エラー: {e}")
             return {}
 
     def print_queue_stats(self, workspace: str = 'all'):
@@ -161,29 +162,29 @@ class DocumentProcessor:
         stats = self.get_queue_stats(workspace)
 
         if not stats:
-            print("統計情報の取得に失敗しました")
+            logger.info("統計情報の取得に失敗しました")
             return
 
-        print("\n" + "="*80)
+        logger.info("\n" + "="*80)
         if workspace == 'all':
-            print("📊 全体統計")
+            logger.info("📊 全体統計")
         else:
-            print(f"📊 統計 (workspace: {workspace})")
-        print("="*80)
-        print(f"待機中 (pending):      {stats.get('pending', 0):>5}件")
-        print(f"処理中 (processing):   {stats.get('processing', 0):>5}件")
-        print(f"完了   (completed):    {stats.get('completed', 0):>5}件")
-        print(f"失敗   (failed):       {stats.get('failed', 0):>5}件")
-        print(f"未処理 (null):         {stats.get('null', 0):>5}件")
-        print("-" * 80)
-        print(f"合計:                  {stats.get('total', 0):>5}件")
+            logger.info(f"📊 統計 (workspace: {workspace})")
+        logger.info("="*80)
+        logger.info(f"待機中 (pending):      {stats.get('pending', 0):>5}件")
+        logger.info(f"処理中 (processing):   {stats.get('processing', 0):>5}件")
+        logger.info(f"完了   (completed):    {stats.get('completed', 0):>5}件")
+        logger.info(f"失敗   (failed):       {stats.get('failed', 0):>5}件")
+        logger.info(f"未処理 (null):         {stats.get('null', 0):>5}件")
+        logger.info("-" * 80)
+        logger.info(f"合計:                  {stats.get('total', 0):>5}件")
 
         # 成功率を表示
         processed = stats.get('completed', 0) + stats.get('failed', 0)
         if processed > 0:
-            print(f"成功率:                {stats.get('success_rate', 0):>5.1f}% ({stats.get('completed', 0)}/{processed})")
+            logger.info(f"成功率:                {stats.get('success_rate', 0):>5.1f}% ({stats.get('completed', 0)}/{processed})")
 
-        print("="*80 + "\n")
+        logger.info("="*80 + "\n")
 
     async def process_document(
         self,
@@ -245,28 +246,28 @@ class DocumentProcessor:
                             from A_common.connectors.google_drive import GoogleDriveConnector
                             drive = GoogleDriveConnector()
                             drive.trash_file(png_file_id)
-                            print(f"[OK] OCR用PNGをゴミ箱に移動: {png_file_id}")
+                            logger.info(f"[OK] OCR用PNGをゴミ箱に移動: {png_file_id}")
 
                             # screenshot_url をクリア
                             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
                                 'screenshot_url': None
                             }).eq('id', document_id).execute()
-                            print(f"[OK] screenshot_url をクリアしました")
+                            logger.info(f"[OK] screenshot_url をクリアしました")
 
                     except Exception as e:
-                        print(f"WARNING: PNG削除処理でエラー（処理は継続）: {e}")
+                        logger.warning(f" PNG削除処理でエラー（処理は継続）: {e}")
 
                 self.mark_as_completed(document_id)
-                print(f"[OK] 処理成功: {display_name}")
+                logger.info(f"[OK] 処理成功: {display_name}")
             else:
                 self.mark_as_failed(document_id, error_msg)
-                print("ERROR:", f"[FAIL] 処理失敗: {display_name} - {error_msg}")
+                logger.error( f"[FAIL] 処理失敗: {display_name} - {error_msg}")
 
             return success
 
         except Exception as e:
             error_msg = f"処理中にエラー: {str(e)}"
-            print("ERROR:", f"[FAIL] {error_msg}")
+            logger.error( f"[FAIL] {error_msg}")
             self.mark_as_failed(document_id, error_msg)
             return False
 
@@ -299,7 +300,7 @@ class DocumentProcessor:
 
         if not combined_text.strip():
             error_msg = "テキストが空です"
-            print("ERROR:", error_msg)
+            logger.error( error_msg)
             return {'success': False, 'error': error_msg}
 
         # 統合パイプラインの Stage H-K を使用
@@ -319,13 +320,13 @@ class DocumentProcessor:
         # Stage H の結果をチェック
         if not stageh_result or not isinstance(stageh_result, dict):
             error_msg = "Stage H失敗: 構造化結果が不正です"
-            print("ERROR:", error_msg)
+            logger.error( error_msg)
             return {'success': False, 'error': error_msg}
 
         stageh_metadata = stageh_result.get('metadata', {})
         if stageh_metadata.get('extraction_failed'):
             error_msg = "Stage H失敗: JSON抽出に失敗しました"
-            print("ERROR:", error_msg)
+            logger.error( error_msg)
             return {'success': False, 'error': error_msg}
 
         document_date = stageh_result.get('document_date')
@@ -364,24 +365,24 @@ class DocumentProcessor:
         try:
             self.db.client.table('10_ix_search_index').delete().eq('document_id', document_id).execute()
         except Exception as e:
-            print("WARNING:", f"既存チャンク削除エラー（継続）: {e}")
+            logger.warning( f"既存チャンク削除エラー（継続）: {e}")
 
         # Stage K: Embedding + 保存
         stage_k_result = self.pipeline.stage_k.embed_and_save(document_id, chunks)
 
         if not stage_k_result.get('success'):
             error_msg = f"Stage K失敗: {stage_k_result.get('failed_count', 0)}/{len(chunks)}チャンク保存失敗"
-            print("ERROR:", error_msg)
+            logger.error( error_msg)
             return {'success': False, 'error': error_msg}
 
         # 部分的失敗もエラーとして扱う（厳格モード）
         failed_count = stage_k_result.get('failed_count', 0)
         if failed_count > 0:
             error_msg = f"Stage K部分失敗: {failed_count}/{len(chunks)}チャンク保存失敗"
-            print("ERROR:", error_msg)
+            logger.error( error_msg)
             return {'success': False, 'error': error_msg}
 
-        print(f"チャンク保存完了: {stage_k_result.get('saved_count', 0)}/{len(chunks)}件")
+        logger.info(f"チャンク保存完了: {stage_k_result.get('saved_count', 0)}/{len(chunks)}件")
 
         # ドキュメント更新
         try:
@@ -392,7 +393,7 @@ class DocumentProcessor:
             }).eq('id', document_id).execute()
         except Exception as e:
             error_msg = f"ドキュメント更新エラー: {e}"
-            print("ERROR:", error_msg)
+            logger.error( error_msg)
             return {'success': False, 'error': error_msg}
 
         return {'success': True}
@@ -408,13 +409,13 @@ class DocumentProcessor:
         drive_file_id = doc.get('source_id')
 
         if not drive_file_id:
-            print("ERROR:", "source_id（Drive File ID）がありません")
+            logger.error( "source_id（Drive File ID）がありません")
             return False
 
         # ファイル拡張子チェック
         file_extension = Path(file_name).suffix.lower()
         if file_extension in self.VIDEO_EXTENSIONS:
-            print(f"⏭️  動画ファイルをスキップ: {file_name}")
+            logger.info(f"⏭️  動画ファイルをスキップ: {file_name}")
             # 動画ファイルはスキップ扱いで成功とする
             return True
 
@@ -434,9 +435,9 @@ class DocumentProcessor:
                 # PNGファイル名に変更
                 base_name = Path(file_name).stem
                 download_file_name = f"{base_name}.png"
-                print(f"[OCR用] PNGをダウンロード: {download_file_name} (screenshot_url使用)")
+                logger.info(f"[OCR用] PNGをダウンロード: {download_file_name} (screenshot_url使用)")
             else:
-                print("WARNING:", f"screenshot_url からファイルIDを抽出できません: {screenshot_url}")
+                logger.warning( f"screenshot_url からファイルIDを抽出できません: {screenshot_url}")
 
         # Driveからダウンロード
         try:
@@ -446,10 +447,10 @@ class DocumentProcessor:
             # 404エラー（ファイルが存在しない）の場合、テキストのみ処理にフォールバック
             error_str = str(e)
             if 'File not found' in error_str or '404' in error_str:
-                print("WARNING:", f"Driveにファイルが存在しません。テキストのみ処理にフォールバック: {file_name}")
+                logger.warning( f"Driveにファイルが存在しません。テキストのみ処理にフォールバック: {file_name}")
                 return await self._process_text_only(doc, preserve_workspace)
             else:
-                print("ERROR:", f"ダウンロード失敗: {e}")
+                logger.error( f"ダウンロード失敗: {e}")
                 return False
 
         # MIMEタイプを推測
@@ -492,7 +493,7 @@ class DocumentProcessor:
             # 一時ファイル削除
             if local_path.exists():
                 local_path.unlink()
-                print("DEBUG:", f"一時ファイル削除: {local_path}")
+                logger.debug( f"一時ファイル削除: {local_path}")
 
     async def run(
         self,
@@ -508,19 +509,19 @@ class DocumentProcessor:
             limit: 処理する最大件数
             preserve_workspace: workspaceを保持するか
         """
-        print("="*80)
-        print("ドキュメント処理スクリプト（シンプル版）")
-        print("="*80)
+        logger.info("="*80)
+        logger.info("ドキュメント処理スクリプト（シンプル版）")
+        logger.info("="*80)
 
         # pending ドキュメントを取得
         docs = self.get_pending_documents(workspace, limit)
 
         if not docs:
-            print("処理対象のドキュメントがありません")
+            logger.info("処理対象のドキュメントがありません")
             return
 
-        print(f"処理対象: {len(docs)}件")
-        print("")
+        logger.info(f"処理対象: {len(docs)}件")
+        logger.info("")
 
         # 統計
         stats = {'success': 0, 'failed': 0, 'total': len(docs)}
@@ -531,9 +532,9 @@ class DocumentProcessor:
             title = doc.get('title', '')
             # タイトルがあればタイトルを表示、なければ「タイトル未生成」
             display_name = title if title else '(タイトル未生成)'
-            print(f"\n{'='*80}")
-            print(f"[{i}/{len(docs)}] 処理開始: {display_name}")
-            print(f"Document ID: {doc['id']}")
+            logger.info(f"\n{'='*80}")
+            logger.info(f"[{i}/{len(docs)}] 処理開始: {display_name}")
+            logger.info(f"Document ID: {doc['id']}")
 
             success = await self.process_document(doc, preserve_workspace)
 
@@ -542,16 +543,16 @@ class DocumentProcessor:
             else:
                 stats['failed'] += 1
 
-            print(f"進捗: 成功={stats['success']}, 失敗={stats['failed']}, 残り={len(docs)-i}")
+            logger.info(f"進捗: 成功={stats['success']}, 失敗={stats['failed']}, 残り={len(docs)-i}")
 
         # 最終結果
-        print("\n" + "="*80)
-        print("処理完了")
-        print("="*80)
-        print(f"[OK] 成功: {stats['success']}件")
-        print(f"[FAIL] 失敗: {stats['failed']}件")
-        print(f"[TOTAL] 合計: {stats['total']}件")
-        print("="*80)
+        logger.info("\n" + "="*80)
+        logger.info("処理完了")
+        logger.info("="*80)
+        logger.info(f"[OK] 成功: {stats['success']}件")
+        logger.error(f"[FAIL] 失敗: {stats['failed']}件")
+        logger.info(f"[TOTAL] 合計: {stats['total']}件")
+        logger.info("="*80)
 
 
 async def main():

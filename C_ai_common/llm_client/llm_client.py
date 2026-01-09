@@ -497,12 +497,39 @@ class LLMClient:
             if response_format in ["json", "json_object"]:
                 generation_config.response_mime_type = "application/json"
 
-            # APIを呼び出し
-            response = model_obj.generate_content(
-                content_parts,
-                generation_config=generation_config,
-                safety_settings=safety_settings
-            )
+            # APIを呼び出し（タイムアウト5分、1回リトライ）
+            max_retries = 1
+            last_error = None
+
+            for attempt in range(max_retries + 1):  # 0回目（初回）+ 1回（リトライ）
+                try:
+                    logger.info(f"[Gemini Vision] API呼び出し試行 {attempt + 1}/{max_retries + 1}")
+                    response = model_obj.generate_content(
+                        content_parts,
+                        generation_config=generation_config,
+                        safety_settings=safety_settings,
+                        request_options={"timeout": 300}  # 5分タイムアウト
+                    )
+                    break  # 成功したらループを抜ける
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e).lower()
+                    # タイムアウトまたはネットワークエラーの場合
+                    if any(keyword in error_str for keyword in ['timeout', 'deadline', 'network', 'connection']):
+                        if attempt < max_retries:
+                            logger.warning(f"[Gemini Vision] タイムアウト/ネットワークエラー。リトライします（試行 {attempt + 1}/{max_retries + 1}）: {e}")
+                            continue
+                        else:
+                            logger.error(f"[Gemini Vision] タイムアウト/ネットワークエラー。リトライ上限に達しました: {e}")
+                            raise
+                    else:
+                        # タイムアウト以外のエラーは即座に失敗
+                        logger.error(f"[Gemini Vision] API エラー（リトライ不可）: {e}")
+                        raise
+            else:
+                # ループが最後まで実行された（全てのリトライが失敗）
+                if last_error:
+                    raise last_error
 
             # アップロードファイルを削除
             try:
