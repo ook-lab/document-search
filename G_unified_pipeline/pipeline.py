@@ -139,7 +139,8 @@ class UnifiedDocumentPipeline:
             stage_e_result = self.stage_e.extract_text(
                 file_path,
                 mime_type,
-                pre_extracted_text=pre_extracted_text
+                pre_extracted_text=pre_extracted_text,
+                workspace=workspace
             )
 
             # Stage E の結果をチェック

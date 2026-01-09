@@ -38,7 +38,8 @@ class StageEPreprocessor:
         self,
         file_path: Path,
         mime_type: str,
-        pre_extracted_text: Optional[str] = None
+        pre_extracted_text: Optional[str] = None,
+        workspace: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         ファイルからテキストを抽出（E1-E5ステージ）
@@ -47,6 +48,7 @@ class StageEPreprocessor:
             file_path: ファイルパス
             mime_type: MIMEタイプ
             pre_extracted_text: 既に抽出済みのテキスト（HTML→PNG等の場合）
+            workspace: ワークスペース（gmail判定に使用）
 
         Returns:
             {
@@ -275,13 +277,16 @@ class StageEPreprocessor:
         # ============================================
         # E-4: Gemini Vision OCR（画像のメイン処理）
         # ============================================
-        logger.info(f"[E-4] Vision OCR処理 (model: gemini-2.5-flash):")
+        # Gmail処理の場合はコスト削減のためflash-liteを使用
+        is_gmail = workspace == 'gmail' if workspace else False
+        vision_model = "gemini-2.5-flash-lite" if is_gmail else "gemini-2.5-flash"
+        logger.info(f"[E-4] Vision OCR処理 (model: {vision_model}):")
 
         e4_text = ""
         if self.llm_client:
             vision_result = self.llm_client.transcribe_image(
                 image_path=file_path,
-                model="gemini-2.5-flash",
+                model=vision_model,
                 prompt="""この画像から、全ての文字を徹底的に拾い尽くしてください。
 
 【あなたの役割】
