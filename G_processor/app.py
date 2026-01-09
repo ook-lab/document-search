@@ -129,13 +129,14 @@ class AdaptiveResourceManager:
        - メモリ < 70% → 減速緩和
     """
 
-    def __init__(self, initial_max_parallel=3, min_parallel=1, max_parallel=5):
+    def __init__(self, initial_max_parallel=3, min_parallel=1, max_parallel=5, history_size=3):
         """初期化
 
         Args:
             initial_max_parallel: 初期並列数（デフォルト: 3）
             min_parallel: 最小並列数（デフォルト: 1）
             max_parallel: 最大並列数（デフォルト: 5）
+            history_size: 移動平均用の履歴サイズ（デフォルト: 3）
         """
         self.max_parallel = initial_max_parallel
         self.min_parallel = min_parallel
@@ -153,6 +154,10 @@ class AdaptiveResourceManager:
         self.throttle_step = 0.5  # 秒
         self.max_throttle = 3.0   # 最大スロットル遅延
 
+        # 移動平均用の履歴
+        self.history_size = history_size
+        self.memory_history = []
+
         # 統計
         self.adjustment_count = 0
         self.last_adjustment_time = time.time()
@@ -169,6 +174,17 @@ class AdaptiveResourceManager:
         Returns:
             dict: 調整情報 {'max_parallel': int, 'throttle_delay': float, 'adjusted': bool}
         """
+        # 履歴に追加
+        self.memory_history.append(memory_percent)
+        if len(self.memory_history) > self.history_size:
+            self.memory_history.pop(0)
+
+        # 移動平均を計算（直近3回の平均）
+        memory_avg = sum(self.memory_history) / len(self.memory_history)
+
+        # 移動平均で判断（瞬間値ではなく）
+        memory_percent = memory_avg
+
         original_parallel = self.max_parallel
         original_throttle = self.throttle_delay
         adjusted = False
@@ -567,14 +583,14 @@ def start_processing():
 
                         # 並列数制御：active_tasksが max_parallel 未満になるまで待機
                         while len(active_tasks) >= resource_manager.max_parallel:
+                            # イベント駆動：どれか1つでも完了するまで待つ
+                            done, pending = await asyncio.wait(
+                                active_tasks,
+                                return_when=asyncio.FIRST_COMPLETED
+                            )
                             # 完了したタスクを削除
-                            done_tasks = [t for t in active_tasks if t.done()]
-                            for t in done_tasks:
+                            for t in done:
                                 active_tasks.remove(t)
-
-                            if len(active_tasks) >= resource_manager.max_parallel:
-                                # まだ並列数が上限に達している場合は少し待機
-                                await asyncio.sleep(0.1)
 
                         # 新しいタスクを開始
                         task = asyncio.create_task(process_single_document(doc, i))

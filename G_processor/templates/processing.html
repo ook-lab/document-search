@@ -556,7 +556,16 @@
                     if (data.resource_control) {
                         parallelInfo.textContent = data.resource_control.current_parallel + '/' +
                             data.resource_control.max_parallel + '件';
-                        throttleInfo.textContent = data.resource_control.throttle_delay.toFixed(1) + '秒';
+
+                        // スロットル表示をアイコン付きに変更
+                        const delay = data.resource_control.throttle_delay;
+                        if (delay === 0) {
+                            throttleInfo.textContent = '🟢 フルスピード';
+                        } else if (delay < 1.5) {
+                            throttleInfo.textContent = '🟡 減速中（' + delay.toFixed(1) + '秒）';
+                        } else {
+                            throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
+                        }
                     } else {
                         parallelInfo.textContent = '-';
                         throttleInfo.textContent = '-';
