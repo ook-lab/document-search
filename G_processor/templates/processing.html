@@ -596,7 +596,16 @@
                         logWindow.innerHTML = '<div class="log-entry" style="color: #9ca3af;">待機中... 処理を開始するとここにログが表示されます。</div>';
                     }
 
-                    if (data.processing) {
+                    // 処理中かどうか判定（processing または ワーカーがいる）
+                    const isProcessing = data.processing ||
+                        (data.resource_control && data.resource_control.current_parallel > 0);
+
+                    if (isProcessing) {
+                        // 処理中: 1秒ポーリング開始
+                        if (!progressInterval) {
+                            progressInterval = setInterval(updateProgress, 1000);
+                        }
+
                         // 進捗バーを更新
                         const percent = data.total_count > 0
                             ? Math.round((data.current_index / data.total_count) * 100)
@@ -611,7 +620,12 @@
                         document.getElementById('start-btn').disabled = true;
                         document.getElementById('stop-btn').style.display = 'block';
                     } else {
-                        // 処理中でない場合
+                        // 処理中でない: ポーリング停止
+                        if (progressInterval) {
+                            clearInterval(progressInterval);
+                            progressInterval = null;
+                        }
+
                         currentFile.textContent = '待機中';
                         document.getElementById('start-btn').disabled = false;
                         document.getElementById('stop-btn').style.display = 'none';
@@ -784,10 +798,9 @@
             messageBox.style.display = 'block';
         }
 
-        // ページ読み込み時に自動更新開始
+        // ページ読み込み時に初回更新
         document.addEventListener('DOMContentLoaded', function() {
             updateProgress();
-            progressInterval = setInterval(updateProgress, 1000);
         });
     </script>
 </body>
