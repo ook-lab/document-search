@@ -726,14 +726,14 @@ def start_processing():
 
                         # 並列数制御：active_tasksが max_parallel 未満になるまで待機
                         while len(active_tasks) >= resource_manager.max_parallel:
-                            # イベント駆動：どれか1つでも完了するまで待つ
-                            done, pending = await asyncio.wait(
-                                active_tasks,
-                                return_when=asyncio.FIRST_COMPLETED
-                            )
                             # 完了したタスクを削除
-                            for t in done:
+                            done_tasks = [t for t in active_tasks if t.done()]
+                            for t in done_tasks:
                                 active_tasks.remove(t)
+
+                            if len(active_tasks) >= resource_manager.max_parallel:
+                                # まだ並列数が上限に達している場合は少し待機
+                                await asyncio.sleep(0.1)
 
                         # 新しいタスクを開始
                         task = asyncio.create_task(process_single_document(doc, i))
