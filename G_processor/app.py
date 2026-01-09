@@ -67,6 +67,9 @@ def set_processing_lock(is_processing: bool):
         }
         if is_processing:
             data['started_at'] = datetime.now(timezone.utc).isoformat()
+        else:
+            # 処理終了時は全ワーカーをクリア
+            clear_all_workers()
         client.table('processing_lock').update(data).eq('id', 1).execute()
         logger.info(f"処理ロック設定: {is_processing}")
         return True
@@ -125,6 +128,23 @@ def unregister_worker(doc_id: str) -> bool:
         return True
     except Exception as e:
         logger.error(f"ワーカー解除エラー: {e}")
+        return False
+
+
+def clear_all_workers() -> bool:
+    """全ワーカーをクリア（処理終了時）"""
+    try:
+        client = get_supabase_client()
+        # 全ワーカーを削除
+        client.table('processing_workers').delete().neq('instance_id', '').execute()
+        # current_workersを0に更新
+        client.table('processing_lock').update({
+            'current_workers': 0
+        }).eq('id', 1).execute()
+        logger.info("全ワーカーをクリアしました")
+        return True
+    except Exception as e:
+        logger.error(f"全ワーカークリアエラー: {e}")
         return False
 
 
