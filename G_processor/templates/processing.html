@@ -430,20 +430,20 @@
                 <!-- バッチ処理状況 -->
                 <div class="resource-grid" style="margin-bottom: 15px;">
                     <div class="resource-card">
-                        <div class="label">📋 バッチ処理対象</div>
-                        <div class="value" id="batch-total">0</div>
+                        <div class="label">✅ 成功</div>
+                        <div class="value" id="success-count" style="color: #10b981;">0</div>
                     </div>
                     <div class="resource-card">
-                        <div class="label">✅ 処理済み</div>
-                        <div class="value" id="batch-processed">0</div>
+                        <div class="label">❌ 失敗</div>
+                        <div class="value" id="failed-count" style="color: #ef4444;">0</div>
                     </div>
                     <div class="resource-card">
-                        <div class="label">⏳ 処理待ち</div>
+                        <div class="label">⏳ 待機中</div>
                         <div class="value" id="queue-waiting">0</div>
                     </div>
                     <div class="resource-card">
-                        <div class="label">⚡ 実行中</div>
-                        <div class="value"><span id="active-workers">0</span>/<span id="max-workers">10</span></div>
+                        <div class="label">⚡ 処理中</div>
+                        <div class="value"><span id="active-workers">0</span>件</div>
                     </div>
                 </div>
 
@@ -593,11 +593,10 @@
                         const processed = successCount + failedCount;
                         const queueWaiting = Math.max(0, totalCount - processed - currentParallel);
 
-                        document.getElementById('batch-total').textContent = totalCount;
-                        document.getElementById('batch-processed').textContent = processed;
+                        document.getElementById('success-count').textContent = successCount;
+                        document.getElementById('failed-count').textContent = failedCount;
                         document.getElementById('queue-waiting').textContent = queueWaiting;
                         document.getElementById('active-workers').textContent = currentParallel;
-                        document.getElementById('max-workers').textContent = maxParallel;
 
                         // スロットル表示をアイコン付きに変更
                         const delay = data.resource_control.throttle_delay;
@@ -647,27 +646,40 @@
                     }
 
                     if (isProcessing) {
-                        // 進捗バーを更新（ステージ進捗を考慮）
-                        const completedDocs = (data.success_count || 0) + (data.failed_count || 0);
-                        const stageProgress = data.stage_progress || 0;
-                        const totalCount = data.total_count || 1;
-
-                        // 全体進捗 = (完了ドキュメント + 現在ステージ進捗) / 総ドキュメント
-                        const overallProgress = (completedDocs + stageProgress) / totalCount;
-                        const percent = Math.round(overallProgress * 100);
+                        // 進捗バーを更新（ドキュメント内の進捗を表示）
+                        const stageProgress = data.stage_progress || 0.0;
+                        const percent = Math.min(100, Math.round(stageProgress * 100));
 
                         progressBar.style.width = percent + '%';
-                        progressBar.textContent = `${completedDocs}/${totalCount} (${percent}%)`;
 
-                        // 現在のファイル名 + ステージを更新
-                        const stage = data.current_stage || '';
+                        // 現在のステージ + 進捗率を表示
+                        const stage = data.current_stage || '処理中';
+                        progressBar.textContent = `${stage} (${percent}%)`;
+
+                        // 現在のファイル名を更新
+                        const successCount = data.success_count || 0;
+                        const failedCount = data.failed_count || 0;
+                        const completedDocs = successCount + failedCount;
+                        const totalCount = data.total_count || 1;
                         const fileName = data.current_file || '処理中...';
-                        currentFile.textContent = stage ? `${fileName} [${stage}]` : fileName;
+                        currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
 
                         // ボタン状態を更新
                         document.getElementById('start-btn').disabled = true;
                         document.getElementById('stop-btn').style.display = 'block';
                     } else {
+                        // 処理完了後も進捗バーを表示（前回の状態を維持）
+                        const stageProgress = data.stage_progress || 0.0;
+                        if (stageProgress > 0) {
+                            const percent = Math.min(100, Math.round(stageProgress * 100));
+                            progressBar.style.width = percent + '%';
+                            const stage = data.current_stage || '完了';
+                            progressBar.textContent = `${stage} (${percent}%)`;
+                        } else {
+                            progressBar.style.width = '0%';
+                            progressBar.textContent = '0%';
+                        }
+
                         // 処理中でない場合もポーリングは継続（ログとメモリを更新し続ける）
                         currentFile.textContent = '待機中';
                         document.getElementById('start-btn').disabled = false;

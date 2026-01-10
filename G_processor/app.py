@@ -713,6 +713,18 @@ def get_process_progress():
         # Supabaseから進捗情報を取得（複数インスタンス共有）
         progress = get_progress_from_supabase()
 
+        # 現在処理中のドキュメントの進捗を取得
+        current_stage = ''
+        stage_progress = 0.0
+        try:
+            # processing中のドキュメントを取得（最新1件）
+            processing_doc = db.client.table('Rawdata_FILE_AND_MAIL').select('processing_stage, processing_progress').eq('processing_status', 'processing').order('created_at', desc=False).limit(1).execute()
+            if processing_doc.data and len(processing_doc.data) > 0:
+                current_stage = processing_doc.data[0].get('processing_stage', '')
+                stage_progress = processing_doc.data[0].get('processing_progress', 0.0)
+        except Exception as e:
+            logger.error(f"進捗取得エラー: {e}")
+
         return jsonify({
             'success': True,
             'processing': worker_status['is_processing'],
@@ -722,9 +734,9 @@ def get_process_progress():
             'success_count': progress['success_count'],
             'failed_count': progress['failed_count'],
             'logs': progress['logs'],  # 最新150件
-            # ステージ進捗（ローカルから取得）
-            'current_stage': processing_status.get('current_stage', ''),
-            'stage_progress': processing_status.get('stage_progress', 0.0),
+            # ステージ進捗（Supabaseから取得）
+            'current_stage': current_stage,
+            'stage_progress': stage_progress,
             'system': {
                 'cpu_percent': cpu_percent,
                 'memory_percent': memory_info['percent'],

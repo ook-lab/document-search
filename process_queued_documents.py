@@ -68,16 +68,31 @@ class DocumentProcessor:
         """処理中にマーク"""
         try:
             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'processing'
+                'processing_status': 'processing',
+                'processing_stage': '開始',
+                'processing_progress': 0.0
             }).eq('id', document_id).execute()
         except Exception as e:
             logger.error( f"処理中マークエラー: {e}")
+
+    def update_progress(self, document_id: str, stage: str, progress: float):
+        """進捗を更新"""
+        try:
+            self.db.client.table('Rawdata_FILE_AND_MAIL').update({
+                'processing_stage': stage,
+                'processing_progress': progress
+            }).eq('id', document_id).execute()
+            logger.debug(f"進捗更新: {stage} ({progress*100:.0f}%)")
+        except Exception as e:
+            logger.error(f"進捗更新エラー: {e}")
 
     def mark_as_completed(self, document_id: str):
         """完了にマーク"""
         try:
             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'completed'
+                'processing_status': 'completed',
+                'processing_stage': '完了',
+                'processing_progress': 1.0
             }).eq('id', document_id).execute()
         except Exception as e:
             logger.error( f"完了マークエラー: {e}")
@@ -85,7 +100,11 @@ class DocumentProcessor:
     def mark_as_failed(self, document_id: str, error_message: str = ""):
         """失敗にマーク"""
         try:
-            update_data = {'processing_status': 'failed'}
+            update_data = {
+                'processing_status': 'failed',
+                'processing_stage': '失敗',
+                'processing_progress': 0.0
+            }
 
             # エラーメッセージをメタデータに保存
             if error_message:
@@ -324,6 +343,7 @@ class DocumentProcessor:
         stage_h_config = self.pipeline.config.get_stage_config('stage_h', doc.get('doc_type', 'other'), workspace_to_use)
 
         # Stage H: 構造化
+        self.update_progress(document_id, 'Stage H: 構造化', 0.3)
         stageh_result = self.pipeline.stage_h.process(
             file_name=file_name,
             doc_type=doc.get('doc_type', 'unknown'),
@@ -351,6 +371,7 @@ class DocumentProcessor:
         # Stage I はスキップ（テキストのみなので要約不要）
 
         # Stage J: チャンク化
+        self.update_progress(document_id, 'Stage J: チャンク化', 0.6)
         metadata_chunker = MetadataChunker()
         document_data = {
             'file_name': file_name,
@@ -384,6 +405,7 @@ class DocumentProcessor:
             logger.warning( f"既存チャンク削除エラー（継続）: {e}")
 
         # Stage K: Embedding + 保存
+        self.update_progress(document_id, 'Stage K: Embedding', 0.8)
         stage_k_result = self.pipeline.stage_k.embed_and_save(document_id, chunks)
 
         if not stage_k_result.get('success'):
@@ -456,6 +478,7 @@ class DocumentProcessor:
                 logger.warning( f"screenshot_url からファイルIDを抽出できません: {screenshot_url}")
 
         # Driveからダウンロード
+        self.update_progress(document_id, 'ダウンロード中', 0.1)
         try:
             self.drive.download_file(download_file_id, download_file_name, str(self.temp_dir))
             local_path = self.temp_dir / download_file_name
@@ -479,6 +502,7 @@ class DocumentProcessor:
             mime_type = 'application/octet-stream'
 
         # 統合パイプラインで処理
+        self.update_progress(document_id, 'Stage E-K: 処理中', 0.3)
         try:
             workspace_to_use = doc.get('workspace', 'unknown') if preserve_workspace else 'unknown'
 
