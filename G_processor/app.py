@@ -377,7 +377,13 @@ def get_cgroup_memory():
         inactive_file = 0
         total_cache = 0
         try:
-            with open('/sys/fs/cgroup/memory/memory.stat', 'r') as f:
+            # cgroup v2 と v1 の両方に対応
+            import os
+            memory_stat_path = '/sys/fs/cgroup/memory.stat'  # v2
+            if not os.path.exists(memory_stat_path):
+                memory_stat_path = '/sys/fs/cgroup/memory/memory.stat'  # v1
+
+            with open(memory_stat_path, 'r') as f:
                 for line in f:
                     parts = line.strip().split()
                     if len(parts) == 2:

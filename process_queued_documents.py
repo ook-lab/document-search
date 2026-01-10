@@ -598,5 +598,47 @@ async def main():
     )
 
 
+async def continuous_processing_loop():
+    """継続的な処理ループ（自動処理用）"""
+    processor = DocumentProcessor()
+
+    logger.info("="*80)
+    logger.info("自動処理ループを開始します")
+    logger.info("="*80)
+
+    while True:
+        try:
+            # pending ドキュメントを取得
+            docs = processor.get_pending_documents(workspace='all', limit=10)
+
+            if docs:
+                logger.info(f"\n処理対象: {len(docs)}件")
+
+                # 順次処理
+                for i, doc in enumerate(docs, 1):
+                    title = doc.get('title', '')
+                    display_name = title if title else '(タイトル未生成)'
+                    logger.info(f"\n[{i}/{len(docs)}] 処理中: {display_name}")
+
+                    await processor.process_document(doc, preserve_workspace=True)
+            else:
+                logger.debug("処理対象のドキュメントがありません（5秒後に再チェック）")
+
+            # 5秒待機してから次のループ
+            await asyncio.sleep(5)
+
+        except Exception as e:
+            logger.error(f"処理ループでエラー: {e}")
+            # エラーが発生しても10秒待機して継続
+            await asyncio.sleep(10)
+
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    import sys
+
+    # --loop フラグがある場合は継続ループモード
+    if '--loop' in sys.argv:
+        asyncio.run(continuous_processing_loop())
+    else:
+        # 通常モード（1回実行）
+        asyncio.run(main())
