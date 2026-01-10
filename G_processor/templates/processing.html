@@ -406,6 +406,10 @@
                     ⏹️ 処理を停止
                 </button>
 
+                <button class="btn btn-primary" id="reprocess-btn" onclick="startProcessing()" style="margin-top: 10px; background: #10b981;">
+                    🔄 再処理
+                </button>
+
                 <button class="btn btn-secondary" onclick="resetProcessing()" style="margin-top: 10px; background: #f59e0b;">
                     🔄 強制リセット
                 </button>
@@ -481,22 +485,53 @@
     </div>
 
     <script>
+        // Supabase設定（モニタリング用）
+        const SUPABASE_URL = '{{ supabase_url }}';
+        const SUPABASE_ANON_KEY = '{{ supabase_anon_key }}';
+
         let progressInterval = null;
-        let lastActivityTime = Date.now();  // 最後にアクティビティがあった時刻
+        let isProcessing = false;  // 処理中フラグ
 
         // ページ読み込み時に統計を取得
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshStats();
 
-            // 常時ポーリングを開始（処理中は1秒、待機中は5秒間隔）
-            startPolling();
+            // 初回のみ状態確認（処理中ならポーリング開始）
+            checkInitialStatus();
         });
 
-        // ポーリング開始（常時実行、間隔は状態に応じて調整）
+        // ポーリング開始（処理中のみ）
         function startPolling() {
             if (!progressInterval) {
                 progressInterval = setInterval(updateProgress, 1000);
+            }
+        }
+
+        // ポーリング停止
+        function stopPolling() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+        }
+
+        // 初回状態確認（Supabaseから直接取得）
+        async function checkInitialStatus() {
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    }
+                });
+                const data = await response.json();
+                if (data && data[0] && data[0].is_processing) {
+                    isProcessing = true;
+                    startPolling();
+                }
+            } catch (error) {
+                console.error('初期状態確認エラー:', error);
             }
         }
 
@@ -523,133 +558,98 @@
             }
         }
 
-        // 進捗状況を取得
-        let lastLogCount = 0;  // 前回のログ件数を記録
+        // 進捗状況を取得（Supabaseから直接取得 - Cloud Runにリクエストしない）
         async function updateProgress() {
             try {
-                const response = await fetch('/api/process/progress');
-                const data = await response.json();
-
-                // デバッグ: APIレスポンスを確認
-                console.log('[Polling]', new Date().toLocaleTimeString(),
-                    'logs:', data.logs?.length || 0,
-                    'memory:', data.system?.memory_percent,
-                    'processing:', data.processing);
-
-                if (data.success) {
-                    const progressSection = document.getElementById('progress-section');
-                    const progressBar = document.getElementById('progress-bar');
-                    const currentFile = document.getElementById('current-file');
-                    const logWindow = document.getElementById('log-window');
-                    const cpuUsage = document.getElementById('cpu-usage');
-                    const memoryUsage = document.getElementById('memory-usage');
-
-                    // 常にシステムリソースを更新（processing状態に関わらず）
-                    if (data.system) {
-                        cpuUsage.textContent = data.system.cpu_percent + '%';
-                        memoryUsage.textContent = data.system.memory_percent + '% (' +
-                            data.system.memory_used_gb + '/' +
-                            data.system.memory_total_gb + ' GB)';
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
                     }
+                });
+                const result = await response.json();
+                const data = result[0];
 
-                    // リソース制御情報を更新
-                    const activeWorkers = document.getElementById('active-workers');
-                    const throttleInfo = document.getElementById('throttle-info');
+                if (!data) {
+                    console.error('processing_lockデータが見つかりません');
+                    return;
+                }
 
-                    if (data.resource_control) {
-                        const currentParallel = data.resource_control.current_parallel || 0;
-                        const maxParallel = data.resource_control.max_parallel || 10;
+                // デバッグ
+                console.log('[Polling from Supabase]', new Date().toLocaleTimeString(),
+                    'is_processing:', data.is_processing,
+                    'cpu:', data.cpu_percent);
 
-                        // 実行中/実行可能数の形式で表示
-                        activeWorkers.textContent = currentParallel + '/' + maxParallel;
+                const progressBar = document.getElementById('progress-bar');
+                const currentFile = document.getElementById('current-file');
+                const logWindow = document.getElementById('log-window');
+                const cpuUsage = document.getElementById('cpu-usage');
+                const memoryUsage = document.getElementById('memory-usage');
+                const activeWorkers = document.getElementById('active-workers');
+                const throttleInfo = document.getElementById('throttle-info');
 
-                        // スロットル表示をアイコン付きに変更
-                        const delay = data.resource_control.throttle_delay;
-                        if (delay === 0) {
-                            throttleInfo.textContent = '🟢 フルスピード';
-                        } else if (delay < 1.5) {
-                            throttleInfo.textContent = '🟡 減速中（' + delay.toFixed(1) + '秒）';
-                        } else {
-                            throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
-                        }
-                    } else {
-                        activeWorkers.textContent = '-';
-                        throttleInfo.textContent = '-';
+                // システムリソースを更新
+                if (data.cpu_percent !== null) {
+                    cpuUsage.textContent = data.cpu_percent + '%';
+                }
+                if (data.memory_percent !== null) {
+                    memoryUsage.textContent = data.memory_percent + '% (' +
+                        (data.memory_used_gb || 0) + '/' +
+                        (data.memory_total_gb || 0) + ' GB)';
+                }
+
+                // ワーカー情報（シンプル表示）
+                activeWorkers.textContent = data.is_processing ? '処理中' : '-';
+                throttleInfo.textContent = '-';
+
+                // ログを更新
+                if (data.logs && data.logs.length > 0) {
+                    try {
+                        logWindow.innerHTML = data.logs.map(log => {
+                            let className = 'log-entry';
+                            if (log.includes('✅') || log.includes('成功')) className += ' success';
+                            if (log.includes('❌') || log.includes('失敗')) className += ' error';
+                            return `<div class="${className}">${escapeHtml(log)}</div>`;
+                        }).join('');
+                        logWindow.scrollTop = logWindow.scrollHeight;
+                    } catch (err) {
+                        console.error('ログ表示エラー:', err);
                     }
+                }
 
-                    // 常にログを更新（processing状態に関わらず）
-                    if (data.logs && data.logs.length > 0) {
-                        try {
-                            logWindow.innerHTML = data.logs.map(log => {
-                                let className = 'log-entry';
-                                if (log.includes('✅') || log.includes('成功')) className += ' success';
-                                if (log.includes('❌') || log.includes('失敗')) className += ' error';
-                                return `<div class="${className}">${escapeHtml(log)}</div>`;
-                            }).join('');
+                if (data.is_processing) {
+                    isProcessing = true;
 
-                            // 自動スクロール
-                            logWindow.scrollTop = logWindow.scrollHeight;
-                        } catch (err) {
-                            console.error('ログ表示エラー:', err);
-                            logWindow.innerHTML = '<div class="log-entry" style="color: #ef4444;">ログ表示エラー: ' + err.message + '</div>';
-                        }
-                    } else if (!data.processing && (!data.resource_control || data.resource_control.current_parallel === 0)) {
-                        // 完全に待機中のみメッセージを表示（ログがない && 処理中でない && ワーカーもいない）
-                        // ログがある場合は上書きしない
-                        if (logWindow.innerHTML.trim() === '' || logWindow.innerHTML.includes('待機中...')) {
-                            logWindow.innerHTML = '<div class="log-entry" style="color: #9ca3af;">待機中... 処理を開始するとここにログが表示されます。</div>';
-                        }
-                    }
+                    // 進捗バーを更新
+                    const successCount = data.success_count || 0;
+                    const failedCount = data.failed_count || 0;
+                    const completedDocs = successCount + failedCount;
+                    const totalCount = data.total_count || 1;
+                    const percent = totalCount > 0 ? Math.round((completedDocs / totalCount) * 100) : 0;
 
-                    // 処理中かどうか判定（processing または ワーカーがいる）
-                    const isProcessing = data.processing ||
-                        (data.resource_control && data.resource_control.current_parallel > 0);
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = `${percent}%`;
 
-                    // アクティビティがあれば時刻を更新
-                    if (isProcessing || (data.logs && data.logs.length > 0)) {
-                        lastActivityTime = Date.now();
-                    }
+                    // 現在のファイル名を更新
+                    const fileName = data.current_file || '処理中...';
+                    currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
 
+                    // ボタン状態を更新
+                    document.getElementById('start-btn').disabled = true;
+                    document.getElementById('reprocess-btn').disabled = true;
+                    document.getElementById('stop-btn').style.display = 'block';
+                } else {
+                    // 処理完了 → ポーリング停止
                     if (isProcessing) {
-                        // 進捗バーを更新（ドキュメント内の進捗を表示）
-                        const stageProgress = data.stage_progress || 0.0;
-                        const percent = Math.min(100, Math.round(stageProgress * 100));
-
-                        progressBar.style.width = percent + '%';
-
-                        // 現在のステージ + 進捗率を表示
-                        const stage = data.current_stage || '処理中';
-                        progressBar.textContent = `${stage} (${percent}%)`;
-
-                        // 現在のファイル名を更新
-                        const successCount = data.success_count || 0;
-                        const failedCount = data.failed_count || 0;
-                        const completedDocs = successCount + failedCount;
-                        const totalCount = data.total_count || 1;
-                        const fileName = data.current_file || '処理中...';
-                        currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
-
-                        // ボタン状態を更新
-                        document.getElementById('start-btn').disabled = true;
-                        document.getElementById('stop-btn').style.display = 'block';
-                    } else {
-                        // 処理完了後も進捗バーを表示（前回の状態を維持）
-                        const stageProgress = data.stage_progress || 0.0;
-                        if (stageProgress > 0) {
-                            const percent = Math.min(100, Math.round(stageProgress * 100));
-                            progressBar.style.width = percent + '%';
-                            const stage = data.current_stage || '完了';
-                            progressBar.textContent = `${stage} (${percent}%)`;
-                        } else {
-                            progressBar.style.width = '0%';
-                            progressBar.textContent = '0%';
-                        }
-
-                        // 処理中でない場合もポーリングは継続（ログとメモリを更新し続ける）
-                        currentFile.textContent = '待機中';
-                        document.getElementById('start-btn').disabled = false;
-                        document.getElementById('stop-btn').style.display = 'none';
+                        isProcessing = false;
+                        stopPolling();
+                        console.log('処理完了 - ポーリング停止');
                     }
+
+                    currentFile.textContent = '待機中';
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('reprocess-btn').disabled = false;
+                    document.getElementById('stop-btn').style.display = 'none';
                 }
             } catch (error) {
                 console.error('進捗取得エラー:', error);
@@ -787,9 +787,10 @@
                     showMessage('info', '▶️ 処理を開始しました（' + data.total_count + '件）');
                     document.getElementById('loading').classList.remove('active');
                     document.getElementById('stop-btn').style.display = 'block';
-                    // API成功後にupdateProgress()を呼ぶ
-                    // is_processing=trueなのでポーリングが開始される
-                    updateProgress();
+                    document.getElementById('reprocess-btn').disabled = true;
+                    // 処理開始 → ポーリング開始
+                    isProcessing = true;
+                    startPolling();
                 } else {
                     showMessage('error', '❌ エラー: ' + (data.error || '不明なエラー'));
                     document.getElementById('loading').classList.remove('active');

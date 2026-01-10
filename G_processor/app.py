@@ -225,6 +225,11 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
         client = get_supabase_client()
         # 最新150件のログのみ保存
         latest_logs = logs[-150:] if len(logs) > 150 else logs
+
+        # システムリソース情報も含める
+        memory = psutil.virtual_memory()
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+
         client.table('processing_lock').update({
             'current_index': current_index,
             'total_count': total_count,
@@ -232,6 +237,10 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
             'success_count': success_count,
             'failed_count': failed_count,
             'logs': latest_logs,
+            'cpu_percent': cpu_percent,
+            'memory_percent': round(memory.percent, 1),
+            'memory_used_gb': round(memory.used / (1024**3), 2),
+            'memory_total_gb': round(memory.total / (1024**3), 2),
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
         return True
@@ -679,13 +688,17 @@ def log_to_processing_status(message):
 @app.route('/')
 def index():
     """メインページ - 処理画面にリダイレクト"""
-    return render_template('processing.html')
+    return render_template('processing.html',
+        supabase_url=os.getenv('SUPABASE_URL', ''),
+        supabase_anon_key=os.getenv('SUPABASE_KEY', ''))
 
 
 @app.route('/processing')
 def processing():
     """ドキュメント処理システムのメインページ"""
-    return render_template('processing.html')
+    return render_template('processing.html',
+        supabase_url=os.getenv('SUPABASE_URL', ''),
+        supabase_anon_key=os.getenv('SUPABASE_KEY', ''))
 
 
 @app.route('/api/health', methods=['GET'])
