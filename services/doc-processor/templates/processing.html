@@ -501,7 +501,7 @@
                             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
                         }
                     }),
-                    fetch(`${SUPABASE_URL}/rest/v1/processing_workers?select=id`, {
+                    fetch(`${SUPABASE_URL}/rest/v1/processing_workers?select=*`, {
                         headers: {
                             'apikey': SUPABASE_ANON_KEY,
                             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
