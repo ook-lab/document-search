@@ -1,25 +1,9 @@
-# 1. Python のベースイメージを使う
-FROM python:3.12-slim
+# ベースイメージを使用（依存関係インストール済み）
+FROM asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor-base:latest
 
-# 2. 必要なシステムツール（Tesseract, Popplerなど）をインストール
-RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-jpn \
-    libtesseract-dev \
-    poppler-utils \
-    libgl1 \
-    && rm -rf /var/lib/apt/lists/*
-
-# 3. 作業ディレクトリを設定
 WORKDIR /app
 
-# 4. プロジェクトルート全体をコピー（親ディレクトリから）
-# ビルドコンテキストはプロジェクトルート (document_management_system/) です
-# まずrequirements.txtだけコピーしてインストール（キャッシュ効率化）
-COPY G_processor/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 5. 必要なモジュールとアプリケーションファイルをコピー
+# アプリケーションファイルをコピー
 COPY G_processor/app.py .
 COPY G_processor/templates/ ./templates/
 # プロジェクトルートからの共通モジュール
@@ -30,12 +14,12 @@ COPY process_queued_documents.py .
 COPY G_unified_pipeline/ ./G_unified_pipeline/
 COPY K_kakeibo/ ./K_kakeibo/
 
-# 6. ポート環境変数を設定
+# ポート環境変数を設定
 ENV PORT=8080
 
-# 7. 起動スクリプトをコピーして実行権限を付与
+# 起動スクリプトをコピーして実行権限を付与
 COPY G_processor/start.sh .
 RUN chmod +x start.sh
 
-# 8. サーバーとバックグラウンド処理を起動
+# サーバーを起動
 CMD ["./start.sh"]

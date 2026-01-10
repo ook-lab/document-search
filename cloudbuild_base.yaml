@@ -1,0 +1,28 @@
+# ベースイメージのビルド（requirements.txtが変わった時だけ手動実行）
+# 実行方法: gcloud builds submit --config=cloudbuild_base.yaml .
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: 1800s
+
+steps:
+  # ベースイメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor-base:latest'
+      - '-f'
+      - 'G_processor/Dockerfile.base'
+      - '.'
+
+  # イメージをプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor-base:latest'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor-base:latest'
