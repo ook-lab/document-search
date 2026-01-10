@@ -539,24 +539,38 @@
         // 進捗状況を取得（Supabaseから直接取得 - Cloud Runにリクエストしない）
         async function updateProgress() {
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
-                    headers: {
-                        'apikey': SUPABASE_ANON_KEY,
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                    }
-                });
-                const result = await response.json();
-                const data = result[0];
+                // processing_lockとprocessing_workersを並列で取得
+                const [lockResponse, workersResponse] = await Promise.all([
+                    fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY,
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    }),
+                    fetch(`${SUPABASE_URL}/rest/v1/processing_workers?select=id`, {
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY,
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    })
+                ]);
+
+                const lockResult = await lockResponse.json();
+                const workersResult = await workersResponse.json();
+                const data = lockResult[0];
+                const currentWorkers = workersResult ? workersResult.length : 0;
 
                 if (!data) {
                     console.error('processing_lockデータが見つかりません');
                     return;
                 }
 
+                const maxParallel = data.max_parallel || 10;
+
                 // デバッグ
                 console.log('[Polling from Supabase]', new Date().toLocaleTimeString(),
                     'is_processing:', data.is_processing,
-                    'cpu:', data.cpu_percent);
+                    'workers:', currentWorkers + '/' + maxParallel);
 
                 const progressBar = document.getElementById('progress-bar');
                 const currentFile = document.getElementById('current-file');
@@ -576,8 +590,8 @@
                         (data.memory_total_gb || 0) + ' GB)';
                 }
 
-                // ワーカー情報（シンプル表示）
-                activeWorkers.textContent = data.is_processing ? '処理中' : '-';
+                // ワーカー情報（実行数/実行可能数）
+                activeWorkers.textContent = currentWorkers + '/' + maxParallel;
                 throttleInfo.textContent = '-';
 
                 // ログを更新
