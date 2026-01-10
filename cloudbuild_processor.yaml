@@ -6,21 +6,14 @@ options:
 timeout: 1800s  # 30分のタイムアウト
 
 steps:
-  # Dockerイメージをビルド
-  - name: 'gcr.io/cloud-builders/docker'
+  # Kanikoでビルド（キャッシュ有効）
+  - name: 'gcr.io/kaniko-project/executor:latest'
     args:
-      - 'build'
-      - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
-      - '-f'
-      - 'G_processor/Dockerfile'
-      - '.'  # ビルドコンテキストはプロジェクトルート
-
-  # イメージをArtifact Registryにプッシュ
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
+      - '--dockerfile=G_processor/Dockerfile'
+      - '--context=.'
+      - '--destination=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
+      - '--cache=true'
+      - '--cache-ttl=168h'
 
   # Cloud Runにデプロイ
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
