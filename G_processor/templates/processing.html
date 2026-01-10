@@ -203,36 +203,6 @@
             100% { transform: rotate(360deg); }
         }
 
-        .result-summary {
-            display: block;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-top: 20px;
-        }
-
-        .result-summary.active {
-            display: grid;
-        }
-
-        .result-card {
-            background: #f9fafb;
-            border-radius: 8px;
-            padding: 15px;
-            text-align: center;
-        }
-
-        .result-card .label {
-            font-size: 0.85em;
-            color: #6b7280;
-            margin-bottom: 5px;
-        }
-
-        .result-card .value {
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #1f2937;
-        }
-
         .info-box {
             background: #eff6ff;
             border-left: 4px solid #2563eb;
@@ -315,7 +285,7 @@
             border-radius: 10px;
             padding: 15px;
             margin-top: 20px;
-            height: 400px;
+            height: 1200px;
             overflow-y: auto;
             font-family: 'Courier New', monospace;
             font-size: 0.85em;
@@ -459,22 +429,6 @@
 
             <!-- ログウィンドウ -->
             <div class="log-window" id="log-window"></div>
-
-            <!-- 結果サマリー -->
-            <div class="result-summary" id="result-summary">
-                <div class="result-card">
-                    <div class="label">処理数</div>
-                    <div class="value" id="result-processed">0</div>
-                </div>
-                <div class="result-card">
-                    <div class="label">成功</div>
-                    <div class="value" id="result-success">0</div>
-                </div>
-                <div class="result-card">
-                    <div class="label">失敗</div>
-                    <div class="value" id="result-failed">0</div>
-                </div>
-            </div>
 
             <!-- 情報ボックス -->
             <div class="info-box">
@@ -765,7 +719,6 @@
             document.getElementById('loading').classList.add('active');
             document.getElementById('start-btn').disabled = true;
             document.getElementById('status-message').style.display = 'none';
-            document.getElementById('result-summary').classList.remove('active');
 
             // 注: ポーリングはAPI成功後にupdateProgress()内で開始される
 
