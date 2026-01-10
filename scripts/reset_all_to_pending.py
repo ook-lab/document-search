@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 from loguru import logger
 
 def reset_all_to_pending():

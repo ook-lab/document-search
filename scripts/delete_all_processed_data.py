@@ -14,7 +14,7 @@ Stage E以降で生成された全データを削除
 
 3. processing_statusをpendingにリセット
 """
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 db = DatabaseClient()
 

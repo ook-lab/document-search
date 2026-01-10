@@ -1,0 +1,55 @@
+{
+  "stores": [
+    {
+      "name": "フーディアム 武蔵小杉",
+      "url": "https://tokubai.co.jp/フーディアム/7978",
+      "enabled": true
+    },
+    {
+      "name": "マルエツ 武蔵小杉駅前店",
+      "url": "https://tokubai.co.jp/マルエツ/9809",
+      "enabled": true
+    },
+    {
+      "name": "イトーヨーカドー グランツリー武蔵小杉店",
+      "url": "https://tokubai.co.jp/イトーヨーカドー/15009",
+      "enabled": true
+    },
+    {
+      "name": "成城石井 ららテラス武蔵小杉店",
+      "url": "https://tokubai.co.jp/成城石井/13372",
+      "enabled": true
+    },
+    {
+      "name": "イトーヨーカドー 武蔵小杉駅前店",
+      "url": "https://tokubai.co.jp/イトーヨーカドー/8943",
+      "enabled": true
+    },
+    {
+      "name": "東急ストア 武蔵小杉店",
+      "url": "https://tokubai.co.jp/東急ストア/5735",
+      "enabled": true
+    },
+    {
+      "name": "ユニクロ 武蔵小杉東急スクエア店",
+      "url": "https://tokubai.co.jp/ユニクロ/87223",
+      "enabled": true
+    },
+    {
+      "name": "どらっぐぱぱす 武蔵小杉店",
+      "url": "https://tokubai.co.jp/どらっぐぱぱす/27325",
+      "enabled": true
+    },
+    {
+      "name": "トモズ 武蔵小杉店",
+      "url": "https://tokubai.co.jp/トモズ/35716",
+      "enabled": true
+    },
+    {
+      "name": "ハックドラッグ 武蔵小杉東急スクエア店",
+      "url": "https://tokubai.co.jp/prefectures/14/areas/360/leaflet?page=3",
+      "enabled": true
+    }
+  ],
+  "default_folder_id": "1uQEJbV94mBC2y0D0FQztDGrzy6UNgEhv"
+}

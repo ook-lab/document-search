@@ -10,7 +10,7 @@ root_dir = Path.cwd()
 sys.path.insert(0, str(root_dir))
 from dotenv import load_dotenv
 load_dotenv(root_dir / '.env')
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 from collections import defaultdict
 
 db = DatabaseClient(use_service_role=True)

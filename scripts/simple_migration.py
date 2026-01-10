@@ -9,7 +9,7 @@ from pathlib import Path
 root_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root_dir))
 
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 import logging
 
 # ロギング設定

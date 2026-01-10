@@ -11,7 +11,7 @@ from pathlib import Path
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent))
 
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 def fix_waseda_data():
     """waseda_academy ワークスペースの person/organization を配列に変換"""

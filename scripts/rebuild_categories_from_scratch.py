@@ -16,7 +16,7 @@ from supabase import create_client
 from typing import List, Dict, Tuple
 import json
 from datetime import datetime
-from C_ai_common.llm_client.llm_client import LLMClient
+from shared.ai.llm_client.llm_client import LLMClient
 
 # 設定
 SUPABASE_URL = os.getenv("SUPABASE_URL")

@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ドキュメント処理システム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1em;
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .stat-card .label {
+            font-size: 0.9em;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+
+        .stat-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        .stat-card.pending { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
+        .stat-card.processing { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); }
+        .stat-card.completed { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); }
+        .stat-card.failed { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); }
+
+        .control-panel {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .control-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+
+        .control-group input,
+        .control-group select {
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .status-message.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-message.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-message.info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #2563eb;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #2563eb;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .info-box p {
+            color: #1e40af;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        /* 進捗バー */
+        .progress-section {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .progress-bar-container {
+            background: #e5e7eb;
+            border-radius: 10px;
+            height: 30px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .current-file {
+            font-size: 0.9em;
+            color: #6b7280;
+            margin-bottom: 10px;
+        }
+
+        /* システムリソース */
+        .resource-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .resource-card {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .resource-card .label {
+            font-size: 0.8em;
+            color: #6b7280;
+            margin-bottom: 5px;
+        }
+
+        .resource-card .value {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #1f2937;
+        }
+
+        /* ログウィンドウ */
+        .log-window {
+            background: #1f2937;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            height: 1200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            display: block;
+        }
+
+        .log-window .log-entry {
+            color: #d1d5db;
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+
+        .log-window .log-entry.success {
+            color: #10b981;
+        }
+
+        .log-window .log-entry.error {
+            color: #ef4444;
+        }
+
+        .log-window::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .log-window::-webkit-scrollbar-track {
+            background: #374151;
+            border-radius: 4px;
+        }
+
+        .log-window::-webkit-scrollbar-thumb {
+            background: #6b7280;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📄 ドキュメント処理システム</h1>
+            <p>待機中のドキュメントをOCR処理してデータベースに登録</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 統計情報 -->
+            <h2 style="margin-bottom: 20px; color: #1f2937;">📊 処理キューの状態</h2>
+            <div class="stats-grid">
+                <div class="stat-card pending">
+                    <div class="label">⏳ 処理待ち</div>
+                    <div class="value" id="stat-pending">-</div>
+                </div>
+                <div class="stat-card completed">
+                    <div class="label">✅ 処理済み</div>
+                    <div class="value" id="stat-completed">-</div>
+                </div>
+                <div class="stat-card failed">
+                    <div class="label">❌ 失敗</div>
+                    <div class="value" id="stat-failed">-</div>
+                </div>
+            </div>
+
+            <!-- コントロールパネル -->
+            <h2 style="margin-bottom: 20px; color: #1f2937;">⚙️ 処理設定</h2>
+            <div class="control-panel">
+                <div class="control-row">
+                    <div class="control-group">
+                        <label for="workspace">ワークスペース</label>
+                        <select id="workspace" onchange="refreshStats()">
+                            <option value="all">all（全て）</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="limit">処理件数上限</label>
+                        <input type="number" id="limit" value="100" min="1" max="1000">
+                    </div>
+                </div>
+                <div class="control-group" style="margin-bottom: 20px;">
+                    <label>
+                        <input type="checkbox" id="preserve-workspace" checked style="width: auto; margin-right: 5px;">
+                        ワークスペースを保持
+                    </label>
+                </div>
+
+                <button class="btn btn-primary" id="start-btn" onclick="confirmStart()">
+                    ➕ キューに追加
+                </button>
+
+                <button class="btn btn-secondary" id="stop-btn" onclick="stopProcessing()" style="margin-top: 10px; background: #dc2626; display: none;">
+                    ⏹️ 処理を停止
+                </button>
+
+                <button class="btn btn-primary" id="reprocess-btn" onclick="startProcessing()" style="margin-top: 10px; background: #10b981;">
+                    🔄 再処理
+                </button>
+
+                <button class="btn btn-secondary" onclick="resetProcessing()" style="margin-top: 10px; background: #f59e0b;">
+                    🔄 強制リセット
+                </button>
+
+                <button class="btn btn-secondary" onclick="refreshStats()" style="margin-top: 10px;">
+                    📊 統計情報を更新
+                </button>
+            </div>
+
+            <!-- 進捗セクション -->
+            <div class="progress-section" id="progress-section">
+                <h3 style="margin-bottom: 15px; color: #1f2937;">📊 処理進捗</h3>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar">0%</div>
+                </div>
+                <div class="current-file" id="current-file">準備中...</div>
+
+                <!-- システムリソース -->
+                <div class="resource-grid">
+                    <div class="resource-card">
+                        <div class="label">💻 CPU使用率</div>
+                        <div class="value" id="cpu-usage">-</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">🧠 メモリ使用率</div>
+                        <div class="value" id="memory-usage">-</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">⚡ 実行中</div>
+                        <div class="value" id="active-workers">-</div>
+                    </div>
+                    <div class="resource-card">
+                        <div class="label">⏱️ スロットル</div>
+                        <div class="value" id="throttle-info">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ローディング表示 -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>処理中... しばらくお待ちください</p>
+            </div>
+
+            <!-- ステータスメッセージ -->
+            <div class="status-message" id="status-message"></div>
+
+            <!-- ログウィンドウ -->
+            <div class="log-window" id="log-window"></div>
+
+            <!-- 情報ボックス -->
+            <div class="info-box">
+                <p><strong>注意:</strong> 処理には時間がかかる場合があります。ブラウザを閉じても処理は継続されます。</p>
+                <p><strong>ヒント:</strong> 「キューに追加」ボタンを押すと、未処理のドキュメントがバッチ処理対象としてマークされ、システムが自動的に並列処理を開始します。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase設定（モニタリング用）
+        const SUPABASE_URL = '{{ supabase_url }}';
+        const SUPABASE_ANON_KEY = '{{ supabase_anon_key }}';
+
+        let progressInterval = null;
+        let isProcessing = false;  // 処理中フラグ
+
+        // ページ読み込み時に統計を取得
+        window.addEventListener('load', function() {
+            loadWorkspaces();
+            refreshStats();
+        });
+
+        // ポーリング開始（処理中のみ）
+        function startPolling() {
+            if (!progressInterval) {
+                progressInterval = setInterval(updateProgress, 1000);
+            }
+        }
+
+        // ポーリング停止
+        function stopPolling() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+        }
+
+        // ワークスペース一覧を読み込む
+        async function loadWorkspaces() {
+            try {
+                const response = await fetch('/api/workspaces');
+                const data = await response.json();
+
+                if (data.success && data.workspaces) {
+                    const select = document.getElementById('workspace');
+
+                    // 既存のオプション（all）はそのまま
+                    // 各ワークスペースを追加
+                    data.workspaces.forEach(workspace => {
+                        const option = document.createElement('option');
+                        option.value = workspace;
+                        option.textContent = workspace;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('ワークスペース読み込みエラー:', error);
+            }
+        }
+
+        // 進捗状況を取得（Supabaseから直接取得 - Cloud Runにリクエストしない）
+        async function updateProgress() {
+            try {
+                // processing_lockとprocessing_workersを並列で取得
+                const [lockResponse, workersResponse] = await Promise.all([
+                    fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY,
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    }),
+                    fetch(`${SUPABASE_URL}/rest/v1/processing_workers?select=id`, {
+                        headers: {
+                            'apikey': SUPABASE_ANON_KEY,
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                        }
+                    })
+                ]);
+
+                const lockResult = await lockResponse.json();
+                const workersResult = await workersResponse.json();
+                const data = lockResult[0];
+                const currentWorkers = workersResult ? workersResult.length : 0;
+
+                if (!data) {
+                    console.error('processing_lockデータが見つかりません');
+                    return;
+                }
+
+                const maxParallel = data.max_parallel || 10;
+
+                // デバッグ
+                console.log('[Polling from Supabase]', new Date().toLocaleTimeString(),
+                    'is_processing:', data.is_processing,
+                    'workers:', currentWorkers + '/' + maxParallel);
+
+                const progressBar = document.getElementById('progress-bar');
+                const currentFile = document.getElementById('current-file');
+                const logWindow = document.getElementById('log-window');
+                const cpuUsage = document.getElementById('cpu-usage');
+                const memoryUsage = document.getElementById('memory-usage');
+                const activeWorkers = document.getElementById('active-workers');
+                const throttleInfo = document.getElementById('throttle-info');
+
+                // システムリソースを更新
+                if (data.cpu_percent !== null) {
+                    cpuUsage.textContent = data.cpu_percent + '%';
+                }
+                if (data.memory_percent !== null) {
+                    memoryUsage.textContent = data.memory_percent + '% (' +
+                        (data.memory_used_gb || 0) + '/' +
+                        (data.memory_total_gb || 0) + ' GB)';
+                }
+
+                // ワーカー情報（実行数/実行可能数）
+                activeWorkers.textContent = currentWorkers + '/' + maxParallel;
+
+                // スロットル表示
+                const delay = data.throttle_delay || 0;
+                if (delay === 0) {
+                    throttleInfo.textContent = '🟢 フルスピード';
+                } else if (delay < 1.5) {
+                    throttleInfo.textContent = '🟡 減速中（' + delay.toFixed(1) + '秒）';
+                } else {
+                    throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
+                }
+
+                // ログを更新
+                if (data.logs && data.logs.length > 0) {
+                    try {
+                        logWindow.innerHTML = data.logs.map(log => {
+                            let className = 'log-entry';
+                            if (log.includes('✅') || log.includes('成功')) className += ' success';
+                            if (log.includes('❌') || log.includes('失敗')) className += ' error';
+                            return `<div class="${className}">${escapeHtml(log)}</div>`;
+                        }).join('');
+                        logWindow.scrollTop = logWindow.scrollHeight;
+                    } catch (err) {
+                        console.error('ログ表示エラー:', err);
+                    }
+                }
+
+                if (data.is_processing) {
+                    isProcessing = true;
+
+                    // 進捗バーを更新
+                    const successCount = data.success_count || 0;
+                    const failedCount = data.failed_count || 0;
+                    const completedDocs = successCount + failedCount;
+                    const totalCount = data.total_count || 1;
+                    const percent = totalCount > 0 ? Math.round((completedDocs / totalCount) * 100) : 0;
+
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = `${percent}%`;
+
+                    // 現在のファイル名を更新
+                    const fileName = data.current_file || '処理中...';
+                    currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
+
+                    // ボタン状態を更新
+                    document.getElementById('start-btn').disabled = true;
+                    document.getElementById('reprocess-btn').disabled = true;
+                    document.getElementById('stop-btn').style.display = 'block';
+                } else {
+                    // 処理完了 → ポーリング停止
+                    if (isProcessing) {
+                        isProcessing = false;
+                        stopPolling();
+                        console.log('処理完了 - ポーリング停止');
+                    }
+
+                    currentFile.textContent = '待機中';
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('reprocess-btn').disabled = false;
+                    document.getElementById('stop-btn').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('進捗取得エラー:', error);
+            }
+        }
+
+        // HTMLエスケープ
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 統計情報を更新
+        async function refreshStats() {
+            try {
+                const workspace = document.getElementById('workspace').value || 'all';
+                const response = await fetch(`/api/process/stats?workspace=${encodeURIComponent(workspace)}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const stats = data.stats;
+                    document.getElementById('stat-pending').textContent = stats.pending || 0;
+                    document.getElementById('stat-completed').textContent = stats.completed || 0;
+                    document.getElementById('stat-failed').textContent = stats.failed || 0;
+
+                    // 処理開始ボタンの状態を更新
+                    const startBtn = document.getElementById('start-btn');
+                    if (stats.pending > 0) {
+                        startBtn.disabled = false;
+                    } else {
+                        startBtn.disabled = true;
+                    }
+                } else {
+                    showMessage('error', '統計情報の取得に失敗しました: ' + data.error);
+                }
+            } catch (error) {
+                showMessage('error', '統計情報の取得中にエラーが発生しました: ' + error.message);
+            }
+        }
+
+        // 確認ダイアログ
+        function confirmStart() {
+            const workspace = document.getElementById('workspace').value || 'all';
+            const limit = parseInt(document.getElementById('limit').value) || 100;
+
+            const message = `${limit}件のドキュメントをキューに追加しますか？\n\nワークスペース: ${workspace}\n処理件数: ${limit}件\n\nキューに追加後、システムが自動的に並列処理を開始します。`;
+
+            if (confirm(message)) {
+                startProcessing();
+            }
+        }
+
+        // 処理を停止
+        async function stopProcessing() {
+            if (!confirm('処理を停止しますか？\n\n現在処理中のドキュメントまで完了し、次のドキュメントから停止します。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/process/stop', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showMessage('info', '⚠️ ' + data.message);
+                    document.getElementById('stop-btn').style.display = 'none';
+                    document.getElementById('start-btn').disabled = false;
+                } else {
+                    showMessage('error', '❌ ' + (data.error || '停止に失敗しました'));
+                }
+            } catch (error) {
+                showMessage('error', '❌ 停止中にエラーが発生しました: ' + error.message);
+            }
+        }
+
+        // 強制リセット
+        async function resetProcessing() {
+            if (!confirm('処理フラグを強制リセットしますか？\n\n「既に処理が実行中です」エラーが解消されない場合に使用してください。')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/process/reset', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showMessage('info', '🔄 ' + data.message);
+                    document.getElementById('stop-btn').style.display = 'none';
+                    document.getElementById('start-btn').disabled = false;
+                    updateProgress();
+                } else {
+                    showMessage('error', '❌ ' + (data.error || 'リセットに失敗しました'));
+                }
+            } catch (error) {
+                showMessage('error', '❌ リセット中にエラーが発生しました: ' + error.message);
+            }
+        }
+
+        // 処理を開始
+        async function startProcessing() {
+            const workspace = document.getElementById('workspace').value || 'all';
+            const limit = parseInt(document.getElementById('limit').value) || 100;
+            const preserveWorkspace = document.getElementById('preserve-workspace').checked;
+
+            // UIを更新
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('status-message').style.display = 'none';
+
+            // 注: ポーリングはAPI成功後にupdateProgress()内で開始される
+
+            try {
+                const response = await fetch('/api/process/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        workspace: workspace,
+                        limit: limit,
+                        preserve_workspace: preserveWorkspace
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    showMessage('info', '▶️ 処理を開始しました（' + data.total_count + '件）');
+                    document.getElementById('loading').classList.remove('active');
+                    document.getElementById('stop-btn').style.display = 'block';
+                    document.getElementById('reprocess-btn').disabled = true;
+                    // 処理開始 → ポーリング開始
+                    isProcessing = true;
+                    startPolling();
+                } else {
+                    showMessage('error', '❌ エラー: ' + (data.error || '不明なエラー'));
+                    document.getElementById('loading').classList.remove('active');
+                    document.getElementById('start-btn').disabled = false;
+                }
+            } catch (error) {
+                showMessage('error', '❌ 処理中にエラーが発生しました: ' + error.message);
+                document.getElementById('loading').classList.remove('active');
+                document.getElementById('start-btn').disabled = false;
+            }
+        }
+
+        // メッセージを表示
+        function showMessage(type, message) {
+            const messageBox = document.getElementById('status-message');
+            messageBox.className = 'status-message ' + type;
+            messageBox.textContent = message;
+            messageBox.style.display = 'block';
+        }
+
+        // ページ読み込み時に初回更新
+        document.addEventListener('DOMContentLoaded', function() {
+            startPolling();
+        });
+    </script>
+</body>
+</html>

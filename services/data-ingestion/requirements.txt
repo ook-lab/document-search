@@ -1,0 +1,33 @@
+# Streamlit Cloud用 requirements.txt
+# B_ingestion の依存パッケージ
+
+# Google API
+google-api-python-client==2.108.0
+google-auth==2.25.2
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-generativeai>=0.8.0
+
+# AI APIs
+anthropic==0.39.0
+openai==1.54.0
+
+# Database
+supabase==2.10.0
+pgvector==0.2.4
+
+# Data Processing
+numpy>=1.26.2,<2.0.0
+pandas>=2.1.4,<3.0.0
+
+# Utilities
+python-dotenv==1.0.0
+loguru==0.7.2
+pydantic
+pydantic-settings
+tenacity>=8.2.0
+jsonschema>=4.20.0
+pyyaml>=6.0
+
+# Streamlit
+streamlit>=1.29.0,<2.0.0

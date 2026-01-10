@@ -6,10 +6,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from loguru import logger
-from A_common.database.client import DatabaseClient
-from C_ai_common.llm_client.llm_client import LLMClient
-from G_unified_pipeline.pipeline import UnifiedDocumentPipeline
-from A_common.connectors.google_drive import GoogleDriveConnector
+from shared.common.database.client import DatabaseClient
+from shared.ai.llm_client.llm_client import LLMClient
+from shared.pipeline.pipeline import UnifiedDocumentPipeline
+from shared.common.connectors.google_drive import GoogleDriveConnector
 
 async def main():
     logger.info("=== 10件バッチ再処理 ===")

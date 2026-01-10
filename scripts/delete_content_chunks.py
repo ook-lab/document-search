@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 root_dir = Path(__file__).parent
 sys.path.insert(0, str(root_dir))
 
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 
 def delete_content_chunks(limit: int = None):

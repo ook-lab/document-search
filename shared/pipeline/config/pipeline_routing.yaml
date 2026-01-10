@@ -1,0 +1,169 @@
+# ============================================
+# パイプラインルーティング設定
+# ============================================
+# このファイルを編集することで、workspace と doc_type に基づいて
+# 使用するスキーマ（プロンプトセット）を設定できます
+#
+# 優先順位:
+# 1. workspace (最優先)
+# 2. doc_type
+# 3. default (フォールバック)
+
+routing:
+  # ============================================
+  # workspace ベースのルート（優先順位1）
+  # ============================================
+  by_workspace:
+    # Gmail ワークスペース
+    gmail:
+      description: "Gmailワークスペース（DM-MAIL, JOB-MAILなど）"
+      schema: "default"
+      stages:
+        stage_e:
+          prompt_key: "default"
+          model_key: "gmail"
+        stage_f:
+          prompt_key: "default"
+          model_key: "gmail"
+        stage_h:
+          prompt_key: "default"
+          model_key: "gmail"
+        stage_i:
+          prompt_key: "default"
+          model_key: "gmail"
+
+    # Classroom ワークスペース（育哉）
+    ikuya_classroom:
+      description: "育哉のClassroomワークスペース"
+      schema: "classroom"
+      stages:
+        stage_f:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_h:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_i:
+          prompt_key: "classroom"
+          model_key: "classroom"
+
+    # Classroom ワークスペース（絵麻）
+    ema_classroom:
+      description: "絵麻のClassroomワークスペース"
+      schema: "classroom"
+      stages:
+        stage_f:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_h:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_i:
+          prompt_key: "classroom"
+          model_key: "classroom"
+
+    # 早稲田アカデミー
+    waseda_academy:
+      description: "早稲田アカデミーのドキュメント"
+      schema: "classroom"
+      stages:
+        stage_f:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_h:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_i:
+          prompt_key: "classroom"
+          model_key: "classroom"
+
+  # ============================================
+  # doc_type ベースのルート（優先順位2）
+  # ============================================
+  by_doc_type:
+    # 実店舗チラシ
+    physical_shop:
+      description: "実店舗のチラシ（スーパー、ドラッグストアなど）"
+      schema: "flyer"
+      stages:
+        stage_f:
+          prompt_key: "flyer"
+          model_key: "flyer"
+        stage_h:
+          prompt_key: "flyer"
+          model_key: "flyer"
+        stage_i:
+          prompt_key: "flyer"
+          model_key: "flyer"
+
+    # Classroom ドキュメント（workspace で指定されない場合）
+    classroom_document:
+      description: "Google Classroomドキュメント"
+      schema: "classroom"
+      stages:
+        stage_f:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_h:
+          prompt_key: "classroom"
+          model_key: "classroom"
+        stage_i:
+          prompt_key: "classroom"
+          model_key: "classroom"
+
+    # 家計簿レシート
+    kakeibo:
+      description: "家計簿レシート（全テキスト抽出 → 構造化 → 税額按分）"
+      schema: "kakeibo"
+      stages:
+        stage_f:
+          prompt_key: "kakeibo"
+          model_key: "flash_lite"
+        stage_h:
+          prompt_key: "kakeibo"
+          model_key: "flash_lite"
+          custom_handler: "kakeibo"  # stage_h_kakeibo.py を使用
+        stage_i:
+          skip: true  # 家計簿は不要
+
+    # デフォルト（優先順位3）
+    default:
+      description: "デフォルト処理（汎用ドキュメント）"
+      schema: "default"
+      stages:
+        stage_f:
+          prompt_key: "default"
+          model_key: "default"
+        stage_h:
+          prompt_key: "default"
+          model_key: "default"
+        stage_i:
+          prompt_key: "default"
+          model_key: "default"
+
+# ============================================
+# 使用例
+# ============================================
+#
+# 【例1】workspace='ikuya_classroom', doc_type='other'
+# → by_workspace.ikuya_classroom が選択される（Classroom スキーマ）
+#
+# 【例2】workspace='inbox', doc_type='physical_shop'
+# → by_doc_type.physical_shop が選択される（Flyer スキーマ）
+#
+# 【例3】workspace='inbox', doc_type='other'
+# → by_doc_type.default が選択される（Default スキーマ）
+#
+# ============================================
+# 設定の追加方法
+# ============================================
+#
+# 新しいワークスペースを追加する場合:
+# 1. by_workspace セクションに新しいエントリを追加
+# 2. schema を指定（classroom, flyer, default など）
+# 3. 各 stage の prompt_key と model_key を設定
+#
+# 新しい doc_type を追加する場合:
+# 1. by_doc_type セクションに新しいエントリを追加
+# 2. schema を指定
+# 3. 各 stage の prompt_key と model_key を設定

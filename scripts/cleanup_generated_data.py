@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 
 def cleanup_general_names(db: DatabaseClient, dry_run: bool = False):

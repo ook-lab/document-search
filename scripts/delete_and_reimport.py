@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import List, Dict
 from loguru import logger
 
-from A_common.database.client import DatabaseClient
-from A_common.connectors.google_drive import GoogleDriveConnector
-from G_unified_pipeline import UnifiedDocumentPipeline
-from K_kakeibo.config import INBOX_EASY_FOLDER_ID, INBOX_HARD_FOLDER_ID, TEMP_DIR
+from shared.common.database.client import DatabaseClient
+from shared.common.connectors.google_drive import GoogleDriveConnector
+from shared.pipeline import UnifiedDocumentPipeline
+from shared.kakeibo.config import INBOX_EASY_FOLDER_ID, INBOX_HARD_FOLDER_ID, TEMP_DIR
 
 
 class ReceiptReimporter:

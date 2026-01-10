@@ -3,7 +3,7 @@
 
 再処理前に実行して、重複を防ぎます。
 """
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 db = DatabaseClient()
 

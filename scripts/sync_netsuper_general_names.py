@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from K_kakeibo.transaction_processor import TransactionProcessor
+from shared.kakeibo.transaction_processor import TransactionProcessor
 
 
 def sync_general_names(limit: Optional[int] = None, dry_run: bool = False):

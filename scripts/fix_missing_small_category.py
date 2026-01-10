@@ -15,8 +15,8 @@ from typing import Dict, List, Optional
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from A_common.database.client import DatabaseClient
-from C_ai_common.llm_client.llm_client import LLMClient
+from shared.common.database.client import DatabaseClient
+from shared.ai.llm_client.llm_client import LLMClient
 import logging
 
 # ロギング設定

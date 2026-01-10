@@ -2,9 +2,9 @@
 """特定のドキュメントを処理"""
 
 import asyncio
-from A_common.database.client import DatabaseClient
-from G_unified_pipeline.pipeline import UnifiedDocumentPipeline
-from A_common.connectors.google_drive import GoogleDriveConnector
+from shared.common.database.client import DatabaseClient
+from shared.pipeline.pipeline import UnifiedDocumentPipeline
+from shared.common.connectors.google_drive import GoogleDriveConnector
 from pathlib import Path
 
 async def process_specific_documents(doc_ids: list):

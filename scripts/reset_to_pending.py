@@ -1,7 +1,7 @@
 """
 processing_status を pending にリセットするスクリプト
 """
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 def reset_to_pending(workspace: str = 'all', limit: int = None, auto_confirm: bool = False):
     """

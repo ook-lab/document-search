@@ -24,7 +24,7 @@ sys.path.insert(0, str(root_dir))
 
 load_dotenv(root_dir / ".env")
 
-from A_common.database.client import DatabaseClient
+from shared.common.database.client import DatabaseClient
 
 
 class ReceiptDataCleanup:

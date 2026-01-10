@@ -5,13 +5,17 @@ options:
 
 timeout: 1800s  # 30分のタイムアウト
 
+substitutions:
+  _TAG: 'latest'
+
+
 steps:
   # Dockerイメージをビルド（ベースイメージ使用で高速）
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
       - '-f'
       - 'G_processor/Dockerfile'
       - '.'
@@ -20,7 +24,7 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
 
   # Cloud Runにデプロイ
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -30,7 +34,7 @@ steps:
       - 'deploy'
       - 'doc-processor'
       - '--image'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
       - '--region'
       - 'asia-northeast1'
       - '--platform'
@@ -54,4 +58,4 @@ steps:
       # 環境変数は既存のデプロイ設定を維持（Secret Manager または既存の --set-env-vars）
 
 images:
-  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:$COMMIT_SHA'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'

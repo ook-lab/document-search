@@ -1,0 +1,6 @@
+# Gmail Ingestion設定ファイル
+# デフォルト設定で問題ない場合は空でOK
+
+# 必要に応じて以下を設定可能:
+# max_results: 100
+# dry_run: false
