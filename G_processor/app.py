@@ -230,6 +230,9 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
         memory = psutil.virtual_memory()
         cpu_percent = psutil.cpu_percent(interval=0.1)
 
+        # スロットル情報を取得
+        throttle_delay = processing_status.get('resource_control', {}).get('throttle_delay', 0.0)
+
         client.table('processing_lock').update({
             'current_index': current_index,
             'total_count': total_count,
@@ -241,6 +244,7 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
             'memory_percent': round(memory.percent, 1),
             'memory_used_gb': round(memory.used / (1024**3), 2),
             'memory_total_gb': round(memory.total / (1024**3), 2),
+            'throttle_delay': throttle_delay,
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
         return True

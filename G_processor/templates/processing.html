@@ -592,7 +592,16 @@
 
                 // ワーカー情報（実行数/実行可能数）
                 activeWorkers.textContent = currentWorkers + '/' + maxParallel;
-                throttleInfo.textContent = '-';
+
+                // スロットル表示
+                const delay = data.throttle_delay || 0;
+                if (delay === 0) {
+                    throttleInfo.textContent = '🟢 フルスピード';
+                } else if (delay < 1.5) {
+                    throttleInfo.textContent = '🟡 減速中（' + delay.toFixed(1) + '秒）';
+                } else {
+                    throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
+                }
 
                 // ログを更新
                 if (data.logs && data.logs.length > 0) {
