@@ -39,3 +39,11 @@ nul
 *_debug.html
 venv_old_delete_later/
 builds.json
+
+.local/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
