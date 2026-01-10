@@ -226,9 +226,9 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
         # 最新150件のログのみ保存
         latest_logs = logs[-150:] if len(logs) > 150 else logs
 
-        # システムリソース情報も含める
-        memory = psutil.virtual_memory()
-        cpu_percent = psutil.cpu_percent(interval=0.1)
+        # システムリソース情報も含める（Cloud Run環境対応）
+        cpu_percent = get_cgroup_cpu()
+        memory_info = get_cgroup_memory()
 
         # スロットル情報を取得
         throttle_delay = processing_status.get('resource_control', {}).get('throttle_delay', 0.0)
@@ -241,9 +241,9 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
             'failed_count': failed_count,
             'logs': latest_logs,
             'cpu_percent': cpu_percent,
-            'memory_percent': round(memory.percent, 1),
-            'memory_used_gb': round(memory.used / (1024**3), 2),
-            'memory_total_gb': round(memory.total / (1024**3), 2),
+            'memory_percent': memory_info['percent'],
+            'memory_used_gb': memory_info['used_gb'],
+            'memory_total_gb': memory_info['total_gb'],
             'throttle_delay': throttle_delay,
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
@@ -444,16 +444,43 @@ def get_cgroup_cpu():
     global _last_cpu_stats
 
     try:
-        # Cloud Run: cgroup v1 の cpuacct.usage から取得（ナノ秒単位）
-        with open('/sys/fs/cgroup/cpuacct/cpuacct.usage', 'r') as f:
-            usage_nsec = int(f.read().strip())
+        # Cloud Run Gen2: cgroup v2 または v1 のパスを試行
+        usage_nsec = None
+        cpu_usage_paths = [
+            '/sys/fs/cgroup/cpu.stat',  # cgroup v2 (Gen2)
+            '/sys/fs/cgroup/cpuacct/cpuacct.usage'  # cgroup v1 (Gen1)
+        ]
+
+        for path in cpu_usage_paths:
+            try:
+                if path.endswith('cpu.stat'):
+                    # cgroup v2: cpu.statから usage_usec を読み取る
+                    with open(path, 'r') as f:
+                        for line in f:
+                            if line.startswith('usage_usec'):
+                                usage_nsec = int(line.split()[1]) * 1000  # マイクロ秒→ナノ秒
+                                break
+                else:
+                    # cgroup v1: cpuacct.usageから直接読み取る
+                    with open(path, 'r') as f:
+                        usage_nsec = int(f.read().strip())
+
+                if usage_nsec is not None:
+                    break
+            except Exception:
+                continue
+
+        if usage_nsec is None:
+            # cgroupから読み取れない場合はpsutilにフォールバック
+            return round(psutil.cpu_percent(interval=0.1), 1)
 
         current_time = time.time()
 
-        # 初回呼び出しの場合は初期化のみ
+        # 初回呼び出しの場合は初期化してpsutilで取得
         if _last_cpu_stats['usage_usec'] == 0:
             _last_cpu_stats = {'usage_usec': usage_nsec, 'timestamp': current_time}
-            return 0.0
+            # psutilで即座の値を返す
+            return round(psutil.cpu_percent(interval=0.1), 1)
 
         # 前回との差分から使用率を計算
         time_delta = current_time - _last_cpu_stats['timestamp']
@@ -461,9 +488,10 @@ def get_cgroup_cpu():
 
         if time_delta > 0:
             # usage_deltaはナノ秒、time_deltaは秒
-            # CPU使用率 = (使用時間の増加 / 経過時間)
-            cpu_percent = (usage_delta / (time_delta * 1_000_000_000)) * 100
-            cpu_percent = max(0.0, min(cpu_percent, 400.0))  # 0-400%の範囲
+            # CPU使用率 = (使用時間の増加 / 経過時間) / CPU数
+            cpu_count = psutil.cpu_count() or 4
+            cpu_percent = (usage_delta / (time_delta * 1_000_000_000)) * 100 / cpu_count
+            cpu_percent = max(0.0, min(cpu_percent, 100.0))  # 0-100%の範囲
         else:
             cpu_percent = 0.0
 
@@ -472,8 +500,9 @@ def get_cgroup_cpu():
 
         return round(cpu_percent, 1)
     except Exception as e:
-        # cpuacct.usage読み取り失敗時は0を返す
-        return 0.0
+        # 失敗時はpsutilにフォールバック
+        logger.debug(f"cgroup CPU読み取り失敗、psutilを使用: {e}")
+        return round(psutil.cpu_percent(interval=0.1), 1)
 
 
 class AdaptiveResourceManager:
