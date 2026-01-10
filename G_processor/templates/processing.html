@@ -363,15 +363,11 @@
             <h2 style="margin-bottom: 20px; color: #1f2937;">📊 処理キューの状態</h2>
             <div class="stats-grid">
                 <div class="stat-card pending">
-                    <div class="label">📝 未処理</div>
+                    <div class="label">⏳ 処理待ち</div>
                     <div class="value" id="stat-pending">-</div>
                 </div>
-                <div class="stat-card processing">
-                    <div class="label">📋 バッチ処理対象</div>
-                    <div class="value" id="stat-processing">-</div>
-                </div>
                 <div class="stat-card completed">
-                    <div class="label">✅ 完了</div>
+                    <div class="label">✅ 処理済み</div>
                     <div class="value" id="stat-completed">-</div>
                 </div>
                 <div class="stat-card failed">
@@ -427,26 +423,6 @@
                 </div>
                 <div class="current-file" id="current-file">準備中...</div>
 
-                <!-- バッチ処理状況 -->
-                <div class="resource-grid" style="margin-bottom: 15px;">
-                    <div class="resource-card">
-                        <div class="label">✅ 成功</div>
-                        <div class="value" id="success-count" style="color: #10b981;">0</div>
-                    </div>
-                    <div class="resource-card">
-                        <div class="label">❌ 失敗</div>
-                        <div class="value" id="failed-count" style="color: #ef4444;">0</div>
-                    </div>
-                    <div class="resource-card">
-                        <div class="label">⏳ 待機中</div>
-                        <div class="value" id="queue-waiting">0</div>
-                    </div>
-                    <div class="resource-card">
-                        <div class="label">⚡ 処理中</div>
-                        <div class="value"><span id="active-workers">0</span>件</div>
-                    </div>
-                </div>
-
                 <!-- システムリソース -->
                 <div class="resource-grid">
                     <div class="resource-card">
@@ -458,8 +434,8 @@
                         <div class="value" id="memory-usage">-</div>
                     </div>
                     <div class="resource-card">
-                        <div class="label">⚡ 並列処理</div>
-                        <div class="value" id="parallel-info">-</div>
+                        <div class="label">⚡ 実行中</div>
+                        <div class="value" id="active-workers">-</div>
                     </div>
                     <div class="resource-card">
                         <div class="label">⏱️ スロットル</div>
@@ -577,26 +553,15 @@
                     }
 
                     // リソース制御情報を更新
-                    const parallelInfo = document.getElementById('parallel-info');
+                    const activeWorkers = document.getElementById('active-workers');
                     const throttleInfo = document.getElementById('throttle-info');
 
                     if (data.resource_control) {
                         const currentParallel = data.resource_control.current_parallel || 0;
                         const maxParallel = data.resource_control.max_parallel || 10;
 
-                        parallelInfo.textContent = currentParallel + '/' + maxParallel + '件';
-
-                        // バッチ処理状況を更新
-                        const totalCount = data.total_count || 0;
-                        const successCount = data.success_count || 0;
-                        const failedCount = data.failed_count || 0;
-                        const processed = successCount + failedCount;
-                        const queueWaiting = Math.max(0, totalCount - processed - currentParallel);
-
-                        document.getElementById('success-count').textContent = successCount;
-                        document.getElementById('failed-count').textContent = failedCount;
-                        document.getElementById('queue-waiting').textContent = queueWaiting;
-                        document.getElementById('active-workers').textContent = currentParallel;
+                        // 実行中/実行可能数の形式で表示
+                        activeWorkers.textContent = currentParallel + '/' + maxParallel;
 
                         // スロットル表示をアイコン付きに変更
                         const delay = data.resource_control.throttle_delay;
@@ -608,7 +573,7 @@
                             throttleInfo.textContent = '🔴 減速中（' + delay.toFixed(1) + '秒）';
                         }
                     } else {
-                        parallelInfo.textContent = '-';
+                        activeWorkers.textContent = '-';
                         throttleInfo.textContent = '-';
                     }
 
@@ -708,7 +673,6 @@
                 if (data.success) {
                     const stats = data.stats;
                     document.getElementById('stat-pending').textContent = stats.pending || 0;
-                    document.getElementById('stat-processing').textContent = stats.processing || 0;
                     document.getElementById('stat-completed').textContent = stats.completed || 0;
                     document.getElementById('stat-failed').textContent = stats.failed || 0;
 
