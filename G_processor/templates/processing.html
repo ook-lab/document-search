@@ -496,9 +496,6 @@
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshStats();
-
-            // 初回のみ状態確認（処理中ならポーリング開始）
-            checkInitialStatus();
         });
 
         // ポーリング開始（処理中のみ）
@@ -513,25 +510,6 @@
             if (progressInterval) {
                 clearInterval(progressInterval);
                 progressInterval = null;
-            }
-        }
-
-        // 初回状態確認（Supabaseから直接取得）
-        async function checkInitialStatus() {
-            try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
-                    headers: {
-                        'apikey': SUPABASE_ANON_KEY,
-                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-                    }
-                });
-                const data = await response.json();
-                if (data && data[0] && data[0].is_processing) {
-                    isProcessing = true;
-                    startPolling();
-                }
-            } catch (error) {
-                console.error('初期状態確認エラー:', error);
             }
         }
 
