@@ -575,19 +575,45 @@
                 if (data.is_processing) {
                     isProcessing = true;
 
-                    // 進捗バーを更新
-                    const successCount = data.success_count || 0;
-                    const failedCount = data.failed_count || 0;
-                    const completedDocs = successCount + failedCount;
-                    const totalCount = data.total_count || 1;
-                    const percent = totalCount > 0 ? Math.round((completedDocs / totalCount) * 100) : 0;
+                    // 進捗バーを更新（処理中ドキュメントのステージ進捗の平均）
+                    const stageWeights = {
+                        'pending': 0,
+                        'stage_e': 20,
+                        'stage_f': 40,
+                        'stage_h': 60,
+                        'stage_j': 80,
+                        'stage_k': 90,
+                        'completed': 100,
+                        'failed': 100
+                    };
 
-                    progressBar.style.width = percent + '%';
-                    progressBar.textContent = `${percent}%`;
+                    // 処理中のドキュメントの進捗を計算
+                    let totalProgress = 0;
+                    if (Array.isArray(workersResult) && workersResult.length > 0) {
+                        workersResult.forEach(worker => {
+                            const stage = worker.current_stage || 'pending';
+                            totalProgress += stageWeights[stage] || 0;
+                        });
+                        const percent = Math.round(totalProgress / (workersResult.length * 100) * 100);
+                        progressBar.style.width = percent + '%';
+                        progressBar.textContent = `${percent}%`;
+                    } else {
+                        // 処理中ワーカーがいない場合
+                        progressBar.style.width = '0%';
+                        progressBar.textContent = '0%';
+                    }
 
                     // 現在のファイル名を更新
                     const fileName = data.current_file || '処理中...';
-                    currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
+                    const successCount = data.success_count || 0;
+                    const failedCount = data.failed_count || 0;
+                    const completedDocs = successCount + failedCount;
+                    const totalCount = data.total_count || 0;
+                    if (totalCount > 0) {
+                        currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
+                    } else {
+                        currentFile.textContent = fileName;
+                    }
 
                     // ボタン状態を更新
                     document.getElementById('start-btn').disabled = true;
