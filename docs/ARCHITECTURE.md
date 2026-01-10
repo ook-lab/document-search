@@ -27,7 +27,7 @@
              │
              ▼
 ┌──────────────────────────────────────────────────────────┐
-│            B_ingestion (データ取り込み層)                  │
+│            services/data-ingestion (データ取り込み層)                  │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐         │
 │  │   Drive    │  │   Gmail    │  │ Classroom  │         │
 │  │ Connector  │  │ Connector  │  │ Connector  │         │
@@ -38,7 +38,7 @@
              │
              ▼
 ┌──────────────────────────────────────────────────────────┐
-│         G_unified_pipeline (処理パイプライン層)            │
+│         shared/pipeline (処理パイプライン層)            │
 │                                                          │
 │  Stage E → F → G → H → I → J → K                        │
 │  (前処理～ベクトル化までの7段階)                           │
@@ -58,7 +58,7 @@
              │
              ▼
 ┌──────────────────────────────────────────────────────────┐
-│              G_cloud_run (API層)                         │
+│              services/doc-search (API層)                         │
 │  Flask 3.0 REST API                                     │
 │  ┌────────────┐  ┌────────────┐  ┌────────────┐       │
 │  │ /api/search│  │ /api/answer│  │ /api/health│       │
@@ -223,7 +223,7 @@ doc_data = {
 
 各ステージで使用するAIモデルを定義。
 
-**ファイルパス:** `G_unified_pipeline/config/models.yaml`
+**ファイルパス:** `shared/pipeline/config/models.yaml`
 
 ```yaml
 models:
@@ -272,7 +272,7 @@ models:
 
 workspace と doc_type に基づいてプロンプト・モデルをルーティング。
 
-**ファイルパス:** `G_unified_pipeline/config/pipeline_routing.yaml`
+**ファイルパス:** `shared/pipeline/config/pipeline_routing.yaml`
 
 ```yaml
 routing:
@@ -309,7 +309,7 @@ routing:
 
 全ステージのプロンプトを一元管理（**15個のMDファイルを統合**）。
 
-**ファイルパス:** `G_unified_pipeline/config/prompts.yaml`
+**ファイルパス:** `shared/pipeline/config/prompts.yaml`
 
 **構造:**
 
@@ -576,7 +576,7 @@ class ConfigLoader:
 このドキュメントと README.md があれば、システム全体を再構築可能です。
 - 設定ファイル3つ（models.yaml, pipeline_routing.yaml, prompts.yaml）
 - データベーススキーマ（migrations/add_stage_output_columns.sql）
-- コード構造（A_common, G_unified_pipeline, G_cloud_run）
+- コード構造（shared/common, shared/pipeline, services/doc-search）
 - 認証情報（.env, google_credentials.json）
 
 詳細なセットアップ手順は [README.md](README.md) を参照してください。

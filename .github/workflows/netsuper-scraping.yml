@@ -62,7 +62,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "楽天西友スクレイピング開始"
-          python -m B_ingestion.rakuten_seiyu.process_with_schedule
+          python -m services/data-ingestion.rakuten_seiyu.process_with_schedule
         continue-on-error: true
 
       - name: 東急ストアスクレイピング
@@ -74,7 +74,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "東急ストアスクレイピング開始"
-          python -m B_ingestion.tokyu_store.process_with_schedule
+          python -m services/data-ingestion.tokyu_store.process_with_schedule
         continue-on-error: true
 
       - name: ダイエースクレイピング
@@ -86,7 +86,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "ダイエースクレイピング開始"
-          python -m B_ingestion.daiei.process_with_schedule
+          python -m services/data-ingestion.daiei.process_with_schedule
         continue-on-error: true
 
       - name: Upload category config as artifact
@@ -94,5 +94,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: category-config
-          path: B_ingestion/common/category_config.json
+          path: services/data-ingestion/common/category_config.json
           retention-days: 30

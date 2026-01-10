@@ -35,8 +35,9 @@ from loguru import logger
 import hashlib
 
 # プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent
+root_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root_dir))
+sys.path.insert(0, str(root_dir / "services" / "data-ingestion"))
 
 from shared.common.database.client import DatabaseClient
 from shared.common.connectors.google_drive import GoogleDriveConnector

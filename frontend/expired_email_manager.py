@@ -17,10 +17,10 @@ import re
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
-from A_common.database.client import DatabaseClient
-from A_common.connectors.google_drive import GoogleDriveConnector
-from A_common.connectors.gmail_connector import GmailConnector
-from C_ai_common.llm_client.llm_client import LLMClient
+from shared.common.database.client import DatabaseClient
+from shared.common.connectors.google_drive import GoogleDriveConnector
+from shared.common.connectors.gmail_connector import GmailConnector
+from shared.ai.llm_client.llm_client import LLMClient
 
 load_dotenv()
 

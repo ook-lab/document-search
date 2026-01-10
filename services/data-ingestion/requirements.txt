@@ -1,5 +1,5 @@
 # Streamlit Cloud用 requirements.txt
-# B_ingestion の依存パッケージ
+# services/data-ingestion の依存パッケージ
 
 # Google API
 google-api-python-client==2.108.0

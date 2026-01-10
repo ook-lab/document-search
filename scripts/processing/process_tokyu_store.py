@@ -23,14 +23,15 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 # プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent
+root_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root_dir))
+sys.path.insert(0, str(root_dir / "services" / "data-ingestion"))
 
 # .envファイルを読み込む
 from dotenv import load_dotenv
 load_dotenv(root_dir / ".env")
 
-from B_ingestion.tokyu_store.product_ingestion import TokyuStoreProductIngestionPipeline
+from tokyu_store.product_ingestion import TokyuStoreProductIngestionPipeline
 
 # ロガー設定
 logging.basicConfig(

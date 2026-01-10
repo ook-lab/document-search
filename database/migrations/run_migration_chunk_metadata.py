@@ -60,7 +60,7 @@ if answer.lower() == 'yes':
     # スキーマを確認
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-        from A_common.database.client import DatabaseClient
+        from shared.common.database.client import DatabaseClient
 
         db = DatabaseClient()
         response = db.client.table('10_ix_search_index').select('*').limit(1).execute()

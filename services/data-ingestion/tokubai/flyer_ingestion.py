@@ -29,7 +29,7 @@ load_dotenv(root_dir / ".env")
 
 from shared.common.connectors.google_drive import GoogleDriveConnector
 from shared.common.database.client import DatabaseClient
-from B_ingestion.tokubai.tokubai_scraper import TokubaiScraper
+from tokubai.tokubai_scraper import TokubaiScraper
 
 
 class TokubaiFlyerIngestionPipeline:

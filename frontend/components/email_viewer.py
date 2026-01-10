@@ -497,7 +497,7 @@ def render_email_html_preview(email: Dict[str, Any], drive_connector=None):
     # Google DriveからHTMLをダウンロードして表示
     try:
         if drive_connector is None:
-            from A_common.connectors.google_drive import GoogleDriveConnector
+            from shared.common.connectors.google_drive import GoogleDriveConnector
             drive_connector = GoogleDriveConnector()
 
         import tempfile

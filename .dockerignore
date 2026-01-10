@@ -48,5 +48,5 @@ test_*.py
 *_test.py
 
 # UI関連（処理ジョブには不要）
-ui/
-B_ingestion/*_ui.py
+frontend/
+services/data-ingestion/*_ui.py

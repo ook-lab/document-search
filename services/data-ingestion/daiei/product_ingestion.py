@@ -24,8 +24,8 @@ sys.path.insert(0, str(root_dir))
 from dotenv import load_dotenv
 load_dotenv(root_dir / ".env")
 
-from B_ingestion.common.base_product_ingestion import BaseProductIngestionPipeline
-from B_ingestion.daiei.daiei_scraper_playwright import DaieiScraperPlaywright
+from common.base_product_ingestion import BaseProductIngestionPipeline
+from daiei.daiei_scraper_playwright import DaieiScraperPlaywright
 
 # ロガー設定
 logger = logging.getLogger(__name__)

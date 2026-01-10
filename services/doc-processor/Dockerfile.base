@@ -14,5 +14,5 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 依存関係をインストール
-COPY G_processor/requirements.txt .
+COPY services/doc-processor/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

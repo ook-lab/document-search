@@ -56,8 +56,8 @@ python test_hybrid_ocr.py data/sample_document.png
 ### 2. Stage Fパイプラインで使用
 
 ```python
-from G_unified_pipeline.stage_f_visual import StageFVisualAnalyzer
-from C_ai_common.llm_client.llm_client import LLMClient
+from shared/pipeline.stage_f_visual import StageFVisualAnalyzer
+from shared/ai.llm_client.llm_client import LLMClient
 from pathlib import Path
 
 # ハイブリッドOCRモードを有効化
@@ -167,7 +167,7 @@ pip install surya-ocr paddlepaddle paddleocr "paddlex[ocr]"
 
 ### 設定方法
 
-`G_unified_pipeline/config/models.yaml` で制御：
+`shared/pipeline/config/models.yaml` で制御：
 
 ```yaml
 hybrid_ocr:
@@ -179,7 +179,7 @@ hybrid_ocr:
 ### プログラムでの有効化
 
 ```python
-from G_unified_pipeline.pipeline import UnifiedDocumentPipeline
+from shared/pipeline.pipeline import UnifiedDocumentPipeline
 
 # 方法1: 設定ファイルから自動取得
 pipeline = UnifiedDocumentPipeline()  # models.yamlの設定を使用

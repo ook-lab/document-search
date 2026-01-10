@@ -22,8 +22,8 @@ from typing import Dict, Any, Optional, List
 import pandas as pd
 from loguru import logger
 
-from A_common.database.client import DatabaseClient
-from A_common.connectors.google_drive import GoogleDriveConnector
+from shared.common.database.client import DatabaseClient
+from shared.common.connectors.google_drive import GoogleDriveConnector
 
 # 新しいコンポーネントとユーティリティをインポート
 from ui.utils.schema_detector import SchemaDetector
@@ -858,8 +858,8 @@ Path.suffix: '{Path(file_path).suffix}'
                                 chunk_target_text = corrected_combined_text
 
                                 # 3. メタデータチャンク生成
-                                from A_common.processing.metadata_chunker import MetadataChunker
-                                from C_ai_common.llm_client.llm_client import LLMClient
+                                from shared.common.processing.metadata_chunker import MetadataChunker
+                                from shared.ai.llm_client.llm_client import LLMClient
 
                                 llm_client = LLMClient()
                                 metadata_chunker = MetadataChunker()
@@ -894,7 +894,7 @@ Path.suffix: '{Path(file_path).suffix}'
                                     current_chunk_index += 1
 
                                 # 4. 小チャンク生成
-                                from A_common.utils.chunking import TextChunker
+                                from shared.common.utils.chunking import TextChunker
                                 chunker = TextChunker(chunk_size=150, chunk_overlap=30)
                                 small_chunks = chunker.split_text(chunk_target_text)
 
@@ -916,7 +916,7 @@ Path.suffix: '{Path(file_path).suffix}'
                                     current_chunk_index += 1
 
                                 # 5. 合成チャンク生成
-                                from A_common.utils.synthetic_chunks import create_all_synthetic_chunks
+                                from shared.common.utils.synthetic_chunks import create_all_synthetic_chunks
                                 synthetic_chunks = create_all_synthetic_chunks(new_metadata, file_name)
 
                                 for synthetic in synthetic_chunks:

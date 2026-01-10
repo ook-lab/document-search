@@ -30,7 +30,7 @@ load_dotenv(root_dir / ".env")
 
 from shared.common.connectors.google_drive import GoogleDriveConnector
 from shared.common.database.client import DatabaseClient
-from B_ingestion.waseda_academy.browser_automation import WasedaAcademyBrowser
+from waseda_academy.browser_automation import WasedaAcademyBrowser
 
 
 class WasedaNoticeIngestionPipeline:

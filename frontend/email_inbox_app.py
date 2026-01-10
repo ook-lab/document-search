@@ -22,9 +22,9 @@ from typing import Dict, Any, List
 import pandas as pd
 from loguru import logger
 
-from A_common.database.client import DatabaseClient
-from A_common.connectors.google_drive import GoogleDriveConnector
-from A_common.connectors.gmail_connector import GmailConnector
+from shared.common.database.client import DatabaseClient
+from shared.common.connectors.google_drive import GoogleDriveConnector
+from shared.common.connectors.gmail_connector import GmailConnector
 import os
 
 # コンポーネントをインポート

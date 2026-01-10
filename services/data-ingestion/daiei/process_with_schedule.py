@@ -23,8 +23,8 @@ sys.path.insert(0, str(root_dir))
 from dotenv import load_dotenv
 load_dotenv(root_dir / ".env")
 
-from B_ingestion.common.category_manager_db import CategoryManagerDB
-from B_ingestion.daiei.product_ingestion import DaieiProductIngestionPipeline
+from common.category_manager_db import CategoryManagerDB
+from daiei.product_ingestion import DaieiProductIngestionPipeline
 
 # ロガー設定
 logger = logging.getLogger(__name__)

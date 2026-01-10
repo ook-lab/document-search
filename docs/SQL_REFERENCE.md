@@ -135,7 +135,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 **実行タイミング:** メインスキーマ作成後（チラシ機能を使用する場合）
 
-#### 5. K_kakeibo/schema.sql
+#### 5. shared/kakeibo/schema.sql
 **用途:** 家計簿システムのテーブルを作成
 
 **実行タイミング:** 家計簿機能を使用する場合
@@ -167,7 +167,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 5. **オプション: サブシステムのスキーマ**
    - チラシ: `database/migrations/create_flyer_schema.sql`
-   - 家計簿: `K_kakeibo/schema.sql`
+   - 家計簿: `shared/kakeibo/schema.sql`
 
 ### スキーマのエクスポート方法
 
@@ -191,7 +191,7 @@ supabase db dump --schema public > schema_export.sql
 
 ### 1. 埋め込み生成（Stage K）
 ```python
-from C_ai_common.embeddings.openai_embeddings import generate_openai_embedding
+from shared/ai.embeddings.openai_embeddings import generate_openai_embedding
 
 text = "検索対象のテキスト"
 embedding = generate_openai_embedding(text)  # 1536次元ベクトル
@@ -307,7 +307,7 @@ WHERE table_name = 'Rawdata_FILE_AND_MAIL'
 
 - [README.md](README.md) - システム全体の概要とセットアップ
 - [ARCHITECTURE.md](ARCHITECTURE.md) - 技術詳細とアーキテクチャ
-- [G_unified_pipeline/config/](G_unified_pipeline/config/) - パイプライン設定
+- [shared/pipeline/config/](shared/pipeline/config/) - パイプライン設定
 
 ---
 

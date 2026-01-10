@@ -26,7 +26,7 @@ Google Drive/Gmail/Classroomから取得したドキュメント（PDF、画像�
          │
          ▼
 ┌─────────────────┐
-│  B_ingestion    │  ← データ取り込み
+│  services/data-ingestion    │  ← データ取り込み
 │  (監視・取得)    │
 └────────┬────────┘
          │
@@ -46,7 +46,7 @@ Google Drive/Gmail/Classroomから取得したドキュメント（PDF、画像�
          │
          ▼
 ┌─────────────────┐
-│  G_cloud_run    │  ← 検索・回答API
+│  services/doc-search    │  ← 検索・回答API
 │  (Flask)        │
 └─────────────────┘
 ```
@@ -124,7 +124,7 @@ J_resources/sql/add_match_documents_function.sql
 
 # 4. オプション: チラシ/家計簿機能
 database/migrations/create_flyer_schema.sql  # チラシ機能
-K_kakeibo/schema.sql                         # 家計簿機能
+shared/kakeibo/schema.sql                         # 家計簿機能
 ```
 
 詳細な手順と全SQLファイルの説明は [SQL_REFERENCE.md](SQL_REFERENCE.md) を参照。
@@ -157,10 +157,10 @@ mv ~/Downloads/your-credentials.json _runtime/credentials/google_credentials.jso
 Google Driveの特定フォルダを監視し、新規ファイルを自動処理：
 
 ```bash
-python B_ingestion/monitoring/inbox_monitor.py
+python services/data-ingestion/monitoring/inbox_monitor.py
 ```
 
-設定: `B_ingestion/monitoring/config.yaml`
+設定: `services/data-ingestion/monitoring/config.yaml`
 
 #### 方法2: 手動処理
 
@@ -210,7 +210,7 @@ H: 構造化 → I: 統合・要約 → J: チャンク化 → K: ベクトル�
 Flask APIサーバーを起動：
 
 ```bash
-cd G_cloud_run
+cd services/doc-search
 python app.py
 ```
 
@@ -271,23 +271,23 @@ prompts:
 
 ```
 document_management_system/
-├── A_common/                     # 共通モジュール
+├── shared/common/                     # 共通モジュール
 │   ├── database/                # Supabaseクライアント
 │   ├── processors/              # PDF/Office処理
 │   ├── connectors/              # Drive/Gmail/Classroom
 │   └── processing/              # チャンク処理
 │
-├── B_ingestion/                  # データ取り込み
+├── services/data-ingestion/                  # データ取り込み
 │   ├── gmail/                   # Gmail取り込み
 │   ├── google_drive/            # Drive取り込み
 │   ├── google_classroom/        # Classroom取り込み
 │   └── monitoring/              # 監視スクリプト
 │
-├── C_ai_common/                  # AI共通機能
+├── shared/ai/                  # AI共通機能
 │   ├── llm_client/              # LLMクライアント
 │   └── embeddings/              # ベクトル埋め込み
 │
-├── G_unified_pipeline/          # 統合処理パイプライン
+├── shared/pipeline/          # 統合処理パイプライン
 │   ├── stage_e_preprocessing.py   # Stage E: 前処理
 │   ├── stage_f_visual.py          # Stage F: Vision解析
 │   ├── stage_g_formatting.py      # Stage G: テキスト整形
@@ -302,7 +302,7 @@ document_management_system/
 │       ├── pipeline_routing.yaml # ルーティング設定
 │       └── prompts.yaml          # プロンプト（統合版）
 │
-├── G_cloud_run/                  # Flask API
+├── services/doc-search/                  # Flask API
 │   ├── app.py                   # メインアプリ
 │   ├── templates/               # HTMLテンプレート
 │   └── requirements.txt
@@ -328,7 +328,7 @@ document_management_system/
 **対処:**
 ```bash
 # prompts.yaml の存在確認
-ls G_unified_pipeline/config/prompts.yaml
+ls shared/pipeline/config/prompts.yaml
 
 # ConfigLoader のログを確認
 # "✅ prompts.yaml を読み込みました" が表示されるはず

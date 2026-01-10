@@ -6,7 +6,7 @@ steps:
       - '-t'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-repo/mail-doc-search-system:latest'
       - '-f'
-      - 'G_cloud_run/Dockerfile'
+      - 'services/doc-search/Dockerfile'
       - '.'
     dir: '.'
 
