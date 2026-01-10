@@ -33,5 +33,9 @@ COPY K_kakeibo/ ./K_kakeibo/
 # 6. ポート環境変数を設定
 ENV PORT=8080
 
-# 7. サーバーを起動（gunicornを使用）
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+# 7. 起動スクリプトをコピーして実行権限を付与
+COPY G_processor/start.sh .
+RUN chmod +x start.sh
+
+# 8. サーバーとバックグラウンド処理を起動
+CMD ["./start.sh"]
