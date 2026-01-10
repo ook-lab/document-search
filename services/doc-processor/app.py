@@ -308,11 +308,15 @@ def get_worker_status() -> dict:
         }
     except Exception as e:
         logger.error(f"ワーカー状況取得エラー: {e}")
-        return {'max_parallel': 10, 'current_workers': 0, 'is_processing': False, 'workers': []}
+        return {'max_parallel': 3, 'current_workers': 0, 'is_processing': False, 'workers': []}
 
 
 def adjust_max_parallel(memory_percent: float) -> int:
-    """メモリ使用率に基づいてmax_parallelを調整"""
+    """メモリ使用率に基づいてmax_parallelを調整
+
+    重要: 実行数が上限に達している場合のみ並列数を増やす
+    （実際にフル稼働している状態で余裕があることを確認してから増やす）
+    """
     try:
         client = get_supabase_client()
         status = get_worker_status()
@@ -321,7 +325,8 @@ def adjust_max_parallel(memory_percent: float) -> int:
 
         new_max = current_max
 
-        # メモリに余裕があり、ワーカーが上限に近い場合は増加
+        # メモリに余裕があり、ワーカーが上限に達している場合のみ増加
+        # current_workers >= current_max - 1 で、ほぼフル稼働していることを確認
         if memory_percent < 60 and current_workers >= current_max - 1:
             new_max = min(current_max + 1, 20)  # 最大20
         # メモリが逼迫している場合は減少
@@ -337,7 +342,7 @@ def adjust_max_parallel(memory_percent: float) -> int:
         return new_max
     except Exception as e:
         logger.error(f"max_parallel調整エラー: {e}")
-        return 10
+        return 3
 
 
 def can_start_new_worker() -> bool:
@@ -588,11 +593,12 @@ class AdaptiveResourceManager:
         from loguru import logger
         self.logger = logger
 
-    def adjust_resources(self, memory_percent):
+    def adjust_resources(self, memory_percent, current_workers=0):
         """リソース使用率に基づいて並列数とスロットルを調整
 
         Args:
             memory_percent: 現在のメモリ使用率（%）
+            current_workers: 現在の実行中ワーカー数
 
         Returns:
             dict: 調整情報 {'max_parallel': int, 'throttle_delay': float, 'adjusted': bool}
@@ -639,13 +645,14 @@ class AdaptiveResourceManager:
             )
 
         # フェーズ1: 並列数増加（余裕がある場合）
+        # 重要: 実行数が上限に達している場合のみ増やす（実際にフル稼働している状態で余裕があることを確認）
         if memory_percent < self.memory_low and self.throttle_delay == 0:
-            # 余裕あり かつ 減速なし → 並列数を増やす
-            if self.max_parallel < self.max_parallel_limit:
+            # 実行数が上限に達している かつ 余裕あり かつ 減速なし → 並列数を増やす
+            if current_workers >= self.max_parallel - 1 and self.max_parallel < self.max_parallel_limit:
                 self.max_parallel = min(self.max_parallel + self.parallel_step, self.max_parallel_limit)
                 adjusted = True
                 self.logger.info(
-                    f"[リソース制御] ⬆️ メモリ余裕 ({memory_percent:.1f}%) → 並列数増加: {original_parallel} → {self.max_parallel}"
+                    f"[リソース制御] ⬆️ メモリ余裕 ({memory_percent:.1f}%) + フル稼働中 ({current_workers}/{original_parallel}) → 並列数増加: {original_parallel} → {self.max_parallel}"
                 )
 
         if adjusted:
@@ -991,22 +998,23 @@ def start_processing():
                             memory_info = get_cgroup_memory()
                             memory_percent = memory_info['percent']
 
+                            # ワーカー数を取得（並列数調整に必要）
+                            worker_status = get_worker_status()
+                            current_workers = worker_status['current_workers']
+
                             # Supabaseのmax_parallelを調整（複数インスタンス共有）
                             new_max = adjust_max_parallel(memory_percent)
 
-                            # ローカルのリソース調整も実行
-                            status = resource_manager.adjust_resources(memory_percent)
+                            # ローカルのリソース調整も実行（current_workersを渡す）
+                            status = resource_manager.adjust_resources(memory_percent, current_workers)
                             # Supabaseの値で上書き
                             resource_manager.max_parallel_limit = new_max
 
                             # リソース制御情報を更新
                             processing_status['resource_control']['max_parallel'] = new_max
+                            processing_status['resource_control']['current_parallel'] = current_workers
                             processing_status['resource_control']['throttle_delay'] = status['throttle_delay']
                             processing_status['resource_control']['adjustment_count'] = resource_manager.adjustment_count
-
-                            # ワーカー数を取得
-                            worker_status = get_worker_status()
-                            processing_status['resource_control']['current_parallel'] = worker_status['current_workers']
 
                             # ログをSupabaseに定期同期（2秒ごと）
                             update_progress_to_supabase(
