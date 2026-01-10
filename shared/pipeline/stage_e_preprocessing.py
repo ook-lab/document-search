@@ -85,7 +85,7 @@ class StageEPreprocessor:
             # 画像ファイル処理（E1-E5ログ付き）
             # HTML→PNG の場合も含む（mime_type='text/html' だがファイルはPNG）
             elif mime_type.startswith('image/') or mime_type == 'text/html':
-                content, method = self._process_image_with_stages(file_path, pre_extracted_text)
+                content, method = self._process_image_with_stages(file_path, pre_extracted_text, workspace)
 
             # 最終ログ
             logger.info("=" * 60)
@@ -228,7 +228,8 @@ class StageEPreprocessor:
     def _process_image_with_stages(
         self,
         file_path: Path,
-        pre_extracted_text: Optional[str] = None
+        pre_extracted_text: Optional[str] = None,
+        workspace: Optional[str] = None
     ) -> tuple:
         """
         画像ファイル処理（E1-E5ステージログ付き）
@@ -236,6 +237,7 @@ class StageEPreprocessor:
         Args:
             file_path: ファイルパス
             pre_extracted_text: 既に抽出済みのテキスト（HTML→PNG等の場合）
+            workspace: ワークスペース（gmail判定に使用）
 
         Returns:
             (content, method)

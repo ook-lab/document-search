@@ -512,7 +512,7 @@
                 const lockResult = await lockResponse.json();
                 const workersResult = await workersResponse.json();
                 const data = lockResult[0];
-                const currentWorkers = workersResult ? workersResult.length : 0;
+                const currentWorkers = Array.isArray(workersResult) ? workersResult.length : 0;
 
                 if (!data) {
                     console.error('processing_lockデータが見つかりません');
