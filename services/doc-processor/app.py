@@ -945,8 +945,15 @@ def start_processing():
             f"[{datetime.now().strftime('%H:%M:%S')}] 処理開始準備中...",
             f"[{datetime.now().strftime('%H:%M:%S')}] ワークスペース: {workspace}, 制限: {limit}件"
         ]
+        # リソース制御を初期化（max_parallel=3から開始）
+        processing_status['resource_control'] = {
+            'current_parallel': 0,
+            'max_parallel': 3,  # 初期値は3、リソースに余裕があれば最大30まで増加
+            'throttle_delay': 0.0,
+            'adjustment_count': 0
+        }
 
-        # Supabaseに初期状態を保存
+        # Supabaseに初期状態を保存（max_parallel=3を明示的に設定）
         update_progress_to_supabase(0, 0, '初期化中...', 0, 0, processing_status['logs'])
 
         # DocumentProcessorをインポート
