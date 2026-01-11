@@ -7,8 +7,9 @@ import sys
 from pathlib import Path
 
 # プロジェクトルートをPythonパスに追加（ローカル実行時用）
+# Docker環境では PYTHONPATH=/app が設定済みなので、parent.parentが/になる場合はスキップ
 project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
+if str(project_root) != '/' and str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from datetime import datetime, timezone
@@ -219,7 +220,7 @@ def update_worker_count() -> int:
 
 
 def update_progress_to_supabase(current_index: int, total_count: int, current_file: str,
-                                 success_count: int, failed_count: int, logs: list):
+                                 success_count: int, error_count: int, logs: list):
     """進捗情報をSupabaseに保存（複数インスタンス共有用）"""
     try:
         client = get_supabase_client()
@@ -230,21 +231,24 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
         cpu_percent = get_cgroup_cpu()
         memory_info = get_cgroup_memory()
 
-        # スロットル情報を取得
-        throttle_delay = processing_status.get('resource_control', {}).get('throttle_delay', 0.0)
+        # リソース制御情報を取得
+        resource_control = processing_status.get('resource_control', {})
+        throttle_delay = resource_control.get('throttle_delay', 0.0)
+        max_parallel = resource_control.get('max_parallel', 3)  # デフォルト3
 
         client.table('processing_lock').update({
             'current_index': current_index,
             'total_count': total_count,
             'current_file': current_file,
             'success_count': success_count,
-            'failed_count': failed_count,
+            'error_count': error_count,
             'logs': latest_logs,
             'cpu_percent': cpu_percent,
             'memory_percent': memory_info['percent'],
             'memory_used_gb': memory_info['used_gb'],
             'memory_total_gb': memory_info['total_gb'],
             'throttle_delay': throttle_delay,
+            'max_parallel': max_parallel,
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
         return True
@@ -265,7 +269,7 @@ def get_progress_from_supabase() -> dict:
                 'total_count': data.get('total_count', 0),
                 'current_file': data.get('current_file', ''),
                 'success_count': data.get('success_count', 0),
-                'failed_count': data.get('failed_count', 0),
+                'error_count': data.get('error_count', 0),
                 'logs': data.get('logs', [])
             }
         return {
@@ -273,7 +277,7 @@ def get_progress_from_supabase() -> dict:
             'total_count': 0,
             'current_file': '',
             'success_count': 0,
-            'failed_count': 0,
+            'error_count': 0,
             'logs': []
         }
     except Exception as e:
@@ -283,7 +287,7 @@ def get_progress_from_supabase() -> dict:
             'total_count': 0,
             'current_file': '',
             'success_count': 0,
-            'failed_count': 0,
+            'error_count': 0,
             'logs': []
         }
 
@@ -301,7 +305,7 @@ def get_worker_status() -> dict:
         workers = workers_result.data if workers_result.data else []
 
         return {
-            'max_parallel': lock_data.get('max_parallel', 10),
+            'max_parallel': lock_data.get('max_parallel', 3),
             'current_workers': len(workers),
             'is_processing': lock_data.get('is_processing', False),
             'workers': workers
@@ -358,7 +362,7 @@ processing_status = {
     'total_count': 0,
     'current_file': '',
     'success_count': 0,
-    'failed_count': 0,
+    'error_count': 0,
     'logs': [],
     # ステージ進捗（ドキュメント内の進捗）
     'current_stage': '',
@@ -647,8 +651,8 @@ class AdaptiveResourceManager:
         # フェーズ1: 並列数増加（余裕がある場合）
         # 重要: 実行数が上限に達している場合のみ増やす（実際にフル稼働している状態で余裕があることを確認）
         if memory_percent < self.memory_low and self.throttle_delay == 0:
-            # 実行数が上限に達している かつ 余裕あり かつ 減速なし → 並列数を増やす
-            if current_workers >= self.max_parallel - 1 and self.max_parallel < self.max_parallel_limit:
+            # 実行数が上限に達している（完全にフル稼働） かつ 余裕あり かつ 減速なし → 並列数を増やす
+            if current_workers >= self.max_parallel and self.max_parallel < self.max_parallel_limit:
                 self.max_parallel = min(self.max_parallel + self.parallel_step, self.max_parallel_limit)
                 adjusted = True
                 self.logger.info(
@@ -709,8 +713,8 @@ def log_to_processing_status(message):
         elif '成功' in msg or '✅' in msg:
             processing_status['current_stage'] = '完了'
             processing_status['stage_progress'] = 1.0
-        elif '失敗' in msg or '❌' in msg:
-            processing_status['current_stage'] = '失敗'
+        elif 'エラー' in msg or '❌' in msg:
+            processing_status['current_stage'] = 'エラー'
             processing_status['stage_progress'] = 1.0
         elif 'ダウンロード' in msg_lower or 'download' in msg_lower:
             processing_status['current_stage'] = 'ダウンロード中'
@@ -785,7 +789,7 @@ def get_process_progress():
             'total_count': progress['total_count'],
             'current_file': progress['current_file'],
             'success_count': progress['success_count'],
-            'failed_count': progress['failed_count'],
+            'error_count': progress['error_count'],
             'logs': progress['logs'],  # 最新150件
             # ステージ進捗（Supabaseから取得）
             'current_stage': current_stage,
@@ -855,7 +859,7 @@ def get_process_stats():
     - pending: 未処理（まだバッチに選ばれていない）
     - processing: このバッチの処理対象として選択済み（重複防止マーク）
     - completed: 処理完了
-    - failed: 処理失敗
+    - error: 処理エラー
     """
     try:
         from shared.common.database.client import DatabaseClient
@@ -874,13 +878,16 @@ def get_process_stats():
             'pending': 0,
             'processing': 0,  # バッチに選ばれた件数
             'completed': 0,
-            'failed': 0
+            'error': 0  # フロントエンド表示用は 'error'
         }
 
         for doc in response.data:
             status = doc.get('processing_status')
             # nullは無視（pending/processing/completed/failedのみカウント）
-            if status in stats:
+            # データベースのステータスは 'failed' のまま、フロントには 'error' として送る
+            if status == 'failed':
+                stats['error'] = stats.get('error', 0) + 1
+            elif status in stats:
                 stats[status] = stats.get(status, 0) + 1
 
         return jsonify({
@@ -931,7 +938,7 @@ def start_processing():
         processing_status['total_count'] = 0
         processing_status['current_file'] = '初期化中...'
         processing_status['success_count'] = 0
-        processing_status['failed_count'] = 0
+        processing_status['error_count'] = 0
         processing_status['current_stage'] = ''
         processing_status['stage_progress'] = 0.0
         processing_status['logs'] = [
@@ -980,10 +987,11 @@ def start_processing():
 
             async def process_all():
                 # アダプティブリソースマネージャーを初期化
-                # 現在: 16GBで max_parallel=10
-                # TODO: 32GBの場合は max_parallel=20-30 に増やすことでコストメリットが期待できる
-                # [MEMORY PER DOC] ログで1ドキュメントあたりのメモリ消費を確認してから調整
-                resource_manager = AdaptiveResourceManager(initial_max_parallel=3, min_parallel=1, max_parallel=10)
+                # リソース適応型並列制御
+                # - 初期並列数: 3（最小同時実行数）
+                # - 最小並列数: 3（リソース逼迫時も3は維持）
+                # - 最大並列数: 30（余裕がある場合はここまで増やす）
+                resource_manager = AdaptiveResourceManager(initial_max_parallel=3, min_parallel=3, max_parallel=30)
 
                 # 並列数制御用のセマフォ（動的に調整）
                 # NOTE: セマフォは固定値なので、タスク内で制御ロジックを実装
@@ -998,21 +1006,16 @@ def start_processing():
                             memory_info = get_cgroup_memory()
                             memory_percent = memory_info['percent']
 
-                            # ワーカー数を取得（並列数調整に必要）
-                            worker_status = get_worker_status()
-                            current_workers = worker_status['current_workers']
+                            # 実際の並列実行数を取得（len(active_tasks)の値）
+                            current_workers = processing_status['resource_control'].get('current_parallel', 0)
 
-                            # Supabaseのmax_parallelを調整（複数インスタンス共有）
-                            new_max = adjust_max_parallel(memory_percent)
-
-                            # ローカルのリソース調整も実行（current_workersを渡す）
+                            # ローカルのリソース調整を実行（current_workersを渡す）
+                            # max_parallel_limit（30）は初期化時に設定済み、動的には変更しない
                             status = resource_manager.adjust_resources(memory_percent, current_workers)
-                            # Supabaseの値で上書き
-                            resource_manager.max_parallel_limit = new_max
 
-                            # リソース制御情報を更新
-                            processing_status['resource_control']['max_parallel'] = new_max
-                            processing_status['resource_control']['current_parallel'] = current_workers
+                            # リソース制御情報を更新（実際に使用される動的な max_parallel を保存）
+                            processing_status['resource_control']['max_parallel'] = resource_manager.max_parallel
+                            # current_parallel は process_single_document で更新されるのでここでは触らない
                             processing_status['resource_control']['throttle_delay'] = status['throttle_delay']
                             processing_status['resource_control']['adjustment_count'] = resource_manager.adjustment_count
 
@@ -1022,7 +1025,7 @@ def start_processing():
                                 processing_status['total_count'],
                                 processing_status['current_file'],
                                 processing_status['success_count'],
-                                processing_status['failed_count'],
+                                processing_status['error_count'],
                                 processing_status['logs']
                             )
 
@@ -1066,7 +1069,7 @@ def start_processing():
                         update_progress_to_supabase(
                             index, len(docs), title,
                             processing_status['success_count'],
-                            processing_status['failed_count'],
+                            processing_status['error_count'],
                             processing_status['logs']
                         )
 
@@ -1090,16 +1093,16 @@ def start_processing():
                                 f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 成功: {title}"
                             )
                         else:
-                            processing_status['failed_count'] += 1
+                            processing_status['error_count'] += 1
                             processing_status['logs'].append(
-                                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ 失敗: {title}"
+                                f"[{datetime.now().strftime('%H:%M:%S')}] ❌ エラー: {title}"
                             )
 
                         # Supabaseに結果を保存
                         update_progress_to_supabase(
                             index, len(docs), title,
                             processing_status['success_count'],
-                            processing_status['failed_count'],
+                            processing_status['error_count'],
                             processing_status['logs']
                         )
 
@@ -1122,14 +1125,14 @@ def start_processing():
                             break
 
                         # 並列数制御：active_tasksが max_parallel 未満になるまで待機
-                        # Supabaseで共有されたmax_parallel_limitを使用
-                        while len(active_tasks) >= resource_manager.max_parallel_limit:
+                        # 動的に調整される max_parallel を使用（リソースに応じて3～30で変動）
+                        while len(active_tasks) >= resource_manager.max_parallel:
                             # 完了したタスクを削除
                             done_tasks = [t for t in active_tasks if t.done()]
                             for t in done_tasks:
                                 active_tasks.remove(t)
 
-                            if len(active_tasks) >= resource_manager.max_parallel_limit:
+                            if len(active_tasks) >= resource_manager.max_parallel:
                                 # まだ並列数が上限に達している場合は少し待機
                                 await asyncio.sleep(0.1)
 
@@ -1156,7 +1159,7 @@ def start_processing():
                 processing_status['is_processing'] = False
                 processing_status['current_file'] = ''
                 processing_status['logs'].append(
-                    f"[{datetime.now().strftime('%H:%M:%S')}] 処理完了: 成功={processing_status['success_count']}, 失敗={processing_status['failed_count']}"
+                    f"[{datetime.now().strftime('%H:%M:%S')}] 処理完了: 成功={processing_status['success_count']}, エラー={processing_status['error_count']}"
                 )
 
                 # Supabaseに完了状態を保存
@@ -1165,7 +1168,7 @@ def start_processing():
                     processing_status['total_count'],
                     '',
                     processing_status['success_count'],
-                    processing_status['failed_count'],
+                    processing_status['error_count'],
                     processing_status['logs']
                 )
             except Exception as e:
@@ -1238,13 +1241,30 @@ def reset_processing():
     # Supabaseロック解放
     set_processing_lock(False)
 
+    # Supabaseのmax_parallelも3にリセット
+    try:
+        client = get_supabase_client()
+        client.table('processing_lock').update({
+            'max_parallel': 3,
+            'current_workers': 0,
+            'current_index': 0,
+            'total_count': 0,
+            'success_count': 0,
+            'error_count': 0,
+            'current_file': '',
+            'throttle_delay': 0.0,
+            'logs': []
+        }).eq('id', 1).execute()
+    except Exception as e:
+        logger.error(f"Supabaseリセットエラー: {e}")
+
     # ローカル状態もリセット
     processing_status['is_processing'] = False
     processing_status['current_index'] = 0
     processing_status['total_count'] = 0
     processing_status['current_file'] = ''
     processing_status['success_count'] = 0
-    processing_status['failed_count'] = 0
+    processing_status['error_count'] = 0
     processing_status['current_stage'] = ''
     processing_status['stage_progress'] = 0.0
     processing_status['logs'] = [

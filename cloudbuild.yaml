@@ -1,0 +1,24 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+      - '-f'
+      - 'services/doc-processor/Dockerfile'
+      - '--build-arg'
+      - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY}'
+      - '--build-arg'
+      - 'ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY}'
+      - '--build-arg'
+      - 'OPENAI_API_KEY=${_OPENAI_API_KEY}'
+      - '--build-arg'
+      - 'SUPABASE_URL=${_SUPABASE_URL}'
+      - '--build-arg'
+      - 'SUPABASE_KEY=${_SUPABASE_KEY}'
+      - '--build-arg'
+      - 'SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
+      - '.'
+images:
+  - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+timeout: 1200s

@@ -57,9 +57,20 @@ class GmailConnector:
                 logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH}")
                 return build('gmail', 'v1', credentials=creds)
             except Exception as e:
-                logger.warning(f"環境変数からの認証失敗、Streamlit Secretsにフォールバック: {e}")
+                logger.warning(f"環境変数からの認証失敗: {e}")
 
-        # 優先順位2: Streamlit Secrets (デプロイ環境用)
+        # 優先順位2: ADC (Application Default Credentials) - Cloud Run用
+        try:
+            import google.auth
+            creds, project = google.auth.default(scopes=SCOPES)
+            # ドメイン全体の委任のため、subjectを指定
+            creds_with_subject = creds.with_subject(self.user_email)
+            logger.info("ADC (Application Default Credentials) で認証成功")
+            return build('gmail', 'v1', credentials=creds_with_subject)
+        except Exception as e:
+            logger.warning(f"ADC認証失敗: {e}")
+
+        # 優先順位3: Streamlit Secrets (デプロイ環境用)
         try:
             import streamlit as st
             if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
@@ -76,11 +87,12 @@ class GmailConnector:
         except Exception as e:
             logger.warning(f"Streamlit Secretsからの認証失敗: {e}")
 
-        # どちらも失敗した場合
+        # 全て失敗した場合
         raise FileNotFoundError(
             f"認証情報が見つかりません。以下のいずれかを設定してください:\n"
             f"1. 環境変数 GOOGLE_APPLICATION_CREDENTIALS (現在: {CREDENTIALS_PATH})\n"
-            f"2. Streamlit Secrets の gcp_service_account\n"
+            f"2. Cloud Run のサービスアカウントに権限が付与されているか (ADC)\n"
+            f"3. Streamlit Secrets の gcp_service_account\n"
             f"\n設定方法: docs/GMAIL_INTEGRATION_SETUP.md を参照"
         )
 

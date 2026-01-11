@@ -29,6 +29,7 @@ import numpy as np
 from PIL import Image
 
 from shared.ai.llm_client.llm_client import LLMClient
+from shared.ai.llm_client.exceptions import MaxTokensExceededError
 import cv2
 from .image_preprocessing import preprocess_image_for_ocr, calculate_image_quality_score
 from .ocr_config import OCRConfig, OCRResultCache, PaddleOCRVersionAdapter
@@ -579,26 +580,71 @@ class StageFVisualAnalyzer:
             f7_start = time.time()
             logger.info(f"[F-7] Gemini Vision API呼び出し開始 (model={model}, max_tokens=65536)...")
 
-            vision_raw = self.llm_client.generate_with_vision(
-                prompt=full_prompt,
-                image_path=str(file_path),
-                model=model,
-                max_tokens=65536,
-                response_format="json"
-            )
+            try:
+                vision_raw = self.llm_client.generate_with_vision(
+                    prompt=full_prompt,
+                    image_path=str(file_path),
+                    model=model,
+                    max_tokens=65536,
+                    response_format="json"
+                )
 
-            f7_elapsed = time.time() - f7_start
-            estimated_tokens = len(vision_raw) // 4  # 概算
-            chars_per_sec = len(vision_raw) / f7_elapsed if f7_elapsed > 0 else 0
+                f7_elapsed = time.time() - f7_start
+                estimated_tokens = len(vision_raw) // 4  # 概算
+                chars_per_sec = len(vision_raw) / f7_elapsed if f7_elapsed > 0 else 0
 
-            logger.info(f"[F-7完了] Gemini Vision API応答受信:")
-            logger.info(f"  ├─ 応答サイズ: {len(vision_raw)}文字")
-            logger.info(f"  ├─ 推定トークン数: ~{estimated_tokens}トークン")
-            logger.info(f"  ├─ 処理時間: {f7_elapsed:.2f}秒")
-            logger.info(f"  └─ レート: {chars_per_sec:.0f}文字/秒")
+                logger.info(f"[F-7完了] Gemini Vision API応答受信:")
+                logger.info(f"  ├─ 応答サイズ: {len(vision_raw)}文字")
+                logger.info(f"  ├─ 推定トークン数: ~{estimated_tokens}トークン")
+                logger.info(f"  ├─ 処理時間: {f7_elapsed:.2f}秒")
+                logger.info(f"  └─ レート: {chars_per_sec:.0f}文字/秒")
 
-            logger.debug(f"[F-7] Gemini生応答（最初の500文字）: {vision_raw[:500]}")
-            logger.debug(f"[F-7] Gemini生応答（最後の500文字）: {vision_raw[-500:]}")
+                logger.debug(f"[F-7] Gemini生応答（最初の500文字）: {vision_raw[:500]}")
+                logger.debug(f"[F-7] Gemini生応答（最後の500文字）: {vision_raw[-500:]}")
+
+            except MaxTokensExceededError as e:
+                # MAX_TOKENSエラー: 途中で切れた出力をファイルに保存してエラーとして記録
+                f7_elapsed = time.time() - f7_start
+
+                # 途中で切れた出力をファイルに保存
+                error_output_dir = Path("logs/max_tokens_errors")
+                error_output_dir.mkdir(parents=True, exist_ok=True)
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                error_file = error_output_dir / f"max_tokens_error_{file_path.stem}_{timestamp}.txt"
+
+                try:
+                    with open(error_file, 'w', encoding='utf-8') as f:
+                        f.write(f"=== MAX_TOKENS ERROR ===\n")
+                        f.write(f"File: {file_path}\n")
+                        f.write(f"Model: {model}\n")
+                        f.write(f"Output size: {len(e.partial_output)} characters\n")
+                        f.write(f"Estimated tokens: ~{len(e.partial_output) // 4}\n")
+                        f.write(f"Finish reason: {e.finish_reason_name}\n")
+                        f.write(f"Processing time: {f7_elapsed:.2f}s\n")
+                        f.write(f"\n=== PARTIAL OUTPUT (FULL) ===\n\n")
+                        f.write(e.partial_output)
+                    logger.info(f"[F-7] 途中で切れた出力を保存しました: {error_file}")
+                except Exception as save_error:
+                    logger.error(f"[F-7] 出力ファイル保存失敗: {save_error}")
+
+                logger.error("=" * 80)
+                logger.error(f"[F-7 MAX_TOKENS エラー] 出力が途中で切れました")
+                logger.error(f"  ├─ エラー内容: {e}")
+                logger.error(f"  ├─ 途中で切れた出力サイズ: {len(e.partial_output)}文字")
+                logger.error(f"  ├─ 推定トークン数: ~{len(e.partial_output) // 4}トークン")
+                logger.error(f"  ├─ finish_reason: {e.finish_reason_name}")
+                logger.error(f"  ├─ 処理時間: {f7_elapsed:.2f}秒")
+                logger.error(f"  ├─ 全文保存先: {error_file}")
+                logger.error(f"  └─ 対処法: プロンプトを短くするか、max_tokensを増やす")
+                logger.error("=" * 80)
+                logger.error(f"[F-7] 途中で切れた出力（最初の1000文字）:")
+                logger.error(e.partial_output[:1000])
+                logger.error(f"[F-7] 途中で切れた出力（最後の1000文字）:")
+                logger.error(e.partial_output[-1000:])
+                logger.error("=" * 80)
+
+                # 途中で切れた出力を返さず、空文字を返してエラーとして扱う
+                raise
 
             # ============================================
             # [F-8] JSON クリーニング

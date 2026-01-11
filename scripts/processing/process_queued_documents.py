@@ -98,11 +98,11 @@ class DocumentProcessor:
             logger.error( f"完了マークエラー: {e}")
 
     def mark_as_failed(self, document_id: str, error_message: str = ""):
-        """失敗にマーク"""
+        """エラーにマーク"""
         try:
             update_data = {
                 'processing_status': 'failed',
-                'processing_stage': '失敗',
+                'processing_stage': 'エラー',
                 'processing_progress': 0.0
             }
 
@@ -284,25 +284,37 @@ class DocumentProcessor:
             else:
                 self.mark_as_failed(document_id, error_msg)
                 completed_or_failed = True
-                logger.error( f"[FAIL] 処理失敗: {display_name} - {error_msg}")
+                logger.error( f"[FAIL] 処理エラー: {display_name} - {error_msg}")
 
             return success
 
         except Exception as e:
+            # 明確なエラー発生: エラーとして記録
             error_msg = f"処理中にエラー: {str(e)}"
-            logger.error( f"[FAIL] {error_msg}")
+            logger.error("=" * 80)
+            logger.error(f"[FAIL] 明確なエラーが発生しました → エラーとして記録")
+            logger.error(f"  ├─ ドキュメント: {display_name}")
+            logger.error(f"  ├─ エラータイプ: {type(e).__name__}")
+            logger.error(f"  └─ エラー内容: {error_msg}")
+            logger.error("=" * 80)
             self.mark_as_failed(document_id, error_msg)
             completed_or_failed = True
             return False
 
         finally:
-            # 中断時はpendingに差し戻し（completed_or_failedがFalseの場合）
+            # 強制終了や中断時はpendingに差し戻し（completed_or_failedがFalseの場合）
+            # エラーが出ていないがcompletedになっていない → pendingに戻す（エラーにしない）
             if not completed_or_failed:
-                logger.warning(f"[ROLLBACK] 処理未完了のためpendingに差し戻し: {display_name}")
+                logger.warning("=" * 80)
+                logger.warning(f"[ROLLBACK] 処理が中断されました → pendingに差し戻し（エラーにしません）")
+                logger.warning(f"  ├─ ドキュメント: {display_name}")
+                logger.warning(f"  └─ 理由: 明確なエラーが出ていないため、エラーではなくpendingに戻します")
+                logger.warning("=" * 80)
                 try:
                     self.db.client.table('Rawdata_FILE_AND_MAIL').update({
                         'processing_status': 'pending'
                     }).eq('id', document_id).execute()
+                    logger.info(f"[OK] pendingに差し戻しました: {display_name}")
                 except Exception as e:
                     logger.error(f"差し戻しエラー: {e}")
 
@@ -583,14 +595,14 @@ class DocumentProcessor:
             else:
                 stats['failed'] += 1
 
-            logger.info(f"進捗: 成功={stats['success']}, 失敗={stats['failed']}, 残り={len(docs)-i}")
+            logger.info(f"進捗: 成功={stats['success']}, エラー={stats['failed']}, 残り={len(docs)-i}")
 
         # 最終結果
         logger.info("\n" + "="*80)
         logger.info("処理完了")
         logger.info("="*80)
         logger.info(f"[OK] 成功: {stats['success']}件")
-        logger.error(f"[FAIL] 失敗: {stats['failed']}件")
+        logger.error(f"[FAIL] エラー: {stats['failed']}件")
         logger.info(f"[TOTAL] 合計: {stats['total']}件")
         logger.info("="*80)
 

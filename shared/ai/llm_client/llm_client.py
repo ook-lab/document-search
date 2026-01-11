@@ -17,6 +17,7 @@ from loguru import logger
 
 from shared.common.config.model_tiers import AIProvider, get_model_config
 from shared.common.config.settings import settings
+from .exceptions import MaxTokensExceededError
 
 class LLMClient:
     """統合LLMクライアント"""
@@ -547,6 +548,21 @@ class LLMClient:
             finish_reason_name = candidate.finish_reason.name if hasattr(candidate.finish_reason, 'name') else str(candidate.finish_reason)
             logger.info(f"[Gemini Vision] finish_reason: {finish_reason_name} ({candidate.finish_reason})")
 
+            # テキストを取得（finish_reasonに関わらず取得）
+            text_content = candidate.content.parts[0].text if candidate.content.parts else ""
+
+            # finish_reason == 3 (MAX_TOKENS): トークン上限に達した場合
+            if candidate.finish_reason == 3:
+                error_msg = f"MAX_TOKENS上限に達しました。出力が途中で切れています。({len(text_content)}文字)"
+                logger.error(f"[Gemini Vision] {error_msg}")
+                logger.error(f"[Gemini Vision] 途中で切れた出力（最後の500文字）: {text_content[-500:]}")
+                raise MaxTokensExceededError(
+                    message=error_msg,
+                    partial_output=text_content,
+                    finish_reason_name=finish_reason_name
+                )
+
+            # finish_reason != 1 (STOP以外のその他のエラー)
             if candidate.finish_reason != 1:  # 1 = STOP (正常終了)
                 error_details = {
                     "finish_reason": candidate.finish_reason,
@@ -562,9 +578,6 @@ class LLMClient:
                     ]
                 logger.error(f"Gemini Vision失敗: {error_details}")
                 raise ValueError(f"Gemini finish_reason: {finish_reason_name} ({candidate.finish_reason})")
-
-            # テキストを取得
-            text_content = candidate.content.parts[0].text if candidate.content.parts else ""
 
             # テキスト長とトークン使用量をログ出力
             logger.info(f"[Gemini Vision] 応答テキスト長: {len(text_content)}文字")

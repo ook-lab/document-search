@@ -57,3 +57,33 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# 他のサービス（doc-processor以外）
+services/doc-search/
+services/netsuper-search/
+services/gmail-inbox-sync/
+services/google-classroom-sync/
+services/classroom-check/
+
+# Frontend
+frontend/
+
+# 不要なスクリプト
+scripts/automation/
+scripts/data/
+scripts/delete_all/
+scripts/gmail/
+scripts/search/
+scripts/setup/
+
+# ドキュメント
+docs/
+*.md
+README.md
+
+# データベース
+*.db
+*.sqlite
+
+# キャッシュ
+.cache/

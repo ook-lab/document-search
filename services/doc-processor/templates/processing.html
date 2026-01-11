@@ -78,7 +78,7 @@
         .stat-card.pending { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
         .stat-card.processing { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); }
         .stat-card.completed { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); }
-        .stat-card.failed { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); }
+        .stat-card.error { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); }
 
         .control-panel {
             background: #f9fafb;
@@ -340,9 +340,9 @@
                     <div class="label">✅ 処理済み</div>
                     <div class="value" id="stat-completed">-</div>
                 </div>
-                <div class="stat-card failed">
-                    <div class="label">❌ 失敗</div>
-                    <div class="value" id="stat-failed">-</div>
+                <div class="stat-card error">
+                    <div class="label">❌ エラー</div>
+                    <div class="value" id="stat-error">-</div>
                 </div>
             </div>
 
@@ -563,7 +563,7 @@
                         logWindow.innerHTML = data.logs.map(log => {
                             let className = 'log-entry';
                             if (log.includes('✅') || log.includes('成功')) className += ' success';
-                            if (log.includes('❌') || log.includes('失敗')) className += ' error';
+                            if (log.includes('❌') || log.includes('エラー')) className += ' error';
                             return `<div class="${className}">${escapeHtml(log)}</div>`;
                         }).join('');
                         logWindow.scrollTop = logWindow.scrollHeight;
@@ -584,7 +584,7 @@
                         'stage_j': 80,
                         'stage_k': 90,
                         'completed': 100,
-                        'failed': 100
+                        'error': 100
                     };
 
                     // 処理中のドキュメントの進捗を計算
@@ -606,8 +606,8 @@
                     // 現在のファイル名を更新
                     const fileName = data.current_file || '処理中...';
                     const successCount = data.success_count || 0;
-                    const failedCount = data.failed_count || 0;
-                    const completedDocs = successCount + failedCount;
+                    const errorCount = data.error_count || 0;
+                    const completedDocs = successCount + errorCount;
                     const totalCount = data.total_count || 0;
                     if (totalCount > 0) {
                         currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
@@ -655,7 +655,7 @@
                     const stats = data.stats;
                     document.getElementById('stat-pending').textContent = stats.pending || 0;
                     document.getElementById('stat-completed').textContent = stats.completed || 0;
-                    document.getElementById('stat-failed').textContent = stats.failed || 0;
+                    document.getElementById('stat-error').textContent = stats.error || 0;
 
                     // 処理開始ボタンの状態を更新
                     const startBtn = document.getElementById('start-btn');

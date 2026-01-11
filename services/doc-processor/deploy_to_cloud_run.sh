@@ -9,7 +9,7 @@ echo "================================"
 
 # スクリプトのディレクトリを取得
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 # .envファイルから環境変数を読み込む
 ENV_FILE="$PROJECT_ROOT/.env"
@@ -35,19 +35,20 @@ echo "✓ 環境変数の読み込み完了"
 # Cloud Runにデプロイ
 echo ""
 echo "Cloud Runにデプロイしています..."
-# プロジェクトルートに移動（Dockerfileがプロジェクトルートからのパスを使用するため）
-cd "$PROJECT_ROOT"
+# doc-processorディレクトリからデプロイ
+cd "$SCRIPT_DIR"
 gcloud run deploy doc-processor \
   --source . \
   --region asia-northeast1 \
   --allow-unauthenticated \
   --timeout 3600 \
-  --memory 4Gi \
-  --cpu 2 \
+  --memory 16Gi \
+  --cpu 4 \
   --set-env-vars "SUPABASE_URL=$SUPABASE_URL" \
   --set-env-vars "SUPABASE_KEY=$SUPABASE_KEY" \
   --set-env-vars "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" \
   --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY" \
+  --set-env-vars "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
   --set-env-vars "LOG_LEVEL=${LOG_LEVEL:-INFO}" \
   --set-env-vars "RERANK_ENABLED=${RERANK_ENABLED:-true}"
 
