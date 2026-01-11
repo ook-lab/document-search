@@ -19,8 +19,79 @@ from loguru import logger
 import psutil
 import time
 
+# ========== 定数定義 ==========
+# ロック関連
+LOCK_TIMEOUT_SECONDS = 300  # ロックの有効期限（5分）
+LOCK_RETRY_COUNT = 3  # ロック設定時の最大リトライ回数
+LOCK_RETRY_DELAY = 1.0  # リトライ間隔（秒）
+
+# リソース監視関連
+RESOURCE_UPDATE_INTERVAL = 5.0  # リソース情報更新間隔（秒）
+MAX_LOG_ENTRIES = 300  # 保持するログの最大件数
+MAX_LOG_ENTRIES_SUPABASE = 150  # Supabaseに保存するログの最大件数
+
+# 並列処理関連
+DEFAULT_MAX_PARALLEL = 1  # デフォルト並列数
+MIN_PARALLEL = 1  # 最小並列数
+MAX_PARALLEL_LIMIT = 100  # 最大並列数上限
+
+# メモリ閾値（16GB環境用デフォルト）
+MEMORY_LOW_THRESHOLD = 60.0  # 余裕あり（並列数増加可）
+MEMORY_HIGH_THRESHOLD = 85.0  # 逼迫（減速開始）
+MEMORY_CRITICAL_THRESHOLD = 90.0  # 危険（並列数削減）
+MEMORY_RECOVER_THRESHOLD = 70.0  # 回復（減速緩和）
+
+# スロットル関連
+THROTTLE_STEP = 0.5  # スロットル調整ステップ（秒）
+MAX_THROTTLE_DELAY = 3.0  # 最大スロットル遅延（秒）
+
+# タイムアウト関連
+DOCUMENT_PROCESS_TIMEOUT = int(os.getenv('DOC_PROCESS_TIMEOUT', '1800'))  # ドキュメント処理タイムアウト（秒）
+
 app = Flask(__name__)
-CORS(app)
+
+# CORS設定: 環境変数で許可オリジンを指定（デフォルトは本番環境のみ）
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'https://doc-processor-*.run.app,https://docs.ookubotechnologies.com').split(',')
+# 開発環境では全許可
+if os.getenv('FLASK_ENV') == 'development' or os.getenv('DEBUG') == 'true':
+    CORS(app)
+else:
+    CORS(app, origins=ALLOWED_ORIGINS, supports_credentials=True)
+
+# ========== 認証設定 ==========
+API_KEY = os.getenv('DOC_PROCESSOR_API_KEY', '')
+REQUIRE_AUTH = os.getenv('REQUIRE_AUTH', 'true').lower() == 'true'
+
+def require_api_key(f):
+    """APIキー認証デコレーター"""
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not REQUIRE_AUTH:
+            return f(*args, **kwargs)
+
+        # APIキーが設定されていない場合は認証をスキップ（開発環境用）
+        if not API_KEY:
+            logger.warning("DOC_PROCESSOR_API_KEY is not set. Skipping authentication.")
+            return f(*args, **kwargs)
+
+        # ヘッダーまたはクエリパラメータからAPIキーを取得
+        provided_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if provided_key != API_KEY:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+def safe_error_response(error: Exception, status_code: int = 500):
+    """安全なエラーレスポンスを生成（本番環境ではスタックトレースを隠す）"""
+    is_development = os.getenv('FLASK_ENV') == 'development' or os.getenv('DEBUG') == 'true'
+    if is_development:
+        return jsonify({'success': False, 'error': str(error)}), status_code
+    else:
+        # 本番環境では詳細を隠す
+        logger.error(f"Error: {error}", exc_info=True)
+        return jsonify({'success': False, 'error': 'Internal server error'}), status_code
 
 # Supabaseクライアント（処理ロック用）
 _supabase_client = None
@@ -42,12 +113,12 @@ def get_processing_lock():
         result = client.table('processing_lock').select('*').eq('id', 1).execute()
         if result.data:
             lock = result.data[0]
-            # 5分以上更新がなければ期限切れとみなす
+            # LOCK_TIMEOUT_SECONDS以上更新がなければ期限切れとみなす
             if lock.get('is_processing') and lock.get('updated_at'):
                 from datetime import datetime, timezone
                 updated_at = datetime.fromisoformat(lock['updated_at'].replace('Z', '+00:00'))
                 now = datetime.now(timezone.utc)
-                if (now - updated_at).total_seconds() > 300:  # 5分
+                if (now - updated_at).total_seconds() > LOCK_TIMEOUT_SECONDS:
                     logger.warning(f"処理ロックが期限切れ（{(now - updated_at).total_seconds():.0f}秒経過）。自動リセット。")
                     set_processing_lock(False)
                     return False
@@ -58,28 +129,55 @@ def get_processing_lock():
         return False
 
 
-def set_processing_lock(is_processing: bool):
-    """Supabaseに処理ロック状態を設定"""
-    try:
-        client = get_supabase_client()
-        data = {
-            'is_processing': is_processing,
-            'updated_at': datetime.now(timezone.utc).isoformat()
-        }
-        if is_processing:
-            data['started_at'] = datetime.now(timezone.utc).isoformat()
-            # 処理開始時: processing状態のまま残っているドキュメントをpendingにリセット
-            reset_stuck_documents()
-        else:
-            # 処理終了時: 全ワーカーをクリア & processing状態のドキュメントをリセット
-            clear_all_workers()
-            reset_stuck_documents()
-        client.table('processing_lock').update(data).eq('id', 1).execute()
-        logger.info(f"処理ロック設定: {is_processing}")
-        return True
-    except Exception as e:
-        logger.error(f"処理ロック設定エラー: {e}")
-        return False
+def set_processing_lock(is_processing: bool, max_retries: int = 3, timeout_sec: float = 10.0):
+    """Supabaseに処理ロック状態を設定（タイムアウトとリトライ付き）
+
+    Args:
+        is_processing: ロック状態
+        max_retries: 最大リトライ回数（デフォルト: 3）
+        timeout_sec: 1回あたりのタイムアウト秒数（デフォルト: 10秒）
+
+    Returns:
+        bool: 成功した場合True
+    """
+    import time as time_module
+
+    for attempt in range(max_retries):
+        try:
+            start_time = time_module.time()
+            client = get_supabase_client()
+
+            data = {
+                'is_processing': is_processing,
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            if is_processing:
+                data['started_at'] = datetime.now(timezone.utc).isoformat()
+                # 処理開始時: processing状態のまま残っているドキュメントをpendingにリセット
+                reset_stuck_documents()
+            else:
+                # 処理終了時: 全ワーカーをクリア & processing状態のドキュメントをリセット
+                clear_all_workers()
+                reset_stuck_documents()
+
+            # タイムアウトチェック
+            elapsed = time_module.time() - start_time
+            if elapsed > timeout_sec:
+                raise TimeoutError(f"Processing lock operation timed out after {elapsed:.1f}s")
+
+            client.table('processing_lock').update(data).eq('id', 1).execute()
+            logger.info(f"処理ロック設定: {is_processing}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"処理ロック設定エラー (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time_module.sleep(1.0)  # リトライ前に1秒待機
+            else:
+                logger.error(f"処理ロック設定に失敗しました（{max_retries}回試行）: {e}")
+                return False
+
+    return False
 
 
 def update_processing_lock():
@@ -102,62 +200,27 @@ _instance_id = str(uuid.uuid4())[:8]  # このインスタンスのID
 
 
 def register_worker(doc_id: str, doc_title: str) -> bool:
-    """ワーカーを登録（処理開始時）"""
-    try:
-        client = get_supabase_client()
-        worker_id = f"{_instance_id}-{doc_id[:8]}"
-        client.table('processing_workers').upsert({
-            'instance_id': worker_id,
-            'doc_id': doc_id,
-            'doc_title': doc_title,
-            'started_at': datetime.now(timezone.utc).isoformat(),
-            'updated_at': datetime.now(timezone.utc).isoformat()
-        }).execute()
-        # current_workersを更新
-        update_worker_count()
-        return True
-    except Exception as e:
-        logger.error(f"ワーカー登録エラー: {e}")
-        return False
+    """ワーカーを登録（処理開始時）- active_tasksのみ使用"""
+    # active_tasksへの追加は呼び出し元で実施済み
+    # ここでは何もしない（互換性のため関数は残す）
+    return True
 
 
 def unregister_worker(doc_id: str) -> bool:
-    """ワーカーを解除（処理終了時）"""
-    try:
-        client = get_supabase_client()
-        worker_id = f"{_instance_id}-{doc_id[:8]}"
-        client.table('processing_workers').delete().eq('instance_id', worker_id).execute()
-        # current_workersを更新
-        update_worker_count()
-        logger.info(f"ワーカー解除: {worker_id}")
-        return True
-    except Exception as e:
-        logger.error(f"ワーカー解除エラー: {e}")
-        return False
+    """ワーカーを解除（処理終了時）- active_tasksのみ使用"""
+    # active_tasksからの削除は呼び出し元で実施済み
+    # ここでは何もしない（互換性のため関数は残す）
+    return True
 
 
 def clear_all_workers() -> bool:
-    """全ワーカーをクリア（処理終了時）"""
-    try:
-        client = get_supabase_client()
-        # ステップ1: 全レコードのinstance_idを取得
-        result = client.table('processing_workers').select('instance_id').execute()
-        instance_ids = [row['instance_id'] for row in result.data] if result.data else []
-
-        # ステップ2: instance_idが存在する場合のみ削除
-        if instance_ids:
-            client.table('processing_workers').delete().in_('instance_id', instance_ids).execute()
-
-        # ステップ3: current_workersを0に更新
-        client.table('processing_lock').update({
-            'current_workers': 0
-        }).eq('id', 1).execute()
-
-        logger.info(f"全ワーカーをクリアしました（削除件数: {len(instance_ids)}件）")
-        return True
-    except Exception as e:
-        logger.error(f"全ワーカークリアエラー: {e}")
-        return False
+    """全ワーカーをクリア（処理終了時）- active_tasksのみ使用"""
+    global active_tasks
+    # active_tasksをクリア
+    count = len(active_tasks)
+    active_tasks.clear()
+    logger.info(f"全ワーカーをクリアしました（削除件数: {count}件）")
+    return True
 
 
 
@@ -168,11 +231,12 @@ def reset_stuck_documents() -> int:
 
     スタック判定:
     - processing_status='processing'
-    - かつ processing_workers テーブルに存在しない
+    - かつ active_tasks に存在しない
 
     Returns:
         リセットした件数
     """
+    global active_tasks
     try:
         from shared.common.database.client import DatabaseClient
         db = DatabaseClient(use_service_role=True)
@@ -184,11 +248,10 @@ def reset_stuck_documents() -> int:
         if not processing_ids:
             return 0
 
-        # processing_workersから実際に処理中のdoc_idを取得
-        workers_result = db.client.table('processing_workers').select('doc_id').execute()
-        active_doc_ids = [row['doc_id'] for row in workers_result.data] if workers_result.data else []
+        # active_tasksから実際に処理中のdoc_idを取得
+        active_doc_ids = list(active_tasks.keys())
 
-        # スタックしているドキュメント = processingだがワーカーに存在しない
+        # スタックしているドキュメント = processingだがactive_tasksに存在しない
         stuck_ids = [doc_id for doc_id in processing_ids if doc_id not in active_doc_ids]
 
         if stuck_ids:
@@ -205,38 +268,46 @@ def reset_stuck_documents() -> int:
         return 0
 
 def update_worker_count() -> int:
-    """現在のワーカー数をカウントしてSupabaseに保存"""
-    try:
-        client = get_supabase_client()
-        result = client.table('processing_workers').select('instance_id').execute()
-        count = len(result.data) if result.data else 0
-        client.table('processing_lock').update({
-            'current_workers': count
-        }).eq('id', 1).execute()
-        return count
-    except Exception as e:
-        logger.error(f"ワーカー数更新エラー: {e}")
-        return 0
+    """現在のワーカー数を返す - active_tasksのみ使用"""
+    global active_tasks
+    # active_tasksから直接カウント（DB更新不要）
+    return len(active_tasks)
 
 
 def update_progress_to_supabase(current_index: int, total_count: int, current_file: str,
                                  success_count: int, error_count: int, logs: list):
     """進捗情報をSupabaseに保存（複数インスタンス共有用）"""
+    global resource_manager, active_tasks
     try:
         client = get_supabase_client()
-        # 最新150件のログのみ保存
-        latest_logs = logs[-150:] if len(logs) > 150 else logs
+        # 最新のログのみ保存
+        latest_logs = logs[-MAX_LOG_ENTRIES_SUPABASE:] if len(logs) > MAX_LOG_ENTRIES_SUPABASE else logs
 
         # システムリソース情報も含める（Cloud Run環境対応）
         cpu_percent = get_cgroup_cpu()
         memory_info = get_cgroup_memory()
 
-        # リソース制御情報を取得
-        resource_control = processing_status.get('resource_control', {})
-        throttle_delay = resource_control.get('throttle_delay', 0.0)
-        max_parallel = resource_control.get('max_parallel', 3)  # デフォルト3
-        current_parallel = resource_control.get('current_parallel', 0)  # 実際の並列実行数
-        adjustment_count = resource_control.get('adjustment_count', 0)  # リソース調整回数
+        # 実際のワーカー数をactive_tasksから取得
+        actual_workers = len(active_tasks)
+
+        # グローバルなresource_managerが存在すれば、リソース調整を実行
+        if resource_manager is not None:
+            # メモリ使用率に基づいてリソース調整（実際のワーカー数を使用）
+            adjust_result = resource_manager.adjust_resources(memory_info['percent'], actual_workers)
+            # 調整結果をprocessing_statusに反映（whileループで参照される）
+            processing_status['resource_control']['throttle_delay'] = adjust_result['throttle_delay']
+            processing_status['resource_control']['adjustment_count'] = resource_manager.adjustment_count
+
+        # resource_managerから最新値を取得（存在する場合）
+        if resource_manager is not None:
+            throttle_delay = resource_manager.throttle_delay
+            max_parallel = resource_manager.max_parallel
+            adjustment_count = resource_manager.adjustment_count
+        else:
+            resource_control = processing_status.get('resource_control', {})
+            throttle_delay = resource_control.get('throttle_delay', 0.0)
+            max_parallel = resource_control.get('max_parallel', 1)
+            adjustment_count = resource_control.get('adjustment_count', 0)
 
         client.table('processing_lock').update({
             'current_index': current_index,
@@ -251,8 +322,8 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
             'memory_total_gb': memory_info['total_gb'],
             'throttle_delay': throttle_delay,
             'max_parallel': max_parallel,
-            'current_workers': current_parallel,  # 実際の並列実行数を保存
-            'adjustment_count': adjustment_count,  # リソース調整回数を保存
+            'current_workers': actual_workers,  # active_tasksから取得した実際のワーカー数
+            'adjustment_count': adjustment_count,
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
         return True
@@ -316,26 +387,39 @@ def get_progress_from_supabase() -> dict:
 
 
 def get_worker_status() -> dict:
-    """現在のワーカー状況を取得"""
+    """現在のワーカー状況を取得 - active_tasksのみ使用"""
+    global resource_manager, active_tasks
     try:
-        client = get_supabase_client()
-        # processing_lockからmax_parallelとcurrent_workersを取得
-        lock_result = client.table('processing_lock').select('*').eq('id', 1).execute()
-        # processing_workersから詳細を取得
-        workers_result = client.table('processing_workers').select('*').execute()
+        # active_tasksから実際のワーカー数を取得
+        current_workers = len(active_tasks)
 
+        # resource_managerからmax_parallelを取得
+        max_parallel = resource_manager.max_parallel if resource_manager else 1
+
+        # processing_lockからis_processingのみ取得
+        client = get_supabase_client()
+        lock_result = client.table('processing_lock').select('is_processing').eq('id', 1).execute()
         lock_data = lock_result.data[0] if lock_result.data else {}
-        workers = workers_result.data if workers_result.data else []
+
+        # active_tasksの内容をworkers形式に変換
+        workers = [
+            {
+                'doc_id': doc_id,
+                'doc_title': task_info.get('title', ''),
+                'started_at': task_info.get('started_at', '')
+            }
+            for doc_id, task_info in active_tasks.items()
+        ]
 
         return {
-            'max_parallel': lock_data.get('max_parallel', 3),
-            'current_workers': len(workers),  # processing_workersテーブルのレコード数（実際のワーカー数）
+            'max_parallel': max_parallel,
+            'current_workers': current_workers,  # active_tasksから取得した実際のワーカー数
             'is_processing': lock_data.get('is_processing', False),
             'workers': workers
         }
     except Exception as e:
         logger.error(f"ワーカー状況取得エラー: {e}")
-        return {'max_parallel': 3, 'current_workers': 0, 'is_processing': False, 'workers': []}
+        return {'max_parallel': 1, 'current_workers': 0, 'is_processing': False, 'workers': []}
 
 
 def adjust_max_parallel(memory_percent: float) -> int:
@@ -344,11 +428,13 @@ def adjust_max_parallel(memory_percent: float) -> int:
     重要: 実行数が上限に達している場合のみ並列数を増やす
     （実際にフル稼働している状態で余裕があることを確認してから増やす）
     """
+    global resource_manager, active_tasks
     try:
-        client = get_supabase_client()
-        status = get_worker_status()
-        current_max = status['max_parallel']
-        current_workers = status['current_workers']
+        if not resource_manager:
+            return 3
+
+        current_max = resource_manager.max_parallel
+        current_workers = len(active_tasks)
 
         new_max = current_max
 
@@ -361,9 +447,7 @@ def adjust_max_parallel(memory_percent: float) -> int:
             new_max = max(current_max - 1, 1)  # 最小1
 
         if new_max != current_max:
-            client.table('processing_lock').update({
-                'max_parallel': new_max
-            }).eq('id', 1).execute()
+            resource_manager.max_parallel = new_max
             logger.info(f"max_parallel調整: {current_max} → {new_max} (メモリ: {memory_percent:.1f}%)")
 
         return new_max
@@ -373,9 +457,11 @@ def adjust_max_parallel(memory_percent: float) -> int:
 
 
 def can_start_new_worker() -> bool:
-    """新しいワーカーを開始できるか確認"""
-    status = get_worker_status()
-    return status['current_workers'] < status['max_parallel']
+    """新しいワーカーを開始できるか確認 - active_tasksのみ使用"""
+    global resource_manager, active_tasks
+    current_workers = len(active_tasks)
+    max_parallel = resource_manager.max_parallel if resource_manager else 1
+    return current_workers < max_parallel
 
 
 # ========== 処理進捗の管理（ローカルキャッシュ、表示用） ==========
@@ -392,8 +478,6 @@ processing_status = {
     'stage_progress': 0.0,  # 0.0 - 1.0
     # アダプティブリソース制御情報
     'resource_control': {
-        'max_parallel': 3,
-        'current_parallel': 0,
         'throttle_delay': 0.0,
         'adjustment_count': 0
     }
@@ -402,58 +486,94 @@ processing_status = {
 # CPU使用率計算用の前回の値
 _last_cpu_stats = {'usage_usec': 0, 'timestamp': time.time()}
 
+# グローバルなリソースマネージャー（update_progress_to_supabaseからアクセス用）
+resource_manager = None
+
+# アクティブタスク管理（辞書型: {doc_id: {'title': str, 'started_at': str}}）
+active_tasks = {}
+
 
 def get_cgroup_memory():
-    """cgroupからメモリ使用率を取得（Cloud Run対応）"""
+    """cgroupからメモリ使用率を取得（Cloud Run Gen2 cgroup v2対応）"""
+    import os
+
     try:
-        # Cloud Run: cgroup v1 のメモリ情報を取得
-        with open('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'r') as f:
-            current = int(f.read().strip())
-        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
-            max_mem = int(f.read().strip())
-
-            # 非常に大きい値の場合は無制限なので、システム全体のメモリを使用
-            # (通常、9223372036854771712 などの値)
-            if max_mem > 1e15:
-                max_mem = psutil.virtual_memory().total
-
-        # キャッシュメモリを除外して正確な使用量を計算
-        # Kubernetesの標準: working_set = usage - total_inactive_file
+        current = None
+        max_mem = None
         inactive_file = 0
-        total_cache = 0
-        try:
-            # cgroup v2 と v1 の両方に対応
-            import os
-            memory_stat_path = '/sys/fs/cgroup/memory.stat'  # v2
-            if not os.path.exists(memory_stat_path):
-                memory_stat_path = '/sys/fs/cgroup/memory/memory.stat'  # v1
 
-            with open(memory_stat_path, 'r') as f:
-                for line in f:
-                    parts = line.strip().split()
-                    if len(parts) == 2:
-                        key, value = parts
-                        if key == 'total_inactive_file':
-                            inactive_file = int(value)
-                        elif key == 'total_cache' or key == 'cache':
-                            total_cache = int(value)
+        # cgroup v2 パスを優先的に試行（Cloud Run Gen2）
+        v2_current_path = '/sys/fs/cgroup/memory.current'
+        v2_max_path = '/sys/fs/cgroup/memory.max'
+        v2_stat_path = '/sys/fs/cgroup/memory.stat'
 
-            # デバッグログで両方の計算方法を確認
-            if inactive_file > 0 or total_cache > 0:
-                logger.info(f"[MEMORY DEBUG] usage={current/(1024**3):.2f}GB, inactive_file={inactive_file/(1024**3):.2f}GB, total_cache={total_cache/(1024**3):.2f}GB")
-                logger.info(f"[MEMORY DEBUG] working_set(inactive除外)={(current-inactive_file)/(1024**3):.2f}GB, working_set(全cache除外)={(current-total_cache)/(1024**3):.2f}GB")
-        except Exception as e:
-            logger.debug(f"[MEMORY DEBUG] memory.stat読み取り失敗: {e}")
+        # cgroup v1 パス（フォールバック用）
+        v1_current_path = '/sys/fs/cgroup/memory/memory.usage_in_bytes'
+        v1_max_path = '/sys/fs/cgroup/memory/memory.limit_in_bytes'
+        v1_stat_path = '/sys/fs/cgroup/memory/memory.stat'
 
-        # Kubernetes標準の計算式を使用（total_inactive_fileを除外）
-        # これは「すぐに解放可能なキャッシュ」を除いた実使用量
-        cache_memory = inactive_file
+        # cgroup v2 を試行
+        if os.path.exists(v2_current_path):
+            logger.debug("[MEMORY] Using cgroup v2")
+            with open(v2_current_path, 'r') as f:
+                current = int(f.read().strip())
+            with open(v2_max_path, 'r') as f:
+                max_val = f.read().strip()
+                # "max" は無制限を意味する
+                if max_val == 'max':
+                    max_mem = psutil.virtual_memory().total
+                else:
+                    max_mem = int(max_val)
 
-        # キャッシュを除いた実際の使用量
-        actual_used = current - cache_memory
+            # cgroup v2 の memory.stat から inactive_file を取得
+            if os.path.exists(v2_stat_path):
+                with open(v2_stat_path, 'r') as f:
+                    for line in f:
+                        parts = line.strip().split()
+                        if len(parts) == 2:
+                            key, value = parts
+                            if key == 'inactive_file':
+                                inactive_file = int(value)
+
+        # cgroup v1 にフォールバック
+        elif os.path.exists(v1_current_path):
+            logger.debug("[MEMORY] Using cgroup v1")
+            with open(v1_current_path, 'r') as f:
+                current = int(f.read().strip())
+            with open(v1_max_path, 'r') as f:
+                max_mem = int(f.read().strip())
+                # 非常に大きい値の場合は無制限
+                if max_mem > 1e15:
+                    max_mem = psutil.virtual_memory().total
+
+            # cgroup v1 の memory.stat から inactive_file を取得
+            if os.path.exists(v1_stat_path):
+                with open(v1_stat_path, 'r') as f:
+                    stat_content = f.read()
+                    for line in stat_content.split('\n'):
+                        parts = line.strip().split()
+                        if len(parts) == 2:
+                            key, value = parts
+                            # total_inactive_file または inactive_file を探す
+                            if key in ('total_inactive_file', 'inactive_file'):
+                                inactive_file = int(value)
+                                logger.debug(f"[MEMORY] Found {key}={value}")
+                                break
+                    # デバッグ: 見つからなかった場合、最初の10行をログ
+                    if inactive_file == 0:
+                        lines = stat_content.split('\n')[:10]
+                        logger.warning(f"[MEMORY] inactive_file not found. First 10 lines: {lines}")
+
+        if current is None or max_mem is None:
+            raise FileNotFoundError("cgroup memory files not found")
+
+        # キャッシュを除いた実際の使用量（Kubernetes標準）
+        actual_used = current - inactive_file
         percent = (actual_used / max_mem) * 100
         used_gb = actual_used / (1024 ** 3)
         total_gb = max_mem / (1024 ** 3)
+
+        logger.debug(f"[MEMORY] current={current/(1024**3):.2f}GB, inactive={inactive_file/(1024**3):.2f}GB, max={max_mem/(1024**3):.2f}GB, percent={percent:.1f}%")
 
         return {
             'percent': round(percent, 1),
@@ -462,13 +582,22 @@ def get_cgroup_memory():
         }
     except Exception as e:
         # cgroupが使えない場合はpsutilにフォールバック
-        logger.debug(f"cgroup memory読み取り失敗、psutilを使用: {e}")
-        memory = psutil.virtual_memory()
-        return {
-            'percent': round(memory.percent, 1),
-            'used_gb': round(memory.used / (1024 ** 3), 2),
-            'total_gb': round(memory.total / (1024 ** 3), 2)
-        }
+        logger.warning(f"cgroup memory読み取り失敗、psutilを使用: {e}")
+        try:
+            memory = psutil.virtual_memory()
+            return {
+                'percent': round(memory.percent, 1),
+                'used_gb': round(memory.used / (1024 ** 3), 2),
+                'total_gb': round(memory.total / (1024 ** 3), 2)
+            }
+        except Exception as e2:
+            # psutilも失敗した場合はデフォルト値を返す
+            logger.error(f"psutil memory読み取りも失敗、デフォルト値を使用: {e2}")
+            return {
+                'percent': 50.0,  # 安全側のデフォルト値
+                'used_gb': 8.0,
+                'total_gb': 16.0
+            }
 
 
 def get_cgroup_cpu():
@@ -554,17 +683,17 @@ class AdaptiveResourceManager:
 
     32GBの利点:
     - 95%まで使っても残り1.6GB（16GBの90%と同等）
-    - 並列数を20-30まで増やせる可能性
+    - 並列数を最大100まで増やせる可能性
     - 処理時間短縮でコストメリット
     """
 
-    def __init__(self, initial_max_parallel=3, min_parallel=1, max_parallel=5, history_size=3):
+    def __init__(self, initial_max_parallel=1, min_parallel=1, max_parallel=100, history_size=3):
         """初期化
 
         Args:
-            initial_max_parallel: 初期並列数（デフォルト: 3）
+            initial_max_parallel: 初期並列数（デフォルト: 1）
             min_parallel: 最小並列数（デフォルト: 1）
-            max_parallel: 最大並列数（デフォルト: 5）
+            max_parallel: 最大並列数（デフォルト: 100）
             history_size: 移動平均用の履歴サイズ（デフォルト: 3）
         """
         self.max_parallel = initial_max_parallel
@@ -671,16 +800,18 @@ class AdaptiveResourceManager:
                 f"[リソース制御] ✅ メモリ回復 ({memory_percent:.1f}%) → 減速緩和: {original_throttle:.1f}秒 → {self.throttle_delay:.1f}秒"
             )
 
-        # フェーズ1: 並列数増加（余裕がある場合）
-        # 重要: 実行数が上限に達している場合のみ増やす（実際にフル稼働している状態で余裕があることを確認）
-        if memory_percent < self.memory_low and self.throttle_delay == 0:
-            # 実行数が上限に達している（完全にフル稼働） かつ 余裕あり かつ 減速なし → 並列数を増やす
-            if current_workers >= self.max_parallel and self.max_parallel < self.max_parallel_limit:
-                self.max_parallel = min(self.max_parallel + self.parallel_step, self.max_parallel_limit)
-                adjusted = True
-                self.logger.info(
-                    f"[リソース制御] ⬆️ メモリ余裕 ({memory_percent:.1f}%) + フル稼働中 ({current_workers}/{original_parallel}) → 並列数増加: {original_parallel} → {self.max_parallel}"
-                )
+        # max_parallel = current_workers + 1 (常に実行数+1が上限)
+        # 実行数が減ればmax_parallelも減る、増えれば増える
+        new_max_parallel = min(current_workers + 1, self.max_parallel_limit)
+        new_max_parallel = max(new_max_parallel, self.min_parallel)  # 最小値を保証
+
+        if new_max_parallel != self.max_parallel:
+            old_max = self.max_parallel
+            self.max_parallel = new_max_parallel
+            adjusted = True
+            self.logger.info(
+                f"[リソース制御] max_parallel調整: {old_max} → {self.max_parallel} (実行数: {current_workers})"
+            )
 
         if adjusted:
             self.adjustment_count += 1
@@ -743,9 +874,9 @@ def log_to_processing_status(message):
             processing_status['current_stage'] = 'ダウンロード中'
             processing_status['stage_progress'] = 0.1
 
-        # ログは最大300件まで保持
-        if len(processing_status['logs']) > 300:
-            processing_status['logs'] = processing_status['logs'][-300:]
+        # ログは最大件数まで保持
+        if len(processing_status['logs']) > MAX_LOG_ENTRIES:
+            processing_status['logs'] = processing_status['logs'][-MAX_LOG_ENTRIES:]
 
 
 # loguruにカスタムハンドラーを追加（スレッド内で個別に追加するためここでは追加しない）
@@ -825,7 +956,7 @@ def get_process_progress():
                 'memory_total_gb': progress['memory_total_gb']
             },
             'resource_control': {
-                'current_parallel': worker_status['current_workers'],
+                'current_workers': worker_status['current_workers'],
                 'max_parallel': worker_status['max_parallel'],
                 'throttle_delay': progress['throttle_delay'],
                 'adjustment_count': progress['adjustment_count']
@@ -833,10 +964,7 @@ def get_process_progress():
             'workers': worker_status['workers']  # 処理中のドキュメント一覧
         })
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return safe_error_response(e)
 
 
 @app.route('/api/workspaces', methods=['GET'])
@@ -867,11 +995,8 @@ def get_workspaces():
         })
 
     except Exception as e:
-        print(f"[ERROR] ワークスペース取得エラー: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"ワークスペース取得エラー: {e}")
+        return safe_error_response(e)
 
 
 @app.route('/api/process/stats', methods=['GET'])
@@ -921,13 +1046,11 @@ def get_process_stats():
 
     except Exception as e:
         logger.error(f"統計取得エラー: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        return safe_error_response(e)
 
 
 @app.route('/api/process/start', methods=['POST'])
+@require_api_key
 def start_processing():
     """
     ドキュメント処理を開始（バックグラウンド実行）
@@ -969,15 +1092,13 @@ def start_processing():
             f"[{datetime.now().strftime('%H:%M:%S')}] 処理開始準備中...",
             f"[{datetime.now().strftime('%H:%M:%S')}] ワークスペース: {workspace}, 制限: {limit}件"
         ]
-        # リソース制御を初期化（max_parallel=3から開始）
+        # リソース制御を初期化
         processing_status['resource_control'] = {
-            'current_parallel': 0,
-            'max_parallel': 3,  # 初期値は3、リソースに余裕があれば最大30まで増加
             'throttle_delay': 0.0,
             'adjustment_count': 0
         }
 
-        # Supabaseに初期状態を保存（max_parallel=3を明示的に設定）
+        # Supabaseに初期状態を保存
         update_progress_to_supabase(0, 0, '初期化中...', 0, 0, processing_status['logs'])
 
         # DocumentProcessorをインポート
@@ -1018,61 +1139,65 @@ def start_processing():
             print("[DEBUG] background_processing() 開始")
             logger.info("[DEBUG] background_processing() 開始")
 
+            # リソース監視用のTimer
+            update_timer = None
+
+            def periodic_resource_update():
+                """5秒ごとにリソース情報を更新（別スレッドで実行）"""
+                nonlocal update_timer
+                if not processing_status['is_processing']:
+                    logger.info("[PERIODIC_UPDATE] 処理終了につきタイマー停止")
+                    return
+
+                try:
+                    logger.debug("[PERIODIC_UPDATE] リソース情報更新開始")
+                    # update_progress_to_supabaseを呼び出し
+                    update_progress_to_supabase(
+                        processing_status['current_index'],
+                        processing_status['total_count'],
+                        processing_status['current_file'],
+                        processing_status['success_count'],
+                        processing_status['error_count'],
+                        processing_status['logs']
+                    )
+                    logger.debug("[PERIODIC_UPDATE] リソース情報更新完了")
+                except Exception as e:
+                    logger.error(f"[PERIODIC_UPDATE] エラー: {e}", exc_info=True)
+                finally:
+                    # エラーが発生しても次のタイマーを確実に設定
+                    if processing_status['is_processing']:
+                        update_timer = threading.Timer(5.0, periodic_resource_update)
+                        update_timer.daemon = True
+                        update_timer.start()
+
+            # 定期更新を開始（5秒間隔）
+            update_timer = threading.Timer(5.0, periodic_resource_update)
+            update_timer.daemon = True
+            update_timer.start()
+            logger.info("[PERIODIC_UPDATE] タイマー開始（5秒間隔）")
+
             async def process_all():
                 print("[DEBUG] process_all() 開始")
                 logger.info("[DEBUG] process_all() 開始")
-                # アダプティブリソースマネージャーを初期化
+                # アダプティブリソースマネージャーを初期化（グローバル変数として）
                 # リソース適応型並列制御
-                # - 初期並列数: 3（最小同時実行数）
-                # - 最小並列数: 3（リソース逼迫時も3は維持）
-                # - 最大並列数: 30（余裕がある場合はここまで増やす）
-                resource_manager = AdaptiveResourceManager(initial_max_parallel=3, min_parallel=3, max_parallel=30)
+                # - 初期並列数: 1（最小同時実行数）
+                # - 最小並列数: 1（リソース逼迫時も1は維持）
+                # - 最大並列数: 100（余裕がある場合はここまで増やす）
+                # update_progress_to_supabaseからアクセスできるようにグローバル変数として初期化
+                global resource_manager
+                resource_manager = AdaptiveResourceManager(initial_max_parallel=1, min_parallel=1, max_parallel=100)
 
                 # 並列数制御用のセマフォ（動的に調整）
                 # NOTE: セマフォは固定値なので、タスク内で制御ロジックを実装
-                active_tasks = []
+                # グローバルのactive_tasks（辞書）とは別に、asyncio.Taskのリストを管理
+                pending_async_tasks = []
                 processed_count = 0
-
-                # リソース監視 + ログ同期タスク
-                async def monitor_resources():
-                    """リソース監視タスク：メモリ使用率をチェックして並列数を調整 + ログを定期同期"""
-                    while processing_status['is_processing']:
-                        try:
-                            memory_info = get_cgroup_memory()
-                            memory_percent = memory_info['percent']
-
-                            # 実際の並列実行数を取得（processing_workersテーブルのレコード数）
-                            worker_status = get_worker_status()
-                            current_workers = worker_status['current_workers']
-
-                            # ローカルのリソース調整を実行（current_workersを渡す）
-                            # max_parallel_limit（30）は初期化時に設定済み、動的には変更しない
-                            status = resource_manager.adjust_resources(memory_percent, current_workers)
-
-                            # リソース制御情報を更新（実際に使用される動的な max_parallel を保存）
-                            processing_status['resource_control']['max_parallel'] = resource_manager.max_parallel
-                            # current_parallel は process_single_document で更新されるのでここでは触らない
-                            processing_status['resource_control']['throttle_delay'] = status['throttle_delay']
-                            processing_status['resource_control']['adjustment_count'] = resource_manager.adjustment_count
-
-                            # ログをSupabaseに定期同期（2秒ごと）
-                            update_progress_to_supabase(
-                                processing_status['current_index'],
-                                processing_status['total_count'],
-                                processing_status['current_file'],
-                                processing_status['success_count'],
-                                processing_status['error_count'],
-                                processing_status['logs']
-                            )
-
-                        except Exception as e:
-                            logger.error(f"リソース監視エラー: {e}")
-
-                        await asyncio.sleep(2)  # 2秒ごとに監視 + ログ同期
 
                 # 個別ドキュメント処理タスク
                 async def process_single_document(doc, index):
                     """個別ドキュメントを処理"""
+                    global active_tasks
                     nonlocal processed_count
 
                     # 停止フラグをチェック
@@ -1083,6 +1208,11 @@ def start_processing():
                     title = doc.get('title', '') or '(タイトル未生成)'
                     doc_id = doc.get('id', str(index))
 
+                    # active_tasksにワーカー情報を追加
+                    active_tasks[doc_id] = {
+                        'title': title,
+                        'started_at': datetime.now(timezone.utc).isoformat()
+                    }
                     # Supabaseにワーカー登録
                     register_worker(doc_id, title)
 
@@ -1097,20 +1227,37 @@ def start_processing():
                             f"[{datetime.now().strftime('%H:%M:%S')}] [{index}/{len(docs)}] 処理中: {title}"
                         )
 
-                        # ログは最大300件まで保持
-                        if len(processing_status['logs']) > 300:
-                            processing_status['logs'] = processing_status['logs'][-300:]
+                        # ログは最大件数まで保持
+                        if len(processing_status['logs']) > MAX_LOG_ENTRIES:
+                            processing_status['logs'] = processing_status['logs'][-MAX_LOG_ENTRIES:]
 
-                        # Supabaseに進捗を保存
-                        update_progress_to_supabase(
-                            index, len(docs), title,
-                            processing_status['success_count'],
-                            processing_status['error_count'],
-                            processing_status['logs']
-                        )
+                        # リソース情報を取得してリソース調整
+                        memory_info = get_cgroup_memory()
+                        memory_percent = memory_info['percent']
+                        worker_status = get_worker_status()
+                        current_workers = worker_status['current_workers']
 
-                        # ドキュメント処理
-                        success = await processor.process_document(doc, preserve_workspace)
+                        # リソース調整（並列数を動的に調整）
+                        status = resource_manager.adjust_resources(memory_percent, current_workers)
+                        processing_status['resource_control']['throttle_delay'] = status['throttle_delay']
+                        processing_status['resource_control']['adjustment_count'] = resource_manager.adjustment_count
+
+                        # 進捗コールバック関数を定義
+                        def progress_callback(stage):
+                            """各ステージ開始時にSupabaseを更新"""
+                            logger.info(f"[PROGRESS] Stage {stage} 開始")
+                            processing_status['current_file'] = f"{title} (Stage {stage})"
+                            update_progress_to_supabase(
+                                processing_status['current_index'],
+                                processing_status['total_count'],
+                                processing_status['current_file'],
+                                processing_status['success_count'],
+                                processing_status['error_count'],
+                                processing_status['logs']
+                            )
+
+                        # ドキュメント処理（進捗コールバックを渡す）
+                        success = await processor.process_document(doc, preserve_workspace, progress_callback=progress_callback)
 
                         # 処理後のメモリを記録（最初の3件のみログ出力）
                         if index <= 3:
@@ -1144,15 +1291,19 @@ def start_processing():
 
                         return success
                     finally:
+                        # active_tasksからワーカー情報を削除
+                        if doc_id in active_tasks:
+                            del active_tasks[doc_id]
                         # Supabaseからワーカー解除
                         unregister_worker(doc_id)
 
-                # リソース監視タスクを開始
-                monitor_task = asyncio.create_task(monitor_resources())
+                # リソース監視はthreading.Timerで定期実行されているため、ここでは不要
 
                 try:
                     # ドキュメントを処理
                     for i, doc in enumerate(docs, 1):
+                        logger.info(f"[FOR_LOOP] イテレーション {i}/{len(docs)} 開始, pending_async_tasks={len(pending_async_tasks)}, max_parallel={resource_manager.max_parallel}")
+
                         # 停止フラグをチェック
                         if not processing_status['is_processing']:
                             processing_status['logs'].append(
@@ -1160,36 +1311,36 @@ def start_processing():
                             )
                             break
 
-                        # 並列数制御：active_tasksが max_parallel 未満になるまで待機
-                        # 動的に調整される max_parallel を使用（リソースに応じて3～30で変動）
-                        while len(active_tasks) >= resource_manager.max_parallel:
+                        # 並列数制御：pending_async_tasksが max_parallel 未満になるまで待機
+                        # 動的に調整される max_parallel を使用（リソースに応じて1～100で変動）
+                        if len(pending_async_tasks) >= resource_manager.max_parallel:
+                            logger.info(f"[WHILE_ENTER] pending_async_tasks={len(pending_async_tasks)} >= max_parallel={resource_manager.max_parallel}, 待機開始")
+                        while len(pending_async_tasks) >= resource_manager.max_parallel:
                             # 完了したタスクを削除
-                            done_tasks = [t for t in active_tasks if t.done()]
+                            done_tasks = [t for t in pending_async_tasks if t.done()]
                             for t in done_tasks:
-                                active_tasks.remove(t)
+                                pending_async_tasks.remove(t)
 
-                            # タスク完了後、current_parallelを即座に更新（重要！）
-                            processing_status['resource_control']['current_parallel'] = len(active_tasks)
-
-                            if len(active_tasks) >= resource_manager.max_parallel:
+                            if len(pending_async_tasks) >= resource_manager.max_parallel:
                                 # まだ並列数が上限に達している場合は少し待機
                                 await asyncio.sleep(0.1)
 
                         # 新しいタスクを開始
                         task = asyncio.create_task(process_single_document(doc, i))
-                        active_tasks.append(task)
+                        pending_async_tasks.append(task)
 
-                        # 現在の並列数を更新
-                        processing_status['resource_control']['current_parallel'] = len(active_tasks)
+                        # イベントループに制御を渡す
+                        await asyncio.sleep(0)
 
                     # すべてのタスクが完了するまで待機
-                    if active_tasks:
-                        await asyncio.gather(*active_tasks, return_exceptions=True)
+                    if pending_async_tasks:
+                        await asyncio.gather(*pending_async_tasks, return_exceptions=True)
 
                 finally:
-                    # リソース監視タスクを停止
-                    processing_status['is_processing'] = False  # 監視ループを終了
-                    await monitor_task
+                    # 処理完了（Supabaseも更新）
+                    processing_status['is_processing'] = False
+                    set_processing_lock(False)
+                    logger.info("[PROCESS] 全ドキュメント処理完了")
 
             try:
                 asyncio.run(process_all())
@@ -1217,6 +1368,18 @@ def start_processing():
                 )
                 print(f"[ERROR] バックグラウンド処理エラー: {e}")
             finally:
+                # 定期更新タイマーを停止
+                processing_status['is_processing'] = False  # タイマーのループ条件をFalseに
+                set_processing_lock(False)  # Supabaseも更新
+                if update_timer is not None:
+                    update_timer.cancel()
+                    logger.info("[PERIODIC_UPDATE] タイマーをキャンセルしました")
+
+                # グローバルなresource_managerをリセット
+                global resource_manager
+                resource_manager = None
+                logger.info("[RESOURCE] resource_managerをリセットしました")
+
                 # ハンドラーを削除
                 logger.remove(handler_id)
                 # Supabaseロック解放
@@ -1237,30 +1400,28 @@ def start_processing():
     except Exception as e:
         processing_status['is_processing'] = False
         set_processing_lock(False)  # ロック解放
-        print(f"[ERROR] 処理開始エラー: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        logger.error(f"処理開始エラー: {e}")
+        return safe_error_response(e)
 
 
 @app.route('/api/process/stop', methods=['POST'])
+@require_api_key
 def stop_processing():
     """
     処理を停止
     """
     global processing_status
 
-    # ローカルまたはSupabaseのロックをチェック
-    if not processing_status['is_processing'] and not get_processing_lock():
+    # Supabaseのロックをチェック（ローカルは別インスタンスの可能性があるので見ない）
+    if not get_processing_lock():
         return jsonify({
             'success': False,
             'error': '実行中の処理がありません'
         }), 400
 
-    # 停止フラグを立てる
+    # 停止フラグを立てる（ローカル＋Supabase両方）
     processing_status['is_processing'] = False
-    set_processing_lock(False)  # Supabaseロック解放
+    set_processing_lock(False)  # Supabaseロック解放 + ワーカークリア
     processing_status['logs'].append(
         f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ ユーザーによって停止されました"
     )
@@ -1272,6 +1433,7 @@ def stop_processing():
 
 
 @app.route('/api/process/reset', methods=['POST'])
+@require_api_key
 def reset_processing():
     """
     処理フラグを強制リセット（Supabase + ローカル両方）
@@ -1285,13 +1447,13 @@ def reset_processing():
     try:
         client = get_supabase_client()
         client.table('processing_lock').update({
-            'max_parallel': 3,
-            'current_workers': 0,
             'current_index': 0,
             'total_count': 0,
             'success_count': 0,
             'error_count': 0,
             'current_file': '',
+            'current_workers': 0,
+            'max_parallel': 1,
             'throttle_delay': 0.0,
             'adjustment_count': 0,
             'cpu_percent': 0.0,
@@ -1316,8 +1478,6 @@ def reset_processing():
         f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました（Supabase + ローカル）"
     ]
     processing_status['resource_control'] = {
-        'current_parallel': 0,
-        'max_parallel': 3,
         'throttle_delay': 0.0,
         'adjustment_count': 0
     }
