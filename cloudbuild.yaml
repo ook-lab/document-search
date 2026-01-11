@@ -47,6 +47,9 @@ steps:
       - '16Gi'
       - '--cpu'
       - '4'
+      - '--no-cpu-throttling'
+      - '--min-instances'
+      - '1'
       - '--set-env-vars'
       - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
 

@@ -1222,7 +1222,8 @@ def start_processing():
                 set_processing_lock(False)
 
         # 別スレッドで処理を開始
-        thread = threading.Thread(target=background_processing, daemon=True)
+        # daemon=False: Cloud Runがインスタンスを落としても、処理完了まで待機
+        thread = threading.Thread(target=background_processing, daemon=False)
         thread.start()
 
         # すぐにレスポンスを返す
