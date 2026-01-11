@@ -236,6 +236,7 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
         throttle_delay = resource_control.get('throttle_delay', 0.0)
         max_parallel = resource_control.get('max_parallel', 3)  # デフォルト3
         current_parallel = resource_control.get('current_parallel', 0)  # 実際の並列実行数
+        adjustment_count = resource_control.get('adjustment_count', 0)  # リソース調整回数
 
         client.table('processing_lock').update({
             'current_index': current_index,
@@ -251,6 +252,7 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
             'throttle_delay': throttle_delay,
             'max_parallel': max_parallel,
             'current_workers': current_parallel,  # 実際の並列実行数を保存
+            'adjustment_count': adjustment_count,  # リソース調整回数を保存
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
         return True
@@ -272,7 +274,14 @@ def get_progress_from_supabase() -> dict:
                 'current_file': data.get('current_file', ''),
                 'success_count': data.get('success_count', 0),
                 'error_count': data.get('error_count', 0),
-                'logs': data.get('logs', [])
+                'logs': data.get('logs', []),
+                # バックグラウンド処理インスタンスのリソース情報
+                'cpu_percent': data.get('cpu_percent', 0.0),
+                'memory_percent': data.get('memory_percent', 0.0),
+                'memory_used_gb': data.get('memory_used_gb', 0.0),
+                'memory_total_gb': data.get('memory_total_gb', 0.0),
+                'throttle_delay': data.get('throttle_delay', 0.0),
+                'adjustment_count': data.get('adjustment_count', 0)
             }
         return {
             'current_index': 0,
@@ -280,7 +289,13 @@ def get_progress_from_supabase() -> dict:
             'current_file': '',
             'success_count': 0,
             'error_count': 0,
-            'logs': []
+            'logs': [],
+            'cpu_percent': 0.0,
+            'memory_percent': 0.0,
+            'memory_used_gb': 0.0,
+            'memory_total_gb': 0.0,
+            'throttle_delay': 0.0,
+            'adjustment_count': 0
         }
     except Exception as e:
         logger.error(f"進捗取得エラー: {e}")
@@ -290,7 +305,13 @@ def get_progress_from_supabase() -> dict:
             'current_file': '',
             'success_count': 0,
             'error_count': 0,
-            'logs': []
+            'logs': [],
+            'cpu_percent': 0.0,
+            'memory_percent': 0.0,
+            'memory_used_gb': 0.0,
+            'memory_total_gb': 0.0,
+            'throttle_delay': 0.0,
+            'adjustment_count': 0
         }
 
 
@@ -760,16 +781,14 @@ def health_check():
 def get_process_progress():
     """
     処理進捗とシステムリソースを取得（Supabaseから共有状態を取得）
+    全ての情報はバックグラウンド処理インスタンスがSupabaseに保存した値を使用
     """
     try:
-        # cgroupからリソース情報を取得（Cloud Run対応）
-        cpu_percent = get_cgroup_cpu()
-        memory_info = get_cgroup_memory()
-
         # Supabaseからワーカー状況を取得（複数インスタンス対応）
         worker_status = get_worker_status()
 
         # Supabaseから進捗情報を取得（複数インスタンス共有）
+        # CPU/メモリ/スロットル等もバックグラウンド処理インスタンスの値を取得
         progress = get_progress_from_supabase()
 
         # 現在処理中のドキュメントの進捗を取得
@@ -796,17 +815,18 @@ def get_process_progress():
             # ステージ進捗（Supabaseから取得）
             'current_stage': current_stage,
             'stage_progress': stage_progress,
+            # バックグラウンド処理インスタンスのリソース情報（Supabaseから取得）
             'system': {
-                'cpu_percent': cpu_percent,
-                'memory_percent': memory_info['percent'],
-                'memory_used_gb': memory_info['used_gb'],
-                'memory_total_gb': memory_info['total_gb']
+                'cpu_percent': progress['cpu_percent'],
+                'memory_percent': progress['memory_percent'],
+                'memory_used_gb': progress['memory_used_gb'],
+                'memory_total_gb': progress['memory_total_gb']
             },
             'resource_control': {
                 'current_parallel': worker_status['current_workers'],
                 'max_parallel': worker_status['max_parallel'],
-                'throttle_delay': 0.0,
-                'adjustment_count': 0
+                'throttle_delay': progress['throttle_delay'],
+                'adjustment_count': progress['adjustment_count']
             },
             'workers': worker_status['workers']  # 処理中のドキュメント一覧
         })
@@ -1250,7 +1270,7 @@ def reset_processing():
     # Supabaseロック解放
     set_processing_lock(False)
 
-    # Supabaseのmax_parallelも3にリセット
+    # Supabaseの全状態をリセット
     try:
         client = get_supabase_client()
         client.table('processing_lock').update({
@@ -1262,6 +1282,11 @@ def reset_processing():
             'error_count': 0,
             'current_file': '',
             'throttle_delay': 0.0,
+            'adjustment_count': 0,
+            'cpu_percent': 0.0,
+            'memory_percent': 0.0,
+            'memory_used_gb': 0.0,
+            'memory_total_gb': 0.0,
             'logs': []
         }).eq('id', 1).execute()
     except Exception as e:
