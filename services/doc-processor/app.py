@@ -235,6 +235,7 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
         resource_control = processing_status.get('resource_control', {})
         throttle_delay = resource_control.get('throttle_delay', 0.0)
         max_parallel = resource_control.get('max_parallel', 3)  # デフォルト3
+        current_parallel = resource_control.get('current_parallel', 0)  # 実際の並列実行数
 
         client.table('processing_lock').update({
             'current_index': current_index,
@@ -249,6 +250,7 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
             'memory_total_gb': memory_info['total_gb'],
             'throttle_delay': throttle_delay,
             'max_parallel': max_parallel,
+            'current_workers': current_parallel,  # 実際の並列実行数を保存
             'updated_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', 1).execute()
         return True
@@ -306,7 +308,7 @@ def get_worker_status() -> dict:
 
         return {
             'max_parallel': lock_data.get('max_parallel', 3),
-            'current_workers': len(workers),
+            'current_workers': lock_data.get('current_workers', 0),  # processing_lockから取得（len(active_tasks)の値）
             'is_processing': lock_data.get('is_processing', False),
             'workers': workers
         }
