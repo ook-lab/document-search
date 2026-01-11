@@ -773,7 +773,8 @@ def health_check():
     """ヘルスチェックエンドポイント"""
     return jsonify({
         'status': 'ok',
-        'message': 'Document Processing System is running'
+        'message': 'Document Processing System is running',
+        'version': '2025-01-11-v2'  # デプロイ確認用
     })
 
 
@@ -1013,8 +1014,12 @@ def start_processing():
         # バックグラウンド処理関数
         def background_processing():
             global processing_status
+            print("[DEBUG] background_processing() 開始")
+            logger.info("[DEBUG] background_processing() 開始")
 
             async def process_all():
+                print("[DEBUG] process_all() 開始")
+                logger.info("[DEBUG] process_all() 開始")
                 # アダプティブリソースマネージャーを初期化
                 # リソース適応型並列制御
                 # - 初期並列数: 3（最小同時実行数）
