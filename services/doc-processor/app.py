@@ -387,21 +387,27 @@ def get_progress_from_supabase() -> dict:
 
 
 def get_worker_status() -> dict:
-    """現在のワーカー状況を取得 - active_tasksのみ使用"""
+    """現在のワーカー状況を取得 - Supabaseから取得（複数インスタンス対応）"""
     global resource_manager, active_tasks
     try:
-        # active_tasksから実際のワーカー数を取得
-        current_workers = len(active_tasks)
-
-        # resource_managerからmax_parallelを取得
-        max_parallel = resource_manager.max_parallel if resource_manager else 1
-
-        # processing_lockからis_processingのみ取得
+        # Supabaseからワーカー情報を取得（処理インスタンスが更新した値）
         client = get_supabase_client()
-        lock_result = client.table('processing_lock').select('is_processing').eq('id', 1).execute()
+        lock_result = client.table('processing_lock').select(
+            'is_processing, current_workers, max_parallel'
+        ).eq('id', 1).execute()
         lock_data = lock_result.data[0] if lock_result.data else {}
 
-        # active_tasksの内容をworkers形式に変換
+        # Supabaseから取得（処理インスタンスが更新した値を優先）
+        current_workers = lock_data.get('current_workers', 0)
+        max_parallel = lock_data.get('max_parallel', 1)
+
+        # ローカルのactive_tasksにデータがある場合はそちらを優先（同一インスタンスの場合）
+        if len(active_tasks) > 0:
+            current_workers = len(active_tasks)
+            if resource_manager:
+                max_parallel = resource_manager.max_parallel
+
+        # active_tasksの内容をworkers形式に変換（同一インスタンスの場合のみ）
         workers = [
             {
                 'doc_id': doc_id,
@@ -413,7 +419,7 @@ def get_worker_status() -> dict:
 
         return {
             'max_parallel': max_parallel,
-            'current_workers': current_workers,  # active_tasksから取得した実際のワーカー数
+            'current_workers': current_workers,
             'is_processing': lock_data.get('is_processing', False),
             'workers': workers
         }
