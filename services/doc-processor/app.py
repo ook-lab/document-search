@@ -1433,12 +1433,19 @@ def stop_processing():
 
 
 @app.route('/api/process/reset', methods=['POST'])
-@require_api_key
 def reset_processing():
     """
     処理フラグを強制リセット（Supabase + ローカル両方）
+    注意: 緊急用のため認証なしでアクセス可能
     """
-    global processing_status
+    global processing_status, active_tasks, resource_manager
+
+    # active_tasksをクリア
+    active_tasks.clear()
+    logger.info("active_tasksをクリアしました")
+
+    # resource_managerをリセット
+    resource_manager = None
 
     # Supabaseロック解放
     set_processing_lock(False)
@@ -1447,6 +1454,7 @@ def reset_processing():
     try:
         client = get_supabase_client()
         client.table('processing_lock').update({
+            'is_processing': False,
             'current_index': 0,
             'total_count': 0,
             'success_count': 0,
@@ -1462,6 +1470,7 @@ def reset_processing():
             'memory_total_gb': 0.0,
             'logs': []
         }).eq('id', 1).execute()
+        logger.info("Supabase processing_lockをリセットしました")
     except Exception as e:
         logger.error(f"Supabaseリセットエラー: {e}")
 
@@ -1475,7 +1484,7 @@ def reset_processing():
     processing_status['current_stage'] = ''
     processing_status['stage_progress'] = 0.0
     processing_status['logs'] = [
-        f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました（Supabase + ローカル）"
+        f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 処理フラグを強制リセットしました（Supabase + ローカル + active_tasks）"
     ]
     processing_status['resource_control'] = {
         'throttle_delay': 0.0,
