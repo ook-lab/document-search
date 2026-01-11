@@ -329,7 +329,7 @@ def get_worker_status() -> dict:
 
         return {
             'max_parallel': lock_data.get('max_parallel', 3),
-            'current_workers': lock_data.get('current_workers', 0),  # processing_lockから取得（len(active_tasks)の値）
+            'current_workers': len(workers),  # processing_workersテーブルのレコード数（実際のワーカー数）
             'is_processing': lock_data.get('is_processing', False),
             'workers': workers
         }
@@ -1041,8 +1041,9 @@ def start_processing():
                             memory_info = get_cgroup_memory()
                             memory_percent = memory_info['percent']
 
-                            # 実際の並列実行数を取得（len(active_tasks)の値）
-                            current_workers = processing_status['resource_control'].get('current_parallel', 0)
+                            # 実際の並列実行数を取得（processing_workersテーブルのレコード数）
+                            worker_status = get_worker_status()
+                            current_workers = worker_status['current_workers']
 
                             # ローカルのリソース調整を実行（current_workersを渡す）
                             # max_parallel_limit（30）は初期化時に設定済み、動的には変更しない
