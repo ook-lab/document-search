@@ -289,6 +289,7 @@ def update_progress_to_supabase(current_index: int, total_count: int, current_fi
 
         # 実際のワーカー数をactive_tasksから取得
         actual_workers = len(active_tasks)
+        logger.info(f"[UPDATE_SUPABASE] active_tasks count: {actual_workers}, keys: {list(active_tasks.keys())[:5]}")
 
         # グローバルなresource_managerが存在すれば、リソース調整を実行
         if resource_manager is not None:
@@ -1219,6 +1220,7 @@ def start_processing():
                         'title': title,
                         'started_at': datetime.now(timezone.utc).isoformat()
                     }
+                    logger.info(f"[WORKER_ADD] doc_id={doc_id}, active_tasks count={len(active_tasks)}")
                     # Supabaseにワーカー登録
                     register_worker(doc_id, title)
 
