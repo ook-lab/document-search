@@ -797,7 +797,8 @@ def get_process_progress():
         stage_progress = 0.0
         try:
             # processing中のドキュメントを取得（最新1件）
-            processing_doc = db.client.table('Rawdata_FILE_AND_MAIL').select('processing_stage, processing_progress').eq('processing_status', 'processing').order('created_at', desc=False).limit(1).execute()
+            client = get_supabase_client()
+            processing_doc = client.table('Rawdata_FILE_AND_MAIL').select('processing_stage, processing_progress').eq('processing_status', 'processing').order('created_at', desc=False).limit(1).execute()
             if processing_doc.data and len(processing_doc.data) > 0:
                 current_stage = processing_doc.data[0].get('processing_stage', '')
                 stage_progress = processing_doc.data[0].get('processing_progress', 0.0)
