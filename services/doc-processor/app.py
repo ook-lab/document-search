@@ -1161,6 +1161,9 @@ def start_processing():
                             for t in done_tasks:
                                 active_tasks.remove(t)
 
+                            # タスク完了後、current_parallelを即座に更新（重要！）
+                            processing_status['resource_control']['current_parallel'] = len(active_tasks)
+
                             if len(active_tasks) >= resource_manager.max_parallel:
                                 # まだ並列数が上限に達している場合は少し待機
                                 await asyncio.sleep(0.1)
