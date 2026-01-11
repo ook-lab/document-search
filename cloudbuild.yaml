@@ -1,4 +1,5 @@
 steps:
+  # 1. Dockerイメージをビルド
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -19,6 +20,36 @@ steps:
       - '--build-arg'
       - 'SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
       - '.'
+
+  # 2. イメージをプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+
+  # 3. Cloud Runにデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'doc-processor'
+      - '--image'
+      - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+      - '--region'
+      - 'asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--service-account'
+      - 'document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com'
+      - '--timeout'
+      - '3600'
+      - '--memory'
+      - '16Gi'
+      - '--cpu'
+      - '4'
+      - '--set-env-vars'
+      - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
+
 images:
   - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
-timeout: 1200s
+timeout: 1800s
