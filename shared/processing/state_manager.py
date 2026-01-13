@@ -203,6 +203,13 @@ class StateManager:
             self._cache['current_stage'] = ''
             self._cache['stage_progress'] = 0.0
             self._stop_requested = False
+            # リソース制御を初期値にリセット
+            self._cache['resource_control'] = {
+                'throttle_delay': 0.0,
+                'adjustment_count': 0,
+                'max_parallel': 1,  # 初期値は1
+                'current_workers': 0
+            }
 
         # DBロック設定
         success = self._set_lock(True)
@@ -395,6 +402,10 @@ class StateManager:
             }
             if is_processing:
                 data['started_at'] = datetime.now(timezone.utc).isoformat()
+                # 処理開始時はリソース制御を初期値にリセット
+                data['max_parallel'] = 1
+                data['current_workers'] = 0
+                data['throttle_delay'] = 0.0
 
             self.client.table('processing_lock').update(data).eq('id', 1).execute()
             logger.info(f"Lock set: {is_processing}")
