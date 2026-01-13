@@ -7,7 +7,7 @@ import requests
 import time
 
 # Backend API URL
-BACKEND_URL = "https://mail-doc-search-system-ocdx2fd4ia-an.a.run.app"
+BACKEND_URL = "https://doc-processor-983922127476.asia-northeast1.run.app"
 
 st.set_page_config(
     page_title="ドキュメント処理システム",

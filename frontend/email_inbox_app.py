@@ -28,16 +28,16 @@ from shared.common.connectors.gmail_connector import GmailConnector
 import os
 
 # コンポーネントをインポート
-from ui.components.email_viewer import (
+from frontend.components.email_viewer import (
     render_email_list,
     render_email_detail,
     render_email_html_preview
 )
-from ui.components.table_editor import _format_field_name, _render_array_table
-from ui.components.form_editor import render_form_editor
-from ui.components.json_preview import render_json_preview, render_json_diff
-from ui.components.table_creator import render_table_creator
-from ui.utils.schema_detector import SchemaDetector
+from frontend.components.table_editor import _format_field_name, _render_array_table
+from frontend.components.form_editor import render_form_editor
+from frontend.components.json_preview import render_json_preview, render_json_diff
+from frontend.components.table_creator import render_table_creator
+from frontend.utils.schema_detector import SchemaDetector
 
 
 def detect_structured_fields(metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -91,7 +91,7 @@ def detect_structured_fields(metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
             # extracted_tablesは特別処理（文字列のリストをパースして構造化データに変換）
             if key == "extracted_tables":
                 logger.info(f"  ✓ '{key}' は extracted_tables として検出 - パース処理を実行")
-                from ui.utils.table_parser import parse_extracted_tables
+                from frontend.utils.table_parser import parse_extracted_tables
                 parsed_tables = parse_extracted_tables(value)
                 if parsed_tables:
                     logger.info(f"  ✓ {len(parsed_tables)} 個の表をパースしました")

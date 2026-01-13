@@ -13,13 +13,69 @@ class SchemaDetector:
     def __init__(self):
         """スキーマファイルをロード"""
         self.schemas = {}
-        # ui/utils/schema_detector.py → ui/schemas/
+        # frontend/utils/schema_detector.py → frontend/schemas/
         self.schema_dir = Path(__file__).parent.parent / "schemas"
         self._load_schemas()
+
+        # デフォルトの汎用スキーマを定義（ファイルがない場合のフォールバック）
+        if "generic" not in self.schemas:
+            self.schemas["generic"] = {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "Generic Document Schema",
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": ["string", "null"],
+                        "title": "タイトル",
+                        "description": "ドキュメントのタイトル"
+                    },
+                    "summary": {
+                        "type": ["string", "null"],
+                        "title": "要約",
+                        "description": "ドキュメントの要約"
+                    },
+                    "document_date": {
+                        "type": ["string", "null"],
+                        "format": "date",
+                        "title": "文書日付",
+                        "description": "文書の日付（YYYY-MM-DD）"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "title": "タグ",
+                        "description": "ドキュメントに関連するタグ",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "category": {
+                        "type": ["string", "null"],
+                        "title": "カテゴリー",
+                        "description": "ドキュメントのカテゴリー"
+                    },
+                    "sender": {
+                        "type": ["string", "null"],
+                        "title": "送信者",
+                        "description": "送信者名またはメールアドレス"
+                    },
+                    "subject": {
+                        "type": ["string", "null"],
+                        "title": "件名",
+                        "description": "メールまたは文書の件名"
+                    },
+                    "content_type": {
+                        "type": ["string", "null"],
+                        "title": "内容タイプ",
+                        "description": "文書の内容タイプ"
+                    }
+                },
+                "required": []
+            }
 
     def _load_schemas(self):
         """schemas/ディレクトリから全てのスキーマをロード"""
         if not self.schema_dir.exists():
+            print(f"スキーマディレクトリが存在しません: {self.schema_dir}")
             return
 
         for schema_file in self.schema_dir.glob("*.json"):

@@ -4,31 +4,14 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
-*.venv/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
+.venv/
+venv/
+env/
 
-# Node
-node_modules/
-npm-debug.log
-yarn-error.log
-package-lock.json
+# Git
+.git/
+.gitignore
 
 # IDE
 .vscode/
@@ -36,54 +19,27 @@ package-lock.json
 *.swp
 *.swo
 
+# Logs
+*.log
+
+# Temporary files
+tmpclaude-*
+*.tmp
+
+# Node modules (if any)
+node_modules/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Git
-.git/
-.gitignore
+# Other services
+services/web-frontend/
+services/app-backend/
+services/notifier/
 
-# Logs
-*.log
-logs/
-
-# Test
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Temporary
-tmp/
-temp/
-*.tmp
-
-# 他のサービス（doc-processor以外）
-services/doc-search/
-services/netsuper-search/
-services/gmail-inbox-sync/
-services/google-classroom-sync/
-services/classroom-check/
-
-# Frontend
-frontend/
-
-# 不要なスクリプト
-scripts/automation/
-scripts/data/
-scripts/delete_all/
-scripts/gmail/
-scripts/search/
-scripts/setup/
-
-# ドキュメント
+# Tests and docs
+tests/
 docs/
 *.md
-README.md
-
-# データベース
-*.db
-*.sqlite
-
-# キャッシュ
-.cache/
+!README.md

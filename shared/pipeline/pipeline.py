@@ -8,6 +8,7 @@
 - doc_type / workspace に応じて自動的にプロンプトとモデルを切り替え
 - config/ 内の YAML と Markdown ファイルで設定管理
 """
+import asyncio
 from pathlib import Path
 from typing import Dict, Any, Optional
 from loguru import logger
@@ -106,7 +107,8 @@ class UnifiedDocumentPipeline:
         mime_type: str,
         source_id: str,
         existing_document_id: Optional[str] = None,
-        extra_metadata: Optional[Dict[str, Any]] = None
+        extra_metadata: Optional[Dict[str, Any]] = None,
+        progress_callback=None
     ) -> Dict[str, Any]:
         """
         ドキュメントを処理（Stage E-K）
@@ -131,6 +133,8 @@ class UnifiedDocumentPipeline:
             # Stage E: Pre-processing
             # ============================================
             logger.info("[Stage E] Pre-processing開始...")
+            if progress_callback:
+                progress_callback("E1")
 
             # extra_metadata から既に抽出済みのテキスト（attachment_text）を取得
             # HTMLファイル等、Ingestion時にテキスト抽出済みの場合に使用
@@ -140,8 +144,12 @@ class UnifiedDocumentPipeline:
                 file_path,
                 mime_type,
                 pre_extracted_text=pre_extracted_text,
-                workspace=workspace
+                workspace=workspace,
+                progress_callback=progress_callback
             )
+
+            # イベントループに制御を返す（並列タスク実行のため）
+            await asyncio.sleep(0)
 
             # Stage E の結果をチェック
             if not stage_e_result.get('success'):
@@ -161,14 +169,20 @@ class UnifiedDocumentPipeline:
             model_f = stage_f_config['model']
 
             logger.info(f"[Stage F] Visual Analysis開始... (model={model_f})")
+            if progress_callback:
+                progress_callback("F")
             vision_raw = self.stage_f.process(
                 file_path=file_path,
                 prompt=prompt_f,
                 model=model_f,
                 extracted_text=extracted_text,
-                workspace=workspace
+                workspace=workspace,
+                progress_callback=progress_callback
             )
             logger.info(f"[Stage F完了] Vision結果: {len(vision_raw)}文字")
+
+            # イベントループに制御を返す（並列タスク実行のため）
+            await asyncio.sleep(0)
 
             # ============================================
             # Stage F 結果パース: JSON から構造化情報を取得
@@ -234,6 +248,8 @@ class UnifiedDocumentPipeline:
             # 家計簿専用処理の場合
             if custom_handler == 'kakeibo':
                 logger.info(f"[Stage H] 家計簿構造化開始... (custom_handler=kakeibo)")
+                if progress_callback:
+                    progress_callback("H")
 
                 # Stage F の出力を辞書に変換（combined_text が JSON 文字列の場合）
                 import json
@@ -255,6 +271,9 @@ class UnifiedDocumentPipeline:
 
                 # 家計簿専用 Stage H で処理
                 stageH_result = self.stage_h_kakeibo.process(stage_f_output)
+
+                # イベントループに制御を返す（並列タスク実行のため）
+                await asyncio.sleep(0)
 
                 # 家計簿専用のDB保存
                 if self.kakeibo_db_handler:
@@ -285,6 +304,8 @@ class UnifiedDocumentPipeline:
                 model_h = stage_h_config['model']
 
                 logger.info(f"[Stage H] 構造化開始... (model={model_h})")
+                if progress_callback:
+                    progress_callback("H")
                 stageH_result = self.stage_h.process(
                     file_name=file_name,
                     doc_type=doc_type,
@@ -294,6 +315,9 @@ class UnifiedDocumentPipeline:
                     model=model_h,
                     stage_f_structure=stage_f_structure  # 構造化情報を渡す
                 )
+
+                # イベントループに制御を返す（並列タスク実行のため）
+                await asyncio.sleep(0)
 
                 # Stage H の結果をチェック
                 if not stageH_result or not isinstance(stageH_result, dict):
@@ -327,12 +351,17 @@ class UnifiedDocumentPipeline:
                 model_i = stage_i_config['model']
 
                 logger.info(f"[Stage I] 統合・要約開始... (model={model_i})")
+                if progress_callback:
+                    progress_callback("I")
                 stageI_result = self.stage_i.process(
                     combined_text=combined_text,
                     stageH_result=stageH_result,
                     prompt=prompt_i,
                     model=model_i
                 )
+
+                # イベントループに制御を返す（並列タスク実行のため）
+                await asyncio.sleep(0)
 
                 # Stage I の結果をチェック
                 if not stageI_result or not isinstance(stageI_result, dict):
@@ -383,6 +412,8 @@ class UnifiedDocumentPipeline:
             # Stage J: Chunking
             # ============================================
             logger.info("[Stage J] チャンク化開始...")
+            if progress_callback:
+                progress_callback("J")
             chunks = self.stage_j.process(
                 display_subject=extra_metadata.get('display_subject', file_name) if extra_metadata else file_name,
                 summary=summary,
@@ -391,6 +422,9 @@ class UnifiedDocumentPipeline:
                 metadata=stageH_metadata
             )
             logger.info(f"[Stage J完了] チャンク数: {len(chunks)}")
+
+            # イベントループに制御を返す（並列タスク実行のため）
+            await asyncio.sleep(0)
 
             # ============================================
             # DB保存: Rawdata_FILE_AND_MAIL
@@ -567,6 +601,8 @@ class UnifiedDocumentPipeline:
             # Stage K: Embedding
             # ============================================
             logger.info("[Stage K] ベクトル化開始...")
+            if progress_callback:
+                progress_callback("K")
 
             # 既存ドキュメントの場合は、古いチャンクを削除
             if existing_document_id:

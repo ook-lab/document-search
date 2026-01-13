@@ -2,18 +2,15 @@
 """
 マイグレーションスクリプト実行ツール
 """
-import os
 import sys
 from pathlib import Path
-from dotenv import load_dotenv
-from supabase import create_client
 
 # プロジェクトルートを取得
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-# 環境変数をロード
-load_dotenv()
+from shared.common.database.client import DatabaseClient
 
 def run_migration(migration_file: str):
     """
@@ -22,16 +19,13 @@ def run_migration(migration_file: str):
     Args:
         migration_file: マイグレーションファイルのパス
     """
-    # Supabase接続
-    url = os.getenv("SUPABASE_URL")
-    # SERVICE_ROLE_KEYを使用（DDL実行には管理者権限が必要）
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
-
-    if not url or not key:
-        print("ERROR: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not found in environment")
+    # Supabase接続（Service Role Keyを使用）
+    try:
+        db_client = DatabaseClient(use_service_role=True)
+        db = db_client.client
+    except Exception as e:
+        print(f"ERROR: Database connection failed: {e}")
         sys.exit(1)
-
-    db = create_client(url, key)
 
     # マイグレーションファイルを読み込み
     migration_path = Path(migration_file)

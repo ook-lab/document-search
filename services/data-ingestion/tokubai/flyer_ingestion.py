@@ -8,7 +8,7 @@
 2. Supabaseで既存データをチェックして新着チラシを抽出
 3. チラシ画像をダウンロードしてGoogle Driveに保存
 4. Supabaseに基本情報を登録（processing_status='pending'）
-5. 別途 process_queued_documents.py で処理（画像抽出、Stage A/B/C）
+5. 別途 process_queued_documents.py で処理（画像抽出、Stage E-K）
 """
 import os
 import sys

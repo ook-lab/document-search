@@ -1,33 +1,21 @@
 steps:
-  # 1. Dockerイメージをビルド
+  # Dockerイメージをビルド
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
       - '-f'
       - 'services/doc-processor/Dockerfile'
-      - '--build-arg'
-      - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY}'
-      - '--build-arg'
-      - 'ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY}'
-      - '--build-arg'
-      - 'OPENAI_API_KEY=${_OPENAI_API_KEY}'
-      - '--build-arg'
-      - 'SUPABASE_URL=${_SUPABASE_URL}'
-      - '--build-arg'
-      - 'SUPABASE_KEY=${_SUPABASE_KEY}'
-      - '--build-arg'
-      - 'SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
       - '.'
 
-  # 2. イメージをプッシュ
+  # イメージをArtifact Registryにプッシュ
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
 
-  # 3. Cloud Runにデプロイ
+  # Cloud Runにデプロイ
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -35,24 +23,32 @@ steps:
       - 'deploy'
       - 'doc-processor'
       - '--image'
-      - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
       - '--region'
       - 'asia-northeast1'
-      - '--allow-unauthenticated'
-      - '--service-account'
-      - 'document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com'
-      - '--timeout'
-      - '3600'
+      - '--platform'
+      - 'managed'
       - '--memory'
       - '16Gi'
       - '--cpu'
       - '4'
-      - '--no-cpu-throttling'
+      - '--timeout'
+      - '3600'
+      - '--allow-unauthenticated'
       - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '10'
+      - '--concurrency'
       - '1'
-      - '--set-env-vars'
-      - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
+      - '--execution-environment'
+      - 'gen1'
 
 images:
-  - 'asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest'
-timeout: 1800s
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
+
+substitutions:
+  _TAG: 'latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'

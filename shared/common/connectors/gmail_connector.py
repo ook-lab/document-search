@@ -15,8 +15,22 @@ from loguru import logger
 from email.mime.text import MIMEText
 from datetime import datetime
 
-# 認証情報ファイルのパス (環境変数から取得)
+# 認証情報ファイルのパス (環境変数から取得、なければローカルのフォールバック)
 CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+# ローカル開発用のフォールバックパス
+_LOCAL_CREDENTIALS_PATHS = [
+    os.path.join(os.path.dirname(__file__), '..', '..', '..', '.local', '_runtime', 'credentials', 'google_credentials.json'),
+    os.path.join(os.path.dirname(__file__), '..', '..', '..', '_runtime', 'credentials', 'google_credentials.json'),
+]
+
+# 環境変数がない場合、ローカルパスを探す
+if not CREDENTIALS_PATH:
+    for path in _LOCAL_CREDENTIALS_PATHS:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            CREDENTIALS_PATH = abs_path
+            break
 
 # Gmail APIのスコープ
 SCOPES = [

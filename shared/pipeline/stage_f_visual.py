@@ -174,7 +174,8 @@ class StageFVisualAnalyzer:
         prompt: str,
         model: str,
         extracted_text: str = "",
-        workspace: str = "default"
+        workspace: str = "default",
+        progress_callback=None
     ) -> str:
         """
         画像/PDFから視覚情報を抽出（F-1～F-10の完全フロー）
@@ -212,6 +213,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-1] PaddleOCR 表構造抽出
             # ============================================
+            if progress_callback:
+                progress_callback("F-1")
             paddle_tables = []
             paddle_text_chars = 0
             total_cells = 0
@@ -244,6 +247,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-2] Surya レイアウト解析
             # ============================================
+            if progress_callback:
+                progress_callback("F-2")
             text_boxes = []
             img_width = 0
             img_height = 0
@@ -319,6 +324,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-3] 画像切り出し
             # ============================================
+            if progress_callback:
+                progress_callback("F-3")
             cropped_regions = []
             min_w = min_h = max_w = max_h = avg_w = avg_h = 0
 
@@ -367,6 +374,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-4] PaddleOCR テキスト認識
             # ============================================
+            if progress_callback:
+                progress_callback("F-4")
             regions = []
             recognized_regions = 0
             total_chars = 0
@@ -465,6 +474,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-5] テキスト統合
             # ============================================
+            if progress_callback:
+                progress_callback("F-5")
             surya_full_text = ""
             before_regions = len(regions)
             after_regions = 0
@@ -494,6 +505,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-6] プロンプト構築
             # ============================================
+            if progress_callback:
+                progress_callback("F-6")
             f6_start = time.time()
             logger.info("[F-6] プロンプト構築開始...")
 
@@ -577,6 +590,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-7] Gemini Vision API呼び出し
             # ============================================
+            if progress_callback:
+                progress_callback("F-7")
             f7_start = time.time()
             logger.info(f"[F-7] Gemini Vision API呼び出し開始 (model={model}, max_tokens=65536)...")
 
@@ -649,6 +664,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-8] JSON クリーニング
             # ============================================
+            if progress_callback:
+                progress_callback("F-8")
             f8_start = time.time()
             logger.info("[F-8] JSONクリーニング開始...")
 
@@ -673,6 +690,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-9] 全結果マージ
             # ============================================
+            if progress_callback:
+                progress_callback("F-9")
             f9_start = time.time()
             logger.info("[F-9] 全結果マージ開始...")
 
@@ -747,6 +766,8 @@ class StageFVisualAnalyzer:
             # ============================================
             # [F-10] 最終検証・出力
             # ============================================
+            if progress_callback:
+                progress_callback("F-10")
             f10_start = time.time()
             logger.info("[F-10] 最終検証開始...")
 

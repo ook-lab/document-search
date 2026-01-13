@@ -10,10 +10,10 @@
 import re
 from datetime import datetime, date
 from typing import Dict, List, Optional
-from supabase import create_client, Client
+from supabase import Client
 from loguru import logger
 
-from .config import SUPABASE_URL, SUPABASE_KEY
+from shared.common.database.client import DatabaseClient
 from shared.ai.llm_client.llm_client import LLMClient
 
 
@@ -21,7 +21,8 @@ class TransactionProcessor:
     """トランザクション処理クラス"""
 
     def __init__(self):
-        self.db: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        db_client = DatabaseClient()
+        self.db: Client = db_client.client
         self.llm_client = LLMClient()  # AI一般名詞抽出用
 
         # マスタデータをキャッシュ

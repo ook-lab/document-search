@@ -8,7 +8,7 @@ HTML → PDF抽出・ダウンロード → Google Drive → Supabase (pending)
 2. Supabaseで既存データをチェックして新着お知らせを抽出
 3. PDFリンクからPDFをダウンロードしてGoogle Driveに保存
 4. Supabaseに基本情報を登録（processing_status='pending'）
-5. 別途 process_queued_documents.py で処理（PDF抽出、Stage A/B/C）
+5. 別途 process_queued_documents.py で処理（PDF抽出、Stage E-K）
 """
 import os
 import sys

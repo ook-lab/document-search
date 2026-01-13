@@ -8,7 +8,15 @@
 
 import streamlit as st
 import os
-from supabase import create_client
+import sys
+from pathlib import Path
+
+# パス設定
+_project_root = Path(__file__).resolve().parent.parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
+from shared.common.database.client import DatabaseClient
 from openai import OpenAI
 
 # ページ設定
@@ -18,15 +26,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# Supabase接続
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error("環境変数 SUPABASE_URL と SUPABASE_KEY を設定してください")
+# Supabase接続（DatabaseClientを使用）
+try:
+    db_client = DatabaseClient()
+    db = db_client.client
+except Exception as e:
+    st.error(f"データベース接続エラー: {e}")
     st.stop()
-
-db = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # OpenAI接続
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

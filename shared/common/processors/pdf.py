@@ -34,7 +34,7 @@ class PDFProcessor:
         self.llm_client = llm_client
         logger.info("PDFプロセッサ初期化完了 (総力戦アーキテクチャ)")
 
-    def extract_text(self, file_path: str) -> Dict[str, Any]:
+    def extract_text(self, file_path: str, progress_callback=None) -> Dict[str, Any]:
         """
         PDFファイルからテキストを抽出（pdfplumber + OCR分離方式）
 
@@ -105,6 +105,8 @@ class PDFProcessor:
             # ============================================
             # E-4: Gemini Vision 差分検出（対象ページのみ）
             # ============================================
+            if progress_callback:
+                progress_callback("E4")
             vision_corrections = {}
 
             if vision_target_pages and self.llm_client and PDF2IMAGE_AVAILABLE:
@@ -122,6 +124,8 @@ class PDFProcessor:
             # ============================================
             # E-5: VisionのOCR結果を適用
             # ============================================
+            if progress_callback:
+                progress_callback("E5")
 
             # E-3の統合Markdown文字数（適用前）
             e3_total_chars = sum(len(text) for text in page_texts)

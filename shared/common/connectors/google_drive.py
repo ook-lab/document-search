@@ -12,8 +12,23 @@ from io import FileIO, BytesIO
 from loguru import logger
 from pathlib import Path
 
-# 認証情報ファイルのパス (環境変数から取得)
+# 認証情報ファイルのパス (環境変数から取得、なければローカルのフォールバック)
 CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+# ローカル開発用のフォールバックパス
+_LOCAL_CREDENTIALS_PATHS = [
+    os.path.join(os.path.dirname(__file__), '..', '..', '..', '.local', '_runtime', 'credentials', 'google_credentials.json'),
+    os.path.join(os.path.dirname(__file__), '..', '..', '..', '_runtime', 'credentials', 'google_credentials.json'),
+]
+
+# 環境変数がない場合、ローカルパスを探す
+if not CREDENTIALS_PATH:
+    for path in _LOCAL_CREDENTIALS_PATHS:
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            CREDENTIALS_PATH = abs_path
+            break
+
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 class GoogleDriveConnector:
@@ -122,11 +137,11 @@ class GoogleDriveConnector:
             dest_path = Path(dest_dir) / file_name
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # DriveのMIMEタイプをチェックし、Google Docs形式の場合はエクスポート
+            # DriveのMIMEタイプとタイムスタンプをチェック
             # ★重要: 共有ドライブや他人所有のファイルにアクセスするためのフラグ
             file_metadata = self.service.files().get(
                 fileId=file_id,
-                fields='mimeType',
+                fields='mimeType, modifiedTime',  # タイムスタンプ同期のためmodifiedTimeを追加
                 supportsAllDrives=True
             ).execute()
             mime_type = file_metadata['mimeType']
@@ -172,6 +187,17 @@ class GoogleDriveConnector:
                     status, done = downloader.next_chunk()
                     if status:
                         logger.debug(f"ダウンロード進捗: {int(status.progress() * 100)}%")
+
+            # タイムスタンプ同期: DriveのmodifiedTimeをローカルファイルに適用
+            if 'modifiedTime' in file_metadata:
+                try:
+                    from dateutil import parser as date_parser
+                    dt = date_parser.parse(file_metadata['modifiedTime'])
+                    epoch_time = dt.timestamp()
+                    os.utime(str(dest_path), (epoch_time, epoch_time))
+                    logger.debug(f"タイムスタンプ同期: {dest_path} -> {dt}")
+                except Exception as ts_error:
+                    logger.warning(f"タイムスタンプ同期失敗: {ts_error}")
 
             logger.info(f"ファイルダウンロード完了: {dest_path} ({dest_path.stat().st_size} bytes)")
             return str(dest_path)

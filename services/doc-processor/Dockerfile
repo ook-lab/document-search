@@ -3,22 +3,22 @@ FROM asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-de
 
 WORKDIR /app
 
-# アプリケーションファイルをコピー（プロジェクトルートからビルドする場合）
-COPY services/doc-processor/app.py .
-COPY services/doc-processor/templates/ ./templates/
+# ディレクトリ構造を維持してコピー
+# PYTHONPATH=/app により、shared, scripts はそのまま import 可能
+
+# 1. 共通モジュール（shared パッケージ）
+COPY shared/ ./shared/
+
+# 2. スクリプト（CLIツール用、オプション）
+COPY scripts/ ./scripts/
+
+# 3. doc-processorサービス本体
+COPY services/doc-processor/app.py ./services/doc_processor/
+COPY services/doc-processor/templates/ ./services/doc_processor/templates/
 COPY services/doc-processor/start.sh .
 
-# プロジェクトルートからの共通モジュール
-COPY shared/__init__.py ./shared/
-COPY shared/common/ ./shared/common/
-COPY shared/ai/ ./shared/ai/
-COPY shared/pipeline/ ./shared/pipeline/
-COPY shared/kakeibo/ ./shared/kakeibo/
-
-# ドキュメント処理用のファイル
-COPY scripts/processing/ ./scripts/processing/
-# app.py から直接インポートできるように /app/ 直下にもコピー
-COPY scripts/processing/process_queued_documents.py .
+# Pythonパッケージとして認識させるための __init__.py
+RUN touch ./services/__init__.py ./services/doc_processor/__init__.py
 
 # 環境変数を設定
 ENV PORT=8080

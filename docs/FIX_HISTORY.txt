@@ -1,0 +1,152 @@
+修正履歴
+
+===========================================
+2026-01-11: 進捗バー0%問題の修正
+===========================================
+
+【問題】
+- 進捗バーが0%のまま動かない
+- 並列処理実行可能数（max_parallel）だけ増えていく
+
+【原因】
+- フロントエンド（processing.html）の進捗計算ロジックが完全に間違っていた
+- 存在しないデータ（workersResult）を使って計算していた
+- workersResultは処理中ワーカーのステージ情報を想定していたが、そんなデータは送られていない
+- バックエンドは正しく current_index, total_count, success_count, error_count を送っているのに、フロントエンドが無視していた
+
+【間違っていたコード】
+```javascript
+// 処理中のドキュメントの進捗を計算
+let totalProgress = 0;
+if (Array.isArray(workersResult) && workersResult.length > 0) {
+    workersResult.forEach(worker => {
+        const stage = worker.current_stage || 'pending';
+        totalProgress += stageWeights[stage] || 0;
+    });
+    const percent = Math.round(totalProgress / (workersResult.length * 100) * 100);
+    progressBar.style.width = percent + '%';
+    progressBar.textContent = `${percent}%`;
+} else {
+    // 処理中ワーカーがいない場合
+    progressBar.style.width = '0%';
+    progressBar.textContent = '0%';
+}
+```
+
+【修正後のコード】
+```javascript
+// 進捗バーを更新（完了したドキュメント数 / 総ドキュメント数）
+const successCount = data.success_count || 0;
+const errorCount = data.error_count || 0;
+const completedDocs = successCount + errorCount;
+const totalCount = data.total_count || 0;
+
+if (totalCount > 0) {
+    const percent = Math.round((completedDocs / totalCount) * 100);
+    progressBar.style.width = percent + '%';
+    progressBar.textContent = `${percent}%`;
+} else {
+    progressBar.style.width = '0%';
+    progressBar.textContent = '0%';
+}
+```
+
+【反省点】
+1. バックエンドが送っているデータ構造を確認せずにフロントエンドを実装した
+2. 存在しないデータ（workersResult）を前提にコードを書いた
+3. Supabaseのprocessing_lockテーブルには正しいデータが保存されているのに、それを使わなかった
+4. デバッグ時にブラウザの開発者ツールでデータを確認しなかった
+
+【修正ファイル】
+- services/doc-processor/templates/processing.html (Line 575-604)
+
+【次のステップ】
+- Cloud Runにデプロイ
+- ブラウザでハードリフレッシュ（Ctrl+Shift+R）
+- 動作確認
+
+===========================================
+2026-01-11: リソース制御ロジックの修正
+===========================================
+
+【問題】
+- 実際の並列実行数が1なのに、max_parallelが4に増えていた
+- 「⚡ 実行中」の表示が「0/4」から変わらない
+- 並列処理が機能していない
+
+【根本原因】
+リソース制御ロジックが**間違った数値**を使っていた。
+
+**使っていた数値（間違い）:**
+- `processing_status['resource_control']['current_parallel']` = `len(active_tasks)`
+- これは「起動したタスクの数」であって、「実際に並列実行されているワーカー数」ではない
+
+**使うべき数値（正しい）:**
+- `processing_workers`テーブルのレコード数 = 実際に処理中のワーカー数
+- register_worker()で追加、unregister_worker()で削除される実際の値
+
+【間違っていたコード】
+
+**app.py 332行目（get_worker_status関数）:**
+```python
+return {
+    'max_parallel': lock_data.get('max_parallel', 3),
+    'current_workers': lock_data.get('current_workers', 0),  # 間違い：processing_lockテーブルから取得
+    'is_processing': lock_data.get('is_processing', False),
+    'workers': workers
+}
+```
+
+**app.py 1045行目（monitor_resources関数）:**
+```python
+# 実際の並列実行数を取得（len(active_tasks)の値）
+current_workers = processing_status['resource_control'].get('current_parallel', 0)  # 間違い
+```
+
+【修正後のコード】
+
+**app.py 332行目（get_worker_status関数）:**
+```python
+return {
+    'max_parallel': lock_data.get('max_parallel', 3),
+    'current_workers': len(workers),  # 正しい：processing_workersテーブルのレコード数
+    'is_processing': lock_data.get('is_processing', False),
+    'workers': workers
+}
+```
+
+**app.py 1044-1046行目（monitor_resources関数）:**
+```python
+# 実際の並列実行数を取得（processing_workersテーブルのレコード数）
+worker_status = get_worker_status()
+current_workers = worker_status['current_workers']
+```
+
+【なぜこのミスが発生したか】
+
+1. **「取得できない場合はデフォルト値」というコード設計**
+   - `.get('current_workers', 0)`のようなコードを使うと、取得失敗時にデフォルト値0を返す
+   - 実際に0の場合と、取得失敗の場合が区別できない
+   - エラーが出ないので、間違いに気づかない
+
+2. **関係ない数値を取得するロジック**
+   - `processing_lock.current_workers`は`len(active_tasks)`の値
+   - 実際のワーカー数は`processing_workers`テーブルのレコード数
+   - 間違った場所から取得していても、エラーは出ない
+
+3. **リソース制御ロジックの問題**
+   - 実行数が1なのに、「実行数が3だから余裕がある」と誤判定
+   - max_parallelを3→4に増やしてしまう
+   - 本来は「1個しか食べてないのに2個目も食べてない」状態で、4個5個と増やすのは完全に間違い
+
+【反省点】
+1. 正しいデータソースを使っていなかった（processing_workersテーブルを無視）
+2. エラーハンドリングでデフォルト値を返すことで、問題が隠蔽されていた
+3. リソース制御ロジックが「実際の並列実行数」ではなく「起動したタスク数」を使っていた
+
+【修正ファイル】
+- services/doc-processor/app.py (Line 332, 1044-1046)
+
+【次のステップ】
+- Cloud Shellでデプロイ（ローカルのgcloudでビルド失敗）
+- 動作確認

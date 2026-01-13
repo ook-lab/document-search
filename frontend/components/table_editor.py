@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, Any, List
 import re  # 追加: ソート用
-from ui.utils.table_parser import parse_extracted_tables
+from frontend.utils.table_parser import parse_extracted_tables
 
 def render_table_editor(metadata: Dict[str, Any]) -> Dict[str, Any]:
     """

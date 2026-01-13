@@ -19,8 +19,10 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
-# .envファイルから環境変数を抽出（コメントと空行を除外）
-export $(grep -v '^#' .env | grep -v '^$' | xargs)
+# .envファイルから環境変数を抽出（コメント、空行、日本語を含む行を除外）
+set -a
+source <(grep -E '^[A-Z_]+=.*' .env)
+set +a
 
 echo "============================================"
 echo "1. Docker イメージをビルド"

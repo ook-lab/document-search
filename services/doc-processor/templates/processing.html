@@ -446,7 +446,7 @@
         let progressInterval = null;
         let isProcessing = false;  // 処理中フラグ
 
-        // ページ読み込み時に統計を取得
+        // ページ読み込み時
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshStats();
@@ -621,10 +621,15 @@
                     document.getElementById('stop-btn').style.display = 'block';
                 } else {
                     // 処理完了 → ポーリング停止
+
+                    stopPolling(); // 無条件で停止
+
                     if (isProcessing) {
+
                         isProcessing = false;
-                        stopPolling();
+
                         console.log('処理完了 - ポーリング停止');
+
                     }
 
                     currentFile.textContent = '待機中';
@@ -793,8 +798,8 @@
 
         // ページ読み込み時に初回更新
         document.addEventListener('DOMContentLoaded', function() {
-            updateProgress();
-            startPolling();
+            updateProgress(); // 初回チェックのみ
+            // startPolling(); // 削除 - 処理中の場合のみ自動開始
         });
     </script>
 </body>

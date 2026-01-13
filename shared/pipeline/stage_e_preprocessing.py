@@ -39,7 +39,8 @@ class StageEPreprocessor:
         file_path: Path,
         mime_type: str,
         pre_extracted_text: Optional[str] = None,
-        workspace: Optional[str] = None
+        workspace: Optional[str] = None,
+        progress_callback=None
     ) -> Dict[str, Any]:
         """
         ファイルからテキストを抽出（E1-E5ステージ）
@@ -69,7 +70,7 @@ class StageEPreprocessor:
         try:
             # PDF処理（E1-E5は pdf.py 内で実行）
             if mime_type == 'application/pdf':
-                result = self.pdf_processor.extract_text(str(file_path))
+                result = self.pdf_processor.extract_text(str(file_path), progress_callback=progress_callback)
                 if result.get('success'):
                     content = result.get('content', '')
                     method = 'pdf'
@@ -80,12 +81,12 @@ class StageEPreprocessor:
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',      # .xlsx
                 'application/vnd.openxmlformats-officedocument.presentationml.presentation'  # .pptx
             ]:
-                content, method = self._process_office_with_stages(file_path, mime_type)
+                content, method = self._process_office_with_stages(file_path, mime_type, progress_callback)
 
             # 画像ファイル処理（E1-E5ログ付き）
             # HTML→PNG の場合も含む（mime_type='text/html' だがファイルはPNG）
             elif mime_type.startswith('image/') or mime_type == 'text/html':
-                content, method = self._process_image_with_stages(file_path, pre_extracted_text, workspace)
+                content, method = self._process_image_with_stages(file_path, pre_extracted_text, workspace, progress_callback)
 
             # 最終ログ
             logger.info("=" * 60)
@@ -111,7 +112,7 @@ class StageEPreprocessor:
                 'error': str(e)
             }
 
-    def _process_office_with_stages(self, file_path: Path, mime_type: str) -> tuple:
+    def _process_office_with_stages(self, file_path: Path, mime_type: str, progress_callback=None) -> tuple:
         """
         Officeファイル処理（E1-E5ステージログ付き）
 
@@ -168,6 +169,8 @@ class StageEPreprocessor:
         # ============================================
         # E-4: Gemini Vision差分検出
         # ============================================
+        if progress_callback:
+            progress_callback("E4")
         logger.info(f"[E-4] Vision差分検出:")
 
         e4_text = ""
@@ -211,6 +214,8 @@ class StageEPreprocessor:
         # ============================================
         # E-5: Vision OCR結果適用
         # ============================================
+        if progress_callback:
+            progress_callback("E5")
         logger.info(f"[E-5] Vision OCR結果適用:")
 
         if e4_text:
@@ -229,7 +234,8 @@ class StageEPreprocessor:
         self,
         file_path: Path,
         pre_extracted_text: Optional[str] = None,
-        workspace: Optional[str] = None
+        workspace: Optional[str] = None,
+        progress_callback=None
     ) -> tuple:
         """
         画像ファイル処理（E1-E5ステージログ付き）
@@ -279,6 +285,8 @@ class StageEPreprocessor:
         # ============================================
         # E-4: Gemini Vision OCR（画像のメイン処理）
         # ============================================
+        if progress_callback:
+            progress_callback("E4")
         # Gmail処理の場合はコスト削減のためflash-liteを使用
         is_gmail = workspace == 'gmail' if workspace else False
         vision_model = "gemini-2.5-flash-lite" if is_gmail else "gemini-2.5-flash"
@@ -321,6 +329,8 @@ class StageEPreprocessor:
         # ============================================
         # E-5: Vision OCR結果適用（画像は E-4 がそのまま最終、ただし既抽出テキストがあれば統合）
         # ============================================
+        if progress_callback:
+            progress_callback("E5")
         logger.info(f"[E-5] Vision OCR結果適用:")
 
         # E-3テキストとE-4 Vision OCRを統合

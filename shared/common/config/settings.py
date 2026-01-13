@@ -6,8 +6,37 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# .env ファイルを読み込む（システム環境変数よりも優先）
-load_dotenv(override=True)
+def _find_project_root() -> Path:
+    """プロジェクトルートを特定"""
+    # 1. 環境変数で明示的に指定されている場合
+    if os.getenv('PROJECT_ROOT'):
+        return Path(os.getenv('PROJECT_ROOT'))
+
+    # 2. このファイルから辿る (shared/common/config/settings.py)
+    return Path(__file__).resolve().parent.parent.parent.parent
+
+def _load_env_file():
+    """環境変数ファイルを読み込む"""
+    # 1. 環境変数で.envファイルパスが指定されている場合
+    if os.getenv('ENV_FILE_PATH'):
+        env_path = Path(os.getenv('ENV_FILE_PATH'))
+        if env_path.exists():
+            load_dotenv(env_path, override=True)
+            return
+
+    # 2. プロジェクトルートの.envを探す
+    project_root = _find_project_root()
+    env_file = project_root / ".env"
+    if env_file.exists():
+        load_dotenv(env_file, override=True)
+        return
+
+    # 3. フォールバック: dotenvの自動探索
+    load_dotenv(override=True)
+
+# 初期化時に環境変数を読み込む
+_project_root = _find_project_root()
+_load_env_file()
 
 
 class Settings:
@@ -37,12 +66,12 @@ class Settings:
     ARCHIVE_FOLDER_ID: str = os.getenv("ARCHIVE_FOLDER_ID", "")
     
     # プロジェクトルート
-    PROJECT_ROOT: Path = Path(__file__).parent.parent
-    
+    PROJECT_ROOT: Path = _project_root
+
     # データディレクトリ
-    DATA_DIR: Path = PROJECT_ROOT / "data"
-    TEMP_DIR: Path = DATA_DIR / "temp"
-    SCHEMAS_DIR: Path = PROJECT_ROOT / "config" / "schemas"
+    DATA_DIR: Path = PROJECT_ROOT / ".local" / "data"
+    TEMP_DIR: Path = PROJECT_ROOT / ".local" / "temp"
+    SCHEMAS_DIR: Path = PROJECT_ROOT / "frontend" / "schemas"
     
     def __init__(self):
         """初期化時にディレクトリを作成"""

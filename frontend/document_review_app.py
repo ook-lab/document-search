@@ -26,11 +26,11 @@ from shared.common.database.client import DatabaseClient
 from shared.common.connectors.google_drive import GoogleDriveConnector
 
 # 新しいコンポーネントとユーティリティをインポート
-from ui.utils.schema_detector import SchemaDetector
-from ui.components.form_editor import render_form_editor
-from ui.components.table_editor import render_table_editor, _render_array_table, _format_field_name
-from ui.components.json_preview import render_json_preview, render_json_diff
-from ui.components.email_viewer import (
+from frontend.utils.schema_detector import SchemaDetector
+from frontend.components.form_editor import render_form_editor
+from frontend.components.table_editor import render_table_editor, _render_array_table, _format_field_name
+from frontend.components.json_preview import render_json_preview, render_json_diff
+from frontend.components.email_viewer import (
     render_email_list,
     render_email_detail,
     render_email_html_preview,
@@ -89,7 +89,7 @@ def detect_structured_fields(metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
             # extracted_tablesは特別処理（文字列のリストをパースして構造化データに変換）
             if key == "extracted_tables":
                 logger.info(f"  ✓ '{key}' は extracted_tables として検出 - パース処理を実行")
-                from ui.utils.table_parser import parse_extracted_tables
+                from frontend.utils.table_parser import parse_extracted_tables
                 parsed_tables = parse_extracted_tables(value)
                 if parsed_tables:
                     logger.info(f"  ✓ {len(parsed_tables)} 個の表をパースしました")
@@ -662,7 +662,7 @@ def pdf_review_ui():
 
                         with text_tab2:
                             # 構造化表示
-                            from ui.utils.text_structurer import TextStructurer
+                            from frontend.utils.text_structurer import TextStructurer
                             structured_blocks = TextStructurer.structure_text(text_content)
 
                             if structured_blocks:
@@ -693,7 +693,7 @@ def pdf_review_ui():
 
                         with text_tab3:
                             # 統計情報
-                            from ui.utils.text_structurer import TextStructurer
+                            from frontend.utils.text_structurer import TextStructurer
                             structured_blocks = TextStructurer.structure_text(text_content)
                             stats = TextStructurer.get_statistics(structured_blocks)
 
@@ -770,7 +770,7 @@ Path.suffix: '{Path(file_path).suffix}'
         # ============================================
         # PDFまたはテキストファイルの場合、手動補正機能を表示
         if file_path and Path(file_path).exists():
-            from ui.components.manual_text_correction import (
+            from frontend.components.manual_text_correction import (
                 render_manual_text_correction,
                 execute_stageh_reprocessing
             )
@@ -1077,7 +1077,7 @@ structured_field_keys:
 
         # 最後から2番目のタブ: 表を追加
         with tabs[-2]:
-            from ui.components.table_creator import render_table_creator
+            from frontend.components.table_creator import render_table_creator
 
             updated_metadata = render_table_creator(doc_id, metadata.copy())
 

@@ -10,23 +10,23 @@
 
 import streamlit as st
 import pandas as pd
-from supabase import create_client
 from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from PIL import Image
 import io
 
-# 設定
-try:
-    # Streamlit Cloud環境
-    from shared.kakeibo.config import SUPABASE_URL, SUPABASE_KEY, GOOGLE_DRIVE_CREDENTIALS
-except ImportError:
-    # ローカル環境
-    from config import SUPABASE_URL, SUPABASE_KEY, GOOGLE_DRIVE_CREDENTIALS
+from shared.common.database.client import DatabaseClient
 
-# Supabase接続
-db = create_client(SUPABASE_URL, SUPABASE_KEY)
+# 設定（Google Drive認証情報用）
+try:
+    from shared.kakeibo.config import GOOGLE_DRIVE_CREDENTIALS
+except ImportError:
+    from config import GOOGLE_DRIVE_CREDENTIALS
+
+# Supabase接続（DatabaseClientを使用）
+db_client = DatabaseClient()
+db = db_client.client
 
 # Google Drive接続
 @st.cache_resource
