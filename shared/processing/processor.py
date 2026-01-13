@@ -152,6 +152,17 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"失敗マークエラー: {e}")
 
+    def _get_processing_count(self) -> int:
+        """DBから処理中ドキュメント数を取得（実行数の正）"""
+        try:
+            result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
+                'id', count='exact'
+            ).eq('processing_status', 'processing').execute()
+            return result.count or 0
+        except Exception as e:
+            logger.error(f"処理中カウント取得エラー: {e}")
+            return 0
+
     async def process_document(
         self,
         doc: Dict[str, Any],
@@ -446,7 +457,7 @@ class DocumentProcessor:
 
         # リソースマネージャーを初期化
         self.resource_manager = AdaptiveResourceManager(
-            initial_max_parallel=2,
+            initial_max_parallel=1,  # 初期値は1、実行数が上限に達したら増加
             min_parallel=1,
             max_parallel_limit=100
         )
@@ -481,36 +492,52 @@ class DocumentProcessor:
         active_tasks = set()
 
         try:
+            total_docs = len(docs)
             for i, doc in enumerate(docs, 1):
                 # 停止リクエストをチェック
                 if self.state_manager.is_stop_requested():
                     self.state_manager.add_log("停止リクエストにより処理を中断します", 'WARNING')
                     break
 
+                # DBから処理中ドキュメント数を取得（実行数の正）
+                processing_count = self._get_processing_count()
+
                 # リソース監視と調整
                 memory_info = get_cgroup_memory()
                 res_status = self.resource_manager.adjust_resources(
                     memory_info['percent'],
-                    len(active_tasks)
+                    processing_count  # DBから取得した実行数を使用
+                )
+
+                # ループ状態をログ出力
+                logger.info(
+                    f"[LOOP] {i}/{total_docs} | "
+                    f"実行中: {processing_count}/{res_status['max_parallel']} | "
+                    f"メモリ: {memory_info['percent']:.1f}% | "
+                    f"スロットル: {res_status['throttle_delay']:.1f}s"
                 )
 
                 # StateManagerのリソース情報を更新
                 self.state_manager.update_resource_control(
                     throttle_delay=res_status['throttle_delay'],
                     max_parallel=res_status['max_parallel'],
-                    current_workers=len(active_tasks)
+                    current_workers=processing_count  # DBから取得した実行数を使用
                 )
 
                 # スロットル待機
                 if res_status['throttle_delay'] > 0:
                     await asyncio.sleep(res_status['throttle_delay'])
 
-                # 並列数制限
-                while len(active_tasks) >= res_status['max_parallel']:
+                # 並列数制限（DBの実行数がmax_parallel以上なら待機）
+                while processing_count >= res_status['max_parallel']:
+                    logger.debug(f"[WAIT] 並列上限到達 ({processing_count}/{res_status['max_parallel']}), タスク完了待ち...")
                     done, active_tasks = await asyncio.wait(
                         active_tasks,
                         return_when=asyncio.FIRST_COMPLETED
                     )
+                    # 待機後に再取得
+                    processing_count = self._get_processing_count()
+                    logger.debug(f"[WAIT] タスク完了, 現在の実行数: {processing_count}")
 
                 # 進捗更新
                 self.state_manager.update_progress(index=i)
