@@ -450,6 +450,7 @@
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshStats();
+            updateProgress(); // 初回チェック
         });
 
         // ポーリング開始（処理中のみ）
@@ -493,15 +494,15 @@
         // 進捗状況を取得（Supabaseから直接取得 - Cloud Runにリクエストしない）
         async function updateProgress() {
             try {
-                // processing_lockとprocessing_workersを並列で取得
-                const [lockResponse, workersResponse] = await Promise.all([
+                // processing_lockと処理中ドキュメントを並列で取得
+                const [lockResponse, processingDocsResponse] = await Promise.all([
                     fetch(`${SUPABASE_URL}/rest/v1/processing_lock?id=eq.1&select=*`, {
                         headers: {
                             'apikey': SUPABASE_ANON_KEY,
                             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
                         }
                     }),
-                    fetch(`${SUPABASE_URL}/rest/v1/processing_workers?select=*`, {
+                    fetch(`${SUPABASE_URL}/rest/v1/Rawdata_FILE_AND_MAIL?processing_status=eq.processing&select=id,processing_stage,processing_progress`, {
                         headers: {
                             'apikey': SUPABASE_ANON_KEY,
                             'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
@@ -510,16 +511,17 @@
                 ]);
 
                 const lockResult = await lockResponse.json();
-                const workersResult = await workersResponse.json();
+                const processingDocs = await processingDocsResponse.json();
                 const data = lockResult[0];
-                const currentWorkers = Array.isArray(workersResult) ? workersResult.length : 0;
 
                 if (!data) {
                     console.error('processing_lockデータが見つかりません');
                     return;
                 }
 
-                const maxParallel = data.max_parallel || 10;
+                // 処理中ドキュメント数を実行中ワーカー数として使用
+                const currentWorkers = Array.isArray(processingDocs) ? processingDocs.length : 0;
+                const maxParallel = data.max_parallel || 1;
 
                 // デバッグ
                 console.log('[Polling from Supabase]', new Date().toLocaleTimeString(),
@@ -535,13 +537,17 @@
                 const throttleInfo = document.getElementById('throttle-info');
 
                 // システムリソースを更新
-                if (data.cpu_percent !== null) {
+                console.log('[DEBUG] cpu_percent:', data.cpu_percent, 'memory_percent:', data.memory_percent);
+                if (data.cpu_percent !== null && data.cpu_percent !== undefined) {
                     cpuUsage.textContent = data.cpu_percent + '%';
+                } else {
+                    console.warn('[WARNING] cpu_percent is null/undefined');
                 }
-                if (data.memory_percent !== null) {
+
+                if (data.memory_percent !== null && data.memory_percent !== undefined) {
                     memoryUsage.textContent = data.memory_percent + '% (' +
-                        (data.memory_used_gb || 0) + '/' +
-                        (data.memory_total_gb || 0) + ' GB)';
+                        (data.memory_used_gb || 0).toFixed(1) + '/' +
+                        (data.memory_total_gb || 0).toFixed(1) + ' GB)';
                 }
 
                 // ワーカー情報（実行数/実行可能数）
@@ -573,32 +579,25 @@
                 }
 
                 if (data.is_processing) {
-                    isProcessing = true;
+                    // ポーリングがまだ開始されていなければ開始
+                    if (!isProcessing) {
+                        isProcessing = true;
+                        startPolling();
+                    }
 
                     // 進捗バーを更新（処理中ドキュメントのステージ進捗の平均）
-                    const stageWeights = {
-                        'pending': 0,
-                        'stage_e': 20,
-                        'stage_f': 40,
-                        'stage_h': 60,
-                        'stage_j': 80,
-                        'stage_k': 90,
-                        'completed': 100,
-                        'error': 100
-                    };
-
-                    // 処理中のドキュメントの進捗を計算
+                    // 進捗 = 各ドキュメントのprocessing_progressの合計 / ドキュメント数 × 100%
                     let totalProgress = 0;
-                    if (Array.isArray(workersResult) && workersResult.length > 0) {
-                        workersResult.forEach(worker => {
-                            const stage = worker.current_stage || 'pending';
-                            totalProgress += stageWeights[stage] || 0;
+                    if (Array.isArray(processingDocs) && processingDocs.length > 0) {
+                        processingDocs.forEach(doc => {
+                            // processing_progress は 0.0 ~ 1.0 の値
+                            totalProgress += (doc.processing_progress || 0) * 100;
                         });
-                        const percent = Math.round(totalProgress / (workersResult.length * 100) * 100);
+                        const percent = Math.round(totalProgress / processingDocs.length);
                         progressBar.style.width = percent + '%';
                         progressBar.textContent = `${percent}%`;
                     } else {
-                        // 処理中ワーカーがいない場合
+                        // 処理中ドキュメントがない場合
                         progressBar.style.width = '0%';
                         progressBar.textContent = '0%';
                     }
@@ -610,7 +609,7 @@
                     const completedDocs = successCount + errorCount;
                     const totalCount = data.total_count || 0;
                     if (totalCount > 0) {
-                        currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName}`;
+                        currentFile.textContent = `[${completedDocs + 1}/${totalCount}件目] ${fileName} (${data.current_stage || ''})`;
                     } else {
                         currentFile.textContent = fileName;
                     }
@@ -621,15 +620,10 @@
                     document.getElementById('stop-btn').style.display = 'block';
                 } else {
                     // 処理完了 → ポーリング停止
-
-                    stopPolling(); // 無条件で停止
-
                     if (isProcessing) {
-
                         isProcessing = false;
-
+                        stopPolling();
                         console.log('処理完了 - ポーリング停止');
-
                     }
 
                     currentFile.textContent = '待機中';
@@ -796,11 +790,6 @@
             messageBox.style.display = 'block';
         }
 
-        // ページ読み込み時に初回更新
-        document.addEventListener('DOMContentLoaded', function() {
-            updateProgress(); // 初回チェックのみ
-            // startPolling(); // 削除 - 処理中の場合のみ自動開始
-        });
     </script>
 </body>
 </html>
