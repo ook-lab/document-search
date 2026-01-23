@@ -30,6 +30,14 @@ if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
     exit 1
 fi
 
+if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+    echo "警告: SUPABASE_SERVICE_ROLE_KEYが設定されていません（RLSバイパスが必要な機能は動作しません）"
+fi
+
+if [ -z "$DOC_PROCESSOR_API_KEY" ]; then
+    echo "警告: DOC_PROCESSOR_API_KEYが設定されていません（API認証が無効化されます - セキュリティリスク）"
+fi
+
 echo "✓ 環境変数の読み込み完了"
 
 # Cloud Runにデプロイ
@@ -46,9 +54,11 @@ gcloud run deploy doc-processor \
   --cpu 4 \
   --set-env-vars "SUPABASE_URL=$SUPABASE_URL" \
   --set-env-vars "SUPABASE_KEY=$SUPABASE_KEY" \
+  --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
   --set-env-vars "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" \
   --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY" \
   --set-env-vars "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+  --set-env-vars "DOC_PROCESSOR_API_KEY=$DOC_PROCESSOR_API_KEY" \
   --set-env-vars "LOG_LEVEL=${LOG_LEVEL:-INFO}" \
   --set-env-vars "RERANK_ENABLED=${RERANK_ENABLED:-true}"
 

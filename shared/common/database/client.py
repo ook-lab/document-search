@@ -5,36 +5,135 @@ Supabaseデータベースへの接続と操作を管理
 import re
 from typing import Dict, Any, List, Optional
 import asyncio
+from loguru import logger
 from supabase import create_client, Client
 from shared.common.config.settings import settings
+
+
+# =============================================================================
+# Phase 3: owner_id 必須化
+# =============================================================================
+
+class OwnerIdRequiredError(Exception):
+    """owner_id が必須のテーブルに owner_id なしで INSERT しようとした"""
+    pass
+
+
+# owner_id を必須とするテーブルとカラム名のマッピング
+OWNER_ID_REQUIRED_TABLES = {
+    'Rawdata_FILE_AND_MAIL': 'owner_id',
+    '10_ix_search_index': 'owner_id',
+    'Rawdata_RECEIPT_shops': 'owner_id',
+    'MASTER_Rules_transaction_dict': 'created_by',
+    '99_lg_correction_history': 'corrector_id',
+}
 
 
 class DatabaseClient:
     """Supabaseデータベースクライアント"""
 
-    def __init__(self, use_service_role: bool = False):
+    def __init__(
+        self,
+        use_service_role: bool = False,
+        access_token: str = None
+    ):
         """Supabaseクライアントの初期化
 
         Args:
             use_service_role: Trueの場合、Service Role Keyを使用（RLSをバイパス）
+                              ※ Admin UI からは使用禁止。Worker専用。
+            access_token: Supabase Auth のアクセストークン（authenticated ロールで接続）
+                          指定された場合、use_service_role は無視される
         """
+        # Fail-fast: SUPABASE_URL は必須
         if not settings.SUPABASE_URL:
-            raise ValueError("SUPABASE_URL が設定されていません")
+            raise ValueError("環境変数が不足しています: SUPABASE_URL")
 
-        # Service Role Key使用の場合
-        if use_service_role:
+        # 認証トークンが指定された場合（Admin UI 向け）
+        if access_token:
+            if not settings.SUPABASE_KEY:
+                raise ValueError("環境変数が不足しています: SUPABASE_KEY (access_token使用時に必要)")
+
+            # 認証済みセッションでクライアントを作成
+            # supabase-py では、auth.set_session() を使用
+            self.client: Client = create_client(
+                settings.SUPABASE_URL,
+                settings.SUPABASE_KEY
+            )
+            # アクセストークンをヘッダーに設定
+            self.client.postgrest.auth(access_token)
+            self._is_authenticated = True
+            self._is_service_role = False
+            logger.info("Using Supabase key role=authenticated (access_token)")
+
+        # Service Role Key使用の場合（Worker 向け）
+        elif use_service_role:
             if not settings.SUPABASE_SERVICE_ROLE_KEY:
-                raise ValueError("SUPABASE_SERVICE_ROLE_KEY が設定されていません")
+                raise ValueError("環境変数が不足しています: SUPABASE_SERVICE_ROLE_KEY (use_service_role=True時に必要)")
             api_key = settings.SUPABASE_SERVICE_ROLE_KEY
+
+            self.client: Client = create_client(
+                settings.SUPABASE_URL,
+                api_key
+            )
+            self._is_authenticated = False
+            self._is_service_role = True
+            logger.info("Using Supabase key role=service_role")
+
+        # 匿名アクセス（anon key）
         else:
             if not settings.SUPABASE_KEY:
-                raise ValueError("SUPABASE_KEY が設定されていません")
+                raise ValueError("環境変数が不足しています: SUPABASE_KEY (anon接続時に必要)")
             api_key = settings.SUPABASE_KEY
 
-        self.client: Client = create_client(
-            settings.SUPABASE_URL,
-            api_key
-        )
+            self.client: Client = create_client(
+                settings.SUPABASE_URL,
+                api_key
+            )
+            self._is_authenticated = False
+            self._is_service_role = False
+            logger.info("Using Supabase key role=anon")
+
+    @property
+    def is_authenticated(self) -> bool:
+        """認証済みセッションかどうか"""
+        return self._is_authenticated
+
+    @property
+    def is_service_role(self) -> bool:
+        """Service Role での接続かどうか"""
+        return self._is_service_role
+
+    def _validate_owner_id(self, table: str, data: Dict[str, Any]) -> None:
+        """
+        service_role 経路での owner_id 必須チェック（第三防衛線）
+
+        service_role では RLS がバイパスされるため、
+        コード側で owner_id の存在を保証する必要がある。
+
+        Args:
+            table: テーブル名
+            data: INSERT/UPSERT するデータ
+
+        Raises:
+            OwnerIdRequiredError: owner_id が必須のテーブルに owner_id なしで INSERT しようとした場合
+        """
+        # service_role 経路のみチェック（authenticated は RLS が保護）
+        if not self._is_service_role:
+            return
+
+        if table in OWNER_ID_REQUIRED_TABLES:
+            owner_col = OWNER_ID_REQUIRED_TABLES[table]
+            if owner_col not in data or data[owner_col] is None:
+                raise OwnerIdRequiredError(
+                    f"Table '{table}' requires '{owner_col}' but it was not provided. "
+                    f"service_role connections must explicitly set owner_id."
+                )
+
+    @property
+    def supabase(self) -> Client:
+        """Supabase クライアントを取得（後方互換性のため）"""
+        return self.client
     
     def get_document_by_source_id(self, source_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -65,7 +164,13 @@ class DatabaseClient:
 
         Returns:
             挿入されたレコード
+
+        Raises:
+            OwnerIdRequiredError: service_role で owner_id 必須テーブルに owner_id なしで INSERT した場合
         """
+        # Phase 3: owner_id 必須チェック（第三防衛線）
+        self._validate_owner_id(table, data)
+
         # embeddingをPostgreSQLのvector型形式に変換
         if 'embedding' in data and data['embedding'] is not None:
             embedding_list = data['embedding']
@@ -97,7 +202,14 @@ class DatabaseClient:
 
         Returns:
             挿入・更新されたレコード
+
+        Raises:
+            OwnerIdRequiredError: service_role で owner_id 必須テーブルに owner_id なしで INSERT した場合
         """
+        # Phase 3: owner_id 必須チェック（第三防衛線）
+        # 新規挿入時に owner_id が必要なため、upsert 前にチェック
+        self._validate_owner_id(table, data)
+
         # embeddingをPostgreSQLのvector型形式に変換
         if 'embedding' in data and data['embedding'] is not None:
             embedding_list = data['embedding']
@@ -259,30 +371,37 @@ class DatabaseClient:
                 final_results.append(doc_result)
 
             # ✅ 各ドキュメントのヒットチャンク全体を取得
-            print(f"[DEBUG] ヒットチャンク詳細を取得中...")
-            for doc_result in final_results:
-                document_id = doc_result.get('id')
-                if not document_id:
-                    continue
+            # Phase 4A: anon 接続時は直接テーブルアクセスを禁止（all_chunks をスキップ）
+            if self._is_service_role or self._is_authenticated:
+                print(f"[DEBUG] ヒットチャンク詳細を取得中...")
+                for doc_result in final_results:
+                    document_id = doc_result.get('id')
+                    if not document_id:
+                        continue
 
-                try:
-                    # このドキュメントの全チャンクを取得（重要度順、上限なし）
-                    chunks_response = (
-                        self.client.table('10_ix_search_index')
-                        .select('chunk_index, chunk_content, chunk_type, chunk_metadata, search_weight')
-                        .eq('document_id', document_id)
-                        .order('search_weight', desc=True)  # 重要度順
-                        .execute()
-                    )
+                    try:
+                        # このドキュメントの全チャンクを取得（重要度順、上限なし）
+                        chunks_response = (
+                            self.client.table('10_ix_search_index')
+                            .select('chunk_index, chunk_content, chunk_type, chunk_metadata, search_weight')
+                            .eq('document_id', document_id)
+                            .order('search_weight', desc=True)  # 重要度順
+                            .execute()
+                        )
 
-                    if chunks_response.data:
-                        doc_result['all_chunks'] = chunks_response.data
-                        print(f"[DEBUG] ドキュメント {document_id[:8]}: {len(chunks_response.data)}個のチャンク取得")
-                    else:
+                        if chunks_response.data:
+                            doc_result['all_chunks'] = chunks_response.data
+                            print(f"[DEBUG] ドキュメント {document_id[:8]}: {len(chunks_response.data)}個のチャンク取得")
+                        else:
+                            doc_result['all_chunks'] = []
+
+                    except Exception as e:
+                        print(f"[WARNING] チャンク取得エラー (document_id={document_id}): {e}")
                         doc_result['all_chunks'] = []
-
-                except Exception as e:
-                    print(f"[WARNING] チャンク取得エラー (document_id={document_id}): {e}")
+            else:
+                # anon 接続: 直接テーブルアクセス禁止のため all_chunks は空
+                print(f"[DEBUG] anon 接続のため all_chunks 取得をスキップ")
+                for doc_result in final_results:
                     doc_result['all_chunks'] = []
 
             print(f"[DEBUG] 最終検索結果: {len(final_results)} 件（unified_search_v2）")

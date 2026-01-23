@@ -47,3 +47,7 @@ __pycache__/
 *.pyo
 *.log
 .env
+
+# Snapshots and temporary files
+PROJECT_SNAPSHOT*
+tmpclaude-*

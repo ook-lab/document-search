@@ -30,7 +30,7 @@ echo "============================================"
 gcloud builds submit \
     --region=${REGION} \
     --config=cloudbuild.yaml \
-    --substitutions=_GOOGLE_AI_API_KEY="${GOOGLE_AI_API_KEY}",_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}",_OPENAI_API_KEY="${OPENAI_API_KEY}",_SUPABASE_URL="${SUPABASE_URL}",_SUPABASE_KEY="${SUPABASE_KEY}",_SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY}"
+    --substitutions=_GOOGLE_AI_API_KEY="${GOOGLE_AI_API_KEY}",_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}",_OPENAI_API_KEY="${OPENAI_API_KEY}",_SUPABASE_URL="${SUPABASE_URL}",_SUPABASE_KEY="${SUPABASE_KEY}",_SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY}",_DOC_PROCESSOR_API_KEY="${DOC_PROCESSOR_API_KEY}"
 
 echo "============================================"
 echo "2. Cloud Run にデプロイ"
@@ -49,7 +49,9 @@ gcloud run deploy ${SERVICE_NAME} \
     --set-env-vars "OPENAI_API_KEY=${OPENAI_API_KEY}" \
     --set-env-vars "SUPABASE_URL=${SUPABASE_URL}" \
     --set-env-vars "SUPABASE_KEY=${SUPABASE_KEY}" \
-    --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}"
+    --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}" \
+    --set-env-vars "DOC_PROCESSOR_API_KEY=${DOC_PROCESSOR_API_KEY}" \
+    --set-env-vars "LOG_LEVEL=INFO"
 
 echo "============================================"
 echo "✅ デプロイ完了"

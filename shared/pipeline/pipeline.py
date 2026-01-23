@@ -9,6 +9,7 @@
 - config/ 内の YAML と Markdown ファイルで設定管理
 """
 import asyncio
+import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 from loguru import logger
@@ -25,6 +26,10 @@ from .stage_h_kakeibo import StageHKakeibo
 from .stage_i_synthesis import StageISynthesis
 from .stage_j_chunking import StageJChunking
 from .stage_k_embedding import StageKEmbedding
+from .constants import STAGE_H_INPUT_SCHEMA_VERSION
+
+# Phase 5: Execution versioning
+from shared.processing.execution_manager import ExecutionManager, ExecutionContext
 
 # 家計簿専用のDB保存ハンドラー (オプショナル)
 try:
@@ -37,6 +42,27 @@ except ImportError:
     logger.warning("K_kakeibo module not available, kakeibo features will be disabled")
     KakeiboDBHandler = None
     KAKEIBO_AVAILABLE = False
+
+
+# ============================================
+# v1.1 契約: post_body は Rawdata_FILE_AND_MAIL.display_post_text から取得
+# ============================================
+def _build_post_body(raw_doc: dict | None) -> dict:
+    """
+    post_body を Rawdata_FILE_AND_MAIL.display_post_text から直接取得。
+    GAS で classroom/gmail/drive 全てこのカラムに本文を保存している。
+
+    Returns:
+        { "text": str, "source": str, "char_count": int }
+    """
+    if not isinstance(raw_doc, dict):
+        return {"text": "", "source": "no_raw_doc", "char_count": 0}
+
+    text = (raw_doc.get("display_post_text") or "").strip()
+    if text:
+        return {"text": text, "source": "rawdata.display_post_text", "char_count": len(text)}
+
+    return {"text": "", "source": "empty", "char_count": 0}
 
 
 class UnifiedDocumentPipeline:
@@ -108,7 +134,9 @@ class UnifiedDocumentPipeline:
         source_id: str,
         existing_document_id: Optional[str] = None,
         extra_metadata: Optional[Dict[str, Any]] = None,
-        progress_callback=None
+        progress_callback=None,
+        owner_id: Optional[str] = None,
+        enable_execution_tracking: bool = False
     ) -> Dict[str, Any]:
         """
         ドキュメントを処理（Stage E-K）
@@ -122,10 +150,23 @@ class UnifiedDocumentPipeline:
             source_id: ソースID
             existing_document_id: 更新する既存ドキュメントID（Noneの場合は新規作成）
             extra_metadata: 追加メタデータ（Classroom固有フィールドなど）
+            progress_callback: 進捗コールバック
+            owner_id: オーナーID（Phase 3 必須 for kakeibo）
+            enable_execution_tracking: Phase 5 execution versioning を有効化
 
         Returns:
             処理結果 {'success': bool, 'document_id': str, ...}
         """
+        # Phase 5: Execution tracking 初期化
+        execution_context: Optional[ExecutionContext] = None
+        execution_manager: Optional[ExecutionManager] = None
+        start_time = None
+
+        if enable_execution_tracking:
+            import time
+            start_time = time.time()
+            execution_manager = ExecutionManager(self.db)
+
         try:
             logger.info(f"📄 ドキュメント処理開始: {file_name} (doc_type={doc_type}, workspace={workspace})")
 
@@ -158,17 +199,57 @@ class UnifiedDocumentPipeline:
                 return {'success': False, 'error': error_msg}
 
             extracted_text = stage_e_result.get('content', '')
+            # P2-2: E-2で検出した表のbbox情報を取得
+            stage_e_metadata = stage_e_result.get('metadata', {})
+            e2_table_bboxes = stage_e_metadata.get('table_bboxes', [])
             # ログ出力は Stage E 内で既に実施済み
 
             # ============================================
             # Stage F: Visual Analysis (gemini-2.5-pro で完璧に仕上げる)
             # ============================================
+            # post_body 作成（投稿本文 = Stage H 最優先文脈）
+            # 【v1.1契約】Rawdata_FILE_AND_MAIL から本文を優先取得
+            raw_doc = None
+            if existing_document_id:
+                try:
+                    r = self.db.client.table("Rawdata_FILE_AND_MAIL").select(
+                        "id, display_post_text, attachment_text"
+                    ).eq("id", existing_document_id).limit(1).execute()
+                    if r and getattr(r, "data", None):
+                        raw_doc = r.data[0]
+                        logger.info(f"[Stage F] raw_doc取得: id={existing_document_id}")
+                except Exception as e:
+                    logger.warning(f"[Stage F] raw_doc取得失敗: {e.__class__.__name__}: {e}")
+
+            post_body = _build_post_body(raw_doc)
+            logger.info(f"[Stage F] post_body作成: {post_body['char_count']}文字 (source: {post_body['source']})")
+
+            # P0-4: Stage F 直前の存在チェック（ファイルがある場合のみ）
+            if file_path is not None and not file_path.exists():
+                error_msg = f"[P0-4] TEMP_PDF_MISSING: Stage F 入力ファイルが存在しません: {file_path}"
+                logger.error(error_msg)
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'failure_stage': 'F',
+                    'failure_reason': 'TEMP_PDF_MISSING'
+                }
+
             # 設定から Stage F のプロンプトとモデルを取得
             stage_f_config = self.config.get_stage_config('stage_f', doc_type, workspace)
             prompt_f = stage_f_config['prompt']
             model_f = stage_f_config['model']
 
+            # P0-1: 明示的に file_path を渡す（state 参照禁止）
             logger.info(f"[Stage F] Visual Analysis開始... (model={model_f})")
+            if file_path is not None:
+                logger.info(f"[P0-1] 入力ファイル: {file_path} (exists={file_path.exists()})")
+            else:
+                logger.info("[P0-1] 入力ファイル: なし（テキストのみ）")
+            # P2-2: E-2のtable_bboxes情報をログ出力
+            if e2_table_bboxes:
+                logger.info(f"[P2-2] Stage Fへ渡す E-2 table_bboxes: {len(e2_table_bboxes)}個")
+
             if progress_callback:
                 progress_callback("F")
             vision_raw = self.stage_f.process(
@@ -177,7 +258,10 @@ class UnifiedDocumentPipeline:
                 model=model_f,
                 extracted_text=extracted_text,
                 workspace=workspace,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                e2_table_bboxes=e2_table_bboxes,  # P2-2: E-2のtable_bboxes
+                post_body=post_body,  # 投稿本文（Stage H最優先文脈）
+                mime_type=mime_type  # MIMEタイプ（音声/映像判定用）
             )
             logger.info(f"[Stage F完了] Vision結果: {len(vision_raw)}文字")
 
@@ -190,44 +274,56 @@ class UnifiedDocumentPipeline:
             import json
             try:
                 vision_json = json.loads(vision_raw)
-                ocr_text = vision_json.get('full_text', '')
-                stage_f_structure = {
-                    'sections': vision_json.get('layout_info', {}).get('sections', []),
-                    'tables': vision_json.get('layout_info', {}).get('tables', []),
-                    'visual_elements': vision_json.get('visual_elements', {}),
-                    'full_text': ocr_text
-                }
 
-                # combined_textの構築（複数ソースから統合）
-                text_parts = []
+                # v1.1契約: Stage F payload をそのまま stage_f_structure として使用（再構成禁止）
+                stage_f_structure = vision_json
+                schema_ver = vision_json.get('schema_version', '')
+                is_v1_1 = (schema_ver == STAGE_H_INPUT_SCHEMA_VERSION)
 
-                # 1. 投稿文テキスト（Classroom等のメタデータから）
-                if extra_metadata:
-                    display_post_text = extra_metadata.get('display_post_text', '')
-                    if display_post_text and display_post_text.strip():
-                        text_parts.append(f"[投稿文]\n{display_post_text}")
-                        logger.info(f"[Stage F→H] display_post_text追加: {len(display_post_text)}文字")
+                if is_v1_1:
+                    # v1.1: full_text をそのまま使用（混ぜ物合成禁止）
+                    combined_text = vision_json.get('full_text', '')
+                    post_body = vision_json.get('post_body', {})
+                    text_blocks = vision_json.get('text_blocks', [])
 
-                # 2. OCR抽出テキスト
-                if ocr_text and ocr_text.strip():
-                    text_parts.append(f"[OCR抽出テキスト]\n{ocr_text}")
+                    logger.info(f"[Stage F→H] v1.1契約モード:")
+                    logger.info(f"  ├─ schema_version: {schema_ver}")
+                    logger.info(f"  ├─ full_text: {len(combined_text)}文字")
+                    logger.info(f"  ├─ post_body: {post_body.get('char_count', 0)}文字 (source: {post_body.get('source', 'unknown')})")
+                    logger.info(f"  ├─ text_blocks: {len(text_blocks)}ブロック")
+                    logger.info(f"  ├─ text_blocks[0]: {text_blocks[0].get('block_type') if text_blocks else 'N/A'}")
+                    logger.info(f"  └─ tables: {len(vision_json.get('tables', []))}個")
+                else:
+                    # レガシー: 従来の合成ロジック（後方互換）
+                    ocr_text = vision_json.get('full_text', '')
+                    text_parts = []
 
-                # 3. 画像の視覚的説明（visual_elements.notes）
-                visual_elements = vision_json.get('visual_elements', {})
-                notes = visual_elements.get('notes', [])
-                if notes:
-                    notes_text = '\n'.join(notes)
-                    text_parts.append(f"[画像の視覚的説明]\n{notes_text}")
-                    logger.info(f"[Stage F→H] visual_elements.notes追加: {len(notes_text)}文字")
+                    # 1. 投稿文テキスト（Classroom等のメタデータから）
+                    if extra_metadata:
+                        display_post_text = extra_metadata.get('display_post_text', '')
+                        if display_post_text and display_post_text.strip():
+                            text_parts.append(f"[投稿文]\n{display_post_text}")
+                            logger.info(f"[Stage F→H] display_post_text追加: {len(display_post_text)}文字")
 
-                # 統合テキスト生成
-                combined_text = '\n\n'.join(text_parts)
+                    # 2. OCR抽出テキスト
+                    if ocr_text and ocr_text.strip():
+                        text_parts.append(f"[OCR抽出テキスト]\n{ocr_text}")
 
-                logger.info(f"[Stage F→H] 構造化情報を抽出:")
-                logger.info(f"  ├─ combined_text: {len(combined_text)}文字")
-                logger.info(f"  ├─ OCR full_text: {len(ocr_text)}文字")
-                logger.info(f"  ├─ sections: {len(stage_f_structure.get('sections', []))}個")
-                logger.info(f"  └─ tables: {len(stage_f_structure.get('tables', []))}個")
+                    # 3. 画像の視覚的説明（visual_elements.notes）
+                    visual_elements = vision_json.get('visual_elements', {})
+                    notes = visual_elements.get('notes', [])
+                    if notes:
+                        notes_text = '\n'.join(notes)
+                        text_parts.append(f"[画像の視覚的説明]\n{notes_text}")
+                        logger.info(f"[Stage F→H] visual_elements.notes追加: {len(notes_text)}文字")
+
+                    combined_text = '\n\n'.join(text_parts)
+
+                    logger.info(f"[Stage F→H] レガシーモード:")
+                    logger.info(f"  ├─ combined_text: {len(combined_text)}文字")
+                    logger.info(f"  ├─ OCR full_text: {len(ocr_text)}文字")
+                    logger.info(f"  ├─ sections: {len(vision_json.get('layout_info', {}).get('sections', []))}個")
+                    logger.info(f"  └─ tables: {len(vision_json.get('layout_info', {}).get('tables', []))}個")
             except json.JSONDecodeError as e:
                 logger.warning(f"[Stage F→H] JSON解析失敗: {e}")
                 combined_text = vision_raw
@@ -277,13 +373,18 @@ class UnifiedDocumentPipeline:
 
                 # 家計簿専用のDB保存
                 if self.kakeibo_db_handler:
+                    # Phase 3: owner_id 必須チェック
+                    if not owner_id:
+                        raise ValueError("owner_id is required for kakeibo processing (Phase 3)")
+
                     logger.info("[DB保存] 家計簿データをDBに保存...")
                     kakeibo_save_result = self.kakeibo_db_handler.save_receipt(
                         stage_h_output=stageH_result,
                         file_name=file_name,
                         drive_file_id=source_id,
                         model_name=stage_h_config['model'],
-                        source_folder=workspace
+                        source_folder=workspace,
+                        owner_id=owner_id
                     )
                     logger.info(f"[DB保存完了] receipt_id={kakeibo_save_result['receipt_id']}")
                 else:
@@ -306,11 +407,20 @@ class UnifiedDocumentPipeline:
                 logger.info(f"[Stage H] 構造化開始... (model={model_h})")
                 if progress_callback:
                     progress_callback("H")
+
+                # v1.1契約: stage_f_structure がある場合は full_text を使用（契約固定）
+                h_combined_text = combined_text
+                if stage_f_structure and stage_f_structure.get('schema_version') == STAGE_H_INPUT_SCHEMA_VERSION:
+                    sf_full_text = stage_f_structure.get('full_text', '')
+                    if sf_full_text:
+                        h_combined_text = sf_full_text
+                        logger.info(f"[Stage H] v1.1契約: stage_f_structure.full_text を使用 ({len(h_combined_text)}文字)")
+
                 stageH_result = self.stage_h.process(
                     file_name=file_name,
                     doc_type=doc_type,
                     workspace=workspace,
-                    combined_text=combined_text,
+                    combined_text=h_combined_text,
                     prompt=prompt_h,
                     model=model_h,
                     stage_f_structure=stage_f_structure  # 構造化情報を渡す
@@ -341,8 +451,19 @@ class UnifiedDocumentPipeline:
             # 設定から Stage I のプロンプトとモデルを取得
             stage_i_config = self.config.get_stage_config('stage_i', doc_type, workspace)
 
+            # P1-1: 入力テキストが空または短すぎる場合はスキップ
+            MIN_TEXT_LENGTH_FOR_STAGE_I = 50  # 閾値（文字数）
+            combined_text_length = len(combined_text.strip()) if combined_text else 0
+
+            if combined_text_length < MIN_TEXT_LENGTH_FOR_STAGE_I:
+                logger.warning(f"[P1-1] Stage I スキップ: EMPTY_OR_SHORT_TEXT (length={combined_text_length} < {MIN_TEXT_LENGTH_FOR_STAGE_I})")
+                summary = ""
+                relevant_date = stageH_result.get('document_date') if stageH_result else None
+                title = stageH_result.get('title', '') if stageH_result else ''
+                stageH_metadata['stage_i_skipped'] = True
+                stageH_metadata['stage_i_skip_reason'] = 'EMPTY_OR_SHORT_TEXT'
             # skip フラグがある場合はスキップ
-            if stage_i_config.get('skip'):
+            elif stage_i_config.get('skip'):
                 logger.info("[Stage I] スキップ (skip=true)")
                 summary = ""
                 relevant_date = None
@@ -475,12 +596,25 @@ class UnifiedDocumentPipeline:
                     if vision_raw and stage_f_structure:
                         # full_text を text OCR として保存
                         stage_f_text_ocr = self._sanitize_text(stage_f_structure.get('full_text', ''))
-                        # sections + tables を layout OCR として保存
+
+                        # v1.1契約: sections/tables の取得場所を適切に
                         import json
+                        sf_schema = stage_f_structure.get('schema_version', '')
+                        if sf_schema == STAGE_H_INPUT_SCHEMA_VERSION:
+                            # v1.1: layout_info.sections, トップレベル tables
+                            layout_info = stage_f_structure.get('layout_info', {})
+                            sections = layout_info.get('sections', [])
+                            tables = stage_f_structure.get('tables', [])
+                        else:
+                            # レガシー: 直下または layout_info から取得（後方互換）
+                            sections = stage_f_structure.get('sections', []) or stage_f_structure.get('layout_info', {}).get('sections', [])
+                            tables = stage_f_structure.get('tables', []) or stage_f_structure.get('layout_info', {}).get('tables', [])
+
                         stage_f_layout_ocr = json.dumps({
-                            'sections': stage_f_structure.get('sections', []),
-                            'tables': stage_f_structure.get('tables', [])
+                            'sections': sections,
+                            'tables': tables
                         }, ensure_ascii=False, indent=2)
+
                         # visual_elements をそのまま保存
                         stage_f_visual_elements = json.dumps(
                             stage_f_structure.get('visual_elements', {}),
@@ -630,6 +764,35 @@ class UnifiedDocumentPipeline:
 
             logger.info(f"[Stage K完了] {stage_k_result.get('saved_count', 0)}/{len(chunks)}チャンク保存")
 
+            # Phase 5: Execution tracking - 成功時
+            if enable_execution_tracking and execution_manager and owner_id and document_id:
+                import time
+                duration_ms = int((time.time() - start_time) * 1000) if start_time else None
+
+                # execution 作成（処理完了後に作成、即座に succeeded）
+                try:
+                    exec_ctx = execution_manager.create_execution(
+                        document_id=document_id,
+                        owner_id=owner_id,
+                        input_text=combined_text if 'combined_text' in dir() else '',
+                        model_version=stage_h_config.get('model') if 'stage_h_config' in dir() else None,
+                        normalized_text=combined_text if 'combined_text' in dir() else ''
+                    )
+                    execution_manager.mark_succeeded(
+                        execution_id=exec_ctx.execution_id,
+                        result_data={
+                            'summary': summary,
+                            'tags': tags,
+                            'document_date': document_date if 'document_date' in dir() else None,
+                            'metadata': stageH_metadata if 'stageH_metadata' in dir() else {},
+                            'chunks_count': stage_k_result.get('saved_count', 0)
+                        },
+                        processing_duration_ms=duration_ms
+                    )
+                    logger.info(f"[Phase 5] Execution 記録完了: {exec_ctx.execution_id[:8]}...")
+                except Exception as exec_e:
+                    logger.warning(f"[Phase 5] Execution 記録エラー（継続）: {exec_e}")
+
             return {
                 'success': True,
                 'document_id': document_id,
@@ -640,4 +803,29 @@ class UnifiedDocumentPipeline:
 
         except Exception as e:
             logger.error(f"[パイプラインエラー] {e}", exc_info=True)
+
+            # Phase 5: Execution tracking - 失敗時
+            if enable_execution_tracking and execution_manager and owner_id:
+                import time
+                duration_ms = int((time.time() - start_time) * 1000) if start_time else None
+                try:
+                    # 既存 document_id がある場合のみ execution を記録
+                    doc_id = existing_document_id or (document_id if 'document_id' in dir() else None)
+                    if doc_id:
+                        exec_ctx = execution_manager.create_execution(
+                            document_id=doc_id,
+                            owner_id=owner_id,
+                            input_text='',  # 失敗時は入力が不明な場合がある
+                            model_version=None
+                        )
+                        execution_manager.mark_failed(
+                            execution_id=exec_ctx.execution_id,
+                            error_code='PIPELINE_ERROR',
+                            error_message=str(e),
+                            processing_duration_ms=duration_ms
+                        )
+                        logger.info(f"[Phase 5] 失敗 Execution 記録: {exec_ctx.execution_id[:8]}...")
+                except Exception as exec_e:
+                    logger.warning(f"[Phase 5] 失敗 Execution 記録エラー（継続）: {exec_e}")
+
             return {'success': False, 'error': str(e)}

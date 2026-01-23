@@ -12,6 +12,9 @@ if (Test-Path $envPath) {
         if ($_ -match '^SUPABASE_KEY\s*=\s*(.+)$') {
             $env:SUPABASE_KEY = $matches[1].Trim()
         }
+        if ($_ -match '^SUPABASE_SERVICE_ROLE_KEY\s*=\s*(.+)$') {
+            $env:SUPABASE_SERVICE_ROLE_KEY = $matches[1].Trim()
+        }
         if ($_ -match '^OPENAI_API_KEY\s*=\s*(.+)$') {
             $env:OPENAI_API_KEY = $matches[1].Trim()
         }
@@ -54,7 +57,7 @@ gcloud run deploy $SERVICE_NAME `
   --memory 512Mi `
   --cpu 1 `
   --max-instances 10 `
-  --set-env-vars "SUPABASE_URL=$($env:SUPABASE_URL),SUPABASE_KEY=$($env:SUPABASE_KEY),OPENAI_API_KEY=$($env:OPENAI_API_KEY)"
+  --set-env-vars "SUPABASE_URL=$($env:SUPABASE_URL),SUPABASE_KEY=$($env:SUPABASE_KEY),SUPABASE_SERVICE_ROLE_KEY=$($env:SUPABASE_SERVICE_ROLE_KEY),OPENAI_API_KEY=$($env:OPENAI_API_KEY)"
 
 Write-Host ""
 Write-Host "==================================" -ForegroundColor Green

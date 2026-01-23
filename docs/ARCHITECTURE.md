@@ -4,6 +4,92 @@
 
 ---
 
+## 設計原則（不変条件）
+
+以下の原則は**構造的に強制**されており、設定やフラグで変更することはできません。
+
+### 1. Web は DB Read/Write のみ
+
+```
+Web (Cloud Run / localhost)
+├── DB からの読み取り（stats, progress, workspaces）
+├── DB への書き込み（ops_requests への enqueue）
+└── 処理実行コードは一切含まない
+```
+
+- `DocumentProcessor`, `UnifiedDocumentPipeline` のインポート禁止
+- `asyncio.run`, `threading.Thread` の使用禁止
+- CI で自動検査（`.github/workflows/architecture-guard.yml`）
+
+### 2. 処理実行は Worker のみ
+
+```
+Worker (Terminal / Cloud Run Job)
+├── scripts/processing/process_queued_documents.py（SSOT）
+└── すべての処理経路がここを通る
+```
+
+- 処理を開始できるのは CLI のみ
+- Web から処理を開始するエンドポイントは**存在しない**（410 Gone）
+
+### 3. 停止/再開の真実は DB のみ
+
+```
+停止の判断
+├── ops_requests テーブル（STOP/PAUSE 要求）
+├── worker_state.stop_requested（レガシー互換）
+└── 環境変数・設定で止めない
+```
+
+### 4. ExecutionPolicy が実行可否の唯一の判定点
+
+```python
+from shared.processing import ExecutionPolicy
+
+policy = ExecutionPolicy()
+result = policy.can_execute(doc_id=doc_id, workspace=workspace)
+
+if not result.allowed:
+    # deny_code: STOP_REQUESTED, PAUSED, HOLD, RETRY_DEAD, etc.
+    return
+```
+
+分散ガードを防ぎ、「止める条件」をコード上でも1か所に固定。
+
+**スコープ対応:** STOP 要求は global / workspace / document の3スコープで判定。
+
+### 5. 入口は3本のみ（Entry Point Consolidation）
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  システムへの入口（これ以上増やさない）                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. services/doc-processor/app.py                               │
+│     └── Web API（読み取り + enqueue のみ、処理実行コードなし）    │
+│                                                                 │
+│  2. scripts/ops.py                                              │
+│     └── 運用操作（stats, stop, reset-status, reset-stages）     │
+│                                                                 │
+│  3. scripts/processing/process_queued_documents.py              │
+│     └── 処理実行（唯一の処理入口）                               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**CI で強制（architecture-guard.yml）:**
+- `scripts/processing/` 内で `asyncio.run` を持つファイルは上記のみ許可
+- `scripts/reset/` 内で `.update(` `.insert(` を持つファイルは禁止
+
+**廃止済みスクリプト（wrapper/stub 化）:**
+- `scripts/processing/process_single_doc.py` → stub（process_queued_documents.py --doc-id を使用）
+- `scripts/reset/reset_*.py` → wrapper（ops.py を呼び出すだけ、_legacy_wrapper.py 経由）
+
+**新しい処理を追加したい場合:**
+- 新ファイルを作成せず、既存の入口に `--option` を追加
+
+---
+
 ## 目次
 
 1. [システム全体像](#システム全体像)

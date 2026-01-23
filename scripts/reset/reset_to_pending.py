@@ -1,37 +1,25 @@
 """
-processing 状態のドキュメントを pending に戻す
+【廃止予定】processing 状態のドキュメントを pending に戻す
+
+移行先: python scripts/ops.py reset-status --workspace <ws> [--apply]
+
+このスクリプトは 2025年Q2 に削除予定です。
 """
-from shared.common.database.client import DatabaseClient
+import sys
+from _legacy_wrapper import show_deprecation_warning, reset_status_wrapper
 
-def reset_to_pending(workspace='ikuya_classroom'):
-    db = DatabaseClient()
 
-    # processing 状態のドキュメントを取得
-    result = db.client.table('Rawdata_FILE_AND_MAIL')\
-        .select('id, file_name, title')\
-        .eq('workspace', workspace)\
-        .eq('processing_status', 'processing')\
-        .execute()
+def main():
+    workspace = sys.argv[1] if len(sys.argv) > 1 else 'ikuya_classroom'
+    apply = '--apply' in sys.argv or '--yes' in sys.argv or '-y' in sys.argv
 
-    if not result.data:
-        print(f"processing 状態のドキュメントが見つかりません (workspace: {workspace})")
-        return
+    show_deprecation_warning(
+        old_script='reset_to_pending.py',
+        new_command=f'python scripts/ops.py reset-status --workspace {workspace} [--apply]'
+    )
 
-    print(f"processing 状態のドキュメント: {len(result.data)}件")
-    for doc in result.data:
-        title = doc.get('title', '(タイトル未生成)')
-        print(f"  - {title}")
+    return reset_status_wrapper(workspace=workspace, apply=apply)
 
-    # pending に戻す
-    for doc in result.data:
-        db.client.table('Rawdata_FILE_AND_MAIL')\
-            .update({'processing_status': 'pending'})\
-            .eq('id', doc['id'])\
-            .execute()
-
-    print(f"\n[OK] {len(result.data)}件を pending に戻しました")
 
 if __name__ == '__main__':
-    import sys
-    workspace = sys.argv[1] if len(sys.argv) > 1 else 'ikuya_classroom'
-    reset_to_pending(workspace)
+    sys.exit(main())

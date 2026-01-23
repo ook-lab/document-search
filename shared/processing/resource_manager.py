@@ -7,7 +7,12 @@
 import os
 import time
 import psutil
+from typing import Optional
 from loguru import logger
+
+# P3: cgroup可用性フラグ（初回チェック後にTrue/Falseに確定）
+_cgroup_memory_available: Optional[bool] = None
+_cgroup_cpu_available: Optional[bool] = None
 
 
 def get_cgroup_memory() -> dict:
@@ -17,6 +22,12 @@ def get_cgroup_memory() -> dict:
     Returns:
         dict: {'percent': float, 'used_gb': float, 'total_gb': float}
     """
+    global _cgroup_memory_available
+
+    # P3: 既にcgroup不可と判明している場合は即座にpsutilへ（ログ出力なし）
+    if _cgroup_memory_available is False:
+        return _get_psutil_memory()
+
     try:
         current = None
         max_mem = None
@@ -67,6 +78,11 @@ def get_cgroup_memory() -> dict:
         if current is None or max_mem is None:
             raise FileNotFoundError("cgroup memory files not found")
 
+        # P3: cgroup利用可能と確定
+        if _cgroup_memory_available is None:
+            _cgroup_memory_available = True
+            logger.info("[P3] cgroup memory available; using cgroup for memory monitoring")
+
         # キャッシュを除いた実際の使用量
         actual_used = current - inactive_file
         percent = (actual_used / max_mem) * 100
@@ -79,18 +95,40 @@ def get_cgroup_memory() -> dict:
             'total_gb': round(total_gb, 2)
         }
 
+    except FileNotFoundError as e:
+        # P3: 初回失敗時のみログ出力してフラグ確定
+        if _cgroup_memory_available is None:
+            _cgroup_memory_available = False
+            logger.info(f"[P3] cgroup memory unavailable; using psutil only (suppressing further warnings): {e} (reason=not_found)")
+        return _get_psutil_memory()
+
+    except PermissionError as e:
+        if _cgroup_memory_available is None:
+            _cgroup_memory_available = False
+            logger.info(f"[P3] cgroup memory unavailable; using psutil only (suppressing further warnings): {e} (reason=permission)")
+        return _get_psutil_memory()
+
     except Exception as e:
-        # psutilにフォールバック
-        logger.debug(f"cgroup memory read failed, falling back to psutil: {e}")
-        try:
-            memory = psutil.virtual_memory()
-            return {
-                'percent': round(memory.percent, 1),
-                'used_gb': round(memory.used / (1024 ** 3), 2),
-                'total_gb': round(memory.total / (1024 ** 3), 2)
-            }
-        except Exception:
-            return {'percent': 50.0, 'used_gb': 8.0, 'total_gb': 16.0}
+        if _cgroup_memory_available is None:
+            _cgroup_memory_available = False
+            logger.info(f"[P3] cgroup memory unavailable; using psutil only (suppressing further warnings): {e} (reason=unexpected)")
+        return _get_psutil_memory()
+
+
+def _get_psutil_memory() -> dict:
+    """P3: psutilによるメモリ取得（内部ヘルパー）"""
+    try:
+        memory = psutil.virtual_memory()
+        # キャッシュを除いた実使用率を計算（availableを使用）
+        actual_used = memory.total - memory.available
+        actual_percent = (actual_used / memory.total) * 100
+        return {
+            'percent': round(actual_percent, 1),
+            'used_gb': round(actual_used / (1024 ** 3), 2),
+            'total_gb': round(memory.total / (1024 ** 3), 2)
+        }
+    except Exception:
+        return {'percent': 50.0, 'used_gb': 8.0, 'total_gb': 16.0}
 
 
 # CPU使用率計算用のグローバル変数
@@ -104,7 +142,11 @@ def get_cgroup_cpu() -> float:
     Returns:
         float: CPU使用率（0-100%）
     """
-    global _last_cpu_stats
+    global _last_cpu_stats, _cgroup_cpu_available
+
+    # P3: 既にcgroup不可と判明している場合は即座にpsutilへ（ログ出力なし）
+    if _cgroup_cpu_available is False:
+        return round(psutil.cpu_percent(interval=0.1), 1)
 
     try:
         usage_nsec = None
@@ -131,7 +173,16 @@ def get_cgroup_cpu() -> float:
                 continue
 
         if usage_nsec is None:
+            # P3: cgroup不可と確定（初回のみログ出力）
+            if _cgroup_cpu_available is None:
+                _cgroup_cpu_available = False
+                logger.info("[P3] cgroup CPU unavailable; using psutil only (suppressing further warnings)")
             return round(psutil.cpu_percent(interval=0.1), 1)
+
+        # P3: cgroup利用可能と確定
+        if _cgroup_cpu_available is None:
+            _cgroup_cpu_available = True
+            logger.info("[P3] cgroup CPU available; using cgroup for CPU monitoring")
 
         current_time = time.time()
 
@@ -152,8 +203,23 @@ def get_cgroup_cpu() -> float:
         _last_cpu_stats = {'usage_usec': usage_nsec, 'timestamp': current_time}
         return round(cpu_percent, 1)
 
+    except FileNotFoundError as e:
+        # P3: 初回失敗時のみログ出力してフラグ確定
+        if _cgroup_cpu_available is None:
+            _cgroup_cpu_available = False
+            logger.info(f"[P3] cgroup CPU unavailable; using psutil only (suppressing further warnings): {e} (reason=not_found)")
+        return round(psutil.cpu_percent(interval=0.1), 1)
+
+    except PermissionError as e:
+        if _cgroup_cpu_available is None:
+            _cgroup_cpu_available = False
+            logger.info(f"[P3] cgroup CPU unavailable; using psutil only (suppressing further warnings): {e} (reason=permission)")
+        return round(psutil.cpu_percent(interval=0.1), 1)
+
     except Exception as e:
-        logger.debug(f"cgroup CPU read failed: {e}")
+        if _cgroup_cpu_available is None:
+            _cgroup_cpu_available = False
+            logger.info(f"[P3] cgroup CPU unavailable; using psutil only (suppressing further warnings): {e} (reason=unexpected)")
         return round(psutil.cpu_percent(interval=0.1), 1)
 
 
@@ -195,10 +261,10 @@ class AdaptiveResourceManager:
             self.memory_critical = 92.0
             self.memory_recover = 75.0
         else:
-            self.memory_low = 60.0
+            self.memory_low = 75.0
             self.memory_high = 85.0
             self.memory_critical = 90.0
-            self.memory_recover = 70.0
+            self.memory_recover = 75.0
 
         # 移動平均用
         self.memory_history = []

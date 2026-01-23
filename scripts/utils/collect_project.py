@@ -26,7 +26,8 @@ EXCLUDE_FILES = {
     '*.zip', '*.tar', '*.gz', '*.rar', '*.7z',
     '*.mp3', '*.mp4', '*.wav', '*.avi', '*.mov',
     '*.woff', '*.woff2', '*.ttf', '*.eot',
-    'package-lock.json', 'yarn.lock', '*.lock'
+    'package-lock.json', 'yarn.lock', '*.lock',
+    'PROJECT_SNAPSHOT_*.md',  # 過去のスナップショットを除外（自己参照防止）
 }
 
 # コードファイルの拡張子
@@ -67,8 +68,14 @@ def should_exclude_file(name):
     if name in EXCLUDE_FILES:
         return True
     for pattern in EXCLUDE_FILES:
-        if pattern.startswith('*') and name.endswith(pattern[1:]):
-            return True
+        if '*' in pattern:
+            # ワイルドカードパターンをシンプルに処理
+            # 例: '*.pyc' -> 末尾一致, 'PROJECT_SNAPSHOT_*.md' -> 前後一致
+            parts = pattern.split('*')
+            if len(parts) == 2:
+                prefix, suffix = parts
+                if name.startswith(prefix) and name.endswith(suffix):
+                    return True
     return False
 
 

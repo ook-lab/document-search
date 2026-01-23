@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}ドキュメントレビュー - Document Review{% endblock %}
+
+{% block content %}
+<div class="review-layout">
+    <!-- 左サイドパネル（ドキュメント一覧＋フィルタ） -->
+    <aside id="side-panel" class="side-panel collapsed">
+        <div class="side-panel-content">
+            <!-- フィルタセクション（折りたたみ） -->
+            <details class="filter-section">
+                <summary class="filter-toggle">🔍 フィルタ・検索</summary>
+                <div class="filter-content">
+                    <div class="form-group">
+                        <label for="workspace-filter">Workspace</label>
+                        <select id="workspace-filter">
+                            <option value="">全て</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="filetype-filter">ファイルタイプ</label>
+                        <select id="filetype-filter">
+                            <option value="">全て</option>
+                            <option value="pdf">PDF</option>
+                            <option value="email">メール</option>
+                            <option value="text">テキスト</option>
+                            <option value="markdown">Markdown</option>
+                            <option value="csv">CSV</option>
+                            <option value="json">JSON</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="status-filter">レビューステータス</label>
+                        <select id="status-filter">
+                            <option value="pending">未確認</option>
+                            <option value="reviewed">確認済み</option>
+                            <option value="all">全て</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="search-input">キーワード検索</label>
+                        <input type="text" id="search-input" placeholder="検索...">
+                    </div>
+                    <button id="filter-btn" class="btn btn-primary btn-small" style="width:100%;">検索</button>
+                </div>
+            </details>
+
+            <!-- 進捗 -->
+            <div class="stats-section">
+                <div id="stats-container">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+
+            <!-- ドキュメント一覧 -->
+            <div class="document-list-section">
+                <div class="list-header">
+                    <span id="document-count">0件</span>
+                    <button id="refresh-btn" class="btn btn-small btn-secondary">🔄</button>
+                </div>
+                <div id="document-list-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- パネル開閉トグル -->
+    <button id="panel-toggle" class="panel-toggle" title="ドキュメント一覧">
+        <span class="toggle-icon">📁</span>
+        <span class="toggle-count" id="toggle-count">0</span>
+    </button>
+
+    <!-- メインコンテンツ（プレビュー＋編集） -->
+    <main class="main-content-area">
+        <div id="document-detail-container">
+            <div class="detail-layout">
+                <!-- プレビュー -->
+                <div class="preview-panel card">
+                    <div class="card-header">
+                        <h3 class="card-title">📄 プレビュー</h3>
+                        <span id="doc-title" class="doc-title-display"></span>
+                    </div>
+                    <div id="preview-container" class="preview-container">
+                        <div class="empty-state">
+                            <p>← ドキュメントを選択</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- メタデータ編集 -->
+                <div class="editor-panel card">
+                    <div class="card-header">
+                        <h3 class="card-title">✏️ メタデータ編集</h3>
+                    </div>
+
+                    <!-- 動的タブ -->
+                    <div class="tabs" id="metadata-tabs">
+                        <button class="tab active" data-tab="tab-form">📝 フォーム</button>
+                        <!-- 動的タブがここに挿入される -->
+                        <button class="tab" data-tab="tab-json">🔍 JSON</button>
+                        <button class="tab" data-tab="tab-history">📜 履歴</button>
+                    </div>
+
+                    <!-- タブコンテンツ -->
+                    <div id="tab-contents">
+                        <div id="tab-form" class="tab-content active">
+                            <div id="form-editor-container">
+                                <p class="empty-state">ドキュメントを選択してください</p>
+                            </div>
+                        </div>
+
+                        <div id="dynamic-tab-contents"></div>
+
+                        <div id="tab-json" class="tab-content">
+                            <div class="form-group">
+                                <textarea id="json-editor" class="json-editor" rows="15"></textarea>
+                            </div>
+                            <div id="json-error" class="error-message" style="display:none;"></div>
+                        </div>
+
+                        <div id="tab-history" class="tab-content">
+                            <div id="history-container">
+                                <p>修正履歴がありません</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- アクションボタン -->
+                    <div class="action-buttons">
+                        <button id="save-btn" class="btn btn-primary">💾 保存</button>
+                        <button id="review-btn" class="btn btn-success">✅ 完了</button>
+                        <button id="unreview-btn" class="btn btn-secondary" style="display:none;">↩️ 戻す</button>
+                        <button id="delete-btn" class="btn btn-danger">🗑️ 削除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/document-editor.js') }}"></script>
+{% endblock %}

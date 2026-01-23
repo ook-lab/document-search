@@ -1,0 +1,340 @@
+# ============================================================
+# Architecture Guard - 分散ガード禁止をCIで強制
+# ============================================================
+#
+# 【目的】
+# - Web配下に処理コードが混入することを防ぐ
+# - 「分散ガード」の再発を機械的にブロック
+# - 人間の注意に依存しない構造保証
+#
+# 【検査内容】
+# 1. Web配下（services/doc-processor）に禁止パターンがないこと
+# 2. 処理復活を示唆する危険な語彙の組み合わせがないこと
+# 3. 入口スクリプトが許可リスト以外に増えていないこと
+
+name: Architecture Guard
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'services/doc-processor/**'
+      - 'scripts/**'
+      - 'shared/processing/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'services/doc-processor/**'
+      - 'scripts/**'
+      - 'shared/processing/**'
+
+jobs:
+  check-web-isolation:
+    name: Check Web Isolation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for forbidden imports in Web layer
+        run: |
+          echo "=========================================="
+          echo "Checking for forbidden imports in Web layer..."
+          echo "=========================================="
+
+          # 禁止パターン
+          FORBIDDEN_PATTERNS=(
+            "DocumentProcessor"
+            "UnifiedDocumentPipeline"
+            "process_document"
+            "from shared.processing import"
+            "from shared.pipeline import"
+            "asyncio.run"
+            "threading.Thread"
+          )
+
+          FOUND_VIOLATIONS=0
+
+          for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+            echo "Checking pattern: $pattern"
+            if grep -rn "$pattern" services/doc-processor/ --include="*.py" 2>/dev/null; then
+              echo "❌ VIOLATION: Found '$pattern' in Web layer"
+              FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
+            else
+              echo "✅ OK: '$pattern' not found"
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+          if [ $FOUND_VIOLATIONS -gt 0 ]; then
+            echo "❌ FAILED: Found $FOUND_VIOLATIONS forbidden pattern(s) in Web layer"
+            echo ""
+            echo "【設計原則違反】"
+            echo "Web層（services/doc-processor）に処理コードが含まれています。"
+            echo "処理実行は Worker（scripts/processing/process_queued_documents.py）のみで行ってください。"
+            exit 1
+          else
+            echo "✅ PASSED: No forbidden patterns found"
+          fi
+
+      - name: Check for dangerous keyword combinations
+        run: |
+          echo "=========================================="
+          echo "Checking for dangerous keyword combinations..."
+          echo "=========================================="
+
+          # 危険な組み合わせ（処理復活の兆候）
+          # "start" と "process" が同一ファイルに存在する場合は要注意
+
+          FOUND_ISSUES=0
+
+          # Web配下で "start" と "process" と "execute" が組み合わさっているファイルをチェック
+          for file in $(find services/doc-processor -name "*.py" 2>/dev/null); do
+            if grep -q "def.*start.*process\|start.*processing\|enable.*process\|allow.*process" "$file" 2>/dev/null; then
+              echo "⚠️  WARNING: Suspicious pattern in $file"
+              grep -n "start.*process\|enable.*process\|allow.*process" "$file" || true
+              FOUND_ISSUES=$((FOUND_ISSUES + 1))
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+          if [ $FOUND_ISSUES -gt 0 ]; then
+            echo "⚠️  WARNING: Found $FOUND_ISSUES file(s) with suspicious patterns"
+            echo "Please review these files manually."
+            # 警告のみ、失敗にはしない（誤検知の可能性があるため）
+          else
+            echo "✅ PASSED: No suspicious keyword combinations found"
+          fi
+
+      - name: Check Worker entry points (strict)
+        run: |
+          echo "=========================================="
+          echo "Checking Worker entry points (STRICT)..."
+          echo "=========================================="
+
+          # 【入口は3本のみ】
+          # 1. scripts/ops.py - 運用操作
+          # 2. scripts/processing/process_queued_documents.py - 処理実行
+          # 3. services/doc-processor/app.py - Web API
+
+          # scripts/processing/ 配下で asyncio.run を持つファイルを検出
+          # process_queued_documents.py のみが許可
+
+          ALLOWED_ASYNCIO_FILES=(
+            "scripts/processing/process_queued_documents.py"
+          )
+
+          FOUND_VIOLATIONS=0
+
+          echo "Checking for asyncio.run in scripts/processing/..."
+          echo ""
+
+          for file in $(find scripts/processing -name "*.py" -type f 2>/dev/null | grep -v "__pycache__"); do
+            if grep -q "asyncio.run\|asyncio\.run" "$file" 2>/dev/null; then
+              # 許可リストにあるかチェック
+              ALLOWED=0
+              for allowed in "${ALLOWED_ASYNCIO_FILES[@]}"; do
+                if [ "$file" = "$allowed" ]; then
+                  ALLOWED=1
+                  break
+                fi
+              done
+
+              if [ $ALLOWED -eq 0 ]; then
+                echo "❌ VIOLATION: $file contains asyncio.run (not allowed)"
+                grep -n "asyncio.run\|asyncio\.run" "$file" || true
+                FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
+              else
+                echo "✅ OK: $file (allowed entry point)"
+              fi
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+
+          if [ $FOUND_VIOLATIONS -gt 0 ]; then
+            echo "❌ FAILED: Found $FOUND_VIOLATIONS unauthorized entry point(s)"
+            echo ""
+            echo "【設計原則違反】"
+            echo "scripts/processing/ 配下で asyncio.run を持つファイルが許可リスト外に存在します。"
+            echo ""
+            echo "【入口は3本のみ】"
+            echo "1. scripts/ops.py - 運用操作"
+            echo "2. scripts/processing/process_queued_documents.py - 処理実行"
+            echo "3. services/doc-processor/app.py - Web API"
+            echo ""
+            echo "新しい処理スクリプトを追加するのではなく、"
+            echo "process_queued_documents.py に --option を追加してください。"
+            exit 1
+          else
+            echo "✅ PASSED: No unauthorized entry points found"
+          fi
+
+      - name: Check for direct DB updates in reset scripts
+        run: |
+          echo "=========================================="
+          echo "Checking reset scripts for direct DB updates..."
+          echo "=========================================="
+
+          # reset スクリプトが ops.py を経由せずに直接 DB を更新していないかチェック
+          # wrapper 化されていれば .update( は存在しないはず
+          # 注意: .select( は読み取りなので許可（--check 機能用）
+
+          FOUND_VIOLATIONS=0
+
+          for file in $(find scripts/reset -name "*.py" -type f 2>/dev/null | grep -v "__pycache__" | grep -v "_legacy_wrapper.py"); do
+            # .update( または .insert( があればNG（書き込み操作）
+            # .select( は許可（読み取りのみ）
+            if grep -q "\.update(\|\.insert(" "$file" 2>/dev/null; then
+              echo "❌ VIOLATION: $file contains direct DB write operations"
+              grep -n "\.update(\|\.insert(" "$file" | head -5 || true
+              FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
+            else
+              echo "✅ OK: $file (wrapper/stub or read-only)"
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+
+          if [ $FOUND_VIOLATIONS -gt 0 ]; then
+            echo "❌ FAILED: Found $FOUND_VIOLATIONS script(s) with direct DB write operations"
+            echo ""
+            echo "【設計原則違反】"
+            echo "scripts/reset/ 配下のスクリプトが直接 DB を更新しています。"
+            echo "ops.py 経由で操作するよう wrapper 化してください。"
+            echo ""
+            echo "注: .select() による読み取りは許可されています（--check 機能用）"
+            exit 1
+          else
+            echo "✅ PASSED: All reset scripts are properly wrapped (no direct writes)"
+          fi
+
+  check-execution-policy:
+    name: Check ExecutionPolicy Usage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify ExecutionPolicy is used in Worker
+        run: |
+          echo "=========================================="
+          echo "Checking ExecutionPolicy usage..."
+          echo "=========================================="
+
+          # processor.py で ExecutionPolicy がインポート・使用されていることを確認
+          if grep -q "from.*execution_policy import\|ExecutionPolicy\|get_execution_policy" shared/processing/processor.py 2>/dev/null; then
+            echo "✅ ExecutionPolicy is imported in processor.py"
+          else
+            echo "❌ WARNING: ExecutionPolicy is not imported in processor.py"
+            echo "All execution decisions should go through ExecutionPolicy (SSOT)"
+          fi
+
+          # ExecutionPolicy.can_execute または can_execute_document が呼ばれていることを確認
+          if grep -q "execution_policy.can_execute\|\.can_execute(" shared/processing/processor.py 2>/dev/null; then
+            echo "✅ ExecutionPolicy.can_execute is called in processor.py"
+          else
+            echo "⚠️  WARNING: ExecutionPolicy.can_execute may not be called"
+          fi
+
+          echo ""
+          echo "=========================================="
+          echo "✅ ExecutionPolicy check completed"
+
+  check-no-persistent-loop:
+    name: Check No Persistent Loop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify --loop is not used (constant resident prohibited)
+        run: |
+          echo "=========================================="
+          echo "Checking for --loop usage (prohibited)..."
+          echo "=========================================="
+
+          # 【設計原則】常駐禁止
+          # - continuous_processing_loop は削除済み
+          # - --loop 引数は禁止
+          # - Cloud Run 24h課金を防ぐ
+
+          FOUND_VIOLATIONS=0
+
+          # 1. continuous_processing_loop の存在チェック
+          echo "Checking for continuous_processing_loop..."
+          if grep -rn "continuous_processing_loop" shared/processing/ scripts/ --include="*.py" 2>/dev/null | grep -v "# continuous_processing_loop"; then
+            echo "❌ VIOLATION: continuous_processing_loop still exists"
+            FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
+          else
+            echo "✅ OK: continuous_processing_loop removed"
+          fi
+
+          # 2. --loop 引数の存在チェック（add_argument で）
+          echo ""
+          echo "Checking for --loop argument definition..."
+          if grep -rn "add_argument.*--loop" scripts/ --include="*.py" 2>/dev/null; then
+            echo "❌ VIOLATION: --loop argument still defined"
+            FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
+          else
+            echo "✅ OK: --loop argument removed"
+          fi
+
+          # 3. while True の無限ループチェック（processor.py）
+          echo ""
+          echo "Checking for infinite loops in processor.py..."
+          if grep -n "while True" shared/processing/processor.py 2>/dev/null; then
+            echo "❌ VIOLATION: Infinite loop found in processor.py"
+            FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
+          else
+            echo "✅ OK: No infinite loops in processor.py"
+          fi
+
+          echo ""
+          echo "=========================================="
+
+          if [ $FOUND_VIOLATIONS -gt 0 ]; then
+            echo "❌ FAILED: Found $FOUND_VIOLATIONS violation(s)"
+            echo ""
+            echo "【設計原則違反】"
+            echo "常駐処理（--loop, continuous_processing_loop, while True）は禁止です。"
+            echo ""
+            echo "理由:"
+            echo "- Cloud Run 24時間課金を防ぐ"
+            echo "- バッチ1回実行でコスト最適化"
+            echo "- Cloud Run Jobs / ローカル両用"
+            echo ""
+            echo "代わりに --run-request <id> を使用してください。"
+            exit 1
+          else
+            echo "✅ PASSED: No persistent loop patterns found"
+          fi
+
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [check-web-isolation, check-execution-policy, check-no-persistent-loop]
+    if: always()
+
+    steps:
+      - name: Print Summary
+        run: |
+          echo "=========================================="
+          echo "Architecture Guard Summary"
+          echo "=========================================="
+          echo ""
+          echo "【設計原則】"
+          echo "1. Web は DB Read/Write のみ（処理コードなし）"
+          echo "2. 処理実行は Worker のみ（CLI経由）"
+          echo "3. 停止/再開の真実は DB のみ"
+          echo "4. ExecutionPolicy が実行可否の唯一の判定点"
+          echo "5. 常駐禁止 - バッチ1回実行（Cloud Run Jobs対応）"
+          echo ""
+          echo "詳細は docs/ARCHITECTURE.md を参照してください。"

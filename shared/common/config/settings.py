@@ -42,6 +42,11 @@ _load_env_file()
 class Settings:
     """アプリケーション設定"""
 
+    # ========== アーキテクチャ原則 ==========
+    # Web (Cloud Run / localhost) は enqueue・閲覧・運用操作のみ
+    # 処理実行は Worker (CLI) のみ
+    # この原則は設定で変更不可（構造的に強制）
+
     # OpenAI API Key
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 

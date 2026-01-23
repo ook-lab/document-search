@@ -2,12 +2,16 @@
 Streamlit UI for Document Processing
 Cloud Run APIを呼び出してドキュメント処理を実行
 """
+import os
 import streamlit as st
 import requests
 import time
 
-# Backend API URL
-BACKEND_URL = "https://doc-processor-983922127476.asia-northeast1.run.app"
+# Backend API URL（環境変数から取得、デフォルトはCloud RunのURL）
+BACKEND_URL = os.getenv(
+    "BACKEND_URL",
+    "https://doc-processor-983922127476.asia-northeast1.run.app"
+)
 
 st.set_page_config(
     page_title="ドキュメント処理システム",

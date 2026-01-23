@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家計簿修正UI</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
+        .container { max-width: 1900px; margin: 0 auto; padding: 20px; }
+        h1 { margin: 0 0 20px 0; font-size: 24px; }
+
+        .toolbar {
+            padding: 15px;
+            background: #fff;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .toolbar label { font-weight: 500; }
+        .toolbar input[type="month"] { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .toolbar button { padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .toolbar button:hover { background: #0056b3; }
+
+        .summary {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            flex: 1;
+            padding: 15px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .summary-card h3 { margin: 0 0 5px 0; font-size: 14px; color: #666; }
+        .summary-card .value { font-size: 24px; font-weight: bold; }
+        .summary-card .value.negative { color: #dc3545; }
+        .summary-card .value.positive { color: #28a745; }
+
+        .table-wrapper { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); min-width: 1500px; }
+        th { background: #f8f9fa; padding: 8px 4px; text-align: left; font-weight: 600; font-size: 11px; border-bottom: 2px solid #dee2e6; white-space: nowrap; }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background: #e9ecef; }
+        th.sortable::after { content: ' ⇅'; opacity: 0.3; font-size: 10px; }
+        th.sortable.asc::after { content: ' ▲'; opacity: 1; }
+        th.sortable.desc::after { content: ' ▼'; opacity: 1; }
+        td { padding: 6px 4px; font-size: 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        tr:hover { background: #f8f9fa; }
+
+        .negative { color: #dc3545; }
+        .positive { color: #28a745; }
+        .excluded { background-color: #f8d7da !important; opacity: 0.7; }
+        .excluded td { text-decoration: line-through; color: #888; }
+        .auto-excluded { background-color: #e2e3e5 !important; }
+        .suggested { background-color: #d1ecf1 !important; }
+        .suggested .cat-input, .suggested .cat-input-wide { background: #bee5eb; }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 4px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        input[type="text"]:focus { outline: none; border-color: #007bff; }
+        input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
+        .btn-save {
+            padding: 4px 8px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .btn-save:hover { background: #1e7e34; }
+
+        .btn-rule {
+            padding: 4px 6px;
+            background: #fd7e14;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        .btn-rule:hover { background: #e76f00; }
+
+        .btn-toggle {
+            padding: 3px 6px;
+            background: #6f42c1;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        .btn-toggle:hover { background: #5a32a3; }
+
+        .content-cell { max-width: 180px; }
+        .content-cell .main { font-weight: 500; font-size: 11px; }
+        .content-cell .sub { font-size: 10px; color: #666; margin-top: 1px; }
+
+        .selected-info {
+            padding: 10px 15px;
+            background: #fff3cd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .selected-info.show { display: block; }
+
+        .amount-cell { text-align: right; font-family: monospace; white-space: nowrap; font-size: 11px; }
+
+        /* 分類入力欄のスタイル */
+        .cat-input { width: 70px; }
+        .cat-input-wide { width: 90px; }
+
+        .action-cell { white-space: nowrap; }
+        .action-cell button { margin-right: 2px; }
+
+        /* ルール登録モーダル */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+        }
+        .modal-content h3 { margin: 0 0 15px 0; }
+        .modal-content label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .modal-content input[type="text"] { width: 100%; margin-bottom: 10px; padding: 8px; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>家計簿メンテナンス</h1>
+
+        <div class="toolbar">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <label>月選択:</label>
+                <button onclick="changeMonth(-1)" style="padding: 8px 12px;">◀ 先月</button>
+                <input type="month" id="month-filter" value="{{ current_month }}">
+                <button onclick="changeMonth(1)" style="padding: 8px 12px;">次月 ▶</button>
+                <button onclick="goToCurrentMonth()" style="padding: 8px 12px; background: #28a745;">今月</button>
+                <button onclick="applyFilter()">表示</button>
+            </div>
+            <div>
+                <label>
+                    <input type="checkbox" id="show-excluded" {% if show_excluded %}checked{% endif %}>
+                    除外済みも表示
+                </label>
+            </div>
+            <div>
+                <button onclick="bulkExclude()" style="background: #dc3545;">選択を一括除外</button>
+            </div>
+            <div>
+                <a href="/reconcile" style="padding: 8px 16px; background: #17a2b8; color: white; text-decoration: none; border-radius: 4px;">消込ツール</a>
+            </div>
+            <div>
+                <a href="/loans" style="padding: 8px 16px; background: #6f42c1; color: white; text-decoration: none; border-radius: 4px;">ローン管理</a>
+            </div>
+            <div>
+                <a href="/receipts" style="padding: 8px 16px; background: #e83e8c; color: white; text-decoration: none; border-radius: 4px;">レシート検証</a>
+            </div>
+            <div style="margin-left: auto;">
+                <button onclick="exportData('csv')" style="background: #20c997;">CSV出力</button>
+                <button onclick="exportData('excel')" style="background: #198754;">Excel出力</button>
+            </div>
+        </div>
+
+        <div class="summary">
+            <div class="summary-card">
+                <h3>支出合計</h3>
+                <div class="value negative">{{ "{:,.0f}".format(total_expense) }} 円</div>
+            </div>
+            <div class="summary-card">
+                <h3>収入合計</h3>
+                <div class="value positive">{{ "{:,.0f}".format(total_income) }} 円</div>
+            </div>
+            <div class="summary-card">
+                <h3>表示件数</h3>
+                <div class="value">{{ transactions|length }} 件</div>
+            </div>
+            <div class="summary-card">
+                <h3>選択中の合計</h3>
+                <div class="value" id="selected-sum">0 円</div>
+            </div>
+        </div>
+
+        <div class="selected-info" id="selected-info">
+            <strong>選択中:</strong> <span id="selected-count">0</span>件 /
+            合計: <span id="selected-amount">0</span>円
+        </div>
+
+        <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 25px;"><input type="checkbox" id="select-all"></th>
+                    <th style="width: 35px;">除外</th>
+                    <th style="width: 80px;" class="sortable" data-sort="date" data-type="string">日付</th>
+                    <th style="width: 180px;" class="sortable" data-sort="content" data-type="string">内容</th>
+                    <th style="width: 80px;" class="sortable" data-sort="amount" data-type="number">金額</th>
+                    <th style="width: 70px;" class="sortable" data-sort="cat_major" data-type="string">大分類</th>
+                    <th style="width: 70px;" class="sortable" data-sort="cat_mid" data-type="string">中分類</th>
+                    <th style="width: 70px;" class="sortable" data-sort="cat_small" data-type="string">小分類</th>
+                    <th style="width: 90px;" class="sortable" data-sort="cat_shop" data-type="string">店</th>
+                    <th style="width: 70px;" class="sortable" data-sort="cat_belonging" data-type="string">所属</th>
+                    <th style="width: 70px;" class="sortable" data-sort="cat_person" data-type="string">人</th>
+                    <th style="width: 90px;" class="sortable" data-sort="cat_context" data-type="string">文脈</th>
+                    <th style="width: 80px;">メモ</th>
+                    <th style="width: 90px;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr class="{{ 'excluded' if t.is_excluded else '' }} {{ 'auto-excluded' if t.is_auto_excluded else '' }} {{ 'suggested' if t.is_suggested else '' }}"
+                    data-id="{{ t.id }}"
+                    data-amount="{{ t.amount }}"
+                    data-content="{{ t.content }}"
+                    data-date="{{ t.date }}"
+                    data-cat_major="{{ t.cat_major }}"
+                    data-cat_mid="{{ t.cat_mid }}"
+                    data-cat_small="{{ t.cat_small }}"
+                    data-cat_shop="{{ t.cat_shop }}"
+                    data-cat_belonging="{{ t.cat_belonging }}"
+                    data-cat_person="{{ t.cat_person }}"
+                    data-cat_context="{{ t.cat_context }}"
+                    data-suggested="{{ t.suggested_rule or '' }}">
+                    <td><input type="checkbox" class="row-select"></td>
+                    <td>
+                        <input type="checkbox" class="exclude-check"
+                               {% if t.is_excluded %}checked{% endif %}>
+                    </td>
+                    <td>{{ t.date }}</td>
+                    <td class="content-cell">
+                        <div class="main">{{ t.content[:25] }}{% if t.content|length > 25 %}...{% endif %}</div>
+                        <div class="sub">{{ t.institution }}{% if t.is_suggested %} <span style="color:#17a2b8;">[提案]</span>{% endif %}</div>
+                    </td>
+                    <td class="amount-cell {{ 'negative' if t.amount < 0 else 'positive' }}">
+                        {{ "{:,.0f}".format(t.amount) }}
+                    </td>
+                    <td><input type="text" class="cat-input edit-cat-major" value="{{ t.cat_major }}" placeholder="大分類"></td>
+                    <td><input type="text" class="cat-input edit-cat-mid" value="{{ t.cat_mid }}" placeholder="中分類"></td>
+                    <td><input type="text" class="cat-input edit-cat-small" value="{{ t.cat_small }}" placeholder="小分類"></td>
+                    <td><input type="text" class="cat-input-wide edit-cat-shop" value="{{ t.cat_shop }}" placeholder="店"></td>
+                    <td><input type="text" class="cat-input edit-cat-belonging" value="{{ t.cat_belonging }}" placeholder="所属"></td>
+                    <td><input type="text" class="cat-input edit-cat-person" value="{{ t.cat_person }}" placeholder="人"></td>
+                    <td><input type="text" class="cat-input-wide edit-cat-context" value="{{ t.cat_context }}" placeholder="文脈"></td>
+                    <td><input type="text" class="cat-input edit-note" value="{{ t.note }}" placeholder="メモ"></td>
+                    <td class="action-cell">
+                        <button class="btn-save" onclick="saveRow(this)">保存</button>
+                        <button class="btn-rule" onclick="openRuleModal(this)" title="ルール登録">R</button>
+                        <button class="btn-toggle" onclick="toggleViewTarget(this, 'loan')">→L</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- ルール登録モーダル -->
+    <div class="modal" id="rule-modal">
+        <div class="modal-content">
+            <h3>分類ルール登録</h3>
+            <label>パターン（内容に含まれる文字列）</label>
+            <input type="text" id="rule-pattern" placeholder="例: マクドナルド">
+            <p style="font-size: 12px; color: #666;">このパターンを含む取引に、以下の分類が自動適用されます。</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <label>大分類</label>
+                    <input type="text" id="rule-cat-major">
+                </div>
+                <div>
+                    <label>中分類</label>
+                    <input type="text" id="rule-cat-mid">
+                </div>
+                <div>
+                    <label>小分類</label>
+                    <input type="text" id="rule-cat-small">
+                </div>
+                <div>
+                    <label>店</label>
+                    <input type="text" id="rule-cat-shop">
+                </div>
+                <div>
+                    <label>所属</label>
+                    <input type="text" id="rule-cat-belonging">
+                </div>
+                <div>
+                    <label>人</label>
+                    <input type="text" id="rule-cat-person">
+                </div>
+                <div style="grid-column: span 2;">
+                    <label>文脈</label>
+                    <input type="text" id="rule-cat-context">
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button onclick="closeRuleModal()" style="background: #6c757d;">キャンセル</button>
+                <button onclick="saveRule()" style="background: #fd7e14;">ルール登録</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRuleRow = null;
+
+        // エクスポート
+        function exportData(format) {
+            const month = document.getElementById('month-filter').value;
+            const showExcluded = document.getElementById('show-excluded').checked;
+            let url = `/api/export?format=${format}`;
+            if (month) url += `&month=${month}`;
+            if (showExcluded) url += '&show_excluded=true';
+            window.location.href = url;
+        }
+
+        // 月移動
+        function changeMonth(delta) {
+            const input = document.getElementById('month-filter');
+            let current = input.value;
+            if (!current) {
+                const now = new Date();
+                current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            }
+            const [year, month] = current.split('-').map(Number);
+            let newMonth = month + delta;
+            let newYear = year;
+            if (newMonth > 12) {
+                newMonth = 1;
+                newYear++;
+            } else if (newMonth < 1) {
+                newMonth = 12;
+                newYear--;
+            }
+            input.value = `${newYear}-${String(newMonth).padStart(2, '0')}`;
+            applyFilter();
+        }
+
+        // 今月に移動
+        function goToCurrentMonth() {
+            const now = new Date();
+            const input = document.getElementById('month-filter');
+            input.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            applyFilter();
+        }
+
+        // フィルタ適用
+        function applyFilter() {
+            const month = document.getElementById('month-filter').value;
+            const showExcluded = document.getElementById('show-excluded').checked;
+            let url = '/?';
+            if (month) url += `month=${month}&`;
+            if (showExcluded) url += 'show_excluded=true';
+            window.location.href = url;
+        }
+
+        // 除外チェックボックスの変更時
+        document.getElementById('show-excluded').addEventListener('change', applyFilter);
+
+        // 行の保存
+        async function saveRow(btn) {
+            const tr = btn.closest('tr');
+            const id = tr.dataset.id;
+            const data = {
+                id: id,
+                is_excluded: tr.querySelector('.exclude-check').checked,
+                cat_major: tr.querySelector('.edit-cat-major').value,
+                cat_mid: tr.querySelector('.edit-cat-mid').value,
+                cat_small: tr.querySelector('.edit-cat-small').value,
+                cat_shop: tr.querySelector('.edit-cat-shop').value,
+                cat_belonging: tr.querySelector('.edit-cat-belonging').value,
+                cat_person: tr.querySelector('.edit-cat-person').value,
+                cat_context: tr.querySelector('.edit-cat-context').value,
+                note: tr.querySelector('.edit-note').value
+            };
+
+            const res = await fetch('/api/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                btn.textContent = '✓';
+                setTimeout(() => btn.textContent = '保存', 1000);
+                tr.classList.remove('suggested');
+                if (data.is_excluded) {
+                    tr.classList.add('excluded');
+                } else {
+                    tr.classList.remove('excluded');
+                }
+            } else {
+                alert('エラーが発生しました');
+            }
+        }
+
+        // ルール登録モーダルを開く
+        function openRuleModal(btn) {
+            currentRuleRow = btn.closest('tr');
+            const content = currentRuleRow.dataset.content;
+
+            // 現在の分類値をモーダルにセット
+            document.getElementById('rule-pattern').value = content.substring(0, 20);
+            document.getElementById('rule-cat-major').value = currentRuleRow.querySelector('.edit-cat-major').value;
+            document.getElementById('rule-cat-mid').value = currentRuleRow.querySelector('.edit-cat-mid').value;
+            document.getElementById('rule-cat-small').value = currentRuleRow.querySelector('.edit-cat-small').value;
+            document.getElementById('rule-cat-shop').value = currentRuleRow.querySelector('.edit-cat-shop').value;
+            document.getElementById('rule-cat-belonging').value = currentRuleRow.querySelector('.edit-cat-belonging').value;
+            document.getElementById('rule-cat-person').value = currentRuleRow.querySelector('.edit-cat-person').value;
+            document.getElementById('rule-cat-context').value = currentRuleRow.querySelector('.edit-cat-context').value;
+
+            document.getElementById('rule-modal').classList.add('show');
+        }
+
+        // モーダルを閉じる
+        function closeRuleModal() {
+            document.getElementById('rule-modal').classList.remove('show');
+            currentRuleRow = null;
+        }
+
+        // ルール保存
+        async function saveRule() {
+            const pattern = document.getElementById('rule-pattern').value.trim();
+            if (!pattern) {
+                alert('パターンを入力してください');
+                return;
+            }
+
+            const data = {
+                pattern: pattern,
+                cat_major: document.getElementById('rule-cat-major').value,
+                cat_mid: document.getElementById('rule-cat-mid').value,
+                cat_small: document.getElementById('rule-cat-small').value,
+                cat_shop: document.getElementById('rule-cat-shop').value,
+                cat_belonging: document.getElementById('rule-cat-belonging').value,
+                cat_person: document.getElementById('rule-cat-person').value,
+                cat_context: document.getElementById('rule-cat-context').value
+            };
+
+            const res = await fetch('/api/register_rule', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                alert(`ルール「${pattern}」を登録しました`);
+                closeRuleModal();
+            } else {
+                alert('エラーが発生しました');
+            }
+        }
+
+        // 一括除外
+        async function bulkExclude() {
+            const selected = document.querySelectorAll('.row-select:checked');
+            if (selected.length === 0) {
+                alert('行を選択してください');
+                return;
+            }
+
+            if (!confirm(`${selected.length}件を除外しますか？`)) return;
+
+            const ids = Array.from(selected).map(cb => cb.closest('tr').dataset.id);
+
+            const res = await fetch('/api/bulk_exclude', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ids })
+            });
+
+            if (res.ok) {
+                location.reload();
+            } else {
+                alert('エラーが発生しました');
+            }
+        }
+
+        // 全選択
+        document.getElementById('select-all').addEventListener('change', function() {
+            document.querySelectorAll('.row-select').forEach(cb => cb.checked = this.checked);
+            updateSelectedSum();
+        });
+
+        // 選択時の合計計算
+        document.querySelectorAll('.row-select').forEach(cb => {
+            cb.addEventListener('change', updateSelectedSum);
+        });
+
+        function updateSelectedSum() {
+            const selected = document.querySelectorAll('.row-select:checked');
+            let sum = 0;
+            selected.forEach(cb => {
+                const amount = parseInt(cb.closest('tr').dataset.amount) || 0;
+                sum += amount;
+            });
+
+            document.getElementById('selected-sum').textContent = sum.toLocaleString() + ' 円';
+            document.getElementById('selected-count').textContent = selected.length;
+            document.getElementById('selected-amount').textContent = sum.toLocaleString();
+
+            const info = document.getElementById('selected-info');
+            if (selected.length > 0) {
+                info.classList.add('show');
+            } else {
+                info.classList.remove('show');
+            }
+        }
+
+        // 表示先切り替え（明細一覧 → ローン管理）
+        async function toggleViewTarget(btn, target) {
+            const tr = btn.closest('tr');
+            const id = tr.dataset.id;
+
+            const res = await fetch('/api/toggle_view_target', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: id, view_target: target })
+            });
+
+            if (res.ok) {
+                tr.style.transition = 'opacity 0.3s';
+                tr.style.opacity = '0';
+                setTimeout(() => tr.remove(), 300);
+            } else {
+                alert('エラーが発生しました');
+            }
+        }
+
+        // モーダル外クリックで閉じる
+        document.getElementById('rule-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeRuleModal();
+        });
+
+        // テーブルソート機能
+        let currentSort = { column: null, direction: 'asc' };
+
+        document.querySelectorAll('th.sortable').forEach(th => {
+            th.addEventListener('click', function() {
+                const column = this.dataset.sort;
+                const type = this.dataset.type;
+
+                // 同じ列なら方向を反転、違う列なら昇順
+                if (currentSort.column === column) {
+                    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.column = column;
+                    currentSort.direction = 'asc';
+                }
+
+                // ヘッダーのクラス更新
+                document.querySelectorAll('th.sortable').forEach(h => {
+                    h.classList.remove('asc', 'desc');
+                });
+                this.classList.add(currentSort.direction);
+
+                // ソート実行
+                sortTable(column, type, currentSort.direction);
+            });
+        });
+
+        function sortTable(column, type, direction) {
+            const tbody = document.querySelector('table tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            rows.sort((a, b) => {
+                let aVal = a.dataset[column] || '';
+                let bVal = b.dataset[column] || '';
+
+                // 入力欄の現在値を取得（分類列の場合）
+                if (column.startsWith('cat_')) {
+                    const inputClass = '.edit-' + column.replace('_', '-');
+                    aVal = a.querySelector(inputClass)?.value || '';
+                    bVal = b.querySelector(inputClass)?.value || '';
+                }
+
+                if (type === 'number') {
+                    aVal = parseFloat(aVal) || 0;
+                    bVal = parseFloat(bVal) || 0;
+                } else {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+
+                let result = 0;
+                if (aVal < bVal) result = -1;
+                if (aVal > bVal) result = 1;
+
+                return direction === 'asc' ? result : -result;
+            });
+
+            // DOMを再配置
+            rows.forEach(row => tbody.appendChild(row));
+        }
+    </script>
+</body>
+</html>

@@ -28,7 +28,8 @@ class StageKEmbedding:
         self,
         document_id: str,
         chunks: List[Dict[str, Any]],
-        delete_existing: bool = False
+        delete_existing: bool = False,
+        owner_id: str = None
     ) -> Dict[str, Any]:
         """
         チャンクをベクトル化して search_index に保存
@@ -37,6 +38,7 @@ class StageKEmbedding:
             document_id: ドキュメントID
             chunks: チャンクリスト
             delete_existing: 既存のチャンクを削除するか
+            owner_id: オーナーID（省略時は親ドキュメントから継承）
 
         Returns:
             {
@@ -46,6 +48,28 @@ class StageKEmbedding:
             }
         """
         logger.info("[Stage K] ベクトル化 + search_index保存開始...")
+
+        # Phase 3: owner_id を取得（指定がない場合は親ドキュメントから継承）
+        if owner_id is None:
+            try:
+                parent_doc = self.db.client.table('Rawdata_FILE_AND_MAIL')\
+                    .select('owner_id')\
+                    .eq('id', document_id)\
+                    .execute()
+                if parent_doc.data:
+                    owner_id = parent_doc.data[0].get('owner_id')
+                    logger.debug(f"[Stage K] 親ドキュメントから owner_id 継承: {owner_id}")
+            except Exception as e:
+                logger.warning(f"[Stage K 警告] 親ドキュメントの owner_id 取得エラー: {e}")
+
+        if owner_id is None:
+            logger.error(f"[Stage K エラー] owner_id が取得できません: document_id={document_id}")
+            return {
+                'success': False,
+                'saved_count': 0,
+                'failed_count': len(chunks),
+                'error': 'owner_id is required but not available'
+            }
 
         # 既存ドキュメントの場合は、古いチャンクを削除
         if delete_existing:
@@ -69,6 +93,7 @@ class StageKEmbedding:
                 # search_indexに保存
                 chunk_data = {
                     'document_id': document_id,
+                    'owner_id': owner_id,  # Phase 3: 親ドキュメントから継承
                     'chunk_content': chunk_text,
                     'chunk_size': len(chunk_text),
                     'chunk_type': chunk['chunk_type'],

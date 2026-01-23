@@ -40,7 +40,8 @@ class ChunkProcessor:
         self,
         document_id: str,
         full_text: str,
-        force_reprocess: bool = False
+        force_reprocess: bool = False,
+        owner_id: str = None
     ) -> Dict[str, any]:
         """
         ドキュメントをチャンク分割してembedding生成
@@ -53,6 +54,7 @@ class ChunkProcessor:
             document_id: ドキュメントID（UUID）
             full_text: ドキュメント全文
             force_reprocess: Trueの場合、既存のチャンクを削除して再処理
+            owner_id: オーナーID（省略時は親ドキュメントから継承）
 
         Returns:
             {
@@ -65,6 +67,29 @@ class ChunkProcessor:
         """
         try:
             logger.info(f"[ChunkProcessor] Processing document: {document_id}")
+
+            # Phase 3: owner_id を取得（指定がない場合は親ドキュメントから継承）
+            if owner_id is None:
+                try:
+                    parent_doc = self.db.client.table('Rawdata_FILE_AND_MAIL')\
+                        .select('owner_id')\
+                        .eq('id', document_id)\
+                        .execute()
+                    if parent_doc.data:
+                        owner_id = parent_doc.data[0].get('owner_id')
+                        logger.debug(f"[ChunkProcessor] 親ドキュメントから owner_id 継承: {owner_id}")
+                except Exception as e:
+                    logger.warning(f"[ChunkProcessor] 親ドキュメントの owner_id 取得エラー: {e}")
+
+            if owner_id is None:
+                logger.error(f"[ChunkProcessor] owner_id が取得できません: document_id={document_id}")
+                return {
+                    "success": False,
+                    "document_id": document_id,
+                    "chunks_created": 0,
+                    "chunks_failed": 0,
+                    "error": "owner_id is required but not available"
+                }
 
             # 既存のチャンクを確認
             if not force_reprocess:
@@ -114,6 +139,7 @@ class ChunkProcessor:
                         chunk_text = chunk_data.get("chunk_text", chunk_data.get("content", ""))
                         self.db.client.table('10_ix_search_index').insert({
                             "document_id": document_id,
+                            "owner_id": owner_id,  # Phase 3: 親ドキュメントから継承
                             "chunk_index": chunk_data["chunk_index"],
                             "chunk_content": chunk_text,
                             "chunk_size": len(chunk_text),

@@ -24,6 +24,7 @@ from loguru import logger
 
 from shared.common.database.client import DatabaseClient
 from shared.common.connectors.google_drive import GoogleDriveConnector
+from shared.common.auth.admin_auth import create_streamlit_auth_ui, create_logout_button
 
 # 新しいコンポーネントとユーティリティをインポート
 from frontend.utils.schema_detector import SchemaDetector
@@ -151,10 +152,23 @@ def download_file_from_drive(source_id: str, file_name: str) -> Optional[str]:
 
 def pdf_review_ui():
     """ドキュメントレビューUIロジック（全てのファイルタイプ対応）"""
+    # 認証フロー
+    auth_manager, is_authenticated = create_streamlit_auth_ui()
+
+    if not is_authenticated:
+        st.warning("🔐 管理機能を使用するにはログインが必要です")
+        st.info("サイドバーからログインしてください")
+        return
+
+    # ログアウトボタン表示
+    create_logout_button()
+
     # データベースクライアントとスキーマ検出器の初期化
+    # authenticated ロールで接続（service_role は使用しない）
     try:
-        db_client = DatabaseClient()
+        db_client = DatabaseClient(access_token=auth_manager.access_token)
         schema_detector = SchemaDetector()
+        logger.info(f"[Auth] authenticated ロールで接続: {auth_manager.user_email}")
     except Exception as e:
         st.error(f"初期化エラー: {e}")
         st.stop()

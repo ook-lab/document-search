@@ -1,0 +1,68 @@
+version: '3.8'
+
+# 全サービス一括起動用 Docker Compose
+# 実行: docker-compose up --build
+
+services:
+  # 家計簿 UI (Flask)
+  kakeibo-ui:
+    build:
+      context: .
+      dockerfile: kakeibo_ui/Dockerfile
+    ports:
+      - "5000:5000"
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+
+  # ドキュメント検索 (Flask)
+  doc-search:
+    build:
+      context: .
+      dockerfile: services/doc-search/Dockerfile
+    ports:
+      - "5001:5001"
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - PORT=5001
+    restart: unless-stopped
+
+  # ドキュメントレビュー (Flask)
+  doc-review:
+    build:
+      context: .
+      dockerfile: services/doc-review/Dockerfile
+    ports:
+      - "5002:5002"
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - PORT=5002
+    restart: unless-stopped
+
+  # ドキュメント処理 (Flask)
+  doc-processor:
+    build:
+      context: .
+      dockerfile: services/doc-processor/Dockerfile
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - PORT=8080
+    restart: unless-stopped
+
+  # ネットスーパー検索 (Streamlit)
+  netsuper-search:
+    build:
+      context: .
+      dockerfile: services/netsuper-search/Dockerfile
+    ports:
+      - "8501:8501"
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped

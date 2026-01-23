@@ -280,24 +280,22 @@ class TransactionProcessor:
             if entry["raw_keyword"].lower() in product_name.lower():
                 # 辞書に登録されている税率を優先（確定）
                 # ただし、tax_markがあればそちらを最優先
-                # 一般名詞を取得
-                general_name = self._get_general_name(entry["official_name"])
+                # 一般名詞は後でバッチ処理で抽出（取り込み時はスキップ）
 
                 return {
                     "product_name": entry["official_name"],
-                    "general_name": general_name,
+                    "general_name": None,  # 後でバッチ処理で抽出
                     "category_id": entry["category_id"],
                     "tax_rate": tax_rate_from_mark if tax_rate_from_mark else entry.get("tax_rate", 10),
                     "tax_rate_fixed": True  # 辞書由来の税率は確定
                 }
 
         # 4. マッチしなければtax_markまたはGeminiの推測を使用（暫定）
-        # 一般名詞を取得（正規化後の商品名から）
-        general_name = self._get_general_name(product_name)
+        # 一般名詞は後でバッチ処理で抽出（取り込み時はスキップ）
 
         return {
             "product_name": product_name,
-            "general_name": general_name,
+            "general_name": None,  # 後でバッチ処理で抽出
             "category_id": None,
             "tax_rate": tax_rate_from_mark if tax_rate_from_mark else gemini_tax_rate,
             "tax_rate_fixed": bool(tax_rate_from_mark)  # tax_markがあれば確定

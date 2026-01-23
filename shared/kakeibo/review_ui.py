@@ -17,6 +17,7 @@ from PIL import Image
 import io
 
 from shared.common.database.client import DatabaseClient
+from shared.common.auth.admin_auth import create_streamlit_auth_ui, create_logout_button
 
 # 設定（Google Drive認証情報用）
 try:
@@ -24,9 +25,19 @@ try:
 except ImportError:
     from config import GOOGLE_DRIVE_CREDENTIALS
 
-# Supabase接続（DatabaseClientを使用）
-db_client = DatabaseClient()
-db = db_client.client
+# Supabase接続 - グローバル変数として宣言（認証後に設定）
+db_client = None
+db = None
+
+
+def init_database(access_token: str = None):
+    """認証済みトークンでデータベース接続を初期化"""
+    global db_client, db
+    if access_token:
+        db_client = DatabaseClient(access_token=access_token)
+    else:
+        db_client = DatabaseClient()
+    db = db_client.client
 
 # Google Drive接続
 @st.cache_resource
@@ -82,6 +93,20 @@ def get_receipt_image(drive_file_id: str):
 def main():
     st.set_page_config(page_title="家計簿レビュー", layout="wide")
     st.title("📊 家計簿レビューシステム")
+
+    # 認証フロー
+    auth_manager, is_authenticated = create_streamlit_auth_ui()
+
+    if not is_authenticated:
+        st.warning("🔐 管理機能を使用するにはログインが必要です")
+        st.info("サイドバーからログインしてください")
+        return
+
+    # ログアウトボタン表示
+    create_logout_button()
+
+    # 認証済みトークンでデータベース接続を初期化
+    init_database(access_token=auth_manager.access_token)
 
     # メインタブ
     tab1, tab2 = st.tabs(["📄 レシートレビュー", "🏷️ 商品分類管理"])

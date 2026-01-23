@@ -97,10 +97,10 @@ class HybridSearch:
         query = f"""
         SELECT
             id,
-            1 - ({embedding_column} <=> '{embedding_str}'::vector) as similarity
+            1 - ({embedding_column} <=> '{embedding_str}'::halfvec) as similarity
         FROM "Rawdata_NETSUPER_items"
         WHERE {embedding_column} IS NOT NULL
-        ORDER BY {embedding_column} <=> '{embedding_str}'::vector
+        ORDER BY {embedding_column} <=> '{embedding_str}'::halfvec
         LIMIT {limit}
         """
 

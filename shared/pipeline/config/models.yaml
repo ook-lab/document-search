@@ -2,7 +2,7 @@
 # AIモデル定義
 # ============================================
 # 各ステージで使用するAIモデルを定義
-# キー: default, flyer, classroom など (doc_type や条件に対応)
+# キー: default, flyer など (doc_type や条件に対応)
 
 models:
   # Stage E: Preprocessing (前処理・テキスト抽出)
@@ -12,11 +12,9 @@ models:
 
   # Stage F: Visual Analysis (視覚解析)
   # flyer: 商品写真の視覚理解が重要なため Pro を使用
-  # classroom: 日常的なお知らせの正確なOCRが目的のため Flash で十分
   stage_f:
     default: "gemini-2.5-flash"
     flyer: "gemini-2.5-pro"
-    classroom: "gemini-2.5-flash"
     flash_lite: "gemini-2.5-flash-lite"  # 家計簿用（最軽量）
     gmail: "gemini-2.5-flash-lite"  # Gmail用（軽量）
 
@@ -24,7 +22,6 @@ models:
   stage_h:
     default: "gemini-2.5-flash"
     flyer: "gemini-2.5-flash"
-    classroom: "gemini-2.5-flash"
     flash_lite: "gemini-2.5-flash-lite"  # 家計簿用（Pythonロジック中心）
     gmail: "gemini-2.5-flash-lite"  # Gmail用（軽量）
 
@@ -32,14 +29,12 @@ models:
   stage_i:
     default: "gemini-2.5-flash"
     flyer: "gemini-2.5-flash"
-    classroom: "gemini-2.5-flash"
     gmail: "gemini-2.5-flash-lite"  # Gmail用（軽量）
 
   # Stage K: Embedding (ベクトル化)
   stage_k:
     default: "text-embedding-3-small"
     flyer: "text-embedding-3-small"
-    classroom: "text-embedding-3-small"
 
 # ============================================
 # ハイブリッドOCR設定 (Surya + PaddleOCR + Gemini)
@@ -59,7 +54,6 @@ models:
 #
 hybrid_ocr:
   # デフォルト: 有効（Hybrid OCR）
-  # 適用workspace: ikuya_classroom, ema_classroom, waseda_academy
   default: true
 
   # === Workspace 別設定 ===

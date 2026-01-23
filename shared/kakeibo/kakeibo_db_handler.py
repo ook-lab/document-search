@@ -30,7 +30,8 @@ class KakeiboDBHandler:
         file_name: str,
         drive_file_id: str,
         model_name: str,
-        source_folder: str
+        source_folder: str,
+        owner_id: str = None
     ) -> Dict:
         """
         レシートデータを3層構造でDBに保存
@@ -41,10 +42,18 @@ class KakeiboDBHandler:
             drive_file_id: Google DriveのファイルID
             model_name: 使用したモデル名
             source_folder: ソースフォルダ
+            owner_id: オーナーID（Phase 3 必須）
 
         Returns:
             Dict: {"receipt_id": "...", "transaction_ids": [...], ...}
+
+        Raises:
+            ValueError: owner_id が指定されていない場合
         """
+        # Phase 3: owner_id 必須チェック
+        if owner_id is None:
+            raise ValueError("owner_id is required for save_receipt (Phase 3)")
+
         try:
             # 1. レシート（親）を登録
             receipt_id = self._insert_receipt(
@@ -52,7 +61,8 @@ class KakeiboDBHandler:
                 file_name,
                 drive_file_id,
                 model_name,
-                source_folder
+                source_folder,
+                owner_id
             )
 
             # 2. トランザクション（OCRデータ + 標準化データを統合して登録）
@@ -132,7 +142,8 @@ class KakeiboDBHandler:
         file_name: str,
         drive_file_id: str,
         model_name: str,
-        source_folder: str
+        source_folder: str,
+        owner_id: str
     ) -> str:
         """レシート情報をDBに登録（親テーブル）"""
         trans_date = datetime.strptime(receipt_data["date"], "%Y-%m-%d").date()
@@ -151,7 +162,8 @@ class KakeiboDBHandler:
             "source_folder": source_folder,
             "ocr_model": model_name,
             "workspace": "household",
-            "is_verified": False
+            "is_verified": False,
+            "owner_id": owner_id  # Phase 3: 必須
         }
 
         result = self.db.client.table("Rawdata_RECEIPT_shops").insert(data).execute()

@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 # プロジェクトルートをPythonパスに追加（ローカル実行時用）
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -1023,8 +1023,13 @@ def debug_database():
 
 @app.route('/api/workspaces', methods=['GET'])
 def get_workspaces():
-    """
-    ワークスペース一覧を取得
+    """ワークスペース一覧を取得（検索UI専用）
+
+    【設計方針】
+    - このエンドポイントは doc-search UI 専用
+    - doc-review, doc-processor にも同名の /api/workspaces が存在するが、
+      それぞれ別サービス・別ホストで動作するため衝突しない
+    - 将来の統合は行わない（各サービスの独立性を維持）
     """
     try:
         from shared.common.database.client import DatabaseClient

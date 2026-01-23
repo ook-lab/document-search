@@ -126,47 +126,96 @@ class StageISynthesis:
 
         return prompt
 
-    def _parse_result(self, content: str) -> Dict[str, Any]:
+    def _sanitize_llm_json(self, text: str) -> str:
         """
-        LLM出力から結果を抽出
+        P1-2: LLM出力をJSONパース前にサニタイズ
+
+        処理順序:
+        1. None → "" / strip()
+        2. コードフェンス除去 (```json ... ```)
+        3. 先頭の json / JSON: ラベル除去
+        4. 先頭の {{ → { に縮退
+        5. 最初の { から最後の } までを切り出し
+        """
+        import re
+
+        # 1. None対策とstrip
+        if text is None:
+            return ""
+        text = text.strip()
+        if not text:
+            return ""
+
+        # 2. コードフェンス除去
+        # ```json や ```JSON など
+        text = re.sub(r'^```(?:json|JSON)?\s*\n?', '', text)
+        text = re.sub(r'\n?```\s*$', '', text)
+
+        # 3. 先頭の json / JSON: ラベル除去
+        text = re.sub(r'^(?:json|JSON)\s*[:：]?\s*', '', text.strip())
+
+        # 4. 先頭の {{ → { に縮退（先頭のみ）
+        if text.startswith('{{'):
+            text = text[1:]
+
+        # 5. 最初の { から最後の } までを切り出し
+        first_brace = text.find('{')
+        last_brace = text.rfind('}')
+        if first_brace >= 0 and last_brace > first_brace:
+            text = text[first_brace:last_brace + 1]
+
+        return text
+
+    def _parse_result(self, content: str, doc_id: str = None) -> Dict[str, Any]:
+        """
+        P1-2/P1-3: LLM出力から結果を抽出（サニタイズ + ログ強化）
 
         Args:
             content: LLMの出力
+            doc_id: ドキュメントID（ログ用）
 
         Returns:
             抽出された結果
         """
+        raw = content or ""
+        raw_head = raw[:200] if raw else "(empty)"
+
+        # P1-2: サニタイズ適用
+        clean = self._sanitize_llm_json(raw)
+        clean_head = clean[:200] if clean else "(empty)"
+
         # JSON形式で出力されている場合
         try:
-            # ```json ブロックを探す
-            import re
-            json_match = re.search(r'```json\s*\n(.*?)\n```', content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(1)
-                result = json.loads(json_str)
-                logger.info(f"[Stage I] JSON解析成功")
-                return result
-
-            # ```json ブロックがない場合、直接JSON文字列を探す
-            # { で始まる部分を探す
-            json_start = content.find('{')
-            json_end = content.rfind('}')
-            if json_start >= 0 and json_end > json_start:
-                json_str = content[json_start:json_end + 1]
-                result = json.loads(json_str)
-                logger.info(f"[Stage I] JSON解析成功（直接抽出）")
+            if clean:
+                result = json.loads(clean)
+                logger.info(f"[Stage I] JSON解析成功 (doc_id={doc_id})")
                 return result
         except json.JSONDecodeError as e:
-            logger.warning(f"[Stage I] JSON解析失敗（フォールバックに移行）: {e}")
-        except Exception as e:
-            logger.warning(f"[Stage I] JSON抽出失敗（フォールバックに移行）: {e}")
+            logger.warning(f"[P1-2] JSON parse failed attempt=1 (doc_id={doc_id}): {e}")
+            logger.warning(f"  raw_head: {raw_head}")
+            logger.warning(f"  clean_head: {clean_head}")
 
-        # JSON形式でない場合、テキストから抽出
+        # P1-3: フォールバック（テキストから抽出）
+        logger.info(f"[Stage I] JSONパース失敗 → テキスト抽出フォールバック (doc_id={doc_id})")
+        return self._extract_from_text(raw)
+
+    def _extract_from_text(self, content: str) -> Dict[str, Any]:
+        """
+        JSON形式でない場合、テキストから情報を抽出（フォールバック）
+        """
+        import re
+
         result = {
+            'title': '',
             'summary': '',
             'tags': [],
-            'relevant_date': None
+            'relevant_date': None,
+            'calendar_events': [],
+            'tasks': []
         }
+
+        if not content:
+            return result
 
         # 要約を抽出（最初の段落または全体）
         lines = content.split('\n')
@@ -181,7 +230,6 @@ class StageISynthesis:
         result['summary'] = ' '.join(summary_lines) if summary_lines else content[:200]
 
         # タグを抽出（例: タグ: tag1, tag2, tag3）
-        import re
         tags_match = re.search(r'タグ[:：]\s*(.+)', content, re.IGNORECASE)
         if tags_match:
             tags_str = tags_match.group(1)

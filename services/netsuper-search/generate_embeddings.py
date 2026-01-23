@@ -2,9 +2,12 @@
 既存商品データをOpenAIでベクトル化
 
 Rawdata_NETSUPER_itemsテーブルの商品名をOpenAI APIでベクトル化し、
-embeddingカラムに保存します。
+general_name_embeddingカラムに保存します。
 
 使用モデル: text-embedding-3-small (1536次元)
+
+注意: ハイブリッド検索（複数フィールドのembedding）が必要な場合は
+generate_multi_embeddings.py を使用してください。
 """
 
 import os
@@ -65,9 +68,9 @@ class ProductEmbeddingGenerator:
         Returns:
             商品データのリスト
         """
-        logger.info("embeddingがない商品を取得中...")
+        logger.info("general_name_embeddingがない商品を取得中...")
 
-        query = self.db.client.table('Rawdata_NETSUPER_items').select('id, product_name, general_name, small_category, keywords').is_('embedding', 'null')
+        query = self.db.client.table('Rawdata_NETSUPER_items').select('id, product_name, general_name, small_category, keywords').is_('general_name_embedding', 'null')
 
         if limit:
             query = query.limit(limit)
@@ -95,7 +98,7 @@ class ProductEmbeddingGenerator:
 
     def update_product_embedding(self, product_id: str, embedding: List[float]):
         """
-        商品のembeddingを更新
+        商品のgeneral_name_embeddingを更新
 
         Args:
             product_id: 商品ID
@@ -104,7 +107,7 @@ class ProductEmbeddingGenerator:
         # vector型として保存するために文字列形式に変換
         embedding_str = '[' + ','.join(map(str, embedding)) + ']'
         self.db.client.table('Rawdata_NETSUPER_items').update({
-            'embedding': embedding_str
+            'general_name_embedding': embedding_str
         }).eq('id', product_id).execute()
 
     def process_products(self, batch_size: int = 100, limit: int = None, delay: float = 0.1):

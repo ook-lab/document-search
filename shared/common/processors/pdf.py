@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import os
 import tempfile
+import platform
 import hashlib
 from loguru import logger
 
@@ -241,12 +242,18 @@ class PDFProcessor:
                 total_tables = sum(s['num_tables'] for s in all_stats)
                 total_unified_chars = sum(s['unified_chars'] for s in all_stats)
 
+                # P2-2: 全ページのtable_bboxesを集約
+                all_table_bboxes = []
+                for s in all_stats:
+                    all_table_bboxes.extend(s.get('table_bboxes', []))
+
                 metadata = {
                     'num_pages': num_pages,
                     'extractor': 'pdfplumber',
                     'total_tables': total_tables,
                     'total_unified_chars': total_unified_chars,
-                    'per_page_stats': all_stats
+                    'per_page_stats': all_stats,
+                    'table_bboxes': all_table_bboxes  # P2-2: E-2で検出した表のbbox
                 }
 
                 # 全ページが空テキストの場合
@@ -478,12 +485,22 @@ class PDFProcessor:
         logger.info(f"  ├─ 重複除去（表内テキスト）: -{removed_text_chars}文字")
         logger.info(f"  └─ 統合後: {len(unified_markdown)}文字")
 
+        # P2-2: 表のbbox情報を収集（Stage Fへの受け渡し用）
+        table_bboxes = []
+        for te in table_elements:
+            if 'bbox' in te:
+                table_bboxes.append({
+                    'bbox': te['bbox'],  # (x0, top, x1, bottom) PDF座標系
+                    'page': page_num
+                })
+
         stats = {
             'raw_text_chars': raw_text_chars,
             'table_markdown_chars': table_markdown_total,
             'removed_chars': removed_text_chars,
             'unified_chars': len(unified_markdown),
-            'num_tables': len(tables)
+            'num_tables': len(tables),
+            'table_bboxes': table_bboxes  # P2-2: 表のbbox情報
         }
 
         return unified_markdown, stats
@@ -604,7 +621,9 @@ class PDFProcessor:
                 image = images[page_num]
 
                 # 一時ファイルに保存
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                # Cloud Run / OS非依存: 一時ディレクトリ設定
+                temp_dir = "/tmp" if platform.system() != "Windows" else None
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False, dir=temp_dir) as tmp_file:
                     tmp_path = Path(tmp_file.name)
                     image.save(tmp_path, 'PNG')
 
@@ -668,8 +687,15 @@ class PDFProcessor:
 
                 finally:
                     # 一時ファイル削除
+                    # Cloud Run最適化: 削除失敗は warning 扱いで処理継続
                     if tmp_path.exists():
-                        os.unlink(tmp_path)
+                        try:
+                            os.unlink(tmp_path)
+                        except (PermissionError, OSError) as e:
+                            # Windows: ファイルロック、Cloud Run: 権限問題等
+                            logger.warning(f"[E-4] 一時ファイル削除失敗（処理継続）: {tmp_path} - {e}")
+                        except Exception as e:
+                            logger.warning(f"[E-4] 一時ファイル削除時の予期せぬエラー（処理継続）: {tmp_path} - {e}")
 
             return vision_results
 

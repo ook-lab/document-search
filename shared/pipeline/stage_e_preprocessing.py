@@ -1,20 +1,19 @@
 """
-Stage E: Pre-processing (前処理)
+Stage E: Pre-processing (前処理) - 完全網羅型マルチモーダル実装
 
-全ファイルタイプ共通のE1-E5ステージ:
-- E-1: テキスト抽出（ライブラリベース）
-- E-2: 表抽出
-- E-3: 統合（テキスト + 表）
-- E-4: Gemini Vision差分検出
-- E-5: Vision OCR結果適用
+役割: 情報の「網羅的収集」
+AIによる「要約」「省略」「まとめ」は一切禁止。
+入力ファイルに含まれる情報を物理的に拾える限りすべてテキスト化して出力。
 
-対応ファイル:
-- PDF: pdfplumber + Vision補完
-- Office: python-docx, openpyxl, python-pptx + Vision補完
-- 画像: Vision OCR（E-4で全文字拾い）
+処理フロー:
+- E-4a: ドキュメント処理 (PDF, text/*, Office系)
+- E-4b: 画像処理 (image/*) - 並列OCR + Description
+- E-4c: 音声・映像処理 (audio/*, video/*) - Transcription + Visual Log
+- E-5: 出力フォーマット統一（タグ付け）
 """
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 
 from shared.common.processors.pdf import PDFProcessor
@@ -23,7 +22,46 @@ from shared.ai.llm_client.llm_client import LLMClient
 
 
 class StageEPreprocessor:
-    """Stage E: 前処理（全ファイルタイプ共通のE1-E5ステージ）"""
+    """Stage E: 前処理（完全網羅型マルチモーダル実装）"""
+
+    # MIMEタイプ分類
+    DOCUMENT_MIME_TYPES = {
+        'application/pdf',
+        'text/plain',
+        'text/html',
+        'text/csv',
+        'text/markdown',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # .docx
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',        # .xlsx
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',  # .pptx
+        'application/msword',  # .doc
+        'application/vnd.ms-excel',  # .xls
+        'application/vnd.ms-powerpoint',  # .ppt
+    }
+
+    AUDIO_MIME_TYPES = {
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/wav',
+        'audio/x-wav',
+        'audio/ogg',
+        'audio/flac',
+        'audio/aac',
+        'audio/m4a',
+        'audio/x-m4a',
+        'audio/webm',
+    }
+
+    VIDEO_MIME_TYPES = {
+        'video/mp4',
+        'video/mpeg',
+        'video/quicktime',
+        'video/x-msvideo',
+        'video/webm',
+        'video/x-matroska',
+        'video/avi',
+        'video/mov',
+    }
 
     def __init__(self, llm_client: LLMClient):
         """
@@ -43,50 +81,96 @@ class StageEPreprocessor:
         progress_callback=None
     ) -> Dict[str, Any]:
         """
-        ファイルからテキストを抽出（E1-E5ステージ）
+        ファイルからテキストを抽出（MIMEタイプベースのルーター）
 
         Args:
             file_path: ファイルパス
             mime_type: MIMEタイプ
             pre_extracted_text: 既に抽出済みのテキスト（HTML→PNG等の場合）
             workspace: ワークスペース（gmail判定に使用）
+            progress_callback: 進捗コールバック
 
         Returns:
             {
                 'success': bool,
-                'content': str,  # 完全なテキスト（単一）
+                'content': str,  # タグ付きフォーマットの完全テキスト
                 'char_count': int,
-                'method': str  # 'pdf', 'docx', 'xlsx', 'pptx', 'image', 'none'
+                'method': str,
+                'metadata': dict
             }
         """
         logger.info("=" * 60)
-        logger.info("[Stage E] Pre-processing開始...")
+        logger.info("[Stage E] Pre-processing開始（完全網羅型）")
+
+        # テキストのみ（ファイルなし）の場合
+        if file_path is None:
+            logger.info("  ├─ ファイル: なし（テキストのみ）")
+            logger.info(f"  └─ MIMEタイプ: {mime_type}")
+            logger.info("[Stage E] ファイルなし → pre_extracted_text を使用")
+
+            content = pre_extracted_text or ""
+            if content:
+                content = self._format_output(
+                    mime_type=mime_type or "text/plain",
+                    ocr_text=content,
+                    visual_log=None,
+                    audio_transcript=None
+                )
+
+            logger.info("=" * 60)
+            logger.info(f"[Stage E完了] テキストのみモード: {len(content)}文字")
+            return {
+                'success': True,
+                'content': content,
+                'char_count': len(content),
+                'method': 'text_only',
+                'metadata': {'text_only': True}
+            }
+
         logger.info(f"  ├─ ファイル: {file_path.name if isinstance(file_path, Path) else file_path}")
         logger.info(f"  └─ MIMEタイプ: {mime_type}")
 
+        file_path = Path(file_path)
         content = ""
         method = "none"
+        metadata = {}
 
         try:
-            # PDF処理（E1-E5は pdf.py 内で実行）
-            if mime_type == 'application/pdf':
-                result = self.pdf_processor.extract_text(str(file_path), progress_callback=progress_callback)
-                if result.get('success'):
-                    content = result.get('content', '')
-                    method = 'pdf'
+            # MIMEタイプに基づくルーティング
+            if mime_type in self.DOCUMENT_MIME_TYPES or mime_type == 'application/pdf':
+                # E-4a: ドキュメント処理
+                content, method, metadata = self._process_document_e4a(
+                    file_path, mime_type, pre_extracted_text, progress_callback
+                )
 
-            # Office文書処理（E1-E5ログ付き）
-            elif mime_type in [
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',  # .docx
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',      # .xlsx
-                'application/vnd.openxmlformats-officedocument.presentationml.presentation'  # .pptx
-            ]:
-                content, method = self._process_office_with_stages(file_path, mime_type, progress_callback)
+            elif mime_type.startswith('image/'):
+                # E-4b: 画像処理（並列OCR + Description）
+                content, method, metadata = self._process_image_e4b(
+                    file_path, mime_type, pre_extracted_text, workspace, progress_callback
+                )
 
-            # 画像ファイル処理（E1-E5ログ付き）
-            # HTML→PNG の場合も含む（mime_type='text/html' だがファイルはPNG）
-            elif mime_type.startswith('image/') or mime_type == 'text/html':
-                content, method = self._process_image_with_stages(file_path, pre_extracted_text, workspace, progress_callback)
+            elif mime_type in self.AUDIO_MIME_TYPES or mime_type.startswith('audio/'):
+                # E-4c: 音声処理
+                content, method, metadata = self._process_av_e4c(
+                    file_path, mime_type, is_video=False, progress_callback=progress_callback
+                )
+
+            elif mime_type in self.VIDEO_MIME_TYPES or mime_type.startswith('video/'):
+                # E-4c: 映像処理
+                content, method, metadata = self._process_av_e4c(
+                    file_path, mime_type, is_video=True, progress_callback=progress_callback
+                )
+
+            else:
+                # 未対応MIMEタイプ: メタデータのみ
+                logger.warning(f"[Stage E] 未対応のMIMEタイプ: {mime_type}")
+                content = self._format_output(
+                    mime_type=mime_type,
+                    ocr_text="(未対応のファイル形式)",
+                    visual_log=None,
+                    audio_transcript=None
+                )
+                method = "unsupported"
 
             # 最終ログ
             logger.info("=" * 60)
@@ -99,7 +183,8 @@ class StageEPreprocessor:
                 'success': True,
                 'content': content,
                 'char_count': len(content),
-                'method': method
+                'method': method,
+                'metadata': metadata
             }
 
         except Exception as e:
@@ -112,192 +197,143 @@ class StageEPreprocessor:
                 'error': str(e)
             }
 
-    def _process_office_with_stages(self, file_path: Path, mime_type: str, progress_callback=None) -> tuple:
-        """
-        Officeファイル処理（E1-E5ステージログ付き）
-
-        Args:
-            file_path: ファイルパス
-            mime_type: MIMEタイプ
-
-        Returns:
-            (content, method)
-        """
-        file_path = Path(file_path)
-
-        # ファイルタイプ判定
-        if 'word' in mime_type:
-            file_type = 'docx'
-        elif 'sheet' in mime_type:
-            file_type = 'xlsx'
-        elif 'presentation' in mime_type:
-            file_type = 'pptx'
-        else:
-            file_type = 'office'
-
-        logger.info(f"[Stage E] Office処理開始 (type: {file_type})")
-
-        # ============================================
-        # E-1: テキスト抽出（ライブラリベース）
-        # ============================================
-        logger.info(f"[E-1] テキスト抽出開始 (engine: python-{file_type})")
-
-        result = self.office_processor.extract_text(str(file_path))
-        e1_text = result.get('content', '') if result.get('success') else ''
-        e1_chars = len(e1_text)
-
-        logger.info(f"[E-1] テキスト抽出完了:")
-        logger.info(f"  └─ 抽出テキスト: {e1_chars} 文字")
-
-        # ============================================
-        # E-2: 表抽出
-        # ============================================
-        logger.info(f"[E-2] 表抽出:")
-        # Officeファイルの場合、表はテキスト抽出時に含まれる
-        # （python-docx/openpyxl/python-pptxが表を含めて抽出）
-        table_count = e1_text.count('|') // 2 if '|' in e1_text else 0  # 簡易カウント
-        logger.info(f"  └─ 表データ: テキストに含まれる (推定 {table_count} セル)")
-
-        # ============================================
-        # E-3: 統合
-        # ============================================
-        logger.info(f"[E-3] 統合:")
-        e3_text = e1_text  # Officeは既に統合済み
-        e3_chars = len(e3_text)
-        logger.info(f"  └─ 統合テキスト: {e3_chars} 文字")
-
-        # ============================================
-        # E-4: Gemini Vision差分検出
-        # ============================================
-        if progress_callback:
-            progress_callback("E4")
-        logger.info(f"[E-4] Vision差分検出:")
-
-        e4_text = ""
-        if self.llm_client and e3_chars < 100:
-            # テキストが少ない場合のみVision補完を実行
-            logger.info(f"  ├─ テキスト量が少ない ({e3_chars}文字) → Vision補完を実行")
-
-            # PPTXの場合、スライドを画像化してVision処理
-            if file_type == 'pptx':
-                try:
-                    from pptx import Presentation
-                    from PIL import Image
-                    import tempfile
-                    import os
-
-                    # スライド数を取得
-                    prs = Presentation(str(file_path))
-                    slide_count = len(prs.slides)
-                    logger.info(f"  ├─ スライド数: {slide_count}")
-
-                    # 各スライドをVision処理（最大5スライド）
-                    vision_texts = []
-                    for i, slide in enumerate(prs.slides[:5]):
-                        logger.info(f"  ├─ スライド {i+1} をVision処理中...")
-                        # Note: PPTXを画像化するには追加ライブラリが必要
-                        # ここでは簡略化してスキップ
-
-                    if vision_texts:
-                        e4_text = "\n\n".join(vision_texts)
-                        logger.info(f"  └─ Vision補完結果: {len(e4_text)} 文字")
-                    else:
-                        logger.info(f"  └─ Vision補完: スキップ（画像化未対応）")
-
-                except Exception as e:
-                    logger.warning(f"  └─ Vision補完失敗: {e}")
-            else:
-                logger.info(f"  └─ Vision補完: スキップ（{file_type}は対象外）")
-        else:
-            logger.info(f"  └─ Vision補完: 不要 (十分なテキスト量: {e3_chars}文字)")
-
-        # ============================================
-        # E-5: Vision OCR結果適用
-        # ============================================
-        if progress_callback:
-            progress_callback("E5")
-        logger.info(f"[E-5] Vision OCR結果適用:")
-
-        if e4_text:
-            # Vision補完がある場合は追加
-            e5_text = e3_text + "\n\n---\n\n## Vision OCR 補完情報\n\n" + e4_text
-            logger.info(f"  ├─ E-3テキスト: {e3_chars} 文字")
-            logger.info(f"  ├─ E-4補完: +{len(e4_text)} 文字")
-            logger.info(f"  └─ E-5最終: {len(e5_text)} 文字")
-        else:
-            e5_text = e3_text
-            logger.info(f"  └─ E-5最終: {len(e5_text)} 文字 (Vision補完なし)")
-
-        return e5_text, file_type
-
-    def _process_image_with_stages(
+    def _process_document_e4a(
         self,
         file_path: Path,
-        pre_extracted_text: Optional[str] = None,
-        workspace: Optional[str] = None,
+        mime_type: str,
+        pre_extracted_text: Optional[str],
         progress_callback=None
     ) -> tuple:
         """
-        画像ファイル処理（E1-E5ステージログ付き）
-
-        Args:
-            file_path: ファイルパス
-            pre_extracted_text: 既に抽出済みのテキスト（HTML→PNG等の場合）
-            workspace: ワークスペース（gmail判定に使用）
+        [E-4a] ドキュメント処理
+        対象: application/pdf, text/*, Office系
+        既存ロジックを維持し、ドキュメント内の全テキストを抽出
 
         Returns:
-            (content, method)
+            (formatted_content, method, metadata)
         """
-        file_path = Path(file_path)
+        logger.info("[E-4a] ドキュメント処理開始")
 
-        logger.info(f"[Stage E] 画像処理開始")
+        ocr_text = ""
+        method = "document"
+        metadata = {}
 
-        # ============================================
-        # E-1: テキスト抽出（画像なのでなし、ただしHTML→PNG等の場合は既抽出済み）
-        # ============================================
-        logger.info(f"[E-1] テキスト抽出:")
+        # PDF処理
+        if mime_type == 'application/pdf':
+            logger.info("  ├─ PDF処理（E1-E5はpdf.py内で実行）")
+            result = self.pdf_processor.extract_text(str(file_path), progress_callback=progress_callback)
+            if result.get('success'):
+                ocr_text = result.get('content', '')
+                method = 'pdf'
+                metadata = result.get('metadata', {})
+            logger.info(f"  └─ PDF抽出完了: {len(ocr_text)} 文字")
+
+        # Office文書処理
+        elif 'openxmlformats' in mime_type or 'msword' in mime_type or 'ms-excel' in mime_type or 'ms-powerpoint' in mime_type:
+            if progress_callback:
+                progress_callback("E4")
+
+            # ファイルタイプ判定
+            if 'word' in mime_type:
+                file_type = 'docx'
+            elif 'sheet' in mime_type or 'excel' in mime_type:
+                file_type = 'xlsx'
+            elif 'presentation' in mime_type or 'powerpoint' in mime_type:
+                file_type = 'pptx'
+            else:
+                file_type = 'office'
+
+            logger.info(f"  ├─ Office処理 (type: {file_type})")
+            result = self.office_processor.extract_text(str(file_path))
+            if result.get('success'):
+                ocr_text = result.get('content', '')
+            method = file_type
+            logger.info(f"  └─ Office抽出完了: {len(ocr_text)} 文字")
+
+        # テキスト系ファイル処理
+        elif mime_type.startswith('text/'):
+            if progress_callback:
+                progress_callback("E4")
+
+            logger.info(f"  ├─ テキストファイル処理")
+            try:
+                # 複数のエンコーディングを試行
+                encodings = ['utf-8', 'shift_jis', 'cp932', 'euc-jp', 'iso-2022-jp']
+                for encoding in encodings:
+                    try:
+                        ocr_text = file_path.read_text(encoding=encoding)
+                        logger.info(f"  ├─ エンコーディング: {encoding}")
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                method = 'text'
+            except Exception as e:
+                logger.error(f"  └─ テキスト読み込みエラー: {e}")
+            logger.info(f"  └─ テキスト抽出完了: {len(ocr_text)} 文字")
+
+        # pre_extracted_textがある場合は追加
         if pre_extracted_text:
-            e1_chars = len(pre_extracted_text)
-            logger.info(f"  └─ 既抽出テキスト (Ingestion時): {e1_chars} 文字")
-        else:
-            e1_chars = 0
-            logger.info(f"  └─ 画像ファイルのため、ライブラリ抽出: 0 文字")
+            if ocr_text:
+                ocr_text = pre_extracted_text + "\n\n---\n\n" + ocr_text
+            else:
+                ocr_text = pre_extracted_text
 
-        # ============================================
-        # E-2: 表抽出（画像なのでなし）
-        # ============================================
-        logger.info(f"[E-2] 表抽出:")
-        logger.info(f"  └─ 画像ファイルのため、表抽出: 0 個")
+        if progress_callback:
+            progress_callback("E5")
 
-        # ============================================
-        # E-3: 統合（画像なのでなし、ただしHTML→PNG等の場合は既抽出テキストを使用）
-        # ============================================
-        logger.info(f"[E-3] 統合:")
-        if pre_extracted_text:
-            e3_text = pre_extracted_text
-            e3_chars = len(e3_text)
-            logger.info(f"  └─ E-1既抽出テキスト: {e3_chars} 文字")
-        else:
-            e3_text = ""
-            e3_chars = 0
-            logger.info(f"  └─ E-1 + E-2 統合: 0 文字")
+        # E-5: 出力フォーマット
+        formatted_content = self._format_output(
+            mime_type=mime_type,
+            ocr_text=ocr_text,
+            visual_log=None,
+            audio_transcript=None
+        )
 
-        # ============================================
-        # E-4: Gemini Vision OCR（画像のメイン処理）
-        # ============================================
+        return formatted_content, method, metadata
+
+    def _process_image_e4b(
+        self,
+        file_path: Path,
+        mime_type: str,
+        pre_extracted_text: Optional[str],
+        workspace: Optional[str],
+        progress_callback=None
+    ) -> tuple:
+        """
+        [E-4b] 画像処理
+        対象: image/*
+        モデル: gemini-2.5-flash (temperature=0.0)
+        並列処理: OCR Task + Description Task を asyncio.gather で同時実行
+
+        Returns:
+            (formatted_content, method, metadata)
+        """
+        logger.info("[E-4b] 画像処理開始（並列OCR + Description）")
+
         if progress_callback:
             progress_callback("E4")
+
+        ocr_text = ""
+        visual_log = ""
+        metadata = {}
+
         # Gmail処理の場合はコスト削減のためflash-liteを使用
         is_gmail = workspace == 'gmail' if workspace else False
         vision_model = "gemini-2.5-flash-lite" if is_gmail else "gemini-2.5-flash"
-        logger.info(f"[E-4] Vision OCR処理 (model: {vision_model}):")
+        logger.info(f"  ├─ モデル: {vision_model}")
 
-        e4_text = ""
-        if self.llm_client:
-            vision_result = self.llm_client.transcribe_image(
-                image_path=file_path,
-                model=vision_model,
-                prompt="""この画像から、全ての文字を徹底的に拾い尽くしてください。
+        if not self.llm_client:
+            logger.warning("  └─ LLMクライアント未設定のためスキップ")
+            formatted_content = self._format_output(
+                mime_type=mime_type,
+                ocr_text=pre_extracted_text or "(LLMクライアント未設定)",
+                visual_log=None,
+                audio_transcript=None
+            )
+            return formatted_content, 'image', metadata
+
+        # OCRプロンプト（全文字抽出）
+        ocr_prompt = """この画像から、全ての文字を徹底的に拾い尽くしてください。
 
 【あなたの役割】
 画像から全ての文字を漏らさず拾ってください。
@@ -315,41 +351,340 @@ class StageEPreprocessor:
 表がある場合は必ずMarkdown table形式で出力してください。
 
 **重要**: 1文字も見逃さないでください。"""
+
+        # 情景描写プロンプト（網羅的羅列、要約禁止）
+        description_prompt = """List every visible physical object and detail exhaustively. Do not summarize. Do not interpret emotions.
+
+【出力形式】
+全ての視覚情報を箇条書きで羅列してください：
+- 物体（何が見えるか）
+- 色（各物体の色）
+- 配置（どこに何があるか）
+- 状態（物体の状態、向き、サイズ）
+- テクスチャ（表面の質感）
+- 光源・影（照明の方向、影の位置）
+- 背景の詳細
+
+【禁止事項】
+- 「〜のような画像です」といった要約
+- 感情的解釈
+- 推測や意見
+
+【例】
+- 左上: 白い長方形のテーブル（木目調）
+- テーブル上: 黒いノートパソコン（画面点灯、角度約120度）
+- ノートパソコンの右: 白いマグカップ（取っ手は右向き）
+- 背景: ベージュ色の壁（無地）"""
+
+        # 並列処理でOCRとDescriptionを同時実行
+        def run_ocr():
+            return self.llm_client.transcribe_image(
+                image_path=file_path,
+                model=vision_model,
+                prompt=ocr_prompt
             )
 
-            if vision_result.get('success'):
-                e4_text = vision_result.get('content', '')
-                logger.info(f"  ├─ Vision OCR成功")
-                logger.info(f"  └─ 抽出テキスト: {len(e4_text)} 文字")
-            else:
-                logger.warning(f"  └─ Vision OCR失敗: {vision_result.get('error', 'Unknown error')}")
-        else:
-            logger.warning(f"  └─ LLMクライアント未設定のためスキップ")
+        def run_description():
+            return self.llm_client.transcribe_image(
+                image_path=file_path,
+                model=vision_model,
+                prompt=description_prompt
+            )
 
-        # ============================================
-        # E-5: Vision OCR結果適用（画像は E-4 がそのまま最終、ただし既抽出テキストがあれば統合）
-        # ============================================
+        logger.info("  ├─ 並列処理開始（OCR + Description）")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_ocr = executor.submit(run_ocr)
+            future_desc = executor.submit(run_description)
+
+            # 結果を取得
+            for future in as_completed([future_ocr, future_desc]):
+                try:
+                    if future == future_ocr:
+                        ocr_result = future.result()
+                        if ocr_result.get('success'):
+                            ocr_text = ocr_result.get('content', '')
+                            logger.info(f"  ├─ OCR完了: {len(ocr_text)} 文字")
+                        else:
+                            logger.warning(f"  ├─ OCR失敗: {ocr_result.get('error')}")
+                    else:
+                        desc_result = future.result()
+                        if desc_result.get('success'):
+                            visual_log = desc_result.get('content', '')
+                            logger.info(f"  ├─ Description完了: {len(visual_log)} 文字")
+                        else:
+                            logger.warning(f"  ├─ Description失敗: {desc_result.get('error')}")
+                except Exception as e:
+                    logger.error(f"  ├─ 並列処理エラー: {e}")
+
+        # pre_extracted_textがある場合は追加
+        if pre_extracted_text:
+            if ocr_text:
+                ocr_text = pre_extracted_text + "\n\n---\n\n" + ocr_text
+            else:
+                ocr_text = pre_extracted_text
+
         if progress_callback:
             progress_callback("E5")
-        logger.info(f"[E-5] Vision OCR結果適用:")
 
-        # E-3テキストとE-4 Vision OCRを統合
-        if e4_text:
-            if e3_text:
-                # 既抽出テキスト + Vision OCR
-                e5_text = e3_text + "\n\n---\n\n## Vision OCR 補完情報\n\n" + e4_text
+        logger.info(f"  └─ 画像処理完了（OCR: {len(ocr_text)}文字, Description: {len(visual_log)}文字）")
+
+        # E-5: 出力フォーマット
+        formatted_content = self._format_output(
+            mime_type=mime_type,
+            ocr_text=ocr_text,
+            visual_log=visual_log,
+            audio_transcript=None
+        )
+
+        return formatted_content, 'image', metadata
+
+    def _process_av_e4c(
+        self,
+        file_path: Path,
+        mime_type: str,
+        is_video: bool,
+        progress_callback=None
+    ) -> tuple:
+        """
+        [E-4c] 音声・映像処理
+        対象: audio/*, video/*
+        モデル: gemini-2.5-flash-lite (temperature=0.0)
+
+        処理:
+        1. Transcription: 「あー」「えー」などのフィラーも含めた完全な書き起こし (Verbatim)
+        2. Visual Log (動画のみ): シーンごとの視覚的変化を時系列で羅列
+
+        Returns:
+            (formatted_content, method, metadata)
+        """
+        media_type = "映像" if is_video else "音声"
+        logger.info(f"[E-4c] {media_type}処理開始")
+
+        if progress_callback:
+            progress_callback("E4")
+
+        audio_transcript = ""
+        visual_log = ""
+        metadata = {}
+
+        if not self.llm_client:
+            logger.warning("  └─ LLMクライアント未設定のためスキップ")
+            formatted_content = self._format_output(
+                mime_type=mime_type,
+                ocr_text=None,
+                visual_log=None,
+                audio_transcript="(LLMクライアント未設定)"
+            )
+            return formatted_content, 'audio' if not is_video else 'video', metadata
+
+        # Gemini 2.5 Flash Liteはマルチモーダル（音声・動画対応）
+        av_model = "gemini-2.5-flash-lite"
+        logger.info(f"  ├─ モデル: {av_model}")
+
+        # 書き起こしプロンプト（Verbatim、フィラー含む）
+        transcription_prompt = """この音声/映像から、一言一句完全な書き起こしを行ってください。
+
+【重要な指示】
+- 「あー」「えー」「うーん」などのフィラー（つなぎ言葉）も全て書き起こす
+- 言い淀み、言い直しもそのまま記録
+- 笑い声、咳払い、ため息なども [笑い]、[咳払い]、[ため息] のように記録
+- 沈黙が長い場合は [沈黙 約5秒] のように記録
+- 複数人の場合は話者を識別（話者A、話者B、または識別可能な名前）
+- 聞き取れない部分は [聞き取り不明] と記載
+
+【禁止事項】
+- 要約は絶対に禁止
+- 文章の整理や言い換えは禁止
+- 内容の省略は禁止
+
+【出力形式】
+タイムスタンプ付きで出力してください：
+[00:00] 話者A: えー、本日はですね、あの...
+[00:05] 話者A: プロジェクトの進捗について報告させていただきます。"""
+
+        # 映像ログプロンプト（動画のみ）
+        visual_log_prompt = """この動画の視覚的な変化を時系列でログとして記録してください。
+
+【重要な指示】
+- シーンごとの視覚的変化を時系列で羅列
+- 「誰が」「何を」「どの方向に」動いたかを具体的に記録
+- 画面上のテキスト、図表、グラフの変化も記録
+- カメラワーク（ズーム、パン、カット）も記録
+
+【禁止事項】
+- 概要や要約は禁止
+- 「全体的に〜」といった抽象的な表現は禁止
+
+【出力形式】
+タイムスタンプ付きのログ形式：
+[00:00] 黒い背景、中央に白いロゴが表示
+[00:03] ロゴがフェードアウト、オフィスの会議室が映る
+[00:05] 3人の人物がテーブルを囲んで座っている
+[00:08] 左側の男性（青いシャツ）がスライドを指差す
+[00:12] スライドにグラフが表示（棒グラフ、5本の棒）
+[00:15] 右側の女性がうなずく"""
+
+        # Gemini File APIを使用してファイルをアップロードし処理
+        import google.generativeai as genai
+
+        uploaded_file = None
+        try:
+            # ファイルをアップロード
+            logger.info(f"  ├─ ファイルアップロード中: {file_path.name}")
+            uploaded_file = genai.upload_file(path=str(file_path), mime_type=mime_type)
+            logger.info(f"  ├─ アップロード完了: {uploaded_file.name}")
+
+            # ファイルの処理完了を待機
+            import time
+            while uploaded_file.state.name == "PROCESSING":
+                logger.info("  ├─ ファイル処理中...")
+                time.sleep(2)
+                uploaded_file = genai.get_file(uploaded_file.name)
+
+            if uploaded_file.state.name == "FAILED":
+                raise ValueError(f"ファイル処理失敗: {uploaded_file.state.name}")
+
+            logger.info(f"  ├─ ファイル処理完了: {uploaded_file.state.name}")
+
+            # モデル初期化
+            model = genai.GenerativeModel(av_model)
+
+            # 安全フィルター設定
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ]
+
+            generation_config = genai.GenerationConfig(
+                max_output_tokens=65536,
+                temperature=0.0
+            )
+
+            if is_video:
+                # 動画: 並列で書き起こし + 映像ログ
+                logger.info("  ├─ 並列処理開始（Transcription + Visual Log）")
+
+                def run_transcription():
+                    response = model.generate_content(
+                        [transcription_prompt, uploaded_file],
+                        generation_config=generation_config,
+                        safety_settings=safety_settings,
+                        request_options={"timeout": 600}  # 10分タイムアウト
+                    )
+                    if response.candidates and response.candidates[0].content.parts:
+                        return response.candidates[0].content.parts[0].text
+                    return ""
+
+                def run_visual_log():
+                    response = model.generate_content(
+                        [visual_log_prompt, uploaded_file],
+                        generation_config=generation_config,
+                        safety_settings=safety_settings,
+                        request_options={"timeout": 600}  # 10分タイムアウト
+                    )
+                    if response.candidates and response.candidates[0].content.parts:
+                        return response.candidates[0].content.parts[0].text
+                    return ""
+
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    future_trans = executor.submit(run_transcription)
+                    future_visual = executor.submit(run_visual_log)
+
+                    for future in as_completed([future_trans, future_visual]):
+                        try:
+                            if future == future_trans:
+                                audio_transcript = future.result()
+                                logger.info(f"  ├─ Transcription完了: {len(audio_transcript)} 文字")
+                            else:
+                                visual_log = future.result()
+                                logger.info(f"  ├─ Visual Log完了: {len(visual_log)} 文字")
+                        except Exception as e:
+                            logger.error(f"  ├─ 並列処理エラー: {e}")
+
             else:
-                # Vision OCRのみ
-                e5_text = e4_text
-        else:
-            # 既抽出テキストのみ
-            e5_text = e3_text
+                # 音声のみ: 書き起こしのみ
+                logger.info("  ├─ Transcription処理中...")
+                response = model.generate_content(
+                    [transcription_prompt, uploaded_file],
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
+                    request_options={"timeout": 600}  # 10分タイムアウト
+                )
 
-        logger.info(f"  ├─ E-3テキスト: {e3_chars} 文字")
-        logger.info(f"  ├─ E-4 Vision OCR: {len(e4_text)} 文字")
-        logger.info(f"  └─ E-5最終: {len(e5_text)} 文字")
+                if response.candidates and response.candidates[0].content.parts:
+                    audio_transcript = response.candidates[0].content.parts[0].text
+                    logger.info(f"  ├─ Transcription完了: {len(audio_transcript)} 文字")
+                else:
+                    logger.warning("  ├─ Transcription: レスポンスなし")
 
-        return e5_text, 'image'
+        except Exception as e:
+            logger.error(f"  ├─ {media_type}処理エラー: {e}", exc_info=True)
+
+        finally:
+            # アップロードしたファイルを削除
+            if uploaded_file:
+                try:
+                    genai.delete_file(name=uploaded_file.name)
+                    logger.info(f"  ├─ アップロードファイル削除完了")
+                except Exception:
+                    pass
+
+        if progress_callback:
+            progress_callback("E5")
+
+        logger.info(f"  └─ {media_type}処理完了（Transcript: {len(audio_transcript)}文字, Visual Log: {len(visual_log)}文字）")
+
+        # E-5: 出力フォーマット
+        formatted_content = self._format_output(
+            mime_type=mime_type,
+            ocr_text=None,
+            visual_log=visual_log if is_video else None,
+            audio_transcript=audio_transcript
+        )
+
+        return formatted_content, 'video' if is_video else 'audio', metadata
+
+    def _format_output(
+        self,
+        mime_type: str,
+        ocr_text: Optional[str],
+        visual_log: Optional[str],
+        audio_transcript: Optional[str]
+    ) -> str:
+        """
+        [E-5] 出力フォーマット統一（タグ付け）
+        Stage Fが情報の種類を識別できるよう、各出力を明確なヘッダーで結合
+
+        Args:
+            mime_type: MIMEタイプ
+            ocr_text: OCRテキスト（E-4a, E-4bの文字情報）
+            visual_log: 情景羅列（E-4bの情景 / E-4cの映像ログ）
+            audio_transcript: 書き起こし（E-4cの音声書き起こし）
+
+        Returns:
+            タグ付きフォーマットの統合テキスト
+        """
+        sections = []
+
+        # メタデータセクション
+        sections.append(f"=== [SOURCE: METADATA] ===\nMimeType: {mime_type}")
+
+        # OCRテキストセクション
+        if ocr_text:
+            sections.append(f"=== [SOURCE: OCR_TEXT] ===\n{ocr_text}")
+
+        # 情景ログセクション
+        if visual_log:
+            sections.append(f"=== [SOURCE: VISUAL_SCENE_LOG] ===\n{visual_log}")
+
+        # 音声書き起こしセクション
+        if audio_transcript:
+            sections.append(f"=== [SOURCE: AUDIO_TRANSCRIPT] ===\n{audio_transcript}")
+
+        return "\n\n".join(sections)
 
     def process(self, file_path: Path, mime_type: str) -> str:
         """

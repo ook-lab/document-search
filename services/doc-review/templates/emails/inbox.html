@@ -1,0 +1,499 @@
+{% extends 'base.html' %}
+
+{% block title %}メール受信トレイ - Document Review{% endblock %}
+
+{% block content %}
+<div class="layout-sidebar">
+    <!-- サイドバー -->
+    <aside class="sidebar">
+        <div class="sidebar-section">
+            <h3 class="sidebar-title">🔍 フィルタ</h3>
+            <div class="form-group">
+                <label for="doctype-filter">メール種別</label>
+                <select id="doctype-filter">
+                    <option value="">全て</option>
+                    <option value="DM-mail">DM-mail</option>
+                    <option value="JOB-mail">JOB-mail</option>
+                </select>
+            </div>
+            <button id="filter-btn" class="btn btn-primary" style="width:100%;">検索</button>
+        </div>
+
+        <button id="refresh-btn" class="btn btn-secondary" style="width:100%;">🔄 リストを更新</button>
+    </aside>
+
+    <!-- メインコンテンツ -->
+    <div class="main-area">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📬 メール受信トレイ</h2>
+                <span id="email-count"></span>
+            </div>
+
+            <!-- 一括操作ボタン -->
+            <div class="bulk-actions">
+                <button id="bulk-approve-btn" class="btn btn-success" disabled>✅ まとめて承認</button>
+                <button id="bulk-delete-btn" class="btn btn-danger" disabled>🗑️ まとめて削除</button>
+            </div>
+
+            <!-- メール一覧テーブル -->
+            <div id="email-list-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <span>読み込み中...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- メール詳細 -->
+        <div id="email-detail-container" style="display: none;">
+            <div class="layout-split">
+                <!-- HTMLプレビュー -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">📄 メールプレビュー</h3>
+                    </div>
+                    <div id="preview-container" class="preview-container">
+                        <div class="empty-state">
+                            <p>メールを選択してください</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 詳細・編集 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">✏️ メール情報</h3>
+                    </div>
+
+                    <!-- 基本情報 -->
+                    <div id="email-info" style="margin-bottom:20px;">
+                    </div>
+
+                    <!-- タブ -->
+                    <div class="tabs">
+                        <button class="tab active" data-tab="tab-metadata">📝 メタデータ</button>
+                        <button class="tab" data-tab="tab-json">🔍 JSON</button>
+                    </div>
+
+                    <!-- メタデータタブ -->
+                    <div id="tab-metadata" class="tab-content active">
+                        <div id="metadata-editor-container">
+                            <p>メールを選択してください</p>
+                        </div>
+                    </div>
+
+                    <!-- JSONタブ -->
+                    <div id="tab-json" class="tab-content">
+                        <div class="form-group">
+                            <label>メタデータ (JSON)</label>
+                            <textarea id="json-editor" class="json-editor" rows="15"></textarea>
+                        </div>
+                        <div id="json-error" class="error-message" style="display:none;"></div>
+                    </div>
+
+                    <!-- アクションボタン -->
+                    <div class="action-buttons">
+                        <button id="save-btn" class="btn btn-primary">💾 保存</button>
+                        <button id="review-btn" class="btn btn-success">✅ チェック完了</button>
+                        <button id="unreview-btn" class="btn btn-secondary" style="display:none;">↩️ 未完了に戻す</button>
+                        <button id="delete-btn" class="btn btn-danger">🗑️ 削除</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/**
+ * Email Inbox - メール受信トレイ用JavaScript
+ */
+
+const EmailState = {
+    emails: [],
+    currentEmail: null,
+    currentMetadata: null,
+    isReviewed: false,
+};
+
+// =============================================================================
+// メール一覧
+// =============================================================================
+
+async function loadEmails() {
+    App.showLoading('email-list-container');
+
+    try {
+        const docType = document.getElementById('doctype-filter')?.value || '';
+
+        const params = new URLSearchParams({
+            doc_type: docType,
+            limit: 50,
+        });
+
+        const data = await App.api(`/api/emails?${params}`);
+        EmailState.emails = data.emails;
+
+        renderEmailList();
+        updateEmailCount(data.count);
+
+        const emailIdFromUrl = App.getUrlParam('email_id');
+        if (emailIdFromUrl) {
+            selectEmail(emailIdFromUrl);
+        }
+
+    } catch (error) {
+        console.error('Failed to load emails:', error);
+        document.getElementById('email-list-container').innerHTML =
+            `<div class="error-message">読み込みに失敗しました: ${error.message}</div>`;
+    }
+}
+
+function renderEmailList() {
+    const container = document.getElementById('email-list-container');
+
+    if (EmailState.emails.length === 0) {
+        App.showEmpty('email-list-container', 'メールがありません');
+        return;
+    }
+
+    const html = `
+        <table class="data-table" id="email-table">
+            <thead>
+                <tr>
+                    <th class="checkbox-cell">
+                        <input type="checkbox" onchange="App.toggleSelectAll(this, 'email-table')">
+                    </th>
+                    <th>差出人</th>
+                    <th>件名</th>
+                    <th>日時</th>
+                    <th>種別</th>
+                    <th>状態</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${EmailState.emails.map(email => `
+                    <tr data-id="${email.id}" onclick="selectEmail('${email.id}')" class="${EmailState.currentEmail?.id === email.id ? 'selected' : ''}">
+                        <td class="checkbox-cell" onclick="event.stopPropagation();">
+                            <input type="checkbox"
+                                   data-id="${email.id}"
+                                   onchange="App.toggleSelect(this)"
+                                   ${App.state.selectedIds.has(email.id) ? 'checked' : ''}>
+                        </td>
+                        <td>${escapeHtml(email.display_sender || email.display_sender_email || '')}</td>
+                        <td>${escapeHtml(email.display_subject || '(件名なし)')}</td>
+                        <td>${(email.display_sent_at || email.created_at || '').substring(0, 16)}</td>
+                        <td>${email.doc_type || ''}</td>
+                        <td>
+                            ${email.is_reviewed
+                                ? '<span class="badge badge-success">確認済</span>'
+                                : '<span class="badge badge-warning">未確認</span>'}
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+
+    container.innerHTML = html;
+}
+
+function updateEmailCount(count) {
+    const el = document.getElementById('email-count');
+    if (el) {
+        el.textContent = `${count}件`;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+// =============================================================================
+// メール選択・詳細
+// =============================================================================
+
+async function selectEmail(emailId) {
+    App.setUrlParam('email_id', emailId);
+
+    document.querySelectorAll('#email-table tbody tr').forEach(tr => {
+        tr.classList.remove('selected');
+        if (tr.dataset.id === emailId) {
+            tr.classList.add('selected');
+        }
+    });
+
+    document.getElementById('email-detail-container').style.display = 'block';
+
+    try {
+        const email = await App.api(`/api/emails/${emailId}`);
+        EmailState.currentEmail = email;
+        EmailState.currentMetadata = email.metadata || {};
+        EmailState.isReviewed = email.is_reviewed || false;
+
+        renderEmailDetail(email);
+        loadHtmlPreview(email);
+
+    } catch (error) {
+        console.error('Failed to load email:', error);
+        App.toast('メールの読み込みに失敗しました', 'error');
+    }
+}
+
+function renderEmailDetail(email) {
+    // 基本情報
+    document.getElementById('email-info').innerHTML = `
+        <div style="margin-bottom:10px;">
+            <strong>差出人:</strong> ${escapeHtml(email.display_sender || '')}
+            &lt;${escapeHtml(email.display_sender_email || '')}&gt;
+        </div>
+        <div style="margin-bottom:10px;">
+            <strong>件名:</strong> ${escapeHtml(email.display_subject || '')}
+        </div>
+        <div style="margin-bottom:10px;">
+            <strong>日時:</strong> ${email.display_sent_at || ''}
+        </div>
+        <div>
+            <strong>種別:</strong> ${email.doc_type || ''}
+        </div>
+    `;
+
+    // メタデータ編集
+    renderMetadataEditor(email.metadata || {});
+
+    // JSON編集
+    document.getElementById('json-editor').value = JSON.stringify(email.metadata || {}, null, 2);
+
+    // レビュー状態によるボタン表示
+    const reviewBtn = document.getElementById('review-btn');
+    const unreviewBtn = document.getElementById('unreview-btn');
+
+    if (EmailState.isReviewed) {
+        reviewBtn.style.display = 'none';
+        unreviewBtn.style.display = 'inline-block';
+    } else {
+        reviewBtn.style.display = 'inline-block';
+        unreviewBtn.style.display = 'none';
+    }
+}
+
+function renderMetadataEditor(metadata) {
+    const container = document.getElementById('metadata-editor-container');
+
+    if (!metadata || Object.keys(metadata).length === 0) {
+        container.innerHTML = '<p>メタデータがありません</p>';
+        return;
+    }
+
+    const fields = Object.entries(metadata)
+        .filter(([key]) => !key.endsWith('_list') && !key.endsWith('_blocks'))
+        .map(([key, value]) => {
+            const isComplex = typeof value === 'object' && value !== null;
+
+            if (isComplex) {
+                return `
+                    <div class="form-group">
+                        <label>${formatFieldName(key)}</label>
+                        <textarea class="json-editor"
+                                  data-field="${key}"
+                                  rows="3">${JSON.stringify(value, null, 2)}</textarea>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="form-group">
+                    <label>${formatFieldName(key)}</label>
+                    <input type="text"
+                           data-field="${key}"
+                           value="${escapeHtml(String(value || ''))}">
+                </div>
+            `;
+        });
+
+    container.innerHTML = fields.join('') || '<p>編集可能なフィールドがありません</p>';
+}
+
+function formatFieldName(key) {
+    return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// =============================================================================
+// HTMLプレビュー
+// =============================================================================
+
+function loadHtmlPreview(email) {
+    const container = document.getElementById('preview-container');
+
+    // sandboxed iframe でHTMLを表示
+    container.innerHTML = `
+        <iframe src="/api/emails/${email.id}/html"
+                sandbox="allow-same-origin"
+                style="width:100%;height:100%;border:none;background:#fff;">
+        </iframe>
+    `;
+}
+
+// =============================================================================
+// アクション
+// =============================================================================
+
+async function saveEmail() {
+    if (!EmailState.currentEmail) {
+        App.toast('メールが選択されていません', 'error');
+        return;
+    }
+
+    const jsonEditor = document.getElementById('json-editor');
+    let metadata;
+
+    try {
+        metadata = JSON.parse(jsonEditor.value);
+    } catch (e) {
+        document.getElementById('json-error').textContent = 'JSONの形式が正しくありません';
+        document.getElementById('json-error').style.display = 'block';
+        App.toast('JSONの形式が正しくありません', 'error');
+        return;
+    }
+
+    document.getElementById('json-error').style.display = 'none';
+
+    try {
+        await App.api(`/api/emails/${EmailState.currentEmail.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                metadata,
+                doc_type: EmailState.currentEmail.doc_type,
+                notes: 'Flask UIからの手動修正',
+            }),
+        });
+
+        App.toast('保存しました', 'success');
+        EmailState.currentMetadata = metadata;
+
+    } catch (error) {
+        App.toast(`保存に失敗しました: ${error.message}`, 'error');
+    }
+}
+
+async function markReviewed() {
+    if (!EmailState.currentEmail) return;
+
+    try {
+        await App.api(`/api/emails/${EmailState.currentEmail.id}/review`, { method: 'POST' });
+        App.toast('レビュー完了としてマークしました', 'success');
+        EmailState.isReviewed = true;
+        renderEmailDetail(EmailState.currentEmail);
+        loadEmails();
+    } catch (error) {
+        App.toast(`エラー: ${error.message}`, 'error');
+    }
+}
+
+async function markUnreviewed() {
+    if (!EmailState.currentEmail) return;
+
+    try {
+        await App.api(`/api/emails/${EmailState.currentEmail.id}/unreview`, { method: 'POST' });
+        App.toast('未完了に戻しました', 'success');
+        EmailState.isReviewed = false;
+        renderEmailDetail(EmailState.currentEmail);
+        loadEmails();
+    } catch (error) {
+        App.toast(`エラー: ${error.message}`, 'error');
+    }
+}
+
+async function deleteEmail() {
+    if (!EmailState.currentEmail) return;
+
+    App.showDeleteModal('このメールを削除しますか？Gmail・Google Driveからも削除されます。', async () => {
+        try {
+            await App.api(`/api/emails/${EmailState.currentEmail.id}`, { method: 'DELETE' });
+            App.toast('削除しました', 'success');
+            EmailState.currentEmail = null;
+            document.getElementById('email-detail-container').style.display = 'none';
+            App.setUrlParam('email_id', null);
+            loadEmails();
+        } catch (error) {
+            App.toast(`エラー: ${error.message}`, 'error');
+        }
+    });
+}
+
+// =============================================================================
+// 一括操作
+// =============================================================================
+
+async function bulkApprove() {
+    const ids = Array.from(App.state.selectedIds);
+    if (ids.length === 0) return;
+
+    try {
+        const result = await App.api('/api/emails/bulk-approve', {
+            method: 'POST',
+            body: JSON.stringify({ email_ids: ids }),
+        });
+
+        App.toast(`${result.success_count}件を承認しました`, 'success');
+        App.clearSelection();
+        loadEmails();
+
+    } catch (error) {
+        App.toast(`エラー: ${error.message}`, 'error');
+    }
+}
+
+async function bulkDelete() {
+    const ids = Array.from(App.state.selectedIds);
+    if (ids.length === 0) return;
+
+    App.showDeleteModal(`${ids.length}件のメールを削除しますか？`, async () => {
+        try {
+            const result = await App.api('/api/emails/bulk-delete', {
+                method: 'POST',
+                body: JSON.stringify({ email_ids: ids }),
+            });
+
+            App.toast(`${result.success_count}件を削除しました`, 'success');
+            App.clearSelection();
+            loadEmails();
+
+        } catch (error) {
+            App.toast(`エラー: ${error.message}`, 'error');
+        }
+    });
+}
+
+// =============================================================================
+// 初期化
+// =============================================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!App.state.isAuthenticated) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!App.state.isAuthenticated) return;
+    }
+
+    await loadEmails();
+
+    document.getElementById('filter-btn')?.addEventListener('click', loadEmails);
+    document.getElementById('refresh-btn')?.addEventListener('click', loadEmails);
+
+    document.getElementById('save-btn')?.addEventListener('click', saveEmail);
+    document.getElementById('review-btn')?.addEventListener('click', markReviewed);
+    document.getElementById('unreview-btn')?.addEventListener('click', markUnreviewed);
+    document.getElementById('delete-btn')?.addEventListener('click', deleteEmail);
+
+    document.getElementById('bulk-approve-btn')?.addEventListener('click', bulkApprove);
+    document.getElementById('bulk-delete-btn')?.addEventListener('click', bulkDelete);
+});
+
+window.selectEmail = selectEmail;
+</script>
+{% endblock %}

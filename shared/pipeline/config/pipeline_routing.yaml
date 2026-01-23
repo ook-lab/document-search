@@ -35,47 +35,47 @@ routing:
     # Classroom ワークスペース（育哉）
     ikuya_classroom:
       description: "育哉のClassroomワークスペース"
-      schema: "classroom"
+      schema: "default"
       stages:
         stage_f:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_h:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_i:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
 
     # Classroom ワークスペース（絵麻）
     ema_classroom:
       description: "絵麻のClassroomワークスペース"
-      schema: "classroom"
+      schema: "default"
       stages:
         stage_f:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_h:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_i:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
 
     # 早稲田アカデミー
     waseda_academy:
       description: "早稲田アカデミーのドキュメント"
-      schema: "classroom"
+      schema: "default"
       stages:
         stage_f:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_h:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_i:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
 
   # ============================================
   # doc_type ベースのルート（優先順位2）
@@ -99,17 +99,17 @@ routing:
     # Classroom ドキュメント（workspace で指定されない場合）
     classroom_document:
       description: "Google Classroomドキュメント"
-      schema: "classroom"
+      schema: "default"
       stages:
         stage_f:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_h:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
         stage_i:
-          prompt_key: "classroom"
-          model_key: "classroom"
+          prompt_key: "default"
+          model_key: "default"
 
     # 家計簿レシート
     kakeibo:
@@ -146,7 +146,7 @@ routing:
 # ============================================
 #
 # 【例1】workspace='ikuya_classroom', doc_type='other'
-# → by_workspace.ikuya_classroom が選択される（Classroom スキーマ）
+# → by_workspace.ikuya_classroom が選択される（Default スキーマ）
 #
 # 【例2】workspace='inbox', doc_type='physical_shop'
 # → by_doc_type.physical_shop が選択される（Flyer スキーマ）
@@ -160,7 +160,7 @@ routing:
 #
 # 新しいワークスペースを追加する場合:
 # 1. by_workspace セクションに新しいエントリを追加
-# 2. schema を指定（classroom, flyer, default など）
+# 2. schema を指定（flyer, default など）
 # 3. 各 stage の prompt_key と model_key を設定
 #
 # 新しい doc_type を追加する場合:

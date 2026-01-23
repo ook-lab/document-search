@@ -18,6 +18,7 @@ from loguru import logger
 from datetime import datetime
 
 from shared.ai.llm_client.llm_client import LLMClient
+from .constants import STAGE_H_INPUT_SCHEMA_VERSION
 
 
 class StageHStructuring:
@@ -61,9 +62,44 @@ class StageHStructuring:
         """
         logger.info(f"[Stage H] 構造化開始... (doc_type={doc_type}, model={model})")
 
-        # Stage F の構造化情報がある場合はログ出力
+        # ============================================
+        # Stage H 入力スキーマ v1.1 検証（契約固定）
+        # ============================================
+        h_warnings = []
         if stage_f_structure:
-            logger.info(f"[Stage H] Stage F の構造化情報を受信: tables={len(stage_f_structure.get('tables', []))}, sections={len(stage_f_structure.get('sections', []))}")
+            # 1. schema_version 検証
+            schema_ver = stage_f_structure.get('schema_version', 'unknown')
+            if schema_ver != STAGE_H_INPUT_SCHEMA_VERSION:
+                h_warnings.append(f"H_SCHEMA_VERSION_MISMATCH: expected stage_h_input.v1.1, got {schema_ver}")
+                logger.warning(f"[Stage H] schema_version不一致: {schema_ver}")
+            else:
+                logger.info(f"[Stage H] schema_version=stage_h_input.v1.1 ✓")
+
+            # 2. post_body.text 検証
+            post_body = stage_f_structure.get('post_body', {})
+            post_body_text = post_body.get('text', '')
+            if not post_body_text or not post_body_text.strip():
+                h_warnings.append("H_POST_BODY_EMPTY: post_body.text is empty")
+                logger.warning("[Stage H] post_body.text が空です")
+            else:
+                logger.info(f"[Stage H] post_body: {len(post_body_text)}文字 (source: {post_body.get('source', 'unknown')})")
+
+            # 3. text_blocks[0].block_type == "post_body" 検証
+            text_blocks = stage_f_structure.get('text_blocks', [])
+            if text_blocks:
+                first_block = text_blocks[0]
+                if first_block.get('block_type') != 'post_body':
+                    h_warnings.append(f"H_FIRST_BLOCK_NOT_POST_BODY: text_blocks[0].block_type={first_block.get('block_type')}")
+                    logger.warning(f"[Stage H] text_blocks[0]がpost_bodyではありません: {first_block.get('block_type')}")
+                else:
+                    logger.info(f"[Stage H] text_blocks[0]=post_body ({first_block.get('char_count', 0)}文字) ✓")
+
+            # 構造化情報ログ
+            logger.info(f"[Stage H] Stage F 構造化情報: tables={len(stage_f_structure.get('tables', []))}, text_blocks={len(text_blocks)}")
+            if h_warnings:
+                logger.warning(f"[Stage H] 入力検証warnings: {len(h_warnings)}件")
+        else:
+            logger.info("[Stage H] stage_f_structure なし（レガシーモード）")
 
         if not combined_text or not combined_text.strip():
             logger.warning("[Stage H] 入力テキストが空です")
@@ -104,10 +140,18 @@ class StageHStructuring:
                 result = self._merge_stage_f_structure(result, stage_f_structure)
 
             # 結果の整形
+            final_metadata = result.get('metadata', {})
+            # h_warnings を metadata に合流（ログだけでなく実データとして保持）
+            if h_warnings:
+                final_metadata.setdefault('warnings', []).extend(h_warnings)
+                final_metadata['schema_validation'] = {
+                    'version_checked': STAGE_H_INPUT_SCHEMA_VERSION,
+                    'warnings_count': len(h_warnings)
+                }
             return {
                 'document_date': result.get('document_date'),
                 'tags': result.get('tags', []),
-                'metadata': result.get('metadata', {})
+                'metadata': final_metadata
             }
 
         except Exception as e:
@@ -295,8 +339,44 @@ class StageHStructuring:
         """
         metadata = result.get('metadata', {})
 
+        # v1.1契約の判定
+        schema_ver = stage_f_structure.get('schema_version', '')
+        is_v1_1 = (schema_ver == STAGE_H_INPUT_SCHEMA_VERSION)
+
+        # v1.1: tables/sections の取得場所を適切に
+        if is_v1_1:
+            # v1.1: tables はトップレベル、sections は layout_info
+            stage_f_tables = stage_f_structure.get('tables', [])
+            stage_f_sections = stage_f_structure.get('layout_info', {}).get('sections', [])
+            # v1.1では text_blocks が Stage F で生成済み → _raw_text_blocks に保存（LLM出力を優先）
+            stage_f_text_blocks = stage_f_structure.get('text_blocks', [])
+            if stage_f_text_blocks:
+                # 生のtext_blocksは隠しフィールドに保存
+                metadata['_raw_text_blocks'] = stage_f_text_blocks
+                logger.info(f"[Stage H] v1.1: Stage F text_blocks を _raw_text_blocks に保存 ({len(stage_f_text_blocks)}ブロック)")
+
+                # LLMが articles を生成していればそれを優先、なければ text_blocks をチェック
+                llm_articles = metadata.get('articles', [])
+                llm_text_blocks = metadata.get('text_blocks', [])
+
+                if llm_articles:
+                    # LLMが articles を生成済み → text_blocks は不要
+                    logger.info(f"[Stage H] LLM生成の articles を優先 ({len(llm_articles)}件)")
+                    if 'text_blocks' in metadata:
+                        del metadata['text_blocks']
+                elif llm_text_blocks:
+                    # LLMが text_blocks を生成済み → そのまま使用
+                    logger.info(f"[Stage H] LLM生成の text_blocks を使用 ({len(llm_text_blocks)}件)")
+                else:
+                    # LLM出力が空 → フォールバックとして _raw_text_blocks を text_blocks に
+                    metadata['text_blocks'] = stage_f_text_blocks
+                    logger.info(f"[Stage H] フォールバック: _raw_text_blocks を text_blocks に採用")
+        else:
+            # レガシー: 直下または layout_info から取得
+            stage_f_tables = stage_f_structure.get('tables', []) or stage_f_structure.get('layout_info', {}).get('tables', [])
+            stage_f_sections = stage_f_structure.get('sections', []) or stage_f_structure.get('layout_info', {}).get('sections', [])
+
         # Stage F の tables を優先的に使用（Stage H で tables が抽出されていない場合、または少ない場合）
-        stage_f_tables = stage_f_structure.get('tables', [])
         stage_h_tables = metadata.get('structured_tables', [])
 
         if stage_f_tables and len(stage_f_tables) > len(stage_h_tables):
@@ -330,10 +410,10 @@ class StageHStructuring:
             metadata['structured_tables'] = converted_tables
 
         # Stage F の sections を text_blocks に統合（text_blocks が少ない場合）
-        stage_f_sections = stage_f_structure.get('sections', [])
+        # v1.1では text_blocks が正なのでこの変換はスキップ
         stage_h_text_blocks = metadata.get('text_blocks', [])
 
-        if stage_f_sections and len(stage_h_text_blocks) < len(stage_f_sections):
+        if not is_v1_1 and stage_f_sections and len(stage_h_text_blocks) < len(stage_f_sections):
             logger.info(f"[Stage H] Stage F の sections を text_blocks に変換: {len(stage_f_sections)}個")
 
             converted_blocks = []

@@ -1,0 +1,17 @@
+# Flask core
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+Flask-WTF>=1.2.0
+gunicorn>=21.0.0
+
+# Supabase
+supabase>=2.0.0
+
+# Logging
+loguru>=0.7.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Note: Other dependencies (google-api-python-client, etc.)
+# are inherited from the main project's requirements.txt

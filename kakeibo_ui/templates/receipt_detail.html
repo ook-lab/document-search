@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レシート詳細 - 家計簿</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; }
+        .header { background: #2c3e50; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 1.5rem; }
+        .nav { display: flex; gap: 1rem; }
+        .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
+        .nav a:hover { background: rgba(255,255,255,0.1); }
+        .nav a.active { background: rgba(255,255,255,0.2); }
+        .container { max-width: 1600px; margin: 0 auto; padding: 2rem; }
+
+        .back-link { margin-bottom: 1rem; }
+        .back-link a { color: #3498db; text-decoration: none; }
+        .back-link a:hover { text-decoration: underline; }
+
+        .main-grid { display: grid; grid-template-columns: 400px 1fr; gap: 2rem; }
+        @media (max-width: 1200px) { .main-grid { grid-template-columns: 1fr; } }
+
+        .panel { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .panel-header { background: #f8f9fa; padding: 1rem; border-bottom: 1px solid #eee; font-weight: 600; }
+        .panel-body { padding: 1rem; }
+
+        .image-panel { position: sticky; top: 1rem; max-height: calc(100vh - 6rem); overflow-y: auto; }
+        .receipt-image { width: 100%; height: auto; background: #f5f5f5; }
+        .no-image { padding: 4rem 2rem; text-align: center; color: #7f8c8d; background: #f5f5f5; }
+
+        .info-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; margin-bottom: 1rem; }
+        .info-grid dt { color: #7f8c8d; }
+        .info-grid dd { font-weight: 500; }
+
+        .items-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .items-table th, .items-table td { padding: 0.75rem 0.5rem; text-align: left; border-bottom: 1px solid #eee; }
+        .items-table th { background: #f8f9fa; font-weight: 600; position: sticky; top: 0; }
+        .items-table tr:hover { background: #f8f9fa; }
+        .items-table tr.suggested { background: #fff8e1; }
+        .items-table tr.suggested:hover { background: #fff3c4; }
+        .items-table .amount { text-align: right; font-family: monospace; }
+        .items-table input { width: 100%; padding: 0.25rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; }
+        .items-table input.narrow { width: 60px; }
+
+        .summary { background: #f8f9fa; padding: 1rem; margin-top: 1rem; border-radius: 4px; }
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+        .summary-row.total { font-weight: 600; font-size: 1.1rem; border-top: 2px solid #ddd; padding-top: 0.5rem; margin-top: 0.5rem; }
+
+        .link-section { margin-top: 2rem; }
+        .linked-tx { background: #d4edda; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+        .linked-tx .label { font-size: 0.85rem; color: #155724; margin-bottom: 0.5rem; }
+        .linked-tx .content { font-weight: 500; }
+
+        .candidates-list { max-height: 300px; overflow-y: auto; }
+        .candidate-item { padding: 0.75rem; border: 1px solid #eee; border-radius: 4px; margin-bottom: 0.5rem; cursor: pointer; transition: all 0.2s; }
+        .candidate-item:hover { border-color: #3498db; background: #f0f7ff; }
+        .candidate-item.selected { border-color: #27ae60; background: #d4edda; }
+        .candidate-item.same-day { border-left: 3px solid #27ae60; }
+        .candidate-item .date { color: #7f8c8d; font-size: 0.85rem; }
+        .candidate-item .content { margin: 0.25rem 0; }
+        .candidate-item .amount { font-family: monospace; font-weight: 500; }
+        .candidate-item .institution { color: #7f8c8d; font-size: 0.85rem; }
+
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-primary:hover { background: #2980b9; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-success:hover { background: #219a52; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+
+        .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+        .toast { position: fixed; bottom: 2rem; right: 2rem; padding: 1rem 1.5rem; border-radius: 8px; color: white; z-index: 1000; transform: translateY(100px); opacity: 0; transition: all 0.3s; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background: #27ae60; }
+        .toast.error { background: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>レシート詳細</h1>
+        <nav class="nav">
+            <a href="/">明細一覧</a>
+            <a href="/loans">ローン管理</a>
+            <a href="/receipts" class="active">レシート検証</a>
+            <a href="/reconcile">消込</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="back-link">
+            <a href="/receipts">← レシート一覧に戻る</a>
+        </div>
+
+        <div class="main-grid">
+            <!-- 左：レシート画像 -->
+            <div class="image-panel">
+                <div class="panel">
+                    <div class="panel-header">レシート画像</div>
+                    <div class="panel-body" style="padding: 0;">
+                        {% if image_base64 %}
+                        <img src="{{ image_base64 }}" alt="レシート画像" class="receipt-image">
+                        {% else %}
+                        <div class="no-image">画像を取得できませんでした</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- 処理情報 -->
+                <div class="panel" style="margin-top: 1rem;">
+                    <div class="panel-header">処理情報</div>
+                    <div class="panel-body">
+                        <dl class="info-grid">
+                            <dt>ファイル名</dt>
+                            <dd>{{ log.file_name }}</dd>
+                            <dt>処理日時</dt>
+                            <dd>{{ log.processed_at[:19] if log.processed_at else '-' }}</dd>
+                            <dt>ステータス</dt>
+                            <dd>{{ log.status }}</dd>
+                            <dt>OCRモデル</dt>
+                            <dd>{{ log.ocr_model or '-' }}</dd>
+                            {% if log.error_message %}
+                            <dt>エラー</dt>
+                            <dd style="color: #e74c3c;">{{ log.error_message }}</dd>
+                            {% endif %}
+                        </dl>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右：明細とリンク -->
+            <div>
+                {% if receipt %}
+                <!-- 店舗情報（編集可能） -->
+                <div class="panel" style="margin-bottom: 1rem;">
+                    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>店舗情報</span>
+                        <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="deleteReceipt()">レシート削除</button>
+                    </div>
+                    <div class="panel-body">
+                        <div style="display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1rem; align-items: center;">
+                            <label>店舗名</label>
+                            <input type="text" id="shop_name" value="{{ receipt.shop_name or '' }}" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+
+                            <label>取引日</label>
+                            <input type="date" id="transaction_date" value="{{ receipt.transaction_date or '' }}" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+
+                            <label>レシート合計</label>
+                            <input type="number" id="total_amount_check" value="{{ receipt.total_amount_check or 0 }}" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+
+                            <label>小計</label>
+                            <input type="number" id="subtotal_amount" value="{{ receipt.subtotal_amount or 0 }}" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+
+                            <label>8%税額</label>
+                            <input type="number" id="tax_8_amount" value="{{ receipt.tax_8_amount or 0 }}" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+
+                            <label>10%税額</label>
+                            <input type="number" id="tax_10_amount" value="{{ receipt.tax_10_amount or 0 }}" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                        </div>
+                        <button class="btn btn-primary" style="margin-top: 1rem;" onclick="saveHeader()">店舗情報を保存</button>
+                    </div>
+                </div>
+
+                <!-- 明細一覧 -->
+                <div class="panel">
+                    <div class="panel-header">明細一覧 ({{ items|length }}件)</div>
+                    <div class="panel-body" style="padding: 0; overflow-x: auto;">
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>取得名</th>
+                                    <th style="width: 150px;">商品名</th>
+                                    <th style="width: 50px;">数量</th>
+                                    <th style="width: 60px;">税率</th>
+                                    <th style="width: 80px;">税額</th>
+                                    <th style="width: 90px;">税込価</th>
+                                    <th style="width: 70px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in items %}
+                                <tr data-item-id="{{ item.id }}" data-line-number="{{ loop.index }}" {% if item.is_suggested %}class="suggested"{% endif %} {% if (item.tax_included or 0) < 0 %}class="discount-row"{% endif %}>
+                                    <td style="font-size: 0.85rem; color: #666;">{{ item.ocr_name or '' }}</td>
+                                    <td>
+                                        <div style="display: flex; align-items: center; gap: 2px;">
+                                            <input type="text" class="item-input" data-field="official_name" value="{{ item.product_name_display or '' }}" style="flex: 1;" placeholder="商品名を入力">
+                                            <button class="btn-icon" style="padding: 2px 4px; font-size: 0.7rem; background: #9b59b6; color: white; border: none; border-radius: 3px; cursor: pointer;" onclick="registerProductRule('{{ item.ocr_name|e }}', this)" title="ルール登録">R</button>
+                                        </div>
+                                    </td>
+                                    <td><input type="number" class="item-input" data-field="quantity" value="{{ item.quantity or 1 }}" style="width: 45px;"></td>
+                                    <td>
+                                        <select class="item-input" data-field="tax_rate" style="width: 55px;">
+                                            <option value="10" {% if item.tax_rate == 10 %}selected{% endif %}>10%</option>
+                                            <option value="8" {% if item.tax_rate == 8 %}selected{% endif %}>8%</option>
+                                        </select>
+                                    </td>
+                                    <td><input type="number" class="item-input" data-field="tax_amount" value="{{ item.tax_amount or 0 }}" style="width: 70px;"></td>
+                                    <td><input type="number" class="item-input" data-field="std_amount" value="{{ item.tax_included or 0 }}" style="width: 80px;"></td>
+                                    <td style="white-space: nowrap;">
+                                        {% if (item.tax_included or 0) < 0 and not loop.first %}
+                                        <button class="btn btn-warning" style="padding: 0.2rem 0.4rem; font-size: 0.7rem; background: #f39c12;" onclick="mergeWithAbove('{{ item.id }}')" title="上の行と合算">↑</button>
+                                        {% endif %}
+                                        <button class="btn btn-danger" style="padding: 0.2rem 0.4rem; font-size: 0.7rem;" onclick="deleteItem('{{ item.id }}')">×</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 新規明細追加 -->
+                    <div style="padding: 1rem; border-top: 1px solid #eee;">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem;">明細を追加</div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                            <input type="text" id="new_ocr_name" placeholder="取得名" style="flex: 1; min-width: 100px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="text" id="new_product_name" placeholder="商品名" style="flex: 1; min-width: 100px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="number" id="new_quantity" placeholder="数量" value="1" style="width: 60px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <select id="new_tax_rate" style="width: 70px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                                <option value="10">10%</option>
+                                <option value="8">8%</option>
+                            </select>
+                            <input type="number" id="new_std_amount" placeholder="税込価" style="width: 90px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <button class="btn btn-success" onclick="addItem()">追加</button>
+                        </div>
+                    </div>
+
+                    <!-- 金額比較表（OCR vs 計算） -->
+                    <div class="summary" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
+                        <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;"></div>
+                        <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; text-align: right;">レシート記載</div>
+                        <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; text-align: right;">明細合算</div>
+
+                        <div>8%税額</div>
+                        <div style="text-align: right;">{% if ocr_tax_8 is not none %}¥{{ '{:,}'.format(ocr_tax_8) }}{% else %}-{% endif %}</div>
+                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax_8) }}</div>
+
+                        <div>10%税額</div>
+                        <div style="text-align: right;">{% if ocr_tax_10 is not none %}¥{{ '{:,}'.format(ocr_tax_10) }}{% else %}-{% endif %}</div>
+                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax_10) }}</div>
+
+                        <div>税額合計</div>
+                        <div style="text-align: right;">{% if ocr_tax_8 is not none or ocr_tax_10 is not none %}¥{{ '{:,}'.format((ocr_tax_8 or 0) + (ocr_tax_10 or 0)) }}{% else %}-{% endif %}</div>
+                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax) }}</div>
+
+                        <div>小計</div>
+                        <div style="text-align: right;">{% if ocr_subtotal is not none %}¥{{ '{:,}'.format(ocr_subtotal) }}{% else %}-{% endif %}</div>
+                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_total - calc_tax) }}</div>
+
+                        <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem;">合計</div>
+                        <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem; text-align: right;">{% if ocr_total is not none %}¥{{ '{:,}'.format(ocr_total) }}{% else %}-{% endif %}</div>
+                        <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem; text-align: right;">¥{{ '{:,}'.format(calc_total) }}</div>
+
+                        {% if ocr_total is not none and calc_total != ocr_total %}
+                        <div style="color: #e74c3c;">差額</div>
+                        <div></div>
+                        <div style="text-align: right; color: #e74c3c;">¥{{ '{:,}'.format(calc_total - ocr_total) }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn btn-success" onclick="verifyReceipt()">確認済みにする</button>
+                        <button class="btn btn-primary" onclick="saveAllCategories()">明細を保存</button>
+                    </div>
+                </div>
+
+                <!-- 支払い取引との紐付け -->
+                <div class="panel link-section">
+                    <div class="panel-header">支払い取引との紐付け</div>
+                    <div class="panel-body">
+                        {% if linked_transaction %}
+                        <div class="linked-tx">
+                            <div class="label">紐付け済み取引</div>
+                            <div class="content">
+                                {{ linked_transaction.Rawdata_BANK_transactions.date }} -
+                                {{ linked_transaction.Rawdata_BANK_transactions.content }}
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 0.5rem;">
+                                <span style="color: #666; font-size: 0.85rem;">{{ linked_transaction.Rawdata_BANK_transactions.institution }}</span>
+                                <span style="font-family: monospace; font-weight: 500;">¥{{ '{:,}'.format(linked_transaction.Rawdata_BANK_transactions.amount or 0) }}</span>
+                            </div>
+                            <button class="btn btn-danger" style="margin-top: 0.5rem;" onclick="unlinkReceipt()">紐付け解除</button>
+                        </div>
+                        {% else %}
+                        <!-- 現金決済オプション -->
+                        <div style="margin-bottom: 1rem; padding: 0.75rem; background: #fff3cd; border-radius: 4px;">
+                            <button class="btn" style="background: #28a745; color: white; width: 100%;" onclick="markAsCash()">
+                                💵 現金決済として登録（紐付けなしで明細一覧へ追加）
+                            </button>
+                        </div>
+
+                        <!-- 日付フィルタ -->
+                        <div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <label style="font-size: 0.85rem; color: #666;">日付指定:</label>
+                            <input type="date" id="filter_date" value="{{ filter_date or (receipt.transaction_date[:10] if receipt and receipt.transaction_date else '') }}" style="padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <button class="btn btn-primary" style="padding: 0.4rem 0.8rem;" onclick="filterByDate()">絞込</button>
+                            {% if filter_date %}
+                            <button class="btn btn-danger" style="padding: 0.4rem 0.8rem;" onclick="clearFilter()">フィルタ解除</button>
+                            {% endif %}
+                        </div>
+
+                        {% if filter_date %}
+                        <p style="margin-bottom: 0.5rem; padding: 0.5rem; background: #d4edda; border-radius: 4px; font-size: 0.85rem;">
+                            <strong>{{ filter_date }}</strong> の取引を表示中（{{ candidates|length }}件、金額近い順）
+                        </p>
+                        {% else %}
+                        <p style="margin-bottom: 0.5rem; color: #7f8c8d; font-size: 0.85rem;">
+                            候補: {{ candidates|length }}件（同日優先、金額近い順）
+                        </p>
+                        {% endif %}
+                        {% endif %}
+
+                        <div class="candidates-list" id="candidatesList">
+                            {% for c in candidates %}
+                            <div class="candidate-item {% if linked_transaction and linked_transaction.transaction_id == c.id %}selected{% endif %} {% if receipt and receipt.transaction_date and c.date == receipt.transaction_date[:10] %}same-day{% endif %}"
+                                 data-tx-id="{{ c.id }}" data-date="{{ c.date }}" onclick="selectCandidate(this, '{{ c.id }}')">
+                                <div class="date">{{ c.date }}{% if receipt and receipt.transaction_date and c.date == receipt.transaction_date[:10] %} <span style="color: #27ae60; font-weight: bold;">●同日</span>{% endif %}</div>
+                                <div class="content">{{ c.content }}</div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span class="institution">{{ c.institution }}</span>
+                                    <span class="amount">¥{{ '{:,}'.format(c.amount or 0) }}</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% if not linked_transaction and candidates %}
+                        <div class="actions">
+                            <button class="btn btn-primary" onclick="linkSelected()" id="linkBtn" disabled>選択した取引と紐付け</button>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="panel">
+                    <div class="panel-body">
+                        <p style="color: #7f8c8d; text-align: center; padding: 2rem;">
+                            レシートデータがありません（処理に失敗した可能性があります）
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const receiptId = "{{ receipt.id if receipt else '' }}";
+        let selectedTxId = null;
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function selectCandidate(el, txId) {
+            document.querySelectorAll('.candidate-item').forEach(item => item.classList.remove('selected'));
+            el.classList.add('selected');
+            selectedTxId = txId;
+            const linkBtn = document.getElementById('linkBtn');
+            if (linkBtn) linkBtn.disabled = false;
+        }
+
+        // 現金決済として登録（紐付けなしで明細一覧へ追加）
+        async function markAsCash() {
+            if (!receiptId) return;
+            if (!confirm('現金決済として登録しますか？\n（レシート明細がそのまま明細一覧に追加されます）')) return;
+
+            try {
+                const res = await fetch('/api/receipt/mark_cash', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('現金決済として登録しました');
+                    location.reload();
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 日付でフィルタ（サーバーサイドで取得）
+        function filterByDate() {
+            const filterDate = document.getElementById('filter_date').value;
+            if (!filterDate) {
+                showToast('日付を指定してください', 'error');
+                return;
+            }
+            // 日付パラメータ付きでページをリロード
+            const url = new URL(window.location.href);
+            url.searchParams.set('filter_date', filterDate);
+            window.location.href = url.toString();
+        }
+
+        // フィルタクリア
+        function clearFilter() {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('filter_date');
+            window.location.href = url.toString();
+        }
+
+        async function linkSelected() {
+            if (!selectedTxId || !receiptId) return;
+
+            try {
+                const res = await fetch('/api/receipt/link', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId, transaction_id: selectedTxId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('紐付けを保存しました');
+                    location.reload();
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        async function unlinkReceipt() {
+            if (!receiptId) return;
+            if (!confirm('紐付けを解除しますか？')) return;
+
+            try {
+                const res = await fetch('/api/receipt/unlink', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('紐付けを解除しました');
+                    location.reload();
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        async function verifyReceipt() {
+            if (!receiptId) return;
+
+            try {
+                const res = await fetch('/api/receipt/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('確認済みにしました');
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        async function saveAllCategories() {
+            // 行ごとにデータを収集して保存
+            const rows = document.querySelectorAll('tbody tr[data-item-id]');
+            let savedCount = 0;
+
+            for (const row of rows) {
+                const itemId = row.dataset.itemId;
+                const inputs = row.querySelectorAll('.item-input');
+
+                const data = { item_id: itemId };
+                inputs.forEach(input => {
+                    const field = input.dataset.field;
+                    let value = input.value;
+
+                    // 数値フィールドは変換
+                    if (['quantity', 'tax_rate', 'base_price', 'tax_amount', 'std_amount'].includes(field)) {
+                        value = parseInt(value) || 0;
+                    }
+                    data[field] = value;
+                });
+
+                try {
+                    const res = await fetch('/api/receipt/update_item', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await res.json();
+                    if (result.status === 'success') savedCount++;
+                } catch (e) {
+                    console.error('Save error:', e);
+                }
+            }
+
+            showToast(`${savedCount}件の明細を保存しました`);
+            location.reload();  // 合計再計算のためリロード
+        }
+
+        // 店舗情報を保存
+        async function saveHeader() {
+            if (!receiptId) return;
+
+            const data = {
+                receipt_id: receiptId,
+                shop_name: document.getElementById('shop_name').value,
+                transaction_date: document.getElementById('transaction_date').value,
+                total_amount_check: parseInt(document.getElementById('total_amount_check').value) || 0,
+                subtotal_amount: parseInt(document.getElementById('subtotal_amount').value) || 0,
+                tax_8_amount: parseInt(document.getElementById('tax_8_amount').value) || 0,
+                tax_10_amount: parseInt(document.getElementById('tax_10_amount').value) || 0
+            };
+
+            try {
+                const res = await fetch('/api/receipt/update_header', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('店舗情報を保存しました');
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 明細を追加
+        async function addItem() {
+            if (!receiptId) return;
+
+            const ocrName = document.getElementById('new_ocr_name').value.trim();
+            const productName = document.getElementById('new_product_name').value.trim();
+            if (!ocrName && !productName) {
+                showToast('取得名または商品名を入力してください', 'error');
+                return;
+            }
+
+            const stdAmount = parseInt(document.getElementById('new_std_amount').value) || 0;
+            const taxRate = parseInt(document.getElementById('new_tax_rate').value) || 10;
+            const taxAmount = Math.floor(stdAmount * taxRate / (100 + taxRate));
+
+            const data = {
+                receipt_id: receiptId,
+                product_name: ocrName || productName,  // 取得名（OCR読み取り値として保存）
+                official_name: productName || null,    // 商品名（手入力）
+                quantity: parseInt(document.getElementById('new_quantity').value) || 1,
+                tax_rate: taxRate,
+                std_amount: stdAmount,
+                tax_amount: taxAmount
+            };
+
+            try {
+                const res = await fetch('/api/receipt/add_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('明細を追加しました');
+                    location.reload();
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 明細を削除
+        async function deleteItem(itemId) {
+            if (!confirm('この明細を削除しますか？')) return;
+
+            try {
+                const res = await fetch('/api/receipt/delete_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('明細を削除しました');
+                    location.reload();
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 割引行を上の行と合算
+        async function mergeWithAbove(itemId) {
+            try {
+                const res = await fetch('/api/receipt/merge_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId, receipt_id: receiptId })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('上の行と合算しました');
+                    location.reload();
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 商品名ルールを登録
+        async function registerProductRule(ocrName, btn) {
+            const row = btn.closest('tr');
+            const productNameInput = row.querySelector('input[data-field="official_name"]');
+            const productName = productNameInput ? productNameInput.value.trim() : '';
+
+            if (!productName) {
+                showToast('商品名を入力してからRボタンを押してください', 'error');
+                return;
+            }
+
+            if (ocrName === productName) {
+                showToast('取得名と商品名が同じです', 'error');
+                return;
+            }
+
+            const shopName = document.getElementById('shop_name')?.value || null;
+
+            try {
+                const res = await fetch('/api/receipt/register_product_rule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ocr_name: ocrName, product_name: productName, shop_name: shopName })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast(`ルール登録: ${ocrName} → ${productName}`);
+                    btn.style.background = '#27ae60';
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // レシート全体を削除
+        async function deleteReceipt() {
+            if (!receiptId) return;
+            if (!confirm('このレシートを完全に削除しますか？\n（紐付けられた取引は復元されます）')) return;
+
+            try {
+                const res = await fetch('/api/receipt/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('レシートを削除しました');
+                    window.location.href = '/receipts';
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+    </script>
+</body>
+</html>

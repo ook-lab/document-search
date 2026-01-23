@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Run Requests - ドキュメント処理システム</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1em;
+        }
+
+        .nav-links {
+            margin-top: 15px;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            margin: 0 10px;
+            padding: 5px 15px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        .nav-links a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .form-section {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+            margin-left: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .requests-list {
+            margin-top: 30px;
+        }
+
+        .request-card {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #2563eb;
+        }
+
+        .request-card.completed {
+            border-left-color: #10b981;
+        }
+
+        .request-card.failed {
+            border-left-color: #ef4444;
+        }
+
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .request-id {
+            font-family: monospace;
+            background: #e5e7eb;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .request-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .request-status.queued {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .request-status.completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .request-status.processing {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .request-status.failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .request-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            font-size: 0.9em;
+        }
+
+        .info-item .label {
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .info-item .value {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .execution-history {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .execution-history h4 {
+            color: #374151;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .execution-item {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 0.85em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .command-box {
+            background: #1f2937;
+            color: #d1d5db;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-top: 15px;
+            overflow-x: auto;
+        }
+
+        .command-box code {
+            color: #10b981;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn-execute {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-execute:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-execute:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-execute.processing {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+
+        .btn-retry {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-retry:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 158, 11, 0.4);
+        }
+
+        .btn-delete {
+            background: #6b7280;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-delete:hover:not(:disabled) {
+            background: #ef4444;
+            transform: translateY(-2px);
+        }
+
+        .doc-titles {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f3f4f6;
+            border-radius: 6px;
+            font-size: 0.85em;
+            color: #4b5563;
+        }
+
+        .doc-titles-label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 5px;
+        }
+
+        .doc-titles-list {
+            word-break: break-all;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .status-message.success {
+            background: #d1fae5;
+            color: #065f46;
+            display: block;
+        }
+
+        .status-message.error {
+            background: #fee2e2;
+            color: #991b1b;
+            display: block;
+        }
+
+        .status-message.info {
+            background: #dbeafe;
+            color: #1e40af;
+            display: block;
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #2563eb;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            color: #1e40af;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .empty-state p {
+            margin-bottom: 10px;
+        }
+
+        /* ダッシュボードスタイル */
+        .dashboard-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .dashboard-panel {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .dashboard-panel h3 {
+            color: #1f2937;
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .queue-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+            gap: 10px;
+        }
+
+        .queue-item {
+            text-align: center;
+            padding: 12px 8px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .queue-item .count {
+            font-size: 1.8em;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .queue-item .label {
+            font-size: 0.75em;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .queue-item.pending .count { color: #f59e0b; }
+        .queue-item.queued .count { color: #8b5cf6; }
+        .queue-item.processing .count { color: #3b82f6; }
+        .queue-item.completed .count { color: #10b981; }
+        .queue-item.failed .count { color: #ef4444; }
+
+        .worker-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .worker-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .worker-item .worker-id {
+            font-family: monospace;
+            font-size: 0.8em;
+            color: #374151;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .worker-item .worker-count {
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .worker-summary {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #eff6ff;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .worker-summary .total {
+            font-size: 1.5em;
+            font-weight: 700;
+            color: #2563eb;
+        }
+
+        .worker-summary .label {
+            font-size: 0.85em;
+            color: #1e40af;
+        }
+
+        .dashboard-updated {
+            font-size: 0.75em;
+            color: #9ca3af;
+            text-align: right;
+            margin-top: 10px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-refresh {
+            background: #e5e7eb;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+
+        .btn-refresh:hover {
+            background: #d1d5db;
+        }
+
+        .no-workers {
+            text-align: center;
+            color: #9ca3af;
+            padding: 20px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Processing Queue</h1>
+            <p>ドキュメント処理キューの管理</p>
+            <div class="nav-links">
+                <a href="/">Run Requests</a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- 情報ボックス -->
+            <div class="info-box">
+                <p><strong>設計原則:</strong> pending → queued → processing → completed/failed</p>
+                <p><strong>使い方:</strong> 下のフォームでキューに追加。Worker が自動的に queued を消化します。</p>
+            </div>
+
+            <!-- ダッシュボード -->
+            <div class="dashboard-section" id="dashboard-section">
+                <!-- Queue パネル -->
+                <div class="dashboard-panel">
+                    <h3>📊 Queue 状態</h3>
+                    <div class="queue-grid" id="queue-grid">
+                        <div class="queue-item pending">
+                            <div class="count" id="q-pending">-</div>
+                            <div class="label">Pending</div>
+                        </div>
+                        <div class="queue-item queued">
+                            <div class="count" id="q-queued">-</div>
+                            <div class="label">Queued</div>
+                        </div>
+                        <div class="queue-item processing">
+                            <div class="count" id="q-processing">-</div>
+                            <div class="label">Processing</div>
+                        </div>
+                        <div class="queue-item completed">
+                            <div class="count" id="q-completed">-</div>
+                            <div class="label">Completed</div>
+                        </div>
+                        <div class="queue-item failed">
+                            <div class="count" id="q-failed">-</div>
+                            <div class="label">Failed</div>
+                        </div>
+                    </div>
+                    <div class="dashboard-updated">
+                        <span id="dashboard-updated">更新中...</span>
+                        <button class="btn-refresh" onclick="loadDashboard()">🔄</button>
+                    </div>
+                </div>
+
+                <!-- Workers パネル -->
+                <div class="dashboard-panel">
+                    <h3>👷 Workers</h3>
+                    <div class="worker-summary">
+                        <div>
+                            <div class="total" id="w-active">-</div>
+                            <div class="label">並列処理中</div>
+                        </div>
+                    </div>
+                    <div class="worker-list" id="worker-list">
+                        <div class="no-workers">ワーカー情報なし</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ステータスメッセージ -->
+            <div class="status-message" id="status-message"></div>
+
+            <!-- キューに追加フォーム -->
+            <h2 style="margin-bottom: 20px; color: #1f2937;">➕ キューに追加</h2>
+            <div class="form-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="max-items">追加件数（pending → queued）</label>
+                        <input type="number" id="max-items" value="10" min="1" max="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="workspace">ワークスペース（省略可）</label>
+                        <select id="workspace">
+                            <option value="">全体（指定なし）</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="doc-id">特定ドキュメントID（省略可、カンマ区切りで複数可）</label>
+                    <input type="text" id="doc-id" placeholder="UUID を入力（省略時は pending から自動選択）">
+                </div>
+                <button class="btn btn-primary" onclick="enqueueDocuments()">
+                    ➕ キューに追加
+                </button>
+                <button class="btn" id="btn-execute" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; margin-left: 10px;" onclick="executeQueue()">
+                    ▶ 実行
+                </button>
+                <button class="btn btn-secondary" onclick="refreshQueue()">
+                    🔄 一覧を更新
+                </button>
+                <button class="btn" style="background: #ef4444; color: white; margin-left: 10px;" onclick="clearQueue()">
+                    🗑 キューをクリア
+                </button>
+            </div>
+
+            <!-- キュー一覧 -->
+            <h2 style="margin-bottom: 20px; color: #1f2937;">📋 キュー内ドキュメント一覧</h2>
+            <div class="requests-list" id="queue-list">
+                <div class="empty-state">
+                    <p>読み込み中...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ポーリング間隔（ミリ秒）
+        const POLLING_INTERVAL = 5000;
+        let pollingTimer = null;
+        let hasProcessing = false;
+
+        // ページ読み込み時
+        window.addEventListener('load', function() {
+            loadWorkspaces();
+            refreshQueue();
+            loadDashboard();
+            startPolling();
+        });
+
+        // ポーリング開始
+        function startPolling() {
+            if (pollingTimer) return;
+            pollingTimer = setInterval(() => {
+                refreshQueue();
+                loadDashboard();
+            }, POLLING_INTERVAL);
+        }
+
+        // ワークスペース変更時にダッシュボードも更新
+        document.getElementById('workspace').addEventListener('change', function() {
+            loadDashboard();
+            refreshQueue();
+        });
+
+        // ワークスペース一覧を読み込む
+        async function loadWorkspaces() {
+            try {
+                const response = await fetch('/internal/workspaces');
+                const data = await response.json();
+
+                if (data.success && data.workspaces) {
+                    const select = document.getElementById('workspace');
+                    data.workspaces.forEach(workspace => {
+                        const option = document.createElement('option');
+                        option.value = workspace;
+                        option.textContent = workspace;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('ワークスペース読み込みエラー:', error);
+            }
+        }
+
+        // ダッシュボードを読み込む
+        async function loadDashboard() {
+            try {
+                const workspace = document.getElementById('workspace').value || '';
+                const url = workspace
+                    ? `/internal/dashboard?workspace=${encodeURIComponent(workspace)}`
+                    : '/internal/dashboard';
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    // Queue 状態を更新
+                    document.getElementById('q-pending').textContent = data.queue.pending || 0;
+                    document.getElementById('q-queued').textContent = data.queue.queued || 0;
+                    document.getElementById('q-processing').textContent = data.queue.processing || 0;
+                    document.getElementById('q-completed').textContent = data.queue.completed || 0;
+                    document.getElementById('q-failed').textContent = data.queue.failed || 0;
+
+                    // Workers 状態を更新
+                    document.getElementById('w-active').textContent = data.workers.active_processing;
+
+                    const workerList = document.getElementById('worker-list');
+                    if (data.workers.by_worker && data.workers.by_worker.length > 0) {
+                        workerList.innerHTML = data.workers.by_worker.map(w => `
+                            <div class="worker-item">
+                                <span class="worker-id" title="${w.worker_id}">${w.worker_id}</span>
+                                <span class="worker-count">${w.count} 件</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        workerList.innerHTML = '<div class="no-workers">アクティブなワーカーなし</div>';
+                    }
+
+                    // 更新時刻
+                    const now = new Date();
+                    document.getElementById('dashboard-updated').textContent =
+                        `最終更新: ${now.toLocaleTimeString('ja-JP')} (${data.workspace})`;
+                }
+            } catch (error) {
+                console.error('ダッシュボード読み込みエラー:', error);
+                document.getElementById('dashboard-updated').textContent = '更新エラー';
+            }
+        }
+
+        // キューに追加
+        async function enqueueDocuments() {
+            const limit = parseInt(document.getElementById('max-items').value) || 10;
+            const workspace = document.getElementById('workspace').value || null;
+            const docIdInput = document.getElementById('doc-id').value.trim();
+
+            try {
+                const body = { limit: limit };
+                if (workspace) body.workspace = workspace;
+                if (docIdInput) {
+                    // カンマ区切りで複数IDに対応
+                    body.doc_ids = docIdInput.split(',').map(id => id.trim()).filter(id => id);
+                }
+
+                const response = await fetch('/internal/run-requests', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', `✅ ${data.enqueued_count}件をキューに追加しました`);
+                    refreshQueue();
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            }
+        }
+
+        // キューを実行（Worker を起動）
+        let isExecuting = false;
+        let executionMonitorTimer = null;
+
+        async function executeQueue() {
+            if (isExecuting) return;
+
+            const btn = document.getElementById('btn-execute');
+            const workspace = document.getElementById('workspace').value || 'all';
+            const limit = parseInt(document.getElementById('max-items').value) || 10;
+
+            // ボタンを無効化
+            isExecuting = true;
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.innerHTML = '⏳ 実行中...';
+
+            try {
+                showMessage('info', '⏳ Worker を起動中...');
+
+                const response = await fetch('/internal/queue/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        workspace: workspace,
+                        limit: limit
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let msg = `✅ ${data.message}`;
+                    if (data.log_file) {
+                        msg += `\nログ: ${data.log_file}`;
+                    }
+                    showMessage('success', msg);
+
+                    // 処理完了を監視
+                    startExecutionMonitor();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                    resetExecuteButton();
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+                resetExecuteButton();
+            }
+        }
+
+        function startExecutionMonitor() {
+            // 既存のタイマーをクリア
+            if (executionMonitorTimer) {
+                clearInterval(executionMonitorTimer);
+            }
+
+            // 3秒ごとにキュー状態を確認
+            executionMonitorTimer = setInterval(async () => {
+                try {
+                    const response = await fetch('/internal/dashboard');
+                    const data = await response.json();
+
+                    if (data.success) {
+                        const queue = data.queue;
+                        const queued = queue.queued || 0;
+                        const processing = queue.processing || 0;
+
+                        // 更新
+                        refreshQueue();
+                        loadDashboard();
+
+                        // queued も processing も 0 なら完了
+                        if (queued === 0 && processing === 0) {
+                            clearInterval(executionMonitorTimer);
+                            executionMonitorTimer = null;
+                            showMessage('success', '✅ 全ての処理が完了しました');
+                            resetExecuteButton();
+                        }
+                    }
+                } catch (error) {
+                    // エラー時は監視を停止してボタンを戻す
+                    clearInterval(executionMonitorTimer);
+                    executionMonitorTimer = null;
+                    resetExecuteButton();
+                }
+            }, 3000);
+        }
+
+        function resetExecuteButton() {
+            const btn = document.getElementById('btn-execute');
+            isExecuting = false;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.innerHTML = '▶ 実行';
+        }
+
+        // キューをクリア（queued → pending に戻す）
+        async function clearQueue() {
+            if (!confirm('キュー内のドキュメントをすべて pending に戻しますか？\n（processing 中のものは自然完了します）')) {
+                return;
+            }
+
+            const workspace = document.getElementById('workspace').value || null;
+
+            try {
+                const url = workspace
+                    ? `/internal/queue/clear?workspace=${encodeURIComponent(workspace)}`
+                    : '/internal/queue/clear';
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', `✅ ${data.cleared_count}件を pending に戻しました`);
+                    refreshQueue();
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            }
+        }
+
+        // キュー一覧を更新
+        async function refreshQueue() {
+            try {
+                const workspace = document.getElementById('workspace').value || '';
+                const url = workspace
+                    ? `/internal/run-requests?workspace=${encodeURIComponent(workspace)}`
+                    : '/internal/run-requests';
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                const listEl = document.getElementById('queue-list');
+
+                if (!data.success) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <p>❌ 取得エラー: ${data.error || 'Unknown error'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const queuedDocs = data.queued_docs || [];
+                const status = data.status || {};
+
+                if (queuedDocs.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <p>📭 キュー（queued）にドキュメントがありません</p>
+                            <p>上のフォームで pending からキューに追加してください</p>
+                            <p style="margin-top: 10px; font-size: 0.9em; color: #6b7280;">
+                                pending: ${status.pending || 0} / processing: ${status.processing || 0} / completed: ${status.completed || 0}
+                            </p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                listEl.innerHTML = queuedDocs.map(doc => {
+                    const title = doc.title || doc.file_name || '(無題)';
+                    const shortId = doc.id.substring(0, 8);
+
+                    return `
+                        <div class="request-card">
+                            <div class="request-header">
+                                <span class="request-id" title="${doc.id}">${shortId}...</span>
+                                <span class="request-status queued">⏳ queued</span>
+                            </div>
+                            <div class="doc-titles">
+                                <div class="doc-titles-label">📄 ${title}</div>
+                            </div>
+                            <div class="request-info">
+                                <div class="info-item">
+                                    <div class="label">ワークスペース</div>
+                                    <div class="value">${doc.workspace || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">ドキュメント種別</div>
+                                    <div class="value">${doc.doc_type || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">試行回数</div>
+                                    <div class="value">${doc.attempt_count || 0}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">作成日時</div>
+                                    <div class="value">${formatDate(doc.created_at)}</div>
+                                </div>
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn-delete" onclick="removeFromQueue('${doc.id}')" title="キューから削除（pending に戻す）">
+                                    🗑 キューから削除
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('キュー一覧取得エラー:', error);
+                document.getElementById('queue-list').innerHTML = `
+                    <div class="empty-state">
+                        <p>❌ 取得エラー: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // キューから削除（queued → pending に戻す）
+        async function removeFromQueue(docId) {
+            if (!confirm('このドキュメントをキューから削除しますか？\n（pending に戻ります）')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/internal/queue/remove/${docId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('success', '🗑 キューから削除しました（pending に戻りました）');
+                    refreshQueue();
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ 削除失敗: ${data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('削除エラー:', error);
+                showMessage('error', `❌ 通信エラー: ${error.message}`);
+            }
+        }
+
+        // ステータスラベル
+        function getStatusLabel(status) {
+            const labels = {
+                'queued': '⏳ 待機中',
+                'processing': '🔄 処理中',
+                'completed': '✅ 完了',
+                'failed': '❌ 失敗',
+                'applied': '✅ 適用済み',
+                'rejected': '⚠️ 拒否',
+                'cancelled': '🚫 キャンセル'
+            };
+            return labels[status] || status;
+        }
+
+        // 日時フォーマット
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString('ja-JP', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // メッセージを表示
+        function showMessage(type, message) {
+            const messageBox = document.getElementById('status-message');
+            messageBox.className = 'status-message ' + type;
+            messageBox.textContent = message;
+            setTimeout(() => {
+                messageBox.className = 'status-message';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

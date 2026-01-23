@@ -43,7 +43,7 @@ ADD COLUMN IF NOT EXISTS memory_used_gb REAL DEFAULT 0.0,
 ADD COLUMN IF NOT EXISTS memory_total_gb REAL DEFAULT 0.0,
 ADD COLUMN IF NOT EXISTS throttle_delay REAL DEFAULT 0.0,
 ADD COLUMN IF NOT EXISTS adjustment_count INTEGER DEFAULT 0,
-ADD COLUMN IF NOT EXISTS max_parallel INTEGER DEFAULT 3,
+ADD COLUMN IF NOT EXISTS max_parallel INTEGER DEFAULT 1,
 ADD COLUMN IF NOT EXISTS current_workers INTEGER DEFAULT 0;
 """
 
@@ -65,7 +65,7 @@ try:
         client.table('processing_lock').insert({
             'id': 1,
             'is_processing': False,
-            'max_parallel': 3,
+            'max_parallel': 1,
             'current_workers': 0,
             'current_index': 0,
             'total_count': 0,

@@ -126,9 +126,14 @@ class StateManager:
 
     # ========== ログ管理 ==========
 
-    def add_log(self, message: str, level: str = 'INFO'):
+    def add_log(self, message: str, level: str = 'INFO', skip_logger: bool = False):
         """
         ログを追加（メモリ + DB同期）
+
+        Args:
+            message: ログメッセージ
+            level: ログレベル（INFO, WARNING, ERROR）
+            skip_logger: Trueの場合、logger出力をスキップ（デッドロック回避用）
         """
         timestamp = datetime.now().strftime('%H:%M:%S')
         formatted_msg = f"[{timestamp}] {message}"
@@ -138,13 +143,14 @@ class StateManager:
             if len(self._cache['logs']) > MAX_LOG_ENTRIES:
                 self._cache['logs'] = self._cache['logs'][-MAX_LOG_ENTRIES:]
 
-        # ログレベルに応じて出力
-        if level == 'ERROR':
-            logger.error(message)
-        elif level == 'WARNING':
-            logger.warning(message)
-        else:
-            logger.info(message)
+        # ログレベルに応じて出力（skip_loggerがTrueの場合はスキップ）
+        if not skip_logger:
+            if level == 'ERROR':
+                logger.error(message)
+            elif level == 'WARNING':
+                logger.warning(message)
+            else:
+                logger.info(message)
 
     # ========== 処理制御 ==========
 

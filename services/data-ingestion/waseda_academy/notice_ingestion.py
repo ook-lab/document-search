@@ -39,16 +39,25 @@ class WasedaNoticeIngestionPipeline:
     def __init__(
         self,
         pdf_folder_id: Optional[str] = None,
-        session_cookies: Optional[Dict[str, str]] = None
+        session_cookies: Optional[Dict[str, str]] = None,
+        owner_id: Optional[str] = None
     ):
         """
         Args:
             pdf_folder_id: PDF保存先のDriveフォルダID（Noneの場合は環境変数から取得）
             session_cookies: 早稲田アカデミーOnlineのセッションクッキー（PDF取得用）
+            owner_id: オーナーID（Supabase Auth ユーザーID、省略時は環境変数から取得）
         """
         self.pdf_folder_id = pdf_folder_id or os.getenv("WASEDA_PDF_FOLDER_ID")
         self.session_cookies = session_cookies or {}
         self.base_url = "https://online.waseda-ac.co.jp"
+
+        # Phase 3: owner_id を取得（必須）
+        self.owner_id = owner_id or os.getenv('DEFAULT_OWNER_ID')
+        if not self.owner_id:
+            raise ValueError(
+                "owner_id が指定されていません。引数で指定するか、DEFAULT_OWNER_ID を .env に設定してください。"
+            )
 
         # コネクタの初期化
         self.drive = GoogleDriveConnector()
@@ -309,7 +318,9 @@ class WasedaNoticeIngestionPipeline:
                     'display_subject': title,
                     'display_sent_at': sent_at,
                     'display_sender': source.get('label', '不明'),
-                    'display_post_text': message
+                    'display_post_text': message,
+                    # Phase 3: owner_id 必須
+                    'owner_id': self.owner_id
                 }
 
                 try:

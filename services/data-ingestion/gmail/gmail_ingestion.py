@@ -45,7 +45,8 @@ class GmailIngestionPipeline:
         user_email: Optional[str] = None,
         config_file: Optional[str] = None,
         attachment_folder_id: Optional[str] = None,
-        email_folder_id: Optional[str] = None
+        email_folder_id: Optional[str] = None,
+        owner_id: Optional[str] = None
     ):
         """
         Args:
@@ -54,6 +55,7 @@ class GmailIngestionPipeline:
             config_file: 設定ファイルのパス（Noneの場合はデフォルト設定を使用）
             attachment_folder_id: 添付ファイル保存先のDriveフォルダID（Noneの場合は環境変数から取得）
             email_folder_id: メール本文HTML保存先のDriveフォルダID（Noneの場合は環境変数から取得）
+            owner_id: オーナーID（Supabase Auth ユーザーID、省略時は環境変数から取得）
         """
         self.mail_type = mail_type.upper()
 
@@ -64,6 +66,13 @@ class GmailIngestionPipeline:
 
         if not self.user_email:
             raise ValueError(f"user_emailが指定されていません。GMAIL_{self.mail_type}_USER_EMAILを.envに設定するか、引数で指定してください。")
+
+        # Phase 3: owner_id を取得（必須）
+        self.owner_id = owner_id or os.getenv('DEFAULT_OWNER_ID')
+        if not self.owner_id:
+            raise ValueError(
+                "owner_id が指定されていません。引数で指定するか、DEFAULT_OWNER_ID を .env に設定してください。"
+            )
 
         # 設定ファイルの読み込み
         self.config = self._load_config(config_file)
@@ -565,7 +574,9 @@ class GmailIngestionPipeline:
                     'display_sent_at': sent_at,
                     'display_sender': sender_name,
                     'display_sender_email': sender_email,
-                    'display_post_text': email_body  # 全文
+                    'display_post_text': email_body,  # 全文
+                    # Phase 3: owner_id 必須
+                    'owner_id': self.owner_id
                 }
 
                 try:
@@ -606,7 +617,9 @@ class GmailIngestionPipeline:
                         'display_sent_at': sent_at,
                         'display_sender': sender_name,
                         'display_sender_email': sender_email,
-                        'display_post_text': email_body  # 全文
+                        'display_post_text': email_body,  # 全文
+                        # Phase 3: owner_id 必須
+                        'owner_id': self.owner_id
                     }
 
                     try:

@@ -118,6 +118,66 @@ def adaptive_preprocess(
     return processed
 
 
+def preprocess_for_ppstructure(
+    image: np.ndarray,
+    enhance_contrast: bool = True,
+    sharpen: bool = True
+) -> Tuple[np.ndarray, dict]:
+    """
+    P2-1: PPStructure表検出用の画像前処理
+
+    表罫線を強調し、PPStructureの検出精度を向上させる
+
+    Args:
+        image: 入力画像（numpy array、RGB）
+        enhance_contrast: コントラスト強調を適用
+        sharpen: シャープ化を適用
+
+    Returns:
+        (processed_image, stats): 前処理済み画像と統計情報
+    """
+    stats = {
+        'original_shape': image.shape,
+        'applied_operations': []
+    }
+
+    processed = image.copy()
+
+    # 1. コントラスト強調（LABカラースペースで輝度のみ調整）
+    if enhance_contrast:
+        try:
+            # RGB → LAB
+            lab = cv2.cvtColor(processed, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+
+            # CLAHE を L チャンネルに適用
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+
+            # LAB → RGB
+            lab = cv2.merge([l, a, b])
+            processed = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            stats['applied_operations'].append('CLAHE_LAB')
+        except Exception as e:
+            logger.warning(f"[P2-1] コントラスト強調失敗: {e}")
+
+    # 2. シャープ化（表罫線を強調）
+    if sharpen:
+        try:
+            # Unsharp Masking
+            blurred = cv2.GaussianBlur(processed, (0, 0), 2)
+            processed = cv2.addWeighted(processed, 1.8, blurred, -0.8, 0)
+            stats['applied_operations'].append('Sharpen')
+        except Exception as e:
+            logger.warning(f"[P2-1] シャープ化失敗: {e}")
+
+    stats['final_shape'] = processed.shape
+    stats['operations_count'] = len(stats['applied_operations'])
+    stats['preproc'] = 'on' if stats['operations_count'] > 0 else 'off'
+
+    return processed, stats
+
+
 def calculate_image_quality_score(image: np.ndarray) -> float:
     """
     画像品質スコアを計算（0.0～1.0）
