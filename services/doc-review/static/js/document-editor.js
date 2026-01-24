@@ -574,6 +574,149 @@ function renderMarkdownTable(text) {
 }
 
 // =============================================================================
+// table_data形式のレンダリング（process HIステージ出力用）
+// =============================================================================
+
+function renderTableDataFormat(table, index) {
+    const tableData = table.table_data;
+    const refIds = table.ref_ids || [];
+
+    if (!tableData || tableData.length === 0) {
+        return `<div class="empty-state"><p>テーブルデータがありません</p></div>`;
+    }
+
+    // クラス名を検出（class_で始まるキー）
+    const firstRow = tableData[0];
+    const classKeys = Object.keys(firstRow).filter(k => k.startsWith('class_'));
+    const hasDate = 'date' in firstRow;
+
+    // クラス別時間割形式かどうかを判定
+    if (classKeys.length > 0 && hasDate) {
+        return renderClassTimetable(tableData, classKeys, refIds, index);
+    }
+
+    // 汎用テーブル形式
+    return renderGenericTableData(tableData, refIds, index);
+}
+
+// クラス別時間割のレンダリング
+function renderClassTimetable(tableData, classKeys, refIds, index) {
+    let html = `<div class="timetable-container">`;
+
+    if (refIds.length > 0) {
+        html += `<div class="table-ref-ids"><small>Ref: ${escapeHtml(refIds.join(', '))}</small></div>`;
+    }
+
+    // 時限を収集
+    const periods = new Set();
+    tableData.forEach(row => {
+        classKeys.forEach(classKey => {
+            const classData = row[classKey];
+            if (classData && typeof classData === 'object') {
+                Object.keys(classData).forEach(k => {
+                    if (k !== 'morning' && k !== 'notes') {
+                        periods.add(k);
+                    }
+                });
+            }
+        });
+    });
+    const sortedPeriods = Array.from(periods).sort((a, b) => parseInt(a) - parseInt(b));
+
+    // クラスごとにテーブルを作成
+    classKeys.forEach(classKey => {
+        const className = classKey.replace('class_', '').replace('_', ' ');
+
+        html += `
+            <div class="class-timetable-section">
+                <h4 class="class-title">📚 ${escapeHtml(className)} 時間割</h4>
+                <div class="table-wrapper">
+                    <table class="data-table timetable-table">
+                        <thead>
+                            <tr>
+                                <th>日付</th>
+                                <th>朝</th>
+        `;
+
+        // 時限ヘッダー
+        sortedPeriods.forEach(p => {
+            html += `<th>${p}限</th>`;
+        });
+
+        html += `</tr></thead><tbody>`;
+
+        // 各日のデータ
+        tableData.forEach(row => {
+            const date = row.date || '';
+            const classData = row[classKey] || {};
+
+            html += `<tr>`;
+            html += `<td class="date-cell">${escapeHtml(date)}</td>`;
+            html += `<td>${escapeHtml(classData.morning || '-')}</td>`;
+
+            sortedPeriods.forEach(p => {
+                const subject = classData[p] || '-';
+                html += `<td>${escapeHtml(subject)}</td>`;
+            });
+
+            html += `</tr>`;
+        });
+
+        html += `</tbody></table></div></div>`;
+    });
+
+    html += `</div>`;
+    return html;
+}
+
+// 汎用table_dataレンダリング
+function renderGenericTableData(tableData, refIds, index) {
+    if (!tableData || tableData.length === 0) {
+        return `<div class="empty-state"><p>データがありません</p></div>`;
+    }
+
+    // 全キーを収集
+    const allKeys = new Set();
+    tableData.forEach(row => {
+        if (typeof row === 'object' && row !== null) {
+            Object.keys(row).forEach(k => allKeys.add(k));
+        }
+    });
+    const keys = Array.from(allKeys);
+
+    let html = `<div class="generic-table-section">`;
+
+    if (refIds.length > 0) {
+        html += `<div class="table-ref-ids"><small>Ref: ${escapeHtml(refIds.join(', '))}</small></div>`;
+    }
+
+    html += `
+        <div class="table-info">${tableData.length} 行</div>
+        <div class="table-wrapper">
+            <table class="data-table rendered-table">
+                <thead>
+                    <tr>
+                        ${keys.map(k => `<th>${escapeHtml(formatFieldName(k))}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    tableData.forEach(row => {
+        html += `<tr>`;
+        keys.forEach(k => {
+            const value = row[k];
+            const formatted = formatCellValue(value);
+            html += `<td title="${escapeHtml(formatCellValue(value, 500))}">${escapeHtml(formatted)}</td>`;
+        });
+        html += `</tr>`;
+    });
+
+    html += `</tbody></table></div></div>`;
+    return html;
+}
+
+// =============================================================================
 // 複数テーブルのレンダリング (structured_tables用)
 // =============================================================================
 
@@ -581,6 +724,12 @@ function renderMultipleTables(key, tables, label) {
     let html = `<div class="structured-tables-container">`;
 
     tables.forEach((table, index) => {
+        // 新形式: table_data を持つ場合（process HIステージ出力）
+        if (table.table_data && Array.isArray(table.table_data)) {
+            html += renderTableDataFormat(table, index);
+            return;
+        }
+
         const tableTitle = table.table_title || table.description || `表 ${index + 1}`;
         const tableType = table.table_type || '';
         const rows = table.rows || [];
