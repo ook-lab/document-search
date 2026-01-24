@@ -21,18 +21,18 @@ def _load_env_file():
     if os.getenv('ENV_FILE_PATH'):
         env_path = Path(os.getenv('ENV_FILE_PATH'))
         if env_path.exists():
-            load_dotenv(env_path, override=True)
+            load_dotenv(env_path, override=False)
             return
 
     # 2. プロジェクトルートの.envを探す
     project_root = _find_project_root()
     env_file = project_root / ".env"
     if env_file.exists():
-        load_dotenv(env_file, override=True)
+        load_dotenv(env_file, override=False)
         return
 
-    # 3. フォールバック: dotenvの自動探索
-    load_dotenv(override=True)
+    # 3. フォールバック: dotenvの自動探索1
+    load_dotenv(override=False)
 
 # 初期化時に環境変数を読み込む
 _project_root = _find_project_root()
@@ -80,7 +80,7 @@ class Settings:
     
     def __init__(self):
         """初期化時にディレクトリを作成"""
-        self.DATA_DIR.mkdir(exist_ok=True)
+        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.TEMP_DIR.mkdir(exist_ok=True)
 
 

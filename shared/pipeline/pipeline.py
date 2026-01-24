@@ -2,11 +2,30 @@
 統合ドキュメント処理パイプライン (Stage E-K) - 設定ベース版
 
 設計書: DESIGN_UNIFIED_PIPELINE.md v2.0 に準拠
-処理順序: Stage E → F → G → H → I → J → K
+処理順序: Stage E → F → G → H+I → J → K
+
+Stage概要:
+- Stage E: Pre-processing（テキスト抽出）
+- Stage F: Visual Analysis（視覚解析、gemini-2.5-pro）
+         - 物理的OCR抽出、JSON出力
+- Stage G: Logical Refinement（論理的精錬、gemini-2.0-flash-lite）
+         - 重複排除、REF_ID付与、unified_text生成
+- Stage H+I: Combined Structuring & Synthesis（統合版、gemini-2.0-flash）
+         - 構造化 + 統合・要約を1回のLLM呼び出しで実行
+         - calendar_events, tasks, title, summary を生成
+         - audit_canonical_text（監査用正本）を生成
+- Stage J: Chunking（チャンク化）
+- Stage K: Embedding（ベクトル化）
+
+レガシーモード（use_combined_hi: false）:
+- Stage H: Structuring（構造化）
+- Stage I: Synthesis（統合・要約）
 
 特徴:
 - doc_type / workspace に応じて自動的にプロンプトとモデルを切り替え
 - config/ 内の YAML と Markdown ファイルで設定管理
+- Stage G で REF_ID付き目録を生成し、後続ステージが参照可能
+- use_combined_hi フラグで H+I 統合版/レガシーを切り替え
 """
 import asyncio
 import json
@@ -21,9 +40,9 @@ from shared.common.connectors.google_drive import GoogleDriveConnector
 from .config_loader import ConfigLoader
 from .stage_e_preprocessing import StageEPreprocessor
 from .stage_f_visual import StageFVisualAnalyzer
-from .stage_h_structuring import StageHStructuring
-from .stage_h_kakeibo import StageHKakeibo
-from .stage_i_synthesis import StageISynthesis
+from .stage_g_refiner import StageGRefiner  # Stage G: 論理的精錬
+from .stage_hi_combined import StageHICombined  # Stage H+I: 統合版
+from .stage_h_kakeibo import StageHKakeibo  # 家計簿専用
 from .stage_j_chunking import StageJChunking
 from .stage_k_embedding import StageKEmbedding
 from .constants import STAGE_H_INPUT_SCHEMA_VERSION
@@ -113,16 +132,16 @@ class UnifiedDocumentPipeline:
         # 各ステージを初期化
         self.stage_e = StageEPreprocessor(self.llm_client)
         self.stage_f = StageFVisualAnalyzer(self.llm_client, enable_hybrid_ocr=enable_hybrid_ocr)
-        self.stage_h = StageHStructuring(self.llm_client)
-        self.stage_h_kakeibo = StageHKakeibo(self.db)  # 家計簿専用Stage H
-        self.stage_i = StageISynthesis(self.llm_client)
+        self.stage_g = StageGRefiner(self.llm_client)  # Stage G: 論理的精錬
+        self.stage_hi = StageHICombined(self.llm_client)  # Stage H+I: 統合版
+        self.stage_h_kakeibo = StageHKakeibo(self.db)  # 家計簿専用
         self.stage_j = StageJChunking()
         self.stage_k = StageKEmbedding(self.llm_client, self.db)
 
         # 家計簿専用のDB保存ハンドラー
         self.kakeibo_db_handler = KakeiboDBHandler(self.db) if KAKEIBO_AVAILABLE else None
 
-        logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（設定ベース, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
+        logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（E→F→G→H→I→J→K, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
 
     async def process_document(
         self,
@@ -335,13 +354,69 @@ class UnifiedDocumentPipeline:
                 combined_text = ""  # 空文字列として継続
 
             # ============================================
-            # Stage H: Structuring
+            # Stage G: 論理的精錬（Logical Refinement）
             # ============================================
-            # 設定から Stage H のプロンプトとモデルを取得
+            # Stage F の出力を整理し、REF_ID付き目録を作成
+            stage_g_result = None
+            stage_g_config = self.config.get_stage_config('stage_g', doc_type, workspace)
+
+            # Stage G スキップ判定（家計簿や skip 設定がある場合）
+            skip_stage_g = stage_g_config.get('skip', False) or doc_type == 'kakeibo'
+
+            if stage_f_structure and not skip_stage_g:
+                model_g = stage_g_config.get('model', 'gemini-2.0-flash-lite')
+                logger.info(f"[Stage G] 論理的精錬開始... (model={model_g})")
+                if progress_callback:
+                    progress_callback("G")
+
+                try:
+                    # Stage F payload を Stage G に渡す
+                    stage_g_result = self.stage_g.process(
+                        stage_f_payload=stage_f_structure,
+                        model=model_g,
+                        workspace=workspace
+                    )
+
+                    # Stage G の出力をログ
+                    logger.info(f"[Stage G完了] ref_count={stage_g_result.get('ref_count', 0)}, mode={stage_g_result.get('processing_mode', 'unknown')}")
+
+                    # Stage G の unified_text を combined_text として使用（後続に渡す）
+                    if stage_g_result.get('unified_text'):
+                        combined_text = stage_g_result['unified_text']
+                        logger.info(f"[Stage G→H] unified_text: {len(combined_text)}文字")
+
+                    # Stage G の source_inventory を stage_f_structure に追加（Stage Hで参照可能に）
+                    if stage_g_result.get('source_inventory'):
+                        stage_f_structure['source_inventory'] = stage_g_result['source_inventory']
+                        logger.info(f"[Stage G→H] source_inventory: {len(stage_g_result['source_inventory'])}件")
+
+                    if stage_g_result.get('table_inventory'):
+                        stage_f_structure['table_inventory'] = stage_g_result['table_inventory']
+                        logger.info(f"[Stage G→H] table_inventory: {len(stage_g_result['table_inventory'])}件")
+
+                    # 警告があれば出力
+                    for warning in stage_g_result.get('warnings', []):
+                        logger.warning(f"[Stage G警告] {warning}")
+
+                except Exception as e:
+                    logger.warning(f"[Stage G] 処理失敗、スキップして続行: {e}")
+                    # Stage G が失敗しても Stage H は続行可能
+
+                # イベントループに制御を返す（並列タスク実行のため）
+                await asyncio.sleep(0)
+            elif skip_stage_g:
+                logger.info(f"[Stage G] スキップ (doc_type={doc_type}, skip={stage_g_config.get('skip', False)})")
+
+            # ============================================
+            # Stage H+I: 構造化 + 統合・要約
+            # ============================================
+            # ルート設定を取得して、統合版を使うかどうか判定
+            route_config = self.config.get_route_config(doc_type, workspace)
+            use_combined_hi = route_config.get('use_combined_hi', False)
             stage_h_config = self.config.get_stage_config('stage_h', doc_type, workspace)
             custom_handler = stage_h_config.get('custom_handler')
 
-            # 家計簿専用処理の場合
+            # 家計簿専用処理の場合（統合版は使わない）
             if custom_handler == 'kakeibo':
                 logger.info(f"[Stage H] 家計簿構造化開始... (custom_handler=kakeibo)")
                 if progress_callback:
@@ -399,135 +474,86 @@ class UnifiedDocumentPipeline:
                     'doc_type': 'kakeibo'
                 }
 
-            # 通常の Stage H 処理
-            else:
-                prompt_h = stage_h_config['prompt']
-                model_h = stage_h_config['model']
+            # ============================================
+            # Stage H+I 統合版を使用する場合
+            # ============================================
+            elif use_combined_hi:
+                stage_hi_config = self.config.get_stage_config('stage_hi', doc_type, workspace)
+                prompt_hi = stage_hi_config['prompt']
+                model_hi = stage_hi_config['model']
 
-                logger.info(f"[Stage H] 構造化開始... (model={model_h})")
+                logger.info(f"[Stage H+I] 統合版 構造化+統合開始... (model={model_hi})")
                 if progress_callback:
-                    progress_callback("H")
+                    progress_callback("H+I")
 
-                # v1.1契約: stage_f_structure がある場合は full_text を使用（契約固定）
-                h_combined_text = combined_text
-                if stage_f_structure and stage_f_structure.get('schema_version') == STAGE_H_INPUT_SCHEMA_VERSION:
-                    sf_full_text = stage_f_structure.get('full_text', '')
-                    if sf_full_text:
-                        h_combined_text = sf_full_text
-                        logger.info(f"[Stage H] v1.1契約: stage_f_structure.full_text を使用 ({len(h_combined_text)}文字)")
-
-                stageH_result = self.stage_h.process(
+                stageHI_result = self.stage_hi.process(
                     file_name=file_name,
                     doc_type=doc_type,
                     workspace=workspace,
-                    combined_text=h_combined_text,
-                    prompt=prompt_h,
-                    model=model_h,
-                    stage_f_structure=stage_f_structure  # 構造化情報を渡す
-                )
-
-                # イベントループに制御を返す（並列タスク実行のため）
-                await asyncio.sleep(0)
-
-                # Stage H の結果をチェック
-                if not stageH_result or not isinstance(stageH_result, dict):
-                    error_msg = "Stage H失敗: 構造化結果が不正です"
-                    logger.error(f"[Stage H失敗] {error_msg}")
-                    return {'success': False, 'error': error_msg}
-
-                # フォールバック結果の処理（テキストが空のドキュメントの場合）
-                stageH_metadata = stageH_result.get('metadata', {})
-                if stageH_metadata.get('extraction_failed'):
-                    logger.warning("[Stage H警告] テキストが空のドキュメントです（フォールバック結果を使用）")
-                    # エラーではなく、空のメタデータとして継続
-
-                document_date = stageH_result.get('document_date')
-                tags = stageH_result.get('tags', [])
-                logger.info(f"[Stage H完了]")
-
-            # ============================================
-            # Stage I: Synthesis
-            # ============================================
-            # 設定から Stage I のプロンプトとモデルを取得
-            stage_i_config = self.config.get_stage_config('stage_i', doc_type, workspace)
-
-            # P1-1: 入力テキストが空または短すぎる場合はスキップ
-            MIN_TEXT_LENGTH_FOR_STAGE_I = 50  # 閾値（文字数）
-            combined_text_length = len(combined_text.strip()) if combined_text else 0
-
-            if combined_text_length < MIN_TEXT_LENGTH_FOR_STAGE_I:
-                logger.warning(f"[P1-1] Stage I スキップ: EMPTY_OR_SHORT_TEXT (length={combined_text_length} < {MIN_TEXT_LENGTH_FOR_STAGE_I})")
-                summary = ""
-                relevant_date = stageH_result.get('document_date') if stageH_result else None
-                title = stageH_result.get('title', '') if stageH_result else ''
-                stageH_metadata['stage_i_skipped'] = True
-                stageH_metadata['stage_i_skip_reason'] = 'EMPTY_OR_SHORT_TEXT'
-            # skip フラグがある場合はスキップ
-            elif stage_i_config.get('skip'):
-                logger.info("[Stage I] スキップ (skip=true)")
-                summary = ""
-                relevant_date = None
-            else:
-                prompt_i = stage_i_config['prompt']
-                model_i = stage_i_config['model']
-
-                logger.info(f"[Stage I] 統合・要約開始... (model={model_i})")
-                if progress_callback:
-                    progress_callback("I")
-                stageI_result = self.stage_i.process(
                     combined_text=combined_text,
-                    stageH_result=stageH_result,
-                    prompt=prompt_i,
-                    model=model_i
+                    prompt=prompt_hi,
+                    model=model_hi,
+                    stage_f_structure=stage_f_structure,
+                    stage_g_result=stage_g_result
                 )
 
                 # イベントループに制御を返す（並列タスク実行のため）
                 await asyncio.sleep(0)
 
-                # Stage I の結果をチェック
-                if not stageI_result or not isinstance(stageI_result, dict):
-                    error_msg = "Stage I失敗: 統合・要約結果が不正です"
-                    logger.error(f"[Stage I失敗] {error_msg}")
+                # Stage H+I の結果をチェック
+                if not stageHI_result or not isinstance(stageHI_result, dict):
+                    error_msg = "Stage H+I失敗: 結果が不正です"
+                    logger.error(f"[Stage H+I失敗] {error_msg}")
                     return {'success': False, 'error': error_msg}
 
-                title = stageI_result.get('title', '')
-                summary = stageI_result.get('summary', '')
-
-                # フォールバック結果の処理（テキストが空のドキュメントの場合）
-                if summary == '処理に失敗しました':
-                    logger.warning("[Stage I警告] テキストが空のドキュメントです（フォールバック結果を使用）")
-                    summary = ''  # 空の要約として継続
-
-                relevant_date = stageI_result.get('relevant_date')
+                # 結果を変数に展開（後続処理との互換性のため）
+                document_date = stageHI_result.get('document_date')
+                tags = stageHI_result.get('tags', [])
+                stageH_metadata = stageHI_result.get('metadata', {})
+                title = stageHI_result.get('title', '')
+                summary = stageHI_result.get('summary', '')
+                relevant_date = stageHI_result.get('document_date')  # H+Iでは document_date = relevant_date
 
                 # カレンダーイベントとタスクを取得
-                calendar_events = stageI_result.get('calendar_events', [])
-                tasks = stageI_result.get('tasks', [])
+                calendar_events = stageHI_result.get('calendar_events', [])
+                tasks = stageHI_result.get('tasks', [])
 
                 # metadataに追加
                 stageH_metadata['calendar_events'] = calendar_events
                 stageH_metadata['tasks'] = tasks
 
-                logger.info(f"[Stage I完了] calendar_events={len(calendar_events)}件, tasks={len(tasks)}件")
+                # audit_canonical_text があれば metadata に追加
+                audit_text = stageHI_result.get('audit_canonical_text', '')
+                if audit_text:
+                    stageH_metadata['audit_canonical_text'] = audit_text
 
-                # ============================================
-                # Google Drive ファイル名更新（タイトルに基づく）
-                # ============================================
-                if title and source_id:
-                    # ファイル名から拡張子を抽出
-                    import os
-                    file_extension = os.path.splitext(file_name)[1]  # 例: ".pdf"
+                logger.info(f"[Stage H+I完了] title={title[:30] if title else 'N/A'}..., calendar_events={len(calendar_events)}件, tasks={len(tasks)}件")
 
-                    # 新しいファイル名を生成（タイトル + 拡張子）
-                    new_file_name = title + file_extension
+                # Stage H 互換の結果オブジェクトを作成
+                stageH_result = {
+                    'document_date': document_date,
+                    'tags': tags,
+                    'metadata': stageH_metadata
+                }
 
-                    # Google Drive のファイル名を更新
-                    try:
-                        self.drive_connector.rename_file(source_id, new_file_name)
-                        logger.info(f"[Google Drive] ファイル名更新成功: {new_file_name}")
-                    except Exception as e:
-                        # ファイル名更新失敗はエラーログのみ（処理は継続）
-                        logger.warning(f"[Google Drive] ファイル名更新失敗: {e}")
+            # ============================================
+            # Google Drive ファイル名更新（タイトルに基づく）
+            # ============================================
+            if title and source_id:
+                # ファイル名から拡張子を抽出
+                import os
+                file_extension = os.path.splitext(file_name)[1]  # 例: ".pdf"
+
+                # 新しいファイル名を生成（タイトル + 拡張子）
+                new_file_name = title + file_extension
+
+                # Google Drive のファイル名を更新
+                try:
+                    self.drive_connector.rename_file(source_id, new_file_name)
+                    logger.info(f"[Google Drive] ファイル名更新成功: {new_file_name}")
+                except Exception as e:
+                    # ファイル名更新失敗はエラーログのみ（処理は継続）
+                    logger.warning(f"[Google Drive] ファイル名更新失敗: {e}")
 
             # ============================================
             # Stage J: Chunking

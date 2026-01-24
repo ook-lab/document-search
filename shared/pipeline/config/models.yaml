@@ -18,18 +18,33 @@ models:
     flash_lite: "gemini-2.5-flash-lite"  # 家計簿用（最軽量）
     gmail: "gemini-2.5-flash-lite"  # Gmail用（軽量）
 
-  # Stage H: Structuring (構造化)
+  # Stage G: Logical Refinement (論理的精錬)
+  # 重複排除、REF_ID付与、unified_text生成
+  # 低コストの flash-lite を使用
+  stage_g:
+    default: "gemini-2.0-flash-lite"
+    flyer: "gemini-2.0-flash-lite"
+    gmail: "gemini-2.0-flash-lite"
+
+  # Stage H: Structuring (構造化) - レガシー、互換性のため残存
   stage_h:
     default: "gemini-2.5-flash"
     flyer: "gemini-2.5-flash"
     flash_lite: "gemini-2.5-flash-lite"  # 家計簿用（Pythonロジック中心）
     gmail: "gemini-2.5-flash-lite"  # Gmail用（軽量）
 
-  # Stage I: Synthesis (統合・要約)
+  # Stage I: Synthesis (統合・要約) - レガシー、互換性のため残存
   stage_i:
     default: "gemini-2.5-flash"
     flyer: "gemini-2.5-flash"
     gmail: "gemini-2.5-flash-lite"  # Gmail用（軽量）
+
+  # Stage H+I: Combined Structuring & Synthesis (構造化 + 統合・要約)
+  # 1回のLLM呼び出しでH+Iを実行（コスト削減・品質向上）
+  stage_hi:
+    default: "gemini-2.0-flash"
+    flyer: "gemini-2.0-flash"
+    gmail: "gemini-2.0-flash-lite"
 
   # Stage K: Embedding (ベクトル化)
   stage_k:

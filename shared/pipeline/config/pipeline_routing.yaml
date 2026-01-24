@@ -18,6 +18,7 @@ routing:
     gmail:
       description: "Gmailワークスペース（DM-MAIL, JOB-MAILなど）"
       schema: "default"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_e:
           prompt_key: "default"
@@ -25,6 +26,13 @@ routing:
         stage_f:
           prompt_key: "default"
           model_key: "gmail"
+        stage_g:
+          prompt_key: "default"
+          model_key: "gmail"
+        stage_hi:
+          prompt_key: "default"
+          model_key: "gmail"
+        # レガシー（use_combined_hi: false の場合に使用）
         stage_h:
           prompt_key: "default"
           model_key: "gmail"
@@ -36,8 +44,15 @@ routing:
     ikuya_classroom:
       description: "育哉のClassroomワークスペース"
       schema: "default"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_f:
+          prompt_key: "default"
+          model_key: "default"
+        stage_g:
+          prompt_key: "default"
+          model_key: "default"
+        stage_hi:
           prompt_key: "default"
           model_key: "default"
         stage_h:
@@ -51,8 +66,15 @@ routing:
     ema_classroom:
       description: "絵麻のClassroomワークスペース"
       schema: "default"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_f:
+          prompt_key: "default"
+          model_key: "default"
+        stage_g:
+          prompt_key: "default"
+          model_key: "default"
+        stage_hi:
           prompt_key: "default"
           model_key: "default"
         stage_h:
@@ -66,8 +88,15 @@ routing:
     waseda_academy:
       description: "早稲田アカデミーのドキュメント"
       schema: "default"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_f:
+          prompt_key: "default"
+          model_key: "default"
+        stage_g:
+          prompt_key: "default"
+          model_key: "default"
+        stage_hi:
           prompt_key: "default"
           model_key: "default"
         stage_h:
@@ -85,8 +114,15 @@ routing:
     physical_shop:
       description: "実店舗のチラシ（スーパー、ドラッグストアなど）"
       schema: "flyer"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_f:
+          prompt_key: "flyer"
+          model_key: "flyer"
+        stage_g:
+          prompt_key: "flyer"
+          model_key: "flyer"
+        stage_hi:
           prompt_key: "flyer"
           model_key: "flyer"
         stage_h:
@@ -100,8 +136,15 @@ routing:
     classroom_document:
       description: "Google Classroomドキュメント"
       schema: "default"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_f:
+          prompt_key: "default"
+          model_key: "default"
+        stage_g:
+          prompt_key: "default"
+          model_key: "default"
+        stage_hi:
           prompt_key: "default"
           model_key: "default"
         stage_h:
@@ -115,10 +158,13 @@ routing:
     kakeibo:
       description: "家計簿レシート（全テキスト抽出 → 構造化 → 税額按分）"
       schema: "kakeibo"
+      use_combined_hi: false  # 家計簿は独自処理
       stages:
         stage_f:
           prompt_key: "kakeibo"
           model_key: "flash_lite"
+        stage_g:
+          skip: true  # 家計簿は独自処理のためスキップ
         stage_h:
           prompt_key: "kakeibo"
           model_key: "flash_lite"
@@ -130,8 +176,15 @@ routing:
     default:
       description: "デフォルト処理（汎用ドキュメント）"
       schema: "default"
+      use_combined_hi: true  # Stage H+I 統合版を使用
       stages:
         stage_f:
+          prompt_key: "default"
+          model_key: "default"
+        stage_g:
+          prompt_key: "default"
+          model_key: "default"
+        stage_hi:
           prompt_key: "default"
           model_key: "default"
         stage_h:
