@@ -17,15 +17,10 @@ Stage概要:
 - Stage J: Chunking（チャンク化）
 - Stage K: Embedding（ベクトル化）
 
-レガシーモード（use_combined_hi: false）:
-- Stage H: Structuring（構造化）
-- Stage I: Synthesis（統合・要約）
-
 特徴:
 - doc_type / workspace に応じて自動的にプロンプトとモデルを切り替え
 - config/ 内の YAML と Markdown ファイルで設定管理
 - Stage G で REF_ID付き目録を生成し、後続ステージが参照可能
-- use_combined_hi フラグで H+I 統合版/レガシーを切り替え
 """
 import asyncio
 import json
@@ -410,9 +405,6 @@ class UnifiedDocumentPipeline:
             # ============================================
             # Stage H+I: 構造化 + 統合・要約
             # ============================================
-            # ルート設定を取得して、統合版を使うかどうか判定
-            route_config = self.config.get_route_config(doc_type, workspace)
-            use_combined_hi = route_config.get('use_combined_hi', False)
             stage_h_config = self.config.get_stage_config('stage_h', doc_type, workspace)
             custom_handler = stage_h_config.get('custom_handler')
 
@@ -475,9 +467,9 @@ class UnifiedDocumentPipeline:
                 }
 
             # ============================================
-            # Stage H+I 統合版を使用する場合
+            # Stage H+I: 構造化 + 統合・要約（統合版）
             # ============================================
-            elif use_combined_hi:
+            else:
                 stage_hi_config = self.config.get_stage_config('stage_hi', doc_type, workspace)
                 prompt_hi = stage_hi_config['prompt']
                 model_hi = stage_hi_config['model']
