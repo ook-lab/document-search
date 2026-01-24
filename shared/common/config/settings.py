@@ -75,8 +75,8 @@ class Settings:
     PROJECT_ROOT: Path = _project_root
 
     # データディレクトリ
-    DATA_DIR: Path = PROJECT_ROOT / ".local" / "data"
-    TEMP_DIR: Path = PROJECT_ROOT / ".local" / "temp"
+    DATA_DIR: Path = Path("/tmp/data")
+    TEMP_DIR: Path = Path("/tmp/temp")
     SCHEMAS_DIR: Path = PROJECT_ROOT / "frontend" / "schemas"
     
     def __init__(self):
