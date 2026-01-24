@@ -43,8 +43,10 @@ steps:
       - '1'
       - '--execution-environment'
       - 'gen1'
+      - '--set-secrets'
+      - 'GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,DOC_PROCESSOR_API_KEY=DOC_PROCESSOR_API_KEY:latest'
       - '--set-env-vars'
-      - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},DOC_PROCESSOR_API_KEY=${_DOC_PROCESSOR_API_KEY},LOG_LEVEL=INFO'
+      - 'LOG_LEVEL=INFO'
 
   # ============================================
   # 2. doc-search
@@ -86,8 +88,10 @@ steps:
       - '0'
       - '--max-instances'
       - '1'
+      - '--set-secrets'
+      - 'GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
       - '--set-env-vars'
-      - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},LOG_LEVEL=INFO'
+      - 'LOG_LEVEL=INFO'
 
   # ============================================
   # 3. doc-review
@@ -129,8 +133,10 @@ steps:
       - '0'
       - '--max-instances'
       - '1'
+      - '--set-secrets'
+      - 'SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
       - '--set-env-vars'
-      - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},LOG_LEVEL=INFO'
+      - 'LOG_LEVEL=INFO'
 
   # ============================================
   # 4. kakeibo-ui
@@ -172,9 +178,11 @@ steps:
       - '0'
       - '--max-instances'
       - '1'
+      - '--set-secrets'
+      - 'SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
       - '--set-env-vars'
-      - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},LOG_LEVEL=INFO'
-
+      - 'LOG_LEVEL=INFO'
+      
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:${_TAG}'
