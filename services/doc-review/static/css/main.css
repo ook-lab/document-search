@@ -1758,3 +1758,74 @@ body {
 .block-table-preview .rendered-table td {
     padding: 4px 8px;
 }
+
+/* 時間割テーブル（table_data形式 / process HIステージ出力） */
+.timetable-container {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.table-ref-ids {
+    font-size: 11px;
+    color: #999;
+    margin-bottom: 8px;
+}
+
+.class-timetable-section {
+    background: #fafafa;
+    border-radius: 8px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+.class-timetable-section .class-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 12px;
+}
+
+.timetable-table {
+    font-size: 12px;
+}
+
+.timetable-table th {
+    padding: 8px 10px;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.timetable-table td {
+    padding: 6px 8px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.timetable-table td.date-cell {
+    text-align: left;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.timetable-table tr:nth-child(even) {
+    background: #f5f5f5;
+}
+
+.timetable-table tr:hover {
+    background: #e8f0ff;
+}
+
+/* 汎用table_dataセクション */
+.generic-table-section {
+    background: #fafafa;
+    border-radius: 8px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+.generic-table-section .table-info {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 10px;
+}
