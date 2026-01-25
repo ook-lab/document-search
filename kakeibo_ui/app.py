@@ -47,26 +47,42 @@ GOOGLE_DRIVE_CREDENTIALS = None
 _drive_service = None
 
 def init_drive_service():
-    """Google Drive APIサービスを初期化"""
+    """Google Drive APIサービスを初期化（ファイル認証 → ADC フォールバック）"""
     global _drive_service, GOOGLE_DRIVE_CREDENTIALS
     if not HAS_GOOGLE_DRIVE:
         return None
     if _drive_service:
         return _drive_service
 
+    SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+    # 1. 認証情報ファイルから認証（ローカル開発用）
     try:
         from shared.kakeibo.config import GOOGLE_DRIVE_CREDENTIALS as cred_path
         GOOGLE_DRIVE_CREDENTIALS = cred_path
         from pathlib import Path
-        if Path(cred_path).exists():
+        if cred_path and Path(cred_path).exists():
             credentials = service_account.Credentials.from_service_account_file(
                 cred_path,
-                scopes=["https://www.googleapis.com/auth/drive.readonly"]
+                scopes=SCOPES
             )
             _drive_service = build("drive", "v3", credentials=credentials)
+            print(f"Google Drive初期化成功（ファイル認証）: {cred_path}")
             return _drive_service
     except Exception as e:
-        print(f"Google Drive初期化エラー: {e}")
+        print(f"ファイル認証失敗: {e}")
+
+    # 2. ADC（Application Default Credentials）で認証（Cloud Run用）
+    try:
+        import google.auth
+        credentials, project = google.auth.default(scopes=SCOPES)
+        _drive_service = build("drive", "v3", credentials=credentials)
+        print("Google Drive初期化成功（ADC認証）")
+        return _drive_service
+    except Exception as e:
+        print(f"ADC認証失敗: {e}")
+
+    print("Google Drive認証に失敗しました")
     return None
 
 

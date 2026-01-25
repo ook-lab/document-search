@@ -1,5 +1,5 @@
 steps:
-  # Dockerイメージをビルド
+  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -9,47 +9,18 @@ steps:
       - 'services/doc-processor/Dockerfile'
       - '.'
 
-  # イメージをArtifact Registryにプッシュ
+  # Push the container image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
 
-  # Cloud Runにデプロイ
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'doc-processor'
-      - '--image'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
-      - '--region'
-      - 'asia-northeast1'
-      - '--platform'
-      - 'managed'
-      - '--memory'
-      - '12Gi'
-      - '--cpu'
-      - '2'
-      - '--timeout'
-      - '3600'
-      - '--allow-unauthenticated'
-      - '--min-instances'
-      - '0'
-      - '--max-instances'
-      - '10'
-      - '--concurrency'
-      - '1'
-      - '--execution-environment'
-      - 'gen1'
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
 
 substitutions:
   _TAG: 'latest'
-
-options:
-  machineType: 'E2_HIGHCPU_8'
-  logging: CLOUD_LOGGING_ONLY
