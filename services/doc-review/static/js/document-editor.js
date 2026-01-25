@@ -201,8 +201,15 @@ function renderStructuredTable(key, data, label) {
     }
 
     // weekly_schedule の特別処理（時間割形式）
-    if (key === 'weekly_schedule' && first.class_schedules) {
-        return renderWeeklySchedule(key, data, label);
+    if (key === 'weekly_schedule') {
+        // 新形式: table_data を持つ場合（process HIステージ出力）
+        if (first.table_data && Array.isArray(first.table_data)) {
+            return renderMultipleTables(key, data, label);
+        }
+        // 旧形式: class_schedules を持つ場合
+        if (first.class_schedules) {
+            return renderWeeklySchedule(key, data, label);
+        }
     }
 
     // tasks の特別処理（チェックリスト付き）
