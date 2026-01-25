@@ -36,7 +36,7 @@ def get_clients():
         from shared.ai.llm_client.llm_client import LLMClient
         from shared.common.utils.query_expansion import QueryExpander
 
-        db_client = DatabaseClient()
+        db_client = DatabaseClient(use_service_role=True)
         llm_client = LLMClient()
         query_expander = QueryExpander(llm_client=llm_client)
         print("[INFO] クライアント初期化完了")
@@ -1033,7 +1033,7 @@ def get_workspaces():
     """
     try:
         from shared.common.database.client import DatabaseClient
-        db = DatabaseClient()
+        db = DatabaseClient(use_service_role=True)
 
         # ワークスペース一覧を取得
         query = db.client.table('Rawdata_FILE_AND_MAIL').select('workspace').execute()
