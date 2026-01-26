@@ -512,6 +512,116 @@ def clear_queue_api():
         return safe_error_response(e)
 
 
+@app.route('/internal/queue/retry-failed', methods=['POST'])
+def retry_failed_documents():
+    """失敗ドキュメントを再キュー: failed → queued
+
+    【パラメータ】
+    - workspace: 対象ワークスペース（省略時は全体）
+    - limit: 再キュー上限（デフォルト100）
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        data = request.get_json() or {}
+
+        workspace = data.get('workspace') or 'all'
+        limit = min(int(data.get('limit', 100)), 500)
+
+        # まず対象のIDを取得
+        select_query = db.client.table('Rawdata_FILE_AND_MAIL').select('id').eq('processing_status', 'failed')
+
+        if workspace and workspace != 'all':
+            select_query = select_query.eq('workspace', workspace)
+
+        select_result = select_query.limit(limit).execute()
+
+        if not select_result.data:
+            return jsonify({
+                'success': True,
+                'message': '再キュー対象がありません',
+                'retry_count': 0,
+                'workspace': workspace
+            })
+
+        # IDリストで更新
+        doc_ids = [row['id'] for row in select_result.data]
+
+        update_result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+            'processing_status': 'queued'
+        }).in_('id', doc_ids).execute()
+
+        retry_count = len(update_result.data) if update_result.data else 0
+
+        return jsonify({
+            'success': True,
+            'message': f'{retry_count}件を再キューしました',
+            'retry_count': retry_count,
+            'workspace': workspace
+        })
+
+    except Exception as e:
+        logger.error(f"再キューエラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/queue/clear-lock', methods=['POST'])
+def clear_processing_lock():
+    """処理ロックをクリア
+
+    【用途】
+    - Worker がクラッシュしてロックが残った場合にクリア
+    - processing_lock テーブルの is_processing を false に
+
+    【注意】
+    - 実行中の Worker がある場合も強制クリアされる
+    - 重複処理のリスクがあるため、慎重に使用
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+
+        # ロック状態を確認
+        check_result = db.client.table('processing_lock').select('*').eq('id', 1).execute()
+
+        if not check_result.data:
+            return jsonify({
+                'success': False,
+                'error': 'processing_lock テーブルにレコードがありません'
+            }), 404
+
+        current_state = check_result.data[0]
+        was_locked = current_state.get('is_processing', False)
+
+        # ロックをクリア
+        result = db.client.table('processing_lock').update({
+            'is_processing': False,
+            'current_workers': 0,
+            'locked_at': None,
+            'locked_by': None
+        }).eq('id', 1).execute()
+
+        if result.data:
+            return jsonify({
+                'success': True,
+                'message': 'ロックをクリアしました' if was_locked else 'ロックは既にクリア状態でした',
+                'was_locked': was_locked,
+                'previous_state': {
+                    'is_processing': current_state.get('is_processing'),
+                    'current_workers': current_state.get('current_workers'),
+                    'locked_by': current_state.get('locked_by'),
+                    'locked_at': current_state.get('locked_at')
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'ロックのクリアに失敗しました'
+            }), 500
+
+    except Exception as e:
+        logger.error(f"ロッククリアエラー: {e}")
+        return safe_error_response(e)
+
+
 @app.route('/internal/queue/execute', methods=['POST'])
 def execute_queue():
     """キュー内ドキュメントを処理（Worker をバックグラウンドで起動）

@@ -30,6 +30,94 @@ from .resource_manager import AdaptiveResourceManager, get_cgroup_memory, get_cg
 from .execution_policy import ExecutionPolicy, get_execution_policy
 
 
+def generate_batch_summary(
+    log_dir: Path,
+    start_time: datetime,
+    end_time: datetime,
+    success_results: List[Dict[str, Any]],
+    failed_results: List[Dict[str, Any]],
+    workspace: str,
+    limit: int
+) -> Path:
+    """
+    バッチ処理のサマリーファイルを生成（AI解析用）
+
+    Args:
+        log_dir: ログディレクトリ
+        start_time: 処理開始時刻
+        end_time: 処理終了時刻
+        success_results: 成功したドキュメントのリスト
+        failed_results: 失敗したドキュメントのリスト [{id, title, error}, ...]
+        workspace: 処理対象ワークスペース
+        limit: 処理上限
+
+    Returns:
+        サマリーファイルのパス
+    """
+    summary_dir = log_dir / 'summary'
+    summary_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = start_time.strftime('%Y%m%d_%H%M%S')
+    summary_path = summary_dir / f'summary_{timestamp}.txt'
+
+    duration = (end_time - start_time).total_seconds()
+    total_count = len(success_results) + len(failed_results)
+
+    lines = [
+        "=" * 60,
+        "ドキュメント処理サマリー",
+        "=" * 60,
+        "",
+        f"処理日時: {start_time.strftime('%Y-%m-%d %H:%M:%S')} - {end_time.strftime('%H:%M:%S')}",
+        f"処理時間: {duration:.1f}秒",
+        f"ワークスペース: {workspace}",
+        f"処理上限: {limit}件",
+        "",
+        "-" * 60,
+        "結果サマリー",
+        "-" * 60,
+        f"処理件数: {total_count}件",
+        f"成功: {len(success_results)}件",
+        f"失敗: {len(failed_results)}件",
+        f"成功率: {(len(success_results) / total_count * 100) if total_count > 0 else 0:.1f}%",
+        "",
+    ]
+
+    if failed_results:
+        lines.extend([
+            "-" * 60,
+            "失敗タスク一覧",
+            "-" * 60,
+        ])
+        for i, item in enumerate(failed_results, 1):
+            lines.append(f"{i}. {item.get('title', '(不明)')}")
+            lines.append(f"   ID: {item.get('id', '(不明)')}")
+            lines.append(f"   エラー: {item.get('error', '(不明)')}")
+            lines.append("")
+
+    if success_results:
+        lines.extend([
+            "-" * 60,
+            f"成功タスク一覧 ({len(success_results)}件)",
+            "-" * 60,
+        ])
+        for i, item in enumerate(success_results, 1):
+            lines.append(f"{i}. {item.get('title', '(不明)')}")
+
+    lines.extend([
+        "",
+        "=" * 60,
+        f"サマリー生成: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "=" * 60,
+    ])
+
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+
+    logger.info(f"サマリーファイル生成: {summary_path}")
+    return summary_path
+
+
 class DocumentProcessor:
     """
     ドキュメント処理クラス
@@ -959,6 +1047,11 @@ class DocumentProcessor:
         active_tasks = set()
         processed_count = 0  # 処理した件数
 
+        # サマリー用: 結果追跡
+        batch_start_time = datetime.now()
+        success_results: List[Dict[str, Any]] = []
+        failed_results: List[Dict[str, Any]] = []
+
         try:
             # 【リース方式】1件ずつ dequeue してループ
             while processed_count < limit:
@@ -981,6 +1074,17 @@ class DocumentProcessor:
                             active_tasks,
                             return_when=asyncio.FIRST_COMPLETED
                         )
+                        # 完了タスクの結果を収集
+                        for task in done:
+                            try:
+                                result = task.result()
+                                if isinstance(result, dict):
+                                    if result.get('success'):
+                                        success_results.append(result)
+                                    else:
+                                        failed_results.append(result)
+                            except Exception as e:
+                                failed_results.append({'id': '(不明)', 'title': '(不明)', 'error': str(e)})
                         continue
                     else:
                         # 全て処理完了
@@ -1025,6 +1129,17 @@ class DocumentProcessor:
                         active_tasks,
                         return_when=asyncio.FIRST_COMPLETED
                     )
+                    # 完了タスクの結果を収集
+                    for task in done:
+                        try:
+                            result = task.result()
+                            if isinstance(result, dict):
+                                if result.get('success'):
+                                    success_results.append(result)
+                                else:
+                                    failed_results.append(result)
+                        except Exception as e:
+                            failed_results.append({'id': '(不明)', 'title': '(不明)', 'error': str(e)})
                     # タスク完了後にcurrent_workersを更新
                     self.state_manager.update_resource_control(
                         current_workers=len(active_tasks)
@@ -1052,7 +1167,16 @@ class DocumentProcessor:
 
             # 残りのタスクを待機
             if active_tasks:
-                await asyncio.gather(*active_tasks, return_exceptions=True)
+                results = await asyncio.gather(*active_tasks, return_exceptions=True)
+                # 結果を収集
+                for result in results:
+                    if isinstance(result, Exception):
+                        failed_results.append({'id': '(不明)', 'title': '(不明)', 'error': str(result)})
+                    elif isinstance(result, dict):
+                        if result.get('success'):
+                            success_results.append(result)
+                        else:
+                            failed_results.append(result)
                 # 全タスク完了後にcurrent_workersを0に
                 self.state_manager.update_resource_control(current_workers=0)
 
@@ -1069,12 +1193,26 @@ class DocumentProcessor:
             # 処理終了
             self.state_manager.finish_processing()
 
+            # サマリー生成
+            batch_end_time = datetime.now()
+            if success_results or failed_results:
+                log_dir = Path(__file__).resolve().parent.parent.parent / 'logs'
+                generate_batch_summary(
+                    log_dir=log_dir,
+                    start_time=batch_start_time,
+                    end_time=batch_end_time,
+                    success_results=success_results,
+                    failed_results=failed_results,
+                    workspace=workspace,
+                    limit=limit
+                )
+
 
     async def _process_dequeued_document(
         self,
         doc: Dict[str, Any],
         preserve_workspace: bool = True
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """
         【リース方式】dequeue されたドキュメントを処理
 
@@ -1135,14 +1273,14 @@ class DocumentProcessor:
                     self.state_manager.update_progress(success_inc=1)
                     self.state_manager.add_log(f"成功: {title}")
                     logger.info(f"処理完了: success=True")
+                    return {'success': True, 'id': document_id, 'title': title}
                 else:
                     # 【リース方式】nack_document で失敗（retry=False）
                     self._mark_as_failed(document_id, error_msg)
                     self.state_manager.update_progress(error_inc=1)
                     self.state_manager.add_log(f"失敗: {title} - {error_msg}", 'ERROR')
                     logger.error(f"処理失敗: {error_msg}")
-
-                return success
+                    return {'success': False, 'id': document_id, 'title': title, 'error': error_msg}
 
             except Exception as e:
                 error_msg = f"処理中エラー: {str(e)}"
@@ -1151,7 +1289,7 @@ class DocumentProcessor:
                 self._mark_as_failed(document_id, error_msg)
                 self.state_manager.update_progress(error_inc=1)
                 self.state_manager.add_log(f"システムエラー: {title} - {e}", 'ERROR')
-                return False
+                return {'success': False, 'id': document_id, 'title': title, 'error': error_msg}
 
 
 # continuous_processing_loop は削除済み

@@ -188,6 +188,40 @@ function generateDynamicTabs(metadata) {
 // 構造化テーブルのレンダリング
 // =============================================================================
 
+/**
+ * テーブル構造を検出する
+ * @param {Object} item - 検査するオブジェクト
+ * @returns {Object|null} - {type: 'single'|'multiple', headers, rows} または null
+ */
+function detectTableStructure(item) {
+    if (!item || typeof item !== 'object') return null;
+
+    // パターン1: headers/rows または header/data を持つ単一テーブル
+    const rows = item.rows || item.data;
+    const headers = item.headers || item.header;
+    if (Array.isArray(rows) && rows.length > 0) {
+        return { type: 'single', headers: headers || [], rows: rows };
+    }
+
+    // パターン2: table_data を持つ（process HI形式）
+    if (item.table_data && Array.isArray(item.table_data)) {
+        return { type: 'table_data', tableData: item.table_data };
+    }
+
+    return null;
+}
+
+/**
+ * 配列がテーブルデータの集合かどうかを判定
+ * @param {Array} data - 検査する配列
+ * @returns {boolean}
+ */
+function isTableCollection(data) {
+    if (!Array.isArray(data) || data.length === 0) return false;
+    // 最初の要素がテーブル構造を持つか確認
+    return detectTableStructure(data[0]) !== null;
+}
+
 function renderStructuredTable(key, data, label) {
     if (!Array.isArray(data) || data.length === 0) {
         return `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
@@ -195,12 +229,12 @@ function renderStructuredTable(key, data, label) {
 
     const first = data[0];
 
-    // text_blocks の特別処理（文章ブロック）
+    // text_blocks の特別処理（文章ブロック）- これはテーブルではない
     if (key === 'text_blocks' && first.text !== undefined) {
         return renderTextBlocks(key, data, label);
     }
 
-    // weekly_schedule の特別処理（時間割形式）
+    // weekly_schedule の特別処理（時間割形式）- 特殊なマトリクス表示が必要
     if (key === 'weekly_schedule') {
         // 新形式: table_data を持つ場合（process HIステージ出力）
         if (first.table_data && Array.isArray(first.table_data)) {
@@ -212,27 +246,138 @@ function renderStructuredTable(key, data, label) {
         }
     }
 
-    // tasks の特別処理（チェックリスト付き）
+    // tasks の特別処理（カード形式が適切）
     if (key === 'tasks' && first.task_name !== undefined) {
         return renderTasks(key, data, label);
     }
 
-    // calendar_events の特別処理
+    // calendar_events の特別処理（日付ソート＋専用カラム）
     if (key === 'calendar_events' && first.event_name !== undefined) {
         return renderCalendarEvents(key, data, label);
     }
 
-    // structured_tables の特別処理 (複数テーブル)
+    // ★ 汎用テーブル検出: headers/rows, header/data, table_data などを持つ場合
+    if (isTableCollection(data)) {
+        return renderMultipleTables(key, data, label);
+    }
+
+    // structured_tables または *_tables パターン
     if (key === 'structured_tables' || key.includes('_tables')) {
         return renderMultipleTables(key, data, label);
     }
 
+    // 2D配列の場合も汎用テーブルとして表示
+    if (Array.isArray(first)) {
+        return renderUniversalTable(key, data, label);
+    }
+
     // オブジェクトの配列を通常のテーブルとして表示
     if (typeof first === 'object' && first !== null) {
-        return renderObjectArrayTable(key, data, label);
+        return renderUniversalTable(key, data, label);
     }
 
     return `<div class="empty-state"><p>表示できるデータ形式ではありません</p></div>`;
+}
+
+// =============================================================================
+// 汎用テーブルレンダリング（どんな形式でも対応）
+// =============================================================================
+
+function renderUniversalTable(key, data, label) {
+    if (!data || data.length === 0) {
+        return `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
+    }
+
+    const first = data[0];
+    let headers = [];
+    let rows = data;
+
+    // データ形式を判定してヘッダーと行を抽出
+    if (Array.isArray(first)) {
+        // 2D配列形式: 最初の行をヘッダーとして使用するかインデックスベース
+        // ヒューリスティック: 最初の行が全て文字列ならヘッダー扱い
+        const firstRowAllStrings = first.every(cell => typeof cell === 'string');
+        if (firstRowAllStrings && data.length > 1) {
+            headers = first;
+            rows = data.slice(1);
+        } else {
+            headers = first.map((_, i) => `列${i + 1}`);
+            rows = data;
+        }
+    } else if (typeof first === 'object' && first !== null) {
+        // オブジェクト配列形式: キーをヘッダーとして使用
+        const allKeys = new Set();
+        data.forEach(row => {
+            if (typeof row === 'object' && row !== null) {
+                Object.keys(row).forEach(k => allKeys.add(k));
+            }
+        });
+        headers = Array.from(allKeys);
+
+        // 列の並び替え（重要な列を先頭に）
+        const priorityOrder = ['順位', 'rank', 'no', 'id', 'name', '名前', '氏名', 'class', 'date', '日付', 'title', 'タイトル'];
+        headers.sort((a, b) => {
+            const aLower = String(a).toLowerCase();
+            const bLower = String(b).toLowerCase();
+            const aIndex = priorityOrder.findIndex(p => aLower.includes(p.toLowerCase()));
+            const bIndex = priorityOrder.findIndex(p => bLower.includes(p.toLowerCase()));
+            if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
+            if (aIndex !== -1) return -1;
+            if (bIndex !== -1) return 1;
+            return 0;
+        });
+    }
+
+    let html = `
+        <div class="table-header-info">
+            <span class="table-row-count">${rows.length} 件</span>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table rendered-table">
+                <thead>
+                    <tr>
+                        ${headers.map(h => `<th>${escapeHtml(formatFieldName(String(h)))}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    rows.forEach(row => {
+        html += `<tr>`;
+        if (Array.isArray(row)) {
+            // 2D配列形式
+            row.forEach(cell => {
+                const formatted = formatCellValue(cell);
+                const fullValue = formatCellValue(cell, 500);
+                html += `<td title="${escapeHtml(fullValue)}">${escapeHtml(formatted)}</td>`;
+            });
+        } else if (typeof row === 'object' && row !== null) {
+            // オブジェクト形式
+            headers.forEach(k => {
+                const value = row[k];
+                const formatted = formatCellValue(value);
+                const fullValue = formatCellValue(value, 500);
+                html += `<td title="${escapeHtml(fullValue)}">${escapeHtml(formatted)}</td>`;
+            });
+        }
+        html += `</tr>`;
+    });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    // JSON編集オプション
+    html += `
+        <details class="json-edit-details">
+            <summary>🔧 JSONを編集</summary>
+            <textarea class="json-editor" data-field="${key}" rows="10">${JSON.stringify(data, null, 2)}</textarea>
+        </details>
+    `;
+
+    return html;
 }
 
 // =============================================================================
@@ -737,10 +882,27 @@ function renderMultipleTables(key, tables, label) {
             return;
         }
 
-        const tableTitle = table.table_title || table.description || `表 ${index + 1}`;
+        const tableTitle = table.table_title || table.table_name || table.description || `表 ${index + 1}`;
         const tableType = table.table_type || '';
-        const rows = table.rows || [];
-        const headers = table.headers || (rows.length > 0 ? Object.keys(rows[0]) : []);
+
+        // キー名の柔軟な対応: rows/data どちらも受け付ける
+        const rows = table.rows || table.data || [];
+
+        // ヘッダーの柔軟な取得: headers/header どちらも受け付ける
+        // 行がオブジェクト配列の場合はキーから自動生成
+        let headers = table.headers || table.header || [];
+        if ((!headers || headers.length === 0) && rows.length > 0) {
+            if (Array.isArray(rows[0])) {
+                // 2D配列の場合: ヘッダーがなければインデックスベースで生成
+                headers = rows[0].map((_, i) => `列${i + 1}`);
+            } else if (typeof rows[0] === 'object' && rows[0] !== null) {
+                // オブジェクト配列の場合: キーから自動生成
+                headers = Object.keys(rows[0]);
+            }
+        }
+
+        // data_summary がある場合は警告表示（テキスト要約ではなく構造化データが必要）
+        const hasDataSummary = table.data_summary && (!rows || rows.length === 0);
 
         html += `
             <div class="structured-table-section">
@@ -749,30 +911,39 @@ function renderMultipleTables(key, tables, label) {
                 <div class="table-info">${rows.length} 行</div>
         `;
 
-        if (rows.length > 0) {
+        if (hasDataSummary) {
+            // data_summary のみでrows がない場合: テキストとして表示
+            html += `
+                <div class="data-summary-notice" style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:4px;margin:10px 0;">
+                    <strong>⚠️ 構造化データなし（要約のみ）</strong>
+                    <pre style="white-space:pre-wrap;margin:8px 0 0 0;font-size:13px;">${escapeHtml(table.data_summary)}</pre>
+                </div>
+            `;
+        } else if (rows.length > 0) {
             html += `<div class="table-wrapper">`;
             html += `<table class="data-table rendered-table">`;
             html += `<thead><tr>`;
 
             // ヘッダー
-            if (Array.isArray(headers)) {
+            if (Array.isArray(headers) && headers.length > 0) {
                 headers.forEach(h => {
                     html += `<th>${escapeHtml(formatFieldName(String(h)))}</th>`;
-                });
-            } else if (rows.length > 0 && typeof rows[0] === 'object') {
-                Object.keys(rows[0]).forEach(h => {
-                    html += `<th>${escapeHtml(formatFieldName(h))}</th>`;
                 });
             }
 
             html += `</tr></thead><tbody>`;
 
-            // 行データ
+            // 行データ（配列とオブジェクト両方に対応）
             rows.forEach(row => {
                 html += `<tr>`;
-                if (typeof row === 'object' && row !== null) {
-                    const keys = Array.isArray(headers) ? headers : Object.keys(row);
-                    keys.forEach(k => {
+                if (Array.isArray(row)) {
+                    // 2D配列形式: 各セルを順番に出力
+                    row.forEach(cell => {
+                        html += `<td title="${escapeHtml(formatCellValue(cell, 500))}">${escapeHtml(formatCellValue(cell))}</td>`;
+                    });
+                } else if (typeof row === 'object' && row !== null) {
+                    // オブジェクト形式: ヘッダーのキーに対応する値を出力
+                    headers.forEach(k => {
                         const value = row[k];
                         html += `<td title="${escapeHtml(formatCellValue(value, 500))}">${escapeHtml(formatCellValue(value))}</td>`;
                     });
@@ -802,71 +973,12 @@ function renderMultipleTables(key, tables, label) {
 }
 
 // =============================================================================
-// オブジェクト配列のテーブルレンダリング
+// オブジェクト配列のテーブルレンダリング（後方互換性のためのエイリアス）
 // =============================================================================
 
 function renderObjectArrayTable(key, data, label) {
-    if (!data || data.length === 0) {
-        return `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
-    }
-
-    // 全ての行からキーを収集（一部の行にしかないキーも含める）
-    const allKeys = new Set();
-    data.forEach(row => {
-        if (typeof row === 'object' && row !== null) {
-            Object.keys(row).forEach(k => allKeys.add(k));
-        }
-    });
-
-    const keys = Array.from(allKeys);
-
-    // 列の並び替え（重要な列を先頭に）
-    const priorityOrder = ['class', 'date', 'day', 'day_of_week', 'event_name', 'event_date', 'task_name', 'deadline'];
-    keys.sort((a, b) => {
-        const aIndex = priorityOrder.indexOf(a);
-        const bIndex = priorityOrder.indexOf(b);
-        if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-        if (aIndex !== -1) return -1;
-        if (bIndex !== -1) return 1;
-        return 0;
-    });
-
-    let html = `
-        <div class="table-header-info">
-            <span class="table-row-count">${data.length} 件</span>
-        </div>
-        <div class="table-wrapper">
-            <table class="data-table rendered-table">
-                <thead>
-                    <tr>
-                        ${keys.map(k => `<th>${escapeHtml(formatFieldName(k))}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody>
-                    ${data.map(row => `
-                        <tr>
-                            ${keys.map(k => {
-                                const value = row[k];
-                                const formatted = formatCellValue(value);
-                                const fullValue = formatCellValue(value, 500);
-                                return `<td title="${escapeHtml(fullValue)}">${escapeHtml(formatted)}</td>`;
-                            }).join('')}
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-    `;
-
-    // JSON編集オプション
-    html += `
-        <details class="json-edit-details">
-            <summary>🔧 JSONを編集</summary>
-            <textarea class="json-editor" data-field="${key}" rows="10">${JSON.stringify(data, null, 2)}</textarea>
-        </details>
-    `;
-
-    return html;
+    // 汎用テーブルレンダラーにリダイレクト
+    return renderUniversalTable(key, data, label);
 }
 
 // =============================================================================

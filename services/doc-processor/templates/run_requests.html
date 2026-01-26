@@ -640,6 +640,12 @@
                 <button class="btn" style="background: #ef4444; color: white; margin-left: 10px;" onclick="clearQueue()">
                     🗑 キューをクリア
                 </button>
+                <button class="btn" style="background: #f59e0b; color: white; margin-left: 10px;" onclick="clearLock()">
+                    🔓 ロック解除
+                </button>
+                <button class="btn" style="background: #8b5cf6; color: white; margin-left: 10px;" onclick="retryFailed()">
+                    🔄 失敗を再実行
+                </button>
             </div>
 
             <!-- キュー一覧 -->
@@ -878,6 +884,74 @@
             btn.disabled = false;
             btn.style.opacity = '1';
             btn.innerHTML = '▶ 実行';
+        }
+
+        // 失敗ドキュメントを再キュー
+        async function retryFailed() {
+            if (!confirm('失敗（failed）ドキュメントをキューに戻しますか？\n\n再キュー後「実行」ボタンで処理を開始してください。')) {
+                return;
+            }
+
+            const workspace = document.getElementById('workspace').value || 'all';
+
+            try {
+                const response = await fetch('/internal/queue/retry-failed', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        workspace: workspace
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.retry_count > 0) {
+                        showMessage('success', `🔄 ${data.message}`);
+                    } else {
+                        showMessage('info', 'ℹ️ 再キュー対象の失敗ドキュメントがありません');
+                    }
+                    refreshQueue();
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            }
+        }
+
+        // ロックをクリア
+        async function clearLock() {
+            if (!confirm('処理ロックを解除しますか？\n\n【注意】\n- Worker がクラッシュしてロックが残った場合に使用\n- 実行中の Worker がある場合は重複処理のリスクあり')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/internal/queue/clear-lock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    if (data.was_locked) {
+                        showMessage('success', `🔓 ${data.message}\n（以前: ${data.previous_state.locked_by || '不明'}）`);
+                    } else {
+                        showMessage('info', `ℹ️ ${data.message}`);
+                    }
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            }
         }
 
         // キューをクリア（queued → pending に戻す）

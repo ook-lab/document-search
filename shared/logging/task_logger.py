@@ -85,9 +85,14 @@ def setup_master_logging(
 
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    # エラー専用ログディレクトリ
+    errors_dir = log_dir / 'errors'
+    errors_dir.mkdir(parents=True, exist_ok=True)
+
     # 日付付きマスターログファイル
     date_str = datetime.now().strftime('%Y%m%d')
     master_log_path = log_dir / f'master_{date_str}.log'
+    error_log_path = errors_dir / f'errors_{date_str}.log'
 
     # 既存のハンドラーをクリア（重複防止）
     logger.remove()
@@ -112,10 +117,21 @@ def setup_master_logging(
         filter=lambda r: _task_filter(r) and not r.get('extra', {}).get('_task_handler_id')
     )
 
+    # エラー専用ログファイル出力（ERROR以上のみ）
+    logger.add(
+        error_log_path,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {extra[task_id]} | {message}",
+        level="ERROR",
+        rotation=rotation,
+        retention=retention,
+        encoding="utf-8"
+    )
+
     # デフォルトのtask_idを設定（マスターログ用）
     logger.configure(extra={"task_id": "MASTER", "_master": True})
 
     logger.info(f"マスターログ設定完了: {master_log_path}")
+    logger.info(f"エラーログ設定完了: {error_log_path}")
     return master_log_path
 
 

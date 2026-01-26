@@ -61,7 +61,7 @@ class WasedaNoticeIngestionPipeline:
 
         # コネクタの初期化
         self.drive = GoogleDriveConnector()
-        self.db = DatabaseClient()
+        self.db = DatabaseClient(use_service_role=True)
 
         logger.info(f"WasedaNoticeIngestionPipeline初期化完了")
         logger.info(f"  - PDF folder: {self.pdf_folder_id}")

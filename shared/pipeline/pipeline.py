@@ -405,11 +405,15 @@ class UnifiedDocumentPipeline:
             # ============================================
             # Stage H+I: 構造化 + 統合・要約
             # ============================================
-            stage_h_config = self.config.get_stage_config('stage_h', doc_type, workspace)
-            custom_handler = stage_h_config.get('custom_handler')
+            # custom_handler の確認（ルート設定から直接取得、model は取得しない）
+            route_config = self.config.get_route_config(doc_type, workspace)
+            stage_h_routing = route_config.get('stages', {}).get('stage_h', {})
+            custom_handler = stage_h_routing.get('custom_handler')
 
             # 家計簿専用処理の場合（統合版は使わない）
             if custom_handler == 'kakeibo':
+                # 家計簿の場合のみ stage_h_config を取得
+                stage_h_config = self.config.get_stage_config('stage_h', doc_type, workspace)
                 logger.info(f"[Stage H] 家計簿構造化開始... (custom_handler=kakeibo)")
                 if progress_callback:
                     progress_callback("H")
@@ -531,7 +535,7 @@ class UnifiedDocumentPipeline:
             # ============================================
             # Google Drive ファイル名更新（タイトルに基づく）
             # ============================================
-            if title and source_id:
+            if title and source_id and file_name:
                 # ファイル名から拡張子を抽出
                 import os
                 file_extension = os.path.splitext(file_name)[1]  # 例: ".pdf"
