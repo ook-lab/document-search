@@ -20,9 +20,10 @@
 -- ############################################################
 
 -- 7-1. 運用サマリVIEW（24時間）
+-- 注意: SELECT * は避けて明示的カラム指定（スキーマ変更耐性のため）
 CREATE OR REPLACE VIEW public.v_ops_summary_24h AS
 WITH r AS (
-  SELECT *
+  SELECT processing_status
   FROM public."Rawdata_FILE_AND_MAIL"
   WHERE created_at >= now() - interval '24 hours'
 )

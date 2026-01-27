@@ -97,8 +97,8 @@ BEGIN
         RETURN 0;  -- owner不一致または既に回収済み
     END IF;
 
-    -- 指示5: 5回以上失敗したら failed（墓場行き）
-    IF v_attempt_count >= 5 OR NOT p_retry THEN
+    -- リトライなし: 1回失敗したら即failed
+    IF v_attempt_count >= 1 OR NOT p_retry THEN
         v_new_status := 'failed';
     ELSE
         v_new_status := 'pending';

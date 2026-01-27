@@ -724,10 +724,34 @@ class UnifiedDocumentPipeline:
                 except Exception as e:
                     logger.warning(f"[DB保存警告] Stage F出力のパースに失敗: {e}")
 
-                # Stage Eが空の場合、Stage Fのfull_textをE4/E5に使用
+                # Stage Eが空の場合、Stage Fのfull_textを使用
                 if not sanitized_extracted_text and stage_f_text_ocr:
-                    logger.info("[DB保存] Stage Eが空のため、Stage Fのfull_textをE4/E5に使用")
+                    logger.info("[DB保存] Stage Eが空のため、Stage Fのfull_textを使用")
                     sanitized_extracted_text = stage_f_text_ocr
+
+                # Stage F アンカー配列を取得
+                stage_f_anchors = None
+                if stage_f_structure and 'anchors' in stage_f_structure:
+                    stage_f_anchors = stage_f_structure.get('anchors', [])
+
+                # Stage G 結果を取得
+                stage_g_result_json = None
+                if stage_g_result:
+                    stage_g_result_json = {
+                        'source_inventory': stage_g_result.get('source_inventory', []),
+                        'table_inventory': stage_g_result.get('table_inventory', []),
+                        'cross_validation': stage_g_result.get('cross_validation', {}),
+                        'processing_mode': stage_g_result.get('processing_mode', '')
+                    }
+
+                # Stage H1 結果を取得
+                stage_h1_tables_json = None
+                if 'h1_result' in dir() and h1_result:
+                    stage_h1_tables_json = {
+                        'processed_tables': h1_result.get('processed_tables', []),
+                        'extracted_metadata': h1_result.get('extracted_metadata', {}),
+                        'statistics': h1_result.get('statistics', {})
+                    }
 
                 # titleをサニタイズ
                 sanitized_title = self._sanitize_text(title)
@@ -766,19 +790,17 @@ class UnifiedDocumentPipeline:
                     'document_date': document_date,
                     'metadata': final_metadata,
                     'processing_status': 'completed',
-                    # 各ステージの出力を保存
-                    # E1-E3: 現在は未実装のため、E4と同じ値を保存（将来的に個別エンジンを実装予定）
-                    'stage_e1_text': sanitized_extracted_text,  # Stage E-1: PyPDF2（未実装、E4の値を使用）
-                    'stage_e2_text': sanitized_extracted_text,  # Stage E-2: pdfminer（未実装、E4の値を使用）
-                    'stage_e3_text': sanitized_extracted_text,  # Stage E-3: PyMuPDF（未実装、E4の値を使用）
-                    'stage_e4_text': sanitized_extracted_text,  # Stage E-4: pdfplumber/画像OCR
-                    'stage_e5_text': sanitized_extracted_text,  # Stage E-5: 最終統合（現在はE4と同じ）
-                    'stage_f_text_ocr': stage_f_text_ocr,        # Stage F: Text OCR
-                    'stage_f_layout_ocr': stage_f_layout_ocr,    # Stage F: Layout OCR
-                    'stage_f_visual_elements': stage_f_visual_elements,  # Stage F: Visual Elements
-                    'stage_h_normalized': sanitized_combined_text,  # Stage H への入力テキスト
-                    'stage_i_structured': json.dumps(stageH_result, ensure_ascii=False, indent=2) if stageH_result else None,  # Stage H の出力
-                    'stage_j_chunks_json': json.dumps(chunks, ensure_ascii=False, indent=2)  # Stage J の出力
+                    # 各ステージの出力を保存（新スキーマ 2026-01-27）
+                    'stage_e_text': sanitized_extracted_text,  # Stage E: 物理抽出テキスト（E-1〜E-3統合）
+                    'stage_f_text_ocr': stage_f_text_ocr,        # Stage F: Path A テキスト抽出
+                    'stage_f_layout_ocr': stage_f_layout_ocr,    # Stage F: レイアウト情報
+                    'stage_f_visual_elements': stage_f_visual_elements,  # Stage F: 視覚要素
+                    'stage_f_anchors': json.dumps(stage_f_anchors, ensure_ascii=False) if stage_f_anchors else None,  # Stage F: アンカー配列
+                    'stage_g_result': json.dumps(stage_g_result_json, ensure_ascii=False) if stage_g_result_json else None,  # Stage G: 統合精錬結果
+                    'stage_h_normalized': reduced_text if 'reduced_text' in dir() else sanitized_combined_text,  # Stage H2: 軽量化済み入力
+                    'stage_h1_tables': json.dumps(stage_h1_tables_json, ensure_ascii=False) if stage_h1_tables_json else None,  # Stage H1: 処理済み表
+                    'stage_h_result': json.dumps(stageH_result, ensure_ascii=False, indent=2) if stageH_result else None,  # Stage H2: 構造化結果
+                    'stage_j_chunks_json': json.dumps(chunks, ensure_ascii=False, indent=2)  # Stage J: チャンク化結果
                 }
 
                 # 既存ドキュメントの場合、display_* フィールドを保持（Gmail ingestion時に設定された値を上書きしないため）
