@@ -51,3 +51,5 @@ __pycache__/
 # Snapshots and temporary files
 PROJECT_SNAPSHOT*
 tmpclaude-*
+
+.tmp.driveupload/
