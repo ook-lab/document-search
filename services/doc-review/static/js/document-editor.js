@@ -888,9 +888,9 @@ function renderMultipleTables(key, tables, label) {
         // キー名の柔軟な対応: rows/data どちらも受け付ける
         const rows = table.rows || table.data || [];
 
-        // ヘッダーの柔軟な取得: headers/header どちらも受け付ける
+        // ヘッダーの柔軟な取得: columns/headers/header どちらも受け付ける（カラムナ形式優先）
         // 行がオブジェクト配列の場合はキーから自動生成
-        let headers = table.headers || table.header || [];
+        let headers = table.columns || table.headers || table.header || [];
         if ((!headers || headers.length === 0) && rows.length > 0) {
             if (Array.isArray(rows[0])) {
                 // 2D配列の場合: ヘッダーがなければインデックスベースで生成

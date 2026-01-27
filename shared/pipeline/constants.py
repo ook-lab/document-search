@@ -53,3 +53,6 @@ F8_MODEL = "gemini-2.5-flash"  # 構造解析（視覚の鬼）
 # F-7/F-8 共通
 F7_F8_MAX_TOKENS = 65536
 F7_F8_TEMPERATURE = 0.0
+
+# チャンク処理（MAX_TOKENSエラー回避）
+CHUNK_SIZE_PAGES = 5  # 5ページごとに分割処理

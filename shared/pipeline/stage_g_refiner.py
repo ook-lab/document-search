@@ -669,3 +669,176 @@ class StageGRefiner:
         # 空行または2連続改行で分割
         paragraphs = re.split(r'\n\s*\n|\r\n\s*\r\n', text)
         return [p.strip() for p in paragraphs if p.strip()]
+
+    # ============================================
+    # アンカーベースのH1/H2ルーティング
+    # ============================================
+    def route_anchors_to_stages(
+        self,
+        stage_g_result: Dict[str, Any],
+        anchors: Optional[List[Dict]] = None
+    ) -> Dict[str, Any]:
+        """
+        アンカー単位でH1/H2への振り分けを行う
+
+        Args:
+            stage_g_result: Stage G の通常処理結果
+            anchors: Stage F からのアンカー配列（あれば使用）
+
+        Returns:
+            {
+                'h1_payload': {
+                    'heavy_tables': List[Dict],  # H1で処理する重い表
+                    'table_anchors': List[str]   # H1に送るアンカーID
+                },
+                'h2_payload': {
+                    'text_anchors': List[Dict],  # H2で処理するテキスト
+                    'light_tables': List[Dict],  # H2で処理する軽い表
+                    'reduced_text': str          # 表テキストを除外した軽量テキスト
+                },
+                'anchor_map': Dict[str, str]     # anchor_id -> 'h1' or 'h2'
+            }
+        """
+        logger.info("[Stage G] アンカーベースのH1/H2ルーティング開始")
+
+        h1_payload = {
+            'heavy_tables': [],
+            'table_anchors': []
+        }
+        h2_payload = {
+            'text_anchors': [],
+            'light_tables': [],
+            'reduced_text': ''
+        }
+        anchor_map = {}
+
+        # アンカー配列がある場合（新形式）
+        if anchors:
+            logger.info(f"[Stage G] アンカー配列使用: {len(anchors)}個")
+
+            for anchor in anchors:
+                anchor_id = anchor.get('anchor_id', '')
+                anchor_type = anchor.get('type', 'text')
+                is_heavy = anchor.get('is_heavy', False)
+
+                if anchor_type == 'table' and is_heavy:
+                    # 重い表 → H1
+                    h1_payload['heavy_tables'].append(anchor)
+                    h1_payload['table_anchors'].append(anchor_id)
+                    anchor_map[anchor_id] = 'h1'
+                    logger.debug(f"  [H1] {anchor_id}: {anchor.get('title', '表')} ({anchor.get('row_count', 0)}行)")
+
+                elif anchor_type == 'table':
+                    # 軽い表 → H2
+                    h2_payload['light_tables'].append(anchor)
+                    anchor_map[anchor_id] = 'h2'
+                    logger.debug(f"  [H2] {anchor_id}: 軽い表 ({anchor.get('row_count', 0)}行)")
+
+                else:
+                    # テキスト → H2
+                    h2_payload['text_anchors'].append(anchor)
+                    anchor_map[anchor_id] = 'h2'
+
+        # アンカー配列がない場合（従来形式からの変換）
+        else:
+            logger.info("[Stage G] 従来形式からアンカー生成")
+            table_inventory = stage_g_result.get('table_inventory', [])
+            source_inventory = stage_g_result.get('source_inventory', [])
+
+            # 表をH1/H2に振り分け
+            for tbl in table_inventory:
+                ref_id = tbl.get('ref_id', '')
+                rows = tbl.get('rows', [])
+                headers = tbl.get('headers', []) or tbl.get('columns', [])
+
+                # 重い表の判定（20行以上 or 5列以上）
+                is_heavy = len(rows) >= 20 or len(headers) >= 5
+
+                if is_heavy:
+                    h1_payload['heavy_tables'].append(tbl)
+                    h1_payload['table_anchors'].append(ref_id)
+                    anchor_map[ref_id] = 'h1'
+                else:
+                    h2_payload['light_tables'].append(tbl)
+                    anchor_map[ref_id] = 'h2'
+
+            # テキストはすべてH2
+            for src in source_inventory:
+                ref_id = src.get('ref_id', '')
+                h2_payload['text_anchors'].append(src)
+                anchor_map[ref_id] = 'h2'
+
+        # H2用の軽量化テキストを生成
+        unified_text = stage_g_result.get('unified_text', '')
+        h2_payload['reduced_text'] = self._generate_reduced_text_for_h2(
+            unified_text,
+            h1_payload['heavy_tables']
+        )
+
+        # 統計をログ
+        logger.info(f"[Stage G] ルーティング完了:")
+        logger.info(f"  ├─ H1: {len(h1_payload['heavy_tables'])}表 (重い表)")
+        logger.info(f"  ├─ H2: {len(h2_payload['text_anchors'])}テキスト + {len(h2_payload['light_tables'])}表 (軽い)")
+        logger.info(f"  └─ テキスト削減: {len(unified_text)}→{len(h2_payload['reduced_text'])}文字")
+
+        return {
+            'h1_payload': h1_payload,
+            'h2_payload': h2_payload,
+            'anchor_map': anchor_map
+        }
+
+    def _generate_reduced_text_for_h2(
+        self,
+        unified_text: str,
+        heavy_tables: List[Dict]
+    ) -> str:
+        """
+        H1で処理する重い表のテキストを除外した軽量テキストを生成
+
+        Args:
+            unified_text: 元の統合テキスト
+            heavy_tables: H1に送る重い表のリスト
+
+        Returns:
+            軽量化されたテキスト
+        """
+        if not heavy_tables:
+            return unified_text
+
+        result = unified_text
+
+        for table in heavy_tables:
+            # 表タイトルを除去
+            title = table.get('title', '') or table.get('table_title', '')
+            if title and len(title) > 3:
+                result = result.replace(f"【{title}】", '')
+                result = result.replace(title, '')
+
+            # 表の行データを除去
+            columns = table.get('columns', []) or table.get('headers', [])
+            rows = table.get('rows', [])
+
+            # ヘッダー行のテキストを除去
+            if columns:
+                header_text = ' | '.join(str(c) for c in columns)
+                result = result.replace(header_text, '')
+                # Markdown形式のヘッダーも除去
+                md_header = '| ' + ' | '.join(str(c) for c in columns) + ' |'
+                result = result.replace(md_header, '')
+
+            # 各行のテキストを除去（長い行のみ）
+            for row in rows:
+                if isinstance(row, list):
+                    row_text = ' | '.join(str(cell) for cell in row)
+                    if len(row_text) > 20:  # 短すぎる行は誤削除を避ける
+                        result = result.replace(row_text, '')
+                        # Markdown形式も除去
+                        md_row = '| ' + ' | '.join(str(cell) for cell in row) + ' |'
+                        result = result.replace(md_row, '')
+
+        # 連続する空行を整理
+        import re
+        result = re.sub(r'\n{3,}', '\n\n', result)
+        result = re.sub(r'\|[-]+\|', '', result)  # Markdownの区切り線を除去
+
+        return result.strip()

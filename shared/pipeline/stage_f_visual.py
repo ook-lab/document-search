@@ -42,6 +42,7 @@ from .constants import (
     F8_MODEL,
     F7_F8_MAX_TOKENS,
     F7_F8_TEMPERATURE,
+    CHUNK_SIZE_PAGES,
 )
 
 # Surya のインポート（オプショナル）
@@ -192,94 +193,202 @@ class StageFVisualAnalyzer:
         post_body: Optional[Dict],
         progress_callback
     ) -> Dict[str, Any]:
-        """画像/ドキュメント処理（F-1〜F-10）"""
+        """
+        画像/ドキュメント処理（F-1〜F-10）
+
+        【チャンク処理】
+        MAX_TOKENSエラー回避のため、5ページごとに分割処理を行う。
+        これにより100ページ超のPDFでも安定して処理可能。
+        """
 
         # ============================================
-        # F-1: Image Normalization
+        # F-1: Image Normalization（全ページ）
         # ============================================
         if progress_callback:
             progress_callback("F-1")
-        page_images = self._f1_normalize(file_path, is_document)
+        all_page_images = self._f1_normalize(file_path, is_document)
+        total_pages = len(all_page_images)
+
+        logger.info(f"[Stage F] 総ページ数: {total_pages}, チャンクサイズ: {CHUNK_SIZE_PAGES}")
 
         # ============================================
-        # F-2: Surya Block Detection
+        # 5ページごとのチャンクに分割
         # ============================================
-        if progress_callback:
-            progress_callback("F-2")
-        surya_blocks = self._f2_detect_blocks(page_images)
+        page_chunks = [
+            all_page_images[i:i + CHUNK_SIZE_PAGES]
+            for i in range(0, total_pages, CHUNK_SIZE_PAGES)
+        ]
+        total_chunks = len(page_chunks)
+
+        logger.info(f"[Stage F] チャンク数: {total_chunks}")
+
+        # チャンク処理結果の蓄積用
+        aggregated_full_texts = []
+        aggregated_blocks = []
+        aggregated_tables = []
+        aggregated_diagrams = []
+        aggregated_charts = []
+        aggregated_structured_candidates = []
+        chunk_warnings = []
 
         # ============================================
-        # F-3: Coordinate Quantization
+        # チャンクごとに F-2〜F-8 を実行
         # ============================================
-        if progress_callback:
-            progress_callback("F-3")
-        quantized_blocks = self._f3_quantize(surya_blocks, page_images)
+        for chunk_idx, chunk_pages in enumerate(page_chunks):
+            chunk_start_page = chunk_idx * CHUNK_SIZE_PAGES
+            chunk_end_page = chunk_start_page + len(chunk_pages) - 1
 
-        # ============================================
-        # F-4: Logical Reading Order
-        # ============================================
-        if progress_callback:
-            progress_callback("F-4")
-        ordered_blocks = self._f4_reading_order(quantized_blocks)
+            logger.info("=" * 50)
+            logger.info(f"[Stage F] チャンク {chunk_idx + 1}/{total_chunks} 処理中")
+            logger.info(f"  ├─ ページ範囲: {chunk_start_page + 1}〜{chunk_end_page + 1}")
+            logger.info(f"  └─ ページ数: {len(chunk_pages)}")
 
-        # ============================================
-        # F-5: Block Classification
-        # ============================================
-        if progress_callback:
-            progress_callback("F-5")
-        classified_blocks = self._f5_classify(ordered_blocks)
+            # F-2: Surya Block Detection（このチャンクのみ）
+            if progress_callback:
+                progress_callback(f"F-2 ({chunk_idx + 1}/{total_chunks})")
+            surya_blocks = self._f2_detect_blocks(chunk_pages)
 
-        # ============================================
-        # F-6: Blind Prompting（地図生成）
-        # ============================================
-        if progress_callback:
-            progress_callback("F-6")
-        block_map = self._f6_create_block_map(classified_blocks)
+            # F-3: Coordinate Quantization
+            if progress_callback:
+                progress_callback(f"F-3 ({chunk_idx + 1}/{total_chunks})")
+            quantized_blocks = self._f3_quantize(surya_blocks, chunk_pages)
 
-        # ============================================
-        # F-7 & F-8: Dual Read（並列実行）
-        # ============================================
-        if progress_callback:
-            progress_callback("F-7")
+            # F-4: Logical Reading Order
+            if progress_callback:
+                progress_callback(f"F-4 ({chunk_idx + 1}/{total_chunks})")
+            ordered_blocks = self._f4_reading_order(quantized_blocks)
 
-        # 並列でPath AとPath Bを実行
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_a = executor.submit(
-                self._f7_path_a_text_extraction,
-                file_path, block_map, page_images
-            )
-            future_b = executor.submit(
-                self._f8_path_b_visual_analysis,
-                file_path, block_map, page_images
-            )
+            # F-5: Block Classification
+            if progress_callback:
+                progress_callback(f"F-5 ({chunk_idx + 1}/{total_chunks})")
+            classified_blocks = self._f5_classify(ordered_blocks)
+
+            # F-6: Blind Prompting（このチャンク用の地図生成）
+            if progress_callback:
+                progress_callback(f"F-6 ({chunk_idx + 1}/{total_chunks})")
+            block_map = self._f6_create_block_map(classified_blocks)
+
+            # F-7 & F-8: Dual Read（このチャンクのみ、並列実行）
+            if progress_callback:
+                progress_callback(f"F-7/F-8 ({chunk_idx + 1}/{total_chunks})")
 
             path_a_result = {}
             path_b_result = {}
 
-            for future in as_completed([future_a, future_b]):
-                try:
-                    if future == future_a:
-                        path_a_result = future.result()
-                        logger.info(f"[F-7] Path A 完了")
-                    else:
-                        path_b_result = future.result()
-                        logger.info(f"[F-8] Path B 完了")
-                except Exception as e:
-                    logger.error(f"[F-7/F-8] エラー: {e}")
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_a = executor.submit(
+                    self._f7_path_a_chunk_extraction,
+                    chunk_pages, block_map, chunk_idx, chunk_start_page
+                )
+                future_b = executor.submit(
+                    self._f8_path_b_chunk_analysis,
+                    chunk_pages, block_map, chunk_idx, chunk_start_page
+                )
+
+                for future in as_completed([future_a, future_b]):
+                    try:
+                        if future == future_a:
+                            path_a_result = future.result()
+                            logger.info(f"[F-7] チャンク{chunk_idx + 1} Path A 完了")
+                        else:
+                            path_b_result = future.result()
+                            logger.info(f"[F-8] チャンク{chunk_idx + 1} Path B 完了")
+                    except Exception as e:
+                        logger.error(f"[F-7/F-8] チャンク{chunk_idx + 1} エラー: {e}")
+                        chunk_warnings.append(f"CHUNK_{chunk_idx}_ERROR: {str(e)}")
+
+            # チャンク結果を蓄積
+            aggregated_full_texts.append(path_a_result.get("full_text_ordered", ""))
+
+            # ブロックIDにチャンク情報を付加して蓄積
+            for block in path_a_result.get("extracted_texts", []):
+                block["chunk_idx"] = chunk_idx
+                block["original_page"] = chunk_start_page + block.get("page", 0)
+                aggregated_blocks.append(block)
+
+            # 表データをマージして蓄積
+            merged_tables = self._merge_chunk_tables(path_a_result, path_b_result, chunk_idx, chunk_start_page)
+            aggregated_tables.extend(merged_tables)
+
+            # 構造化データ候補を蓄積
+            for candidate in path_b_result.get("structured_data_candidates", []):
+                candidate["chunk_idx"] = chunk_idx
+                aggregated_structured_candidates.append(candidate)
+
+            # ダイアグラム・チャートを蓄積
+            aggregated_diagrams.extend(path_b_result.get("diagrams", []))
+            aggregated_charts.extend(path_b_result.get("charts", []))
+
+            logger.info(f"[Stage F] チャンク{chunk_idx + 1} 完了: テキスト{len(path_a_result.get('full_text_ordered', ''))}文字, 表{len(merged_tables)}件")
 
         # ============================================
-        # F-9: Result Convergence
+        # F-9: Result Convergence（全チャンク結果をマージ）
         # ============================================
         if progress_callback:
             progress_callback("F-9")
-        merged_result = self._f9_merge_results(path_a_result, path_b_result)
+
+        logger.info("=" * 50)
+        logger.info("[F-9] 全チャンク結果のマージ開始")
+
+        # -----------------------------------------
+        # アンカーベースのパケット配列を生成
+        # -----------------------------------------
+        anchors = self._build_anchor_packets(
+            aggregated_blocks,
+            aggregated_tables,
+            aggregated_structured_candidates
+        )
+
+        logger.info(f"[F-9] アンカー生成: {len(anchors)}個")
+
+        # 後方互換のため従来形式も保持
+        merged_result = {
+            # 新形式: アンカーベース
+            "anchors": anchors,
+            # 旧形式: 互換性のため残す
+            "text_source": {
+                "full_text": "\n\n".join(aggregated_full_texts),
+                "blocks": aggregated_blocks,
+                "missed_texts": []
+            },
+            "tables": aggregated_tables,
+            "structured_data_candidates": aggregated_structured_candidates,
+            "visual_source": {
+                "diagrams": aggregated_diagrams,
+                "charts": aggregated_charts,
+                "layout": {}
+            },
+            "metadata": {
+                "path_a_model": F7_MODEL_IMAGE,
+                "path_b_model": F8_MODEL,
+                "table_count": len(aggregated_tables),
+                "total_table_rows": sum(t.get("row_count", 0) for t in aggregated_tables),
+                "total_pages": total_pages,
+                "chunk_count": total_chunks,
+                "chunk_size": CHUNK_SIZE_PAGES,
+                "anchor_count": len(anchors)
+            }
+        }
+
+        total_text_len = len(merged_result["text_source"]["full_text"])
+        logger.info(f"[F-9] マージ完了: 総テキスト{total_text_len}文字, 総表{len(aggregated_tables)}件, アンカー{len(anchors)}個")
 
         # ============================================
         # F-10: Payload Validation
         # ============================================
         if progress_callback:
             progress_callback("F-10")
+
         validated_payload = self._f10_validate(merged_result, post_body)
+
+        # チャンク処理情報を追加
+        validated_payload["processing_mode"] = "dual_vision_chunked"
+        validated_payload["chunk_info"] = {
+            "total_pages": total_pages,
+            "chunk_size": CHUNK_SIZE_PAGES,
+            "chunk_count": total_chunks
+        }
+        validated_payload["warnings"].extend(chunk_warnings)
 
         return validated_payload
 
@@ -632,12 +741,12 @@ class StageFVisualAnalyzer:
 {{"table_title": "成績優秀者", "data_summary": "1位は山田（520点）、2位は田中..."}}
 ```
 
-✅ **正しい抽出方法（全行を展開）**:
+✅ **正しい抽出方法（全行を展開 + カラムナ形式）**:
 ```json
 {{
   "table_title": "成績優秀者",
   "table_type": "ranking",
-  "headers": ["順位", "氏名", "点数"],
+  "columns": ["順位", "氏名", "点数"],
   "rows": [
     ["1", "山田太郎", "520"],
     ["2", "田中花子", "515"],
@@ -665,12 +774,15 @@ class StageFVisualAnalyzer:
 
 ### セル内のカンマ・セミコロンは展開
 ❌ NG: `{{"参加者": "山田, 田中, 鈴木"}}`
-✅ OK: 別々の行に展開
+✅ OK: 別々の行に展開（カラムナ形式）
 ```json
-{{"headers": ["氏名"], "rows": [["山田"], ["田中"], ["鈴木"]]}}
+{{"columns": ["氏名"], "rows": [["山田"], ["田中"], ["鈴木"]]}}
 ```
 
-## 出力形式
+## 出力形式（カラムナフォーマット厳守）
+
+**重要**: 表データは `columns` と `rows`（値のみ）で出力。トークン節約のため辞書リスト形式は禁止。
+
 ```json
 {{
   "extracted_texts": [
@@ -681,7 +793,7 @@ class StageFVisualAnalyzer:
       "block_id": "p0_b5",
       "table_title": "表のタイトル",
       "table_type": "visual_table",
-      "headers": ["列1", "列2", "列3"],
+      "columns": ["列1", "列2", "列3"],
       "rows": [
         ["データ1-1", "データ1-2", "データ1-3"],
         ["データ2-1", "データ2-2", "データ2-3"]
@@ -696,6 +808,11 @@ class StageFVisualAnalyzer:
   ],
   "full_text_ordered": "各ブロックをreading_order順に、\\n\\nで区切って結合した全文"
 }}
+```
+
+**禁止（辞書リスト = トークン浪費）**:
+```json
+"rows": [{{"列1": "値", "列2": "値"}}, ...]
 ```
 
 ## 禁止事項
@@ -1011,6 +1128,237 @@ class StageFVisualAnalyzer:
 """
 
     # ============================================
+    # チャンク処理用メソッド（MAX_TOKENSエラー回避）
+    # ============================================
+
+    def _save_chunk_as_temp_image(self, chunk_pages: List[Dict], chunk_idx: int) -> Path:
+        """
+        チャンク内の画像を一時ファイルとして保存
+        複数ページの場合は縦に結合した1枚の画像として保存
+        """
+        import tempfile
+
+        if len(chunk_pages) == 1:
+            # 1ページのみ: そのまま保存
+            img = chunk_pages[0]['image']
+        else:
+            # 複数ページ: 縦に結合
+            images = [p['image'] for p in chunk_pages]
+            total_height = sum(img.size[1] for img in images)
+            max_width = max(img.size[0] for img in images)
+
+            combined = Image.new('RGB', (max_width, total_height), (255, 255, 255))
+            y_offset = 0
+            for img in images:
+                combined.paste(img, (0, y_offset))
+                y_offset += img.size[1]
+
+            img = combined
+
+        # 一時ファイルに保存
+        temp_file = tempfile.NamedTemporaryFile(
+            suffix=f'_chunk{chunk_idx}.png',
+            delete=False
+        )
+        img.save(temp_file.name, 'PNG')
+        temp_file.close()
+
+        return Path(temp_file.name)
+
+    def _f7_path_a_chunk_extraction(
+        self,
+        chunk_pages: List[Dict],
+        block_map: str,
+        chunk_idx: int,
+        chunk_start_page: int
+    ) -> Dict[str, Any]:
+        """
+        F-7 Path A: チャンク用テキスト抽出（gemini-2.0-flash）
+
+        Args:
+            chunk_pages: このチャンクのページ画像リスト
+            block_map: このチャンク用のブロック地図
+            chunk_idx: チャンクインデックス
+            chunk_start_page: このチャンクの開始ページ番号
+        """
+        f7_start = time.time()
+        logger.info(f"[F-7] Path A - チャンク{chunk_idx + 1} Text Extraction 開始")
+
+        # チャンク画像を一時ファイルに保存
+        temp_image_path = self._save_chunk_as_temp_image(chunk_pages, chunk_idx)
+
+        prompt = self._build_f7_chunk_prompt(block_map, chunk_idx, chunk_start_page, len(chunk_pages))
+
+        try:
+            response = self.llm_client.generate_with_vision(
+                prompt=prompt,
+                image_path=str(temp_image_path),
+                model=F7_MODEL_IMAGE,
+                max_tokens=F7_F8_MAX_TOKENS,
+                temperature=F7_F8_TEMPERATURE,
+                response_format="json"
+            )
+
+            # JSON パース
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                import json_repair
+                result = json_repair.repair_json(response, return_objects=True)
+
+            f7_elapsed = time.time() - f7_start
+            logger.info(f"[F-7完了] チャンク{chunk_idx + 1} Path A: {len(response)}文字, {f7_elapsed:.2f}秒")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[F-7] チャンク{chunk_idx + 1} Path A エラー: {e}")
+            return {"error": str(e), "extracted_texts": [], "tables": [], "full_text_ordered": ""}
+
+        finally:
+            # 一時ファイル削除
+            try:
+                temp_image_path.unlink()
+            except:
+                pass
+
+    def _build_f7_chunk_prompt(self, block_map: str, chunk_idx: int, start_page: int, page_count: int) -> str:
+        """F-7チャンク用プロンプト構築"""
+        base_prompt = self._build_f7_prompt(block_map)
+
+        chunk_info = f"""
+## チャンク情報
+- チャンク番号: {chunk_idx + 1}
+- ページ範囲: {start_page + 1}〜{start_page + page_count}ページ目
+- このチャンクには{page_count}ページ分の画像が縦に結合されています
+
+**注意**: 各ページの境界を意識して、ページ跨ぎの表やテキストも正確に抽出してください。
+"""
+        return base_prompt + chunk_info
+
+    def _f8_path_b_chunk_analysis(
+        self,
+        chunk_pages: List[Dict],
+        block_map: str,
+        chunk_idx: int,
+        chunk_start_page: int
+    ) -> Dict[str, Any]:
+        """
+        F-8 Path B: チャンク用構造解析（gemini-2.5-flash）
+
+        Args:
+            chunk_pages: このチャンクのページ画像リスト
+            block_map: このチャンク用のブロック地図
+            chunk_idx: チャンクインデックス
+            chunk_start_page: このチャンクの開始ページ番号
+        """
+        f8_start = time.time()
+        logger.info(f"[F-8] Path B - チャンク{chunk_idx + 1} Visual Analysis 開始")
+
+        # チャンク画像を一時ファイルに保存
+        temp_image_path = self._save_chunk_as_temp_image(chunk_pages, chunk_idx)
+
+        prompt = self._build_f8_chunk_prompt(block_map, chunk_idx, chunk_start_page, len(chunk_pages))
+
+        try:
+            response = self.llm_client.generate_with_vision(
+                prompt=prompt,
+                image_path=str(temp_image_path),
+                model=F8_MODEL,
+                max_tokens=F7_F8_MAX_TOKENS,
+                temperature=F7_F8_TEMPERATURE,
+                response_format="json"
+            )
+
+            # JSON パース
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                import json_repair
+                result = json_repair.repair_json(response, return_objects=True)
+
+            f8_elapsed = time.time() - f8_start
+            logger.info(f"[F-8完了] チャンク{chunk_idx + 1} Path B: {len(response)}文字, {f8_elapsed:.2f}秒")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[F-8] チャンク{chunk_idx + 1} Path B エラー: {e}")
+            return {"error": str(e), "tables": [], "diagrams": [], "charts": [], "structured_data_candidates": []}
+
+        finally:
+            # 一時ファイル削除
+            try:
+                temp_image_path.unlink()
+            except:
+                pass
+
+    def _build_f8_chunk_prompt(self, block_map: str, chunk_idx: int, start_page: int, page_count: int) -> str:
+        """F-8チャンク用プロンプト構築"""
+        base_prompt = self._build_f8_prompt(block_map)
+
+        chunk_info = f"""
+## チャンク情報
+- チャンク番号: {chunk_idx + 1}
+- ページ範囲: {start_page + 1}〜{start_page + page_count}ページ目
+- このチャンクには{page_count}ページ分の画像が縦に結合されています
+
+**注意**: ページ境界を跨ぐ表の構造も正確に解析してください。
+"""
+        return base_prompt + chunk_info
+
+    def _merge_chunk_tables(
+        self,
+        path_a_result: Dict[str, Any],
+        path_b_result: Dict[str, Any],
+        chunk_idx: int,
+        chunk_start_page: int
+    ) -> List[Dict[str, Any]]:
+        """
+        チャンク内の表データをマージ
+
+        Path A（テキスト内容）と Path B（構造情報）を統合し、
+        チャンク情報を付加して返す
+        """
+        path_a_tables = path_a_result.get("tables", [])
+        path_b_tables = path_b_result.get("tables", [])
+
+        merged_tables = []
+        for a_table in path_a_tables:
+            block_id = a_table.get("block_id", "")
+
+            # Path B から対応する構造情報を探す
+            b_structure = {}
+            for b_table in path_b_tables:
+                if b_table.get("block_id") == block_id:
+                    b_structure = b_table
+                    break
+
+            # columns/headers どちらも受け付ける（カラムナ形式優先）
+            columns = a_table.get("columns") or a_table.get("headers", [])
+            rows = a_table.get("rows", [])
+
+            merged_table = {
+                "block_id": f"chunk{chunk_idx}_{block_id}",  # チャンク情報を付加
+                "chunk_idx": chunk_idx,
+                "chunk_start_page": chunk_start_page,
+                "table_title": a_table.get("table_title", ""),
+                "table_type": a_table.get("table_type", b_structure.get("table_type", "visual_table")),
+                "columns": columns,
+                "rows": rows,
+                "row_count": a_table.get("row_count", len(rows)),
+                "col_count": a_table.get("col_count", len(columns)),
+                "caption": a_table.get("caption", ""),
+                # Path B からの構造情報
+                "structure": b_structure.get("structure", {}),
+                "semantic_role": b_structure.get("semantic_role", ""),
+                "data_quality": b_structure.get("data_quality", {})
+            }
+            merged_tables.append(merged_table)
+
+        return merged_tables
+
+    # ============================================
     # F-9: Result Convergence
     # ============================================
     def _f9_merge_results(
@@ -1045,14 +1393,18 @@ class StageFVisualAnalyzer:
                     b_structure = b_table
                     break
 
+            # columns/headers どちらも受け付ける（カラムナ形式優先）
+            columns = a_table.get("columns") or a_table.get("headers", [])
+            rows = a_table.get("rows", [])
+
             merged_table = {
                 "block_id": block_id,
                 "table_title": a_table.get("table_title", ""),
                 "table_type": a_table.get("table_type", b_structure.get("table_type", "visual_table")),
-                "headers": a_table.get("headers", []),
-                "rows": a_table.get("rows", []),
-                "row_count": a_table.get("row_count", len(a_table.get("rows", []))),
-                "col_count": a_table.get("col_count", len(a_table.get("headers", []))),
+                "columns": columns,  # カラムナ形式で統一
+                "rows": rows,
+                "row_count": a_table.get("row_count", len(rows)),
+                "col_count": a_table.get("col_count", len(columns)),
                 "caption": a_table.get("caption", ""),
                 # Path B からの構造情報
                 "structure": b_structure.get("structure", {}),
@@ -1092,6 +1444,111 @@ class StageFVisualAnalyzer:
         logger.info(f"[F-9完了] マージ完了, {f9_elapsed:.2f}秒")
 
         return merged
+
+    # ============================================
+    # F-9 Helper: アンカーパケット生成
+    # ============================================
+    def _build_anchor_packets(
+        self,
+        text_blocks: List[Dict],
+        tables: List[Dict],
+        structured_candidates: List[Dict]
+    ) -> List[Dict[str, Any]]:
+        """
+        アンカーベースのパケット配列を生成
+
+        テキストブロックと表を統一的なアンカー形式に変換し、
+        Stage Gでの振り分け（H1/H2）を容易にする
+
+        Args:
+            text_blocks: F-7から抽出されたテキストブロック
+            tables: F-7/F-8からマージされた表データ
+            structured_candidates: F-8で検出された構造化候補
+
+        Returns:
+            アンカーパケット配列:
+            [
+                {"anchor_id": "B-001", "type": "text", "content": "...", "page": 1},
+                {"anchor_id": "B-002", "type": "table", "title": "...", "columns": [...], "rows": [...], "is_heavy": true}
+            ]
+        """
+        anchors = []
+        anchor_index = 1
+
+        # 表のblock_idを収集（テキストから除外するため）
+        table_block_ids = set(t.get("block_id", "") for t in tables)
+
+        # テキストブロックをアンカー化
+        for block in text_blocks:
+            block_id = block.get("block_id", "")
+
+            # 表として既に処理されているブロックはスキップ
+            if block_id in table_block_ids:
+                continue
+
+            text = block.get("text", "")
+            if not text or len(text.strip()) < 3:
+                continue
+
+            anchors.append({
+                "anchor_id": f"B-{anchor_index:03d}",
+                "original_block_id": block_id,
+                "type": "text",
+                "block_type": block.get("block_type", "paragraph"),
+                "content": text,
+                "page": block.get("original_page", block.get("page", 0)),
+                "reading_order": block.get("reading_order", 0),
+                "confidence": block.get("confidence", "medium"),
+                "is_heavy": False  # テキストは常に軽量
+            })
+            anchor_index += 1
+
+        # 表をアンカー化
+        for table in tables:
+            block_id = table.get("block_id", "")
+            rows = table.get("rows", [])
+            columns = table.get("columns", []) or table.get("headers", [])
+
+            # 重い表の判定（20行以上 or 5列以上）
+            is_heavy = len(rows) >= 20 or len(columns) >= 5
+
+            anchors.append({
+                "anchor_id": f"B-{anchor_index:03d}",
+                "original_block_id": block_id,
+                "type": "table",
+                "table_type": table.get("table_type", "visual_table"),
+                "title": table.get("table_title", ""),
+                "columns": columns,
+                "rows": rows,
+                "row_count": len(rows),
+                "col_count": len(columns),
+                "page": table.get("chunk_start_page", 0),
+                "is_heavy": is_heavy,
+                "structure": table.get("structure", {}),
+                "semantic_role": table.get("semantic_role", "")
+            })
+            anchor_index += 1
+
+        # 構造化候補をアンカー化（表として検出されなかったが構造化可能なデータ）
+        for candidate in structured_candidates:
+            anchors.append({
+                "anchor_id": f"B-{anchor_index:03d}",
+                "type": "structured_candidate",
+                "candidate_type": candidate.get("type", "key_value"),
+                "content": candidate.get("content", {}),
+                "page": candidate.get("page", 0),
+                "is_heavy": False
+            })
+            anchor_index += 1
+
+        # reading_order でソート（テキストの場合）
+        anchors.sort(key=lambda x: (x.get("page", 0), x.get("reading_order", 0)))
+
+        logger.info(f"[F-9] アンカー生成: text={sum(1 for a in anchors if a['type'] == 'text')}, "
+                   f"table={sum(1 for a in anchors if a['type'] == 'table')}, "
+                   f"heavy={sum(1 for a in anchors if a.get('is_heavy', False))}")
+
+        return anchors
 
     # ============================================
     # F-10: Payload Validation
@@ -1139,9 +1596,9 @@ class StageFVisualAnalyzer:
         # 5. 表データの統計
         table_count = len(tables)
         total_rows = sum(t.get("row_count", 0) for t in tables)
-        tables_with_headers = sum(1 for t in tables if t.get("headers"))
+        tables_with_columns = sum(1 for t in tables if t.get("columns") or t.get("headers"))
 
-        logger.info(f"[F-10] 表統計: {table_count}テーブル, {total_rows}行, headers付き={tables_with_headers}")
+        logger.info(f"[F-10] 表統計: {table_count}テーブル, {total_rows}行, columns付き={tables_with_columns}")
 
         # 6. 最終payload構築
         payload = {
@@ -1174,34 +1631,38 @@ class StageFVisualAnalyzer:
         return payload
 
     def _validate_tables(self, tables: List[Dict]) -> List[str]:
-        """表データの完全性を検証"""
+        """表データの完全性を検証（カラムナ形式対応）"""
         warnings = []
 
         for i, table in enumerate(tables):
             table_id = table.get("block_id", f"table_{i}")
 
-            # headers と rows の存在確認
-            headers = table.get("headers", [])
+            # columns/headers どちらも受け付ける（カラムナ形式優先）
+            columns = table.get("columns") or table.get("headers", [])
             rows = table.get("rows", [])
 
-            if not headers and not rows:
-                warnings.append(f"F10_TABLE_WARN: {table_id} has no headers and no rows")
+            if not columns and not rows:
+                warnings.append(f"F10_TABLE_WARN: {table_id} has no columns and no rows")
                 continue
 
             # 列数の整合性チェック
-            if headers:
-                header_cols = len(headers)
+            if columns:
+                col_count = len(columns)
                 for row_idx, row in enumerate(rows):
-                    if isinstance(row, list) and len(row) != header_cols:
-                        warnings.append(f"F10_TABLE_WARN: {table_id} row {row_idx} has {len(row)} cols, expected {header_cols}")
+                    if isinstance(row, list) and len(row) != col_count:
+                        warnings.append(f"F10_TABLE_WARN: {table_id} row {row_idx} has {len(row)} cols, expected {col_count}")
 
             # data_summary の検出（禁止パターン）
             if "data_summary" in table:
                 warnings.append(f"F10_TABLE_ERROR: {table_id} uses data_summary (PROHIBITED)")
 
+            # 辞書リスト形式の検出（禁止パターン）
+            if rows and isinstance(rows[0], dict):
+                warnings.append(f"F10_TABLE_ERROR: {table_id} uses dict rows (PROHIBITED - use columnar format)")
+
             # 空の rows チェック
             if not rows:
-                warnings.append(f"F10_TABLE_WARN: {table_id} has headers but no rows")
+                warnings.append(f"F10_TABLE_WARN: {table_id} has columns but no rows")
 
             # セル内のカンマ検出（構造化不十分の可能性）
             for row_idx, row in enumerate(rows):

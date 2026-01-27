@@ -2,16 +2,20 @@
 統合ドキュメント処理パイプライン (Stage E-K) - 設定ベース版
 
 設計書: DESIGN_UNIFIED_PIPELINE.md v2.0 に準拠
-処理順序: Stage E → F → G → H+I → J → K
+処理順序: Stage E → F → G → H1 → H2 → J → K
 
 Stage概要:
 - Stage E: Pre-processing（テキスト抽出）
 - Stage F: Visual Analysis（視覚解析、gemini-2.5-pro）
-         - 物理的OCR抽出、JSON出力
+         - 物理的OCR抽出、JSON出力（カラムナ形式）
 - Stage G: Logical Refinement（論理的精錬、gemini-2.0-flash-lite）
          - 重複排除、REF_ID付与、unified_text生成
-- Stage H+I: Combined Structuring & Synthesis（統合版、gemini-2.0-flash）
-         - 構造化 + 統合・要約を1回のLLM呼び出しで実行
+- Stage H1: Table Specialist（表処理専門）
+         - 定型表・構造化表を先に処理
+         - カラムナ形式→辞書リスト変換
+         - H2への入力量削減のため表テキストを抽出
+- Stage H2: Text Specialist（テキスト処理専門、gemini-2.0-flash）
+         - 軽量化されたテキストで構造化 + 要約
          - calendar_events, tasks, title, summary を生成
          - audit_canonical_text（監査用正本）を生成
 - Stage J: Chunking（チャンク化）
@@ -21,6 +25,7 @@ Stage概要:
 - doc_type / workspace に応じて自動的にプロンプトとモデルを切り替え
 - config/ 内の YAML と Markdown ファイルで設定管理
 - Stage G で REF_ID付き目録を生成し、後続ステージが参照可能
+- H1 + H2 分割によりトークン消費を削減
 """
 import asyncio
 import json
@@ -36,7 +41,9 @@ from .config_loader import ConfigLoader
 from .stage_e_preprocessing import StageEPreprocessor
 from .stage_f_visual import StageFVisualAnalyzer
 from .stage_g_refiner import StageGRefiner  # Stage G: 論理的精錬
-from .stage_hi_combined import StageHICombined  # Stage H+I: 統合版
+from .stage_hi_combined import StageHICombined  # Stage H+I: 統合版（後方互換）
+from .stage_h1_table import StageH1Table  # Stage H1: 表処理専門
+from .stage_h2_text import StageH2Text  # Stage H2: テキスト処理専門
 from .stage_h_kakeibo import StageHKakeibo  # 家計簿専用
 from .stage_j_chunking import StageJChunking
 from .stage_k_embedding import StageKEmbedding
@@ -128,7 +135,9 @@ class UnifiedDocumentPipeline:
         self.stage_e = StageEPreprocessor(self.llm_client)
         self.stage_f = StageFVisualAnalyzer(self.llm_client, enable_hybrid_ocr=enable_hybrid_ocr)
         self.stage_g = StageGRefiner(self.llm_client)  # Stage G: 論理的精錬
-        self.stage_hi = StageHICombined(self.llm_client)  # Stage H+I: 統合版
+        self.stage_hi = StageHICombined(self.llm_client)  # Stage H+I: 統合版（後方互換）
+        self.stage_h1 = StageH1Table(self.llm_client)  # Stage H1: 表処理専門
+        self.stage_h2 = StageH2Text(self.llm_client)  # Stage H2: テキスト処理専門
         self.stage_h_kakeibo = StageHKakeibo(self.db)  # 家計簿専用
         self.stage_j = StageJChunking()
         self.stage_k = StageKEmbedding(self.llm_client, self.db)
@@ -136,7 +145,7 @@ class UnifiedDocumentPipeline:
         # 家計簿専用のDB保存ハンドラー
         self.kakeibo_db_handler = KakeiboDBHandler(self.db) if KAKEIBO_AVAILABLE else None
 
-        logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（E→F→G→H→I→J→K, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
+        logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（E→F→G→H1→H2→J→K, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
 
     async def process_document(
         self,
@@ -471,24 +480,88 @@ class UnifiedDocumentPipeline:
                 }
 
             # ============================================
-            # Stage H+I: 構造化 + 統合・要約（統合版）
+            # Stage H1 + H2: 分割処理（トークン消費削減版）
             # ============================================
             else:
                 stage_hi_config = self.config.get_stage_config('stage_hi', doc_type, workspace)
                 prompt_hi = stage_hi_config['prompt']
                 model_hi = stage_hi_config['model']
 
-                logger.info(f"[Stage H+I] 統合版 構造化+統合開始... (model={model_hi})")
-                if progress_callback:
-                    progress_callback("H+I")
+                # -----------------------------------------
+                # アンカーベースのH1/H2ルーティング
+                # -----------------------------------------
+                # Stage F からアンカー配列を取得（新形式）
+                anchors = stage_f_structure.get('anchors', []) if stage_f_structure else []
 
-                stageHI_result = self.stage_hi.process(
+                routing_result = self.stage_g.route_anchors_to_stages(
+                    stage_g_result=stage_g_result or {},
+                    anchors=anchors
+                )
+
+                h1_payload = routing_result.get('h1_payload', {})
+                h2_payload = routing_result.get('h2_payload', {})
+                anchor_map = routing_result.get('anchor_map', {})
+
+                logger.info(f"[Stage G→H] ルーティング完了: H1={len(h1_payload.get('heavy_tables', []))}表, H2テキスト={len(h2_payload.get('text_anchors', []))}件")
+
+                # -----------------------------------------
+                # Stage H1: 表処理専門（重い表のみ）
+                # -----------------------------------------
+                heavy_tables = h1_payload.get('heavy_tables', [])
+                table_inventory = stage_g_result.get('table_inventory', []) if stage_g_result else []
+
+                logger.info(f"[Stage H1] 表処理開始... (重い表: {len(heavy_tables)}件, 全表: {len(table_inventory)}件)")
+                if progress_callback:
+                    progress_callback("H1")
+
+                h1_result = self.stage_h1.process(
+                    table_inventory=table_inventory,
+                    doc_type=doc_type,
+                    workspace=workspace,
+                    unified_text=combined_text
+                )
+
+                # H1の結果をログ
+                h1_stats = h1_result.get('statistics', {})
+                logger.info(f"[Stage H1完了] processed={h1_stats.get('processed', 0)}, "
+                           f"extracted_meta_keys={list(h1_result.get('extracted_metadata', {}).keys())}")
+
+                # イベントループに制御を返す
+                await asyncio.sleep(0)
+
+                # -----------------------------------------
+                # H2用にテキストを軽量化（アンカーベース）
+                # -----------------------------------------
+                # 方法1: Stage G のルーティング結果を使用
+                reduced_text = h2_payload.get('reduced_text', '')
+
+                # 方法2: フォールバック（従来のフラグメントベース）
+                if not reduced_text:
+                    reduced_text = combined_text
+                    table_text_fragments = h1_result.get('table_text_fragments', [])
+
+                    if table_text_fragments:
+                        reduced_text = self.stage_h1.remove_table_text_from_unified(
+                            combined_text, table_text_fragments
+                        )
+
+                logger.info(f"[Stage H1→H2] テキスト軽量化: {len(combined_text)}→{len(reduced_text)}文字 (-{(len(combined_text) - len(reduced_text)) * 100 // max(len(combined_text), 1)}%)")
+
+                # -----------------------------------------
+                # Stage H2: テキスト処理専門
+                # -----------------------------------------
+                logger.info(f"[Stage H2] テキスト処理開始... (model={model_hi})")
+                if progress_callback:
+                    progress_callback("H2")
+
+                stageHI_result = self.stage_h2.process(
                     file_name=file_name,
                     doc_type=doc_type,
                     workspace=workspace,
-                    combined_text=combined_text,
+                    reduced_text=reduced_text,
                     prompt=prompt_hi,
                     model=model_hi,
+                    h1_result=h1_result,
                     stage_f_structure=stage_f_structure,
                     stage_g_result=stage_g_result
                 )
@@ -496,10 +569,10 @@ class UnifiedDocumentPipeline:
                 # イベントループに制御を返す（並列タスク実行のため）
                 await asyncio.sleep(0)
 
-                # Stage H+I の結果をチェック
+                # Stage H2 の結果をチェック
                 if not stageHI_result or not isinstance(stageHI_result, dict):
-                    error_msg = "Stage H+I失敗: 結果が不正です"
-                    logger.error(f"[Stage H+I失敗] {error_msg}")
+                    error_msg = "Stage H2失敗: 結果が不正です"
+                    logger.error(f"[Stage H2失敗] {error_msg}")
                     return {'success': False, 'error': error_msg}
 
                 # 結果を変数に展開（後続処理との互換性のため）
@@ -508,7 +581,7 @@ class UnifiedDocumentPipeline:
                 stageH_metadata = stageHI_result.get('metadata', {})
                 title = stageHI_result.get('title', '')
                 summary = stageHI_result.get('summary', '')
-                relevant_date = stageHI_result.get('document_date')  # H+Iでは document_date = relevant_date
+                relevant_date = stageHI_result.get('document_date')
 
                 # カレンダーイベントとタスクを取得
                 calendar_events = stageHI_result.get('calendar_events', [])
@@ -523,7 +596,12 @@ class UnifiedDocumentPipeline:
                 if audit_text:
                     stageH_metadata['audit_canonical_text'] = audit_text
 
-                logger.info(f"[Stage H+I完了] title={title[:30] if title else 'N/A'}..., calendar_events={len(calendar_events)}件, tasks={len(tasks)}件")
+                # H1処理統計を追加
+                stageH_metadata['_h1_h2_split'] = True
+                stageH_metadata['_h1_statistics'] = h1_stats
+
+                logger.info(f"[Stage H1+H2完了] title={title[:30] if title else 'N/A'}..., "
+                           f"calendar_events={len(calendar_events)}件, tasks={len(tasks)}件")
 
                 # Stage H 互換の結果オブジェクトを作成
                 stageH_result = {
