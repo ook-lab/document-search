@@ -288,6 +288,16 @@ class LLMClient:
             # テキストを取得
             text_content = candidate.content.parts[0].text if candidate.content.parts else ""
 
+            # トークン使用量を取得
+            usage = {}
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                usage = {
+                    "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
+                    "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
+                    "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0)
+                }
+                logger.info(f"[Gemini] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
+
             # ファイルを削除
             self._cleanup_uploaded_file(uploaded_file)
 
@@ -295,7 +305,8 @@ class LLMClient:
                 "success": True,
                 "content": text_content,
                 "model": model_name,
-                "provider": "gemini"
+                "provider": "gemini",
+                "usage": usage
             }
 
         except Exception as e:
@@ -357,11 +368,22 @@ class LLMClient:
             # 応答が長すぎる場合があるため、先頭2000文字のみをログに記録
             logger.debug(f"[Anthropic RAW RESP] Content preview: {raw_content[:2000]}")
 
+            # トークン使用量を取得
+            usage = {}
+            if hasattr(response, 'usage') and response.usage:
+                usage = {
+                    "prompt_tokens": getattr(response.usage, 'input_tokens', 0),
+                    "completion_tokens": getattr(response.usage, 'output_tokens', 0),
+                    "total_tokens": getattr(response.usage, 'input_tokens', 0) + getattr(response.usage, 'output_tokens', 0)
+                }
+                logger.info(f"[Anthropic] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
+
             return {
                 "success": True,
                 "content": raw_content,
                 "model": model_name,
-                "provider": "claude"
+                "provider": "claude",
+                "usage": usage
             }
 
         except RateLimitError:
@@ -402,14 +424,25 @@ class LLMClient:
                 api_params["max_tokens"] = max_tokens
 
             response = self.openai_client.chat.completions.create(**api_params)
-            
+
+            # トークン使用量を取得
+            usage = {}
+            if hasattr(response, 'usage') and response.usage:
+                usage = {
+                    "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0),
+                    "completion_tokens": getattr(response.usage, 'completion_tokens', 0),
+                    "total_tokens": getattr(response.usage, 'total_tokens', 0)
+                }
+                logger.info(f"[OpenAI] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
+
             return {
                 "success": True,
                 "content": response.choices[0].message.content,
                 "model": model_name,
-                "provider": "openai"
+                "provider": "openai",
+                "usage": usage
             }
-            
+
         except Exception as e:
             return {"success": False, "error": str(e), "model": model_name, "provider": "openai"}
 
@@ -581,8 +614,17 @@ class LLMClient:
 
             # テキスト長とトークン使用量をログ出力
             logger.info(f"[Gemini Vision] 応答テキスト長: {len(text_content)}文字")
-            if hasattr(response, 'usage_metadata'):
-                logger.info(f"[Gemini Vision] トークン使用量: {response.usage_metadata}")
+
+            # トークン使用量を取得・保存
+            self.last_usage = {}
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                self.last_usage = {
+                    "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
+                    "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
+                    "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0),
+                    "model": model
+                }
+                logger.info(f"[Gemini Vision] トークン使用量: prompt={self.last_usage['prompt_tokens']}, completion={self.last_usage['completion_tokens']}, total={self.last_usage['total_tokens']}")
 
             return text_content
 

@@ -1,39 +1,51 @@
 """
-Stage G: Integration Refiner (統合精錬)
+Stage G: Integration Refiner (統合精錬) - v2.0
 
-【設計 2026-01-26】E + F 独立出力の統合
+【設計 2026-01-28】G-Gate + G1 + G2 による物理的分離
 
 役割: Stage E（物理抽出）と Stage F（独立読解）の結果を統合し、
-      後続ステージが引用しやすい「ID付き目録」を作成
+      G1（表専用）と G2（テキスト専用）で整理してから H1/H2 へ渡す
 
 ============================================
+新アーキテクチャ:
+
+[Stage E] + [Stage F]
+         ↓
+    [G-Gate] ←─── 仕分けゲート（表とテキストを物理的に分離）
+         ↓
+   ┌─────┴─────┐
+   ↓           ↓
+ [G1]        [G2]
+ 表整理      テキスト整理
+   ↓           ↓
+ [H1]        [H2]
+
 入力:
-  - stage_e_result: 物理抽出テキスト（PDF/Office/テキスト）
-  - stage_f_payload: 独立読解結果（Path A + Path B）
+  - stage_e_result: 物理抽出テキスト
+  - stage_f_payload: 独立読解結果（アンカー付き）
   - post_body: 投稿本文
 
 出力:
-  - unified_text: 重複のない統合テキスト（正本）
-  - source_inventory: REF_ID付きセグメントリスト
-  - table_inventory: REF_ID付き表リスト
-  - cross_validation: E vs F の突き合わせ結果
-
-特徴:
-  - Flash-Lite を使用（低コスト）
-  - E と F が独立しているため、一致箇所 = 高信頼
-  - 不一致箇所 = 要確認としてマーク
+  - g1_result: 表データ（検証済み）→ H1 へ
+  - g2_result: テキストセグメント（重複排除済み）→ H2 へ
+  - unified_text: 統合テキスト（後方互換）
+  - source_inventory: REF_ID付きセグメント（後方互換）
+  - table_inventory: TBL_ID付き表（後方互換）
 ============================================
 """
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 
 from shared.ai.llm_client.llm_client import LLMClient
-from .constants import STAGE_H_INPUT_SCHEMA_VERSION
+from .constants import STAGE_H_INPUT_SCHEMA_VERSION, G_MODEL
+from .stage_g_gate import StageGGate
+from .stage_g1_table_refiner import StageG1TableRefiner
+from .stage_g2_text_refiner import StageG2TextRefiner
 
 
 class StageGRefiner:
-    """Stage G: 統合精錬（E + F の突き合わせ）"""
+    """Stage G: 統合精錬（G-Gate + G1 + G2）"""
 
     def __init__(self, llm_client: LLMClient):
         """
@@ -41,50 +53,63 @@ class StageGRefiner:
             llm_client: LLMクライアント
         """
         self.llm = llm_client
+        self._g_usage: Dict[str, Any] = {}
+
+        # 新しいサブモジュールを初期化（LLMクライアントを渡す）
+        self.gate = StageGGate()
+        self.g1 = StageG1TableRefiner(llm_client=llm_client)
+        self.g2 = StageG2TextRefiner(llm_client=llm_client)
 
     def process(
         self,
-        stage_e_result: Dict[str, Any],
-        stage_f_payload: Dict[str, Any],
+        stage_e_result: Optional[Dict[str, Any]] = None,
+        stage_f_payload: Optional[Dict[str, Any]] = None,
         post_body: Optional[Dict[str, Any]] = None,
         model: str = "gemini-2.0-flash-lite",
         workspace: str = "default"
     ) -> Dict[str, Any]:
         """
-        Stage E と Stage F の結果を統合
+        Stage E と Stage F の結果を統合（v2.0: G-Gate + G1 + G2）
 
         Args:
             stage_e_result: Stage E の出力
             stage_f_payload: Stage F の出力
             post_body: 投稿本文
-            model: 使用するモデル（デフォルト: Lite）
+            model: 使用するモデル（未使用、後方互換のため残す）
             workspace: ワークスペース
 
         Returns:
             {
-                'unified_text': str,  # 統合Markdown全文
-                'source_inventory': List[Dict],  # ID付きセグメント
-                'table_inventory': List[Dict],  # ID付き表
-                'cross_validation': Dict,  # E vs F 突き合わせ結果
+                'unified_text': str,
+                'source_inventory': List[Dict],
+                'table_inventory': List[Dict],
+                'cross_validation': Dict,
                 'ref_count': int,
-                'warnings': List[str]
+                'warnings': List[str],
+                'g1_result': Dict,  # H1 用
+                'g2_result': Dict,  # H2 用
+                'processing_mode': str
             }
         """
-        logger.info(f"[Stage G] 統合精錬開始... (model={model})")
+        logger.info(f"[Stage G] 統合精錬開始（v2.0: G-Gate + G1 + G2）")
+
+        # 入力のデフォルト値
+        stage_e_result = stage_e_result or {}
+        stage_f_payload = stage_f_payload or {}
 
         # 入力データ取得
         e_content = stage_e_result.get('content', '')
         e_method = stage_e_result.get('method', 'unknown')
-
-        f_path_a = stage_f_payload.get('path_a_result', {})
-        f_path_b = stage_f_payload.get('path_b_result', {})
         f_processing_mode = stage_f_payload.get('processing_mode', 'unknown')
 
         logger.info(f"[Stage G] 入力:")
         logger.info(f"  ├─ Stage E: {len(e_content)}文字 (method={e_method})")
-        logger.info(f"  ├─ Stage F Path A: {len(str(f_path_a))}文字")
-        logger.info(f"  ├─ Stage F Path B: {len(str(f_path_b))}文字")
+        logger.info(f"  ├─ Stage F: tables={len(stage_f_payload.get('tables', []))}, anchors={len(stage_f_payload.get('anchors', []))}")
         logger.info(f"  └─ F processing_mode: {f_processing_mode}")
+
+        # ============================================
+        # 特殊ケースの処理（従来ロジックを維持）
+        # ============================================
 
         # 添付なし（E, F 両方スキップ）の場合
         if not e_content and f_processing_mode == 'skipped':
@@ -101,24 +126,243 @@ class StageGRefiner:
             logger.info("[Stage G] Transcription モード → F-7 結果を使用")
             return self._process_transcription(stage_f_payload, post_body)
 
-        # 通常の画像/PDF処理（E + F 統合）
-        logger.info("[Stage G] Dual Vision モード → E + F 統合")
+        # ============================================
+        # 通常処理: G-Gate → G1 → G2
+        # ============================================
+        logger.info("[Stage G] 通常モード → G-Gate + G1 + G2")
 
-        # 入力が少ない場合はルールベースで処理
-        total_input_size = len(e_content) + len(f_path_a.get('full_text', ''))
-        if total_input_size < 200:
-            logger.info("[Stage G] 入力が少ないためルールベース処理")
-            return self._rule_based_merge(stage_e_result, stage_f_payload, post_body)
-
-        # LLMによる統合
         try:
-            result = self._llm_merge(stage_e_result, stage_f_payload, post_body, model)
-            logger.info(f"[Stage G] LLM統合完了: ref_count={result.get('ref_count', 0)}")
-            return result
-        except Exception as e:
-            logger.warning(f"[Stage G] LLM統合失敗、フォールバック: {e}")
-            return self._rule_based_merge(stage_e_result, stage_f_payload, post_body)
+            # Step 1: G-Gate で仕分け
+            g1_input, g2_input = self.gate.route(
+                stage_e_result=stage_e_result,
+                stage_f_payload=stage_f_payload,
+                post_body=post_body
+            )
 
+            # Step 2: G1 で表を整理
+            g1_result = self.g1.process(g1_input)
+
+            # Step 3: G2 でテキストを整理
+            g2_result = self.g2.process(g2_input)
+
+            # Step 4: 後方互換のための出力を構築
+            return self._build_unified_result(g1_result, g2_result, post_body)
+
+        except Exception as e:
+            logger.warning(f"[Stage G] G-Gate/G1/G2 処理失敗、フォールバック: {e}")
+            # フォールバック: 従来のルールベース処理
+            return self._legacy_rule_based_merge(stage_e_result, stage_f_payload, post_body)
+
+    def _build_unified_result(
+        self,
+        g1_result: Dict[str, Any],
+        g2_result: Dict[str, Any],
+        post_body: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        G1 と G2 の結果を統合し、後方互換の出力形式を構築
+
+        Args:
+            g1_result: G1（表整理）の出力
+            g2_result: G2（テキスト整理）の出力
+            post_body: 投稿本文
+
+        Returns:
+            後方互換の Stage G 出力
+        """
+        # source_inventory: G2 のセグメントから構築
+        source_inventory = []
+        for seg in g2_result.get('segments', []):
+            # table_marker はスキップ（table_inventory に含まれる）
+            if seg.get('segment_type') == 'table_marker':
+                continue
+
+            source_inventory.append({
+                'ref_id': seg.get('ref_id', ''),
+                'text': seg.get('text', ''),
+                'type': seg.get('segment_type', 'paragraph'),
+                'source': seg.get('source', 'unknown'),
+                'page': seg.get('page', 0),
+                'confidence': 'high' if seg.get('source') == 'post_body' else 'medium'
+            })
+
+        # table_inventory: G1 の表から構築
+        table_inventory = []
+        for tbl in g1_result.get('tables', []):
+            table_inventory.append({
+                'ref_id': tbl.get('anchor_id', ''),
+                'table_title': tbl.get('title', ''),
+                'table_type': tbl.get('table_type', 'visual_table'),
+                'headers': tbl.get('headers', []),
+                'rows': tbl.get('rows', []),
+                'row_count': tbl.get('row_count', 0),
+                'col_count': tbl.get('col_count', 0),
+                'page': tbl.get('page', 0),
+                'source': tbl.get('source', 'unknown'),
+                'is_heavy': tbl.get('is_heavy', False),
+                'is_valid': tbl.get('is_valid', True)
+            })
+
+        # unified_text: G2 の出力を使用
+        unified_text = g2_result.get('unified_text', '')
+
+        # cross_validation: 統計情報を構築
+        g1_stats = g1_result.get('statistics', {})
+        g2_stats = g2_result.get('dedup_stats', {})
+
+        cross_validation = {
+            'mode': 'g_gate_v2',
+            'table_count': g1_stats.get('total_tables', 0),
+            'valid_tables': g1_stats.get('valid_tables', 0),
+            'total_table_rows': g1_stats.get('total_rows', 0),
+            'text_segments': g2_stats.get('total_output', 0),
+            'duplicates_removed': g2_stats.get('duplicates_removed', 0),
+            'dedup_rate': g2_stats.get('dedup_rate', '0%')
+        }
+
+        # 警告を収集
+        warnings = []
+        for val in g1_result.get('validation_results', []):
+            for warn in val.get('warnings', []):
+                warnings.append(f"G1_{val.get('anchor_id', '')}: {warn}")
+            for err in val.get('errors', []):
+                warnings.append(f"G1_ERROR_{val.get('anchor_id', '')}: {err}")
+
+        # トークン使用量を集計
+        g1_tokens = g1_result.get('token_usage', {})
+        g2_tokens = g2_result.get('token_usage', {})
+        total_tokens = {
+            'G1': g1_tokens,
+            'G2': g2_tokens,
+            'total_prompt': g1_tokens.get('prompt_tokens', 0) + g2_tokens.get('prompt_tokens', 0),
+            'total_completion': g1_tokens.get('completion_tokens', 0) + g2_tokens.get('completion_tokens', 0),
+            'total': g1_tokens.get('total_tokens', 0) + g2_tokens.get('total_tokens', 0)
+        }
+
+        logger.info(f"[Stage G] 統合完了:")
+        logger.info(f"  ├─ source_inventory: {len(source_inventory)}件")
+        logger.info(f"  ├─ table_inventory: {len(table_inventory)}件")
+        logger.info(f"  ├─ unified_text: {len(unified_text)}文字")
+        logger.info(f"  ├─ warnings: {len(warnings)}件")
+        logger.info(f"  └─ トークン合計: {total_tokens['total']} (G1={g1_tokens.get('total_tokens', 0)}, G2={g2_tokens.get('total_tokens', 0)})")
+
+        return {
+            'unified_text': unified_text,
+            'source_inventory': source_inventory,
+            'table_inventory': table_inventory,
+            'cross_validation': cross_validation,
+            'ref_count': len(source_inventory) + len(table_inventory),
+            'warnings': warnings,
+            'processing_mode': 'g_gate_v2',
+            'post_body': post_body or {},
+            # 新しい出力（H1/H2 で直接使用）
+            'g1_result': g1_result,
+            'g2_result': g2_result,
+            'token_usage': total_tokens
+        }
+
+    # ============================================
+    # H1/H2 ルーティング（新設計対応版）
+    # ============================================
+    def route_anchors_to_stages(
+        self,
+        stage_g_result: Dict[str, Any],
+        anchors: Optional[List[Dict]] = None
+    ) -> Dict[str, Any]:
+        """
+        アンカー単位でH1/H2への振り分けを行う（v2.0対応）
+
+        新設計では G1/G2 の結果を直接使用可能
+
+        Args:
+            stage_g_result: Stage G の処理結果
+            anchors: Stage F からのアンカー配列（レガシー用）
+
+        Returns:
+            {
+                'h1_payload': {...},
+                'h2_payload': {...},
+                'anchor_map': {...}
+            }
+        """
+        logger.info("[Stage G] H1/H2 ルーティング開始")
+
+        # 新設計: g1_result と g2_result が存在する場合
+        g1_result = stage_g_result.get('g1_result')
+        g2_result = stage_g_result.get('g2_result')
+
+        if g1_result and g2_result:
+            return self._route_from_g1_g2(g1_result, g2_result, stage_g_result)
+
+        # レガシー: 従来のルーティングロジック
+        return self._legacy_route_anchors(stage_g_result, anchors)
+
+    def _route_from_g1_g2(
+        self,
+        g1_result: Dict[str, Any],
+        g2_result: Dict[str, Any],
+        stage_g_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        G1/G2 の結果から H1/H2 ペイロードを構築
+
+        Args:
+            g1_result: G1（表整理）の出力
+            g2_result: G2（テキスト整理）の出力
+            stage_g_result: Stage G 全体の出力
+
+        Returns:
+            H1/H2 ルーティング結果
+        """
+        tables = g1_result.get('tables', [])
+        segments = g2_result.get('segments', [])
+
+        # H1 ペイロード: 全ての表（重い表を優先処理）
+        heavy_tables = [t for t in tables if t.get('is_heavy', False)]
+        light_tables = [t for t in tables if not t.get('is_heavy', False)]
+
+        h1_payload = {
+            'heavy_tables': heavy_tables,
+            'light_tables': light_tables,
+            'table_anchors': [t.get('anchor_id', '') for t in heavy_tables],
+            'table_page_context': g1_result.get('table_page_context', {}),
+            'validation_results': g1_result.get('validation_results', [])
+        }
+
+        # H2 ペイロード: テキストセグメント + 軽い表
+        text_anchors = [s for s in segments if s.get('segment_type') != 'table_marker']
+
+        h2_payload = {
+            'text_anchors': text_anchors,
+            'light_tables': light_tables,
+            'reduced_text': g2_result.get('unified_text', ''),
+            'dedup_stats': g2_result.get('dedup_stats', {}),
+            'post_body': g2_result.get('post_body', {})
+        }
+
+        # アンカーマップ
+        anchor_map = {}
+        for t in heavy_tables:
+            anchor_map[t.get('anchor_id', '')] = 'h1'
+        for t in light_tables:
+            anchor_map[t.get('anchor_id', '')] = 'h2'
+        for s in text_anchors:
+            anchor_map[s.get('ref_id', '')] = 'h2'
+
+        logger.info(f"[Stage G] ルーティング完了（v2.0）:")
+        logger.info(f"  ├─ H1: {len(heavy_tables)}重い表 + {len(light_tables)}軽い表")
+        logger.info(f"  ├─ H2: {len(text_anchors)}テキスト")
+        logger.info(f"  └─ reduced_text: {len(h2_payload['reduced_text'])}文字")
+
+        return {
+            'h1_payload': h1_payload,
+            'h2_payload': h2_payload,
+            'anchor_map': anchor_map
+        }
+
+    # ============================================
+    # 特殊ケース処理（従来ロジック）
+    # ============================================
     def _process_post_body_only(self, post_body: Optional[Dict]) -> Dict[str, Any]:
         """投稿本文のみの処理（添付なし）"""
         text = post_body.get('text', '') if post_body else ''
@@ -133,6 +377,20 @@ class StageGRefiner:
                 'confidence': 'high'
             })
 
+        # 空の G1/G2 結果を作成
+        g1_result = {
+            'tables': [],
+            'validation_results': [],
+            'table_page_context': {},
+            'statistics': {'total_tables': 0, 'valid_tables': 0, 'total_rows': 0}
+        }
+        g2_result = {
+            'segments': source_inventory,
+            'unified_text': text,
+            'dedup_stats': {'total_input': 1, 'total_output': 1, 'duplicates_removed': 0},
+            'post_body': post_body or {}
+        }
+
         return {
             'unified_text': text,
             'source_inventory': source_inventory,
@@ -141,7 +399,9 @@ class StageGRefiner:
             'ref_count': len(source_inventory),
             'warnings': [],
             'processing_mode': 'post_body_only',
-            'post_body': post_body or {}
+            'post_body': post_body or {},
+            'g1_result': g1_result,
+            'g2_result': g2_result
         }
 
     def _process_e_only(
@@ -168,7 +428,6 @@ class StageGRefiner:
 
         # Stage E テキストを追加
         if e_content:
-            # 段落に分割
             paragraphs = self._split_paragraphs(e_content)
             for para in paragraphs:
                 if para.strip():
@@ -189,6 +448,20 @@ class StageGRefiner:
             unified_parts.append(e_content)
         unified_text = '\n\n'.join(unified_parts)
 
+        # G1/G2 結果
+        g1_result = {
+            'tables': [],
+            'validation_results': [],
+            'table_page_context': {},
+            'statistics': {'total_tables': 0, 'valid_tables': 0, 'total_rows': 0}
+        }
+        g2_result = {
+            'segments': source_inventory,
+            'unified_text': unified_text,
+            'dedup_stats': {'total_input': len(source_inventory), 'total_output': len(source_inventory), 'duplicates_removed': 0},
+            'post_body': post_body or {}
+        }
+
         return {
             'unified_text': unified_text,
             'source_inventory': source_inventory,
@@ -197,7 +470,9 @@ class StageGRefiner:
             'ref_count': len(source_inventory),
             'warnings': [],
             'processing_mode': 'e_only',
-            'post_body': post_body or {}
+            'post_body': post_body or {},
+            'g1_result': g1_result,
+            'g2_result': g2_result
         }
 
     def _process_transcription(
@@ -256,6 +531,20 @@ class StageGRefiner:
             unified_parts.append(f"【映像ログ】\n{visual_log}")
         unified_text = '\n\n---\n\n'.join(unified_parts)
 
+        # G1/G2 結果
+        g1_result = {
+            'tables': [],
+            'validation_results': [],
+            'table_page_context': {},
+            'statistics': {'total_tables': 0, 'valid_tables': 0, 'total_rows': 0}
+        }
+        g2_result = {
+            'segments': source_inventory,
+            'unified_text': unified_text,
+            'dedup_stats': {'total_input': len(source_inventory), 'total_output': len(source_inventory), 'duplicates_removed': 0},
+            'post_body': post_body or {}
+        }
+
         return {
             'unified_text': unified_text,
             'source_inventory': source_inventory,
@@ -264,36 +553,33 @@ class StageGRefiner:
             'ref_count': len(source_inventory),
             'warnings': [],
             'processing_mode': 'transcription',
-            'post_body': post_body or {}
+            'post_body': post_body or {},
+            'g1_result': g1_result,
+            'g2_result': g2_result
         }
 
-    def _rule_based_merge(
+    # ============================================
+    # レガシー処理（フォールバック用）
+    # ============================================
+    def _legacy_rule_based_merge(
         self,
         stage_e_result: Dict[str, Any],
         stage_f_payload: Dict[str, Any],
         post_body: Optional[Dict]
     ) -> Dict[str, Any]:
-        """ルールベースの統合（LLMなし）"""
+        """レガシーのルールベース統合（フォールバック）"""
+        logger.warning("[Stage G] レガシーモードで処理")
+
         e_content = stage_e_result.get('content', '')
-
-        # 新しい Stage F 出力形式に対応
         f_full_text = stage_f_payload.get('full_text', '')
-        f_blocks = stage_f_payload.get('text_blocks', [])
         f_tables = stage_f_payload.get('tables', [])
-
-        # フォールバック: 旧形式にも対応
-        if not f_full_text:
-            f_path_a = stage_f_payload.get('path_a_result', {})
-            f_full_text = f_path_a.get('full_text', '')
-            if not f_blocks:
-                f_blocks = f_path_a.get('blocks', [])
 
         source_inventory = []
         table_inventory = []
         ref_index = 1
         tbl_index = 1
 
-        # 1. post_body を先頭に
+        # post_body
         if post_body and post_body.get('text'):
             source_inventory.append({
                 'ref_id': f'REF_{ref_index:03d}',
@@ -304,482 +590,102 @@ class StageGRefiner:
             })
             ref_index += 1
 
-        # 2. Stage F のブロックを追加
-        for block in f_blocks:
-            text = block.get('text', '')
-            if text and text.strip():
-                source_inventory.append({
-                    'ref_id': f'REF_{ref_index:03d}',
-                    'text': text,
-                    'type': block.get('block_type', 'paragraph'),
-                    'source': f"stage_f.{block.get('block_id', 'unknown')}",
-                    'confidence': block.get('confidence', 'medium')
-                })
-                ref_index += 1
-
-        # 3. Stage E から差分追加（F に含まれないもの）
-        # 【知能的重複排除】同じ内容が本文と表にある場合、表を優先
+        # E テキスト
         if e_content:
-            f_text_lower = f_full_text.lower() if f_full_text else ''
-            e_paragraphs = self._split_paragraphs(e_content)
+            paragraphs = self._split_paragraphs(e_content)
+            for para in paragraphs:
+                if para.strip():
+                    source_inventory.append({
+                        'ref_id': f'REF_{ref_index:03d}',
+                        'text': para.strip(),
+                        'type': 'paragraph',
+                        'source': 'stage_e',
+                        'confidence': 'medium'
+                    })
+                    ref_index += 1
 
-            for para in e_paragraphs:
-                para_clean = para.strip()
-                if para_clean and para_clean.lower() not in f_text_lower:
-                    # 表データと重複していないかチェック
-                    is_in_table = self._is_text_in_tables(para_clean, f_tables)
-                    if not is_in_table:
-                        source_inventory.append({
-                            'ref_id': f'REF_{ref_index:03d}',
-                            'text': para_clean,
-                            'type': 'paragraph',
-                            'source': 'stage_e.diff',
-                            'confidence': 'medium',
-                            'note': 'Stage F に含まれない追加情報'
-                        })
-                        ref_index += 1
-
-        # 4. 表を TBL_ID 付きで追加（完全な構造を維持）
+        # F 表
         for tbl in f_tables:
-            block_id = tbl.get('block_id', '')
-
-            # 表データの完全性を確認
-            headers = tbl.get('headers', [])
-            rows = tbl.get('rows', [])
-
-            table_entry = {
+            table_inventory.append({
                 'ref_id': f'TBL_{tbl_index:03d}',
-                'block_id': block_id,
                 'table_title': tbl.get('table_title', ''),
                 'table_type': tbl.get('table_type', 'visual_table'),
-                'headers': headers,
-                'rows': rows,
-                'row_count': tbl.get('row_count', len(rows)),
-                'col_count': tbl.get('col_count', len(headers)),
-                'caption': tbl.get('caption', ''),
-                'structure': tbl.get('structure', {}),
-                'semantic_role': tbl.get('semantic_role', ''),
-                'source': f"stage_f.{block_id}"
-            }
-            table_inventory.append(table_entry)
+                'headers': tbl.get('headers', tbl.get('columns', [])),
+                'rows': tbl.get('rows', []),
+                'row_count': len(tbl.get('rows', [])),
+                'col_count': len(tbl.get('headers', tbl.get('columns', []))),
+                'source': 'stage_f'
+            })
             tbl_index += 1
 
-        # unified_text 構築（表データも含める）
-        unified_parts = []
-        for item in source_inventory:
-            unified_parts.append(item['text'])
-
-        # 表データをMarkdown形式で追加
-        for tbl in table_inventory:
-            table_md = self._table_to_markdown(tbl)
-            if table_md:
-                unified_parts.append(f"\n【{tbl.get('table_title', '表')}】\n{table_md}")
-
+        # unified_text
+        unified_parts = [s['text'] for s in source_inventory]
         unified_text = '\n\n'.join(unified_parts)
 
-        # cross_validation（簡易版）
-        cross_validation = {
-            'mode': 'rule_based',
-            'e_char_count': len(e_content),
-            'f_char_count': len(f_full_text),
-            'table_count': len(table_inventory),
-            'total_table_rows': sum(t.get('row_count', 0) for t in table_inventory),
-            'overlap_estimate': 'not_calculated'
+        # 空の G1/G2 結果
+        g1_result = {
+            'tables': table_inventory,
+            'validation_results': [],
+            'table_page_context': {},
+            'statistics': {'total_tables': len(table_inventory), 'valid_tables': len(table_inventory), 'total_rows': sum(t.get('row_count', 0) for t in table_inventory)}
+        }
+        g2_result = {
+            'segments': source_inventory,
+            'unified_text': unified_text,
+            'dedup_stats': {'total_input': len(source_inventory), 'total_output': len(source_inventory), 'duplicates_removed': 0},
+            'post_body': post_body or {}
         }
 
         return {
             'unified_text': unified_text,
             'source_inventory': source_inventory,
             'table_inventory': table_inventory,
-            'cross_validation': cross_validation,
+            'cross_validation': {'mode': 'legacy_rule_based'},
             'ref_count': len(source_inventory) + len(table_inventory),
-            'warnings': [],
-            'processing_mode': 'rule_based',
-            'post_body': post_body or {}
+            'warnings': ['Used legacy rule-based merge as fallback'],
+            'processing_mode': 'legacy_rule_based',
+            'post_body': post_body or {},
+            'g1_result': g1_result,
+            'g2_result': g2_result
         }
 
-    def _is_text_in_tables(self, text: str, tables: List[Dict]) -> bool:
-        """テキストが表データに含まれているかチェック"""
-        text_lower = text.lower().strip()
-        if len(text_lower) < 10:
-            return False
-
-        for table in tables:
-            # headers をチェック
-            headers = table.get('headers', [])
-            for header in headers:
-                if isinstance(header, str) and header.lower() in text_lower:
-                    return True
-
-            # rows をチェック
-            rows = table.get('rows', [])
-            for row in rows:
-                if isinstance(row, list):
-                    row_text = ' '.join(str(cell) for cell in row).lower()
-                    if row_text in text_lower or text_lower in row_text:
-                        return True
-
-        return False
-
-    def _table_to_markdown(self, table: Dict) -> str:
-        """表をMarkdown形式に変換"""
-        headers = table.get('headers', [])
-        rows = table.get('rows', [])
-
-        if not headers and not rows:
-            return ""
-
-        lines = []
-
-        # ヘッダー行
-        if headers:
-            lines.append("| " + " | ".join(str(h) for h in headers) + " |")
-            lines.append("|" + "|".join(["---"] * len(headers)) + "|")
-
-        # データ行
-        for row in rows:
-            if isinstance(row, list):
-                lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
-            elif isinstance(row, dict):
-                # dict形式の場合はheadersの順序で出力
-                cells = [str(row.get(h, '')) for h in headers]
-                lines.append("| " + " | ".join(cells) + " |")
-
-        return "\n".join(lines)
-
-    def _llm_merge(
-        self,
-        stage_e_result: Dict[str, Any],
-        stage_f_payload: Dict[str, Any],
-        post_body: Optional[Dict],
-        model: str
-    ) -> Dict[str, Any]:
-        """LLMによる統合（重複排除とクロスバリデーション）"""
-        e_content = stage_e_result.get('content', '')
-
-        # 新しい Stage F 出力形式に対応
-        f_path_a = {
-            'full_text': stage_f_payload.get('full_text', ''),
-            'blocks': stage_f_payload.get('text_blocks', []),
-            'tables': stage_f_payload.get('tables', [])
-        }
-
-        # フォールバック: 旧形式にも対応
-        if not f_path_a['full_text']:
-            old_path_a = stage_f_payload.get('path_a_result', {})
-            f_path_a['full_text'] = old_path_a.get('full_text', '')
-            if not f_path_a['blocks']:
-                f_path_a['blocks'] = old_path_a.get('blocks', [])
-
-        f_path_b = stage_f_payload.get('visual_elements', {})
-
-        # プロンプト構築
-        prompt = self._build_merge_prompt(e_content, f_path_a, f_path_b, post_body)
-
-        # LLM呼び出し
-        response = self.llm.generate(
-            prompt=prompt,
-            model=model,
-            temperature=0.1,
-            response_format='json'
-        )
-
-        # JSON パース
-        try:
-            result = json.loads(response)
-        except json.JSONDecodeError:
-            import json_repair
-            result = json_repair.repair_json(response, return_objects=True)
-
-        # 結果を正規化
-        return self._normalize_llm_result(result, stage_e_result, stage_f_payload, post_body)
-
-    def _build_merge_prompt(
-        self,
-        e_content: str,
-        f_path_a: Dict,
-        f_path_b: Dict,
-        post_body: Optional[Dict]
-    ) -> str:
-        """統合用プロンプト構築（表抽出強化版）"""
-        f_full_text = f_path_a.get('full_text', '')[:5000]
-        f_tables = f_path_a.get('tables', [])[:10]  # 最大10テーブル
-
-        prompt = f"""あなたは文書統合の専門家です。
-2つの独立したソース（Stage E: 物理抽出、Stage F: AI読解）から得られた情報を統合し、
-「重複が一切なく、かつ1文字も情報の欠落がない」正本を作成してください。
-
-【Stage E（物理抽出）】
-{e_content[:3000] if e_content else '(なし)'}
-
-【Stage F（AI読解 - テキスト）】
-{f_full_text if f_full_text else '(なし)'}
-
-【Stage F（AI読解 - 表データ）】
-{json.dumps(f_tables, ensure_ascii=False, indent=2)[:4000] if f_tables else '(なし)'}
-
-【投稿本文】
-{post_body.get('text', '')[:1000] if post_body else '(なし)'}
-
-【統合ルール】
-1. **クロスバリデーション**: E と F で一致する情報 = 高信頼（confidence: high）
-2. **差分追加**: E にあって F にない情報、または F にあって E にない情報も追加（confidence: medium）
-3. **知能的重複排除**: 同じ内容が「本文」と「表」にある場合、**表データを優先**して二重書きを解消
-4. **REF_ID付与**: 各テキストセグメントに REF_001, REF_002... を付与
-5. **TBL_ID付与**: 各表に TBL_001, TBL_002... を付与
-
-【⚠️ 表データ抽出の絶対ルール】
-
-**表データは必ず headers と rows で構造化。テキスト要約は絶対禁止！**
-
-❌ **禁止（data_summary でテキスト要約）**:
-```json
-{{"table_title": "成績優秀者", "data_summary": "1位は山田（520点）、2位は田中..."}}
-```
-
-✅ **正解（rows に全行を展開）**:
-```json
-{{
-  "ref_id": "TBL_001",
-  "table_title": "成績優秀者",
-  "table_type": "ranking",
-  "headers": ["順位", "氏名", "点数"],
-  "rows": [
-    ["1", "山田太郎", "520"],
-    ["2", "田中花子", "515"]
-  ]
-}}
-```
-
-**表として構造化すべきデータ**:
-- ランキング・順位表（全員分を rows に）
-- 名簿・リスト（全項目を rows に）
-- key-value ペア（項目名/値 の2列テーブルに）
-- カンマ区切りデータ（各要素を別々の行に展開）
-- マトリクス形式（時間割、予定表など）
-
-**セル内にカンマやセミコロンが残っている = 構造化が不十分**
-
-【出力JSON形式】
-{{
-  "unified_text": "統合された全文テキスト",
-  "source_inventory": [
-    {{"ref_id": "REF_001", "text": "...", "type": "post_body", "source": "post_body", "confidence": "high"}},
-    {{"ref_id": "REF_002", "text": "...", "type": "paragraph", "source": "stage_e+stage_f", "confidence": "high"}}
-  ],
-  "table_inventory": [
-    {{
-      "ref_id": "TBL_001",
-      "table_title": "表のタイトル",
-      "table_type": "visual_table|ranking|requirements|item_list|schedule|metadata",
-      "headers": ["列1", "列2"],
-      "rows": [["値1", "値2"], ["値3", "値4"]],
-      "row_count": 2,
-      "col_count": 2,
-      "source": "stage_f"
-    }}
-  ],
-  "cross_validation": {{
-    "matched_segments": 5,
-    "e_only_segments": 1,
-    "f_only_segments": 2,
-    "table_count": 3,
-    "total_table_rows": 15,
-    "confidence_summary": "E と F の一致率が高く、信頼性が高い"
-  }}
-}}
-
-重要:
-- source_inventory には全てのテキスト情報を含めてください。削除や要約は厳禁です。
-- table_inventory には全ての表を、全行を含めて格納してください。
-- 表の一部だけを抽出することは禁止です。"""
-
-        return prompt
-
-    def _normalize_llm_result(
-        self,
-        llm_result: Dict[str, Any],
-        stage_e_result: Dict[str, Any],
-        stage_f_payload: Dict[str, Any],
-        post_body: Optional[Dict]
-    ) -> Dict[str, Any]:
-        """LLM結果を正規化（表データ検証強化版）"""
-        unified_text = llm_result.get('unified_text', '')
-        source_inventory = llm_result.get('source_inventory', [])
-        table_inventory = llm_result.get('table_inventory', [])
-        cross_validation = llm_result.get('cross_validation', {})
-
-        # unified_text が空の場合はフォールバック
-        if not unified_text:
-            fallback = self._rule_based_merge(stage_e_result, stage_f_payload, post_body)
-            unified_text = fallback['unified_text']
-            if not source_inventory:
-                source_inventory = fallback['source_inventory']
-            if not table_inventory:
-                table_inventory = fallback['table_inventory']
-
-        # REF_ID の正規化
-        for i, item in enumerate(source_inventory):
-            if 'ref_id' not in item:
-                item['ref_id'] = f'REF_{i+1:03d}'
-
-        # TBL_ID の正規化と表データ検証
-        warnings = []
-        for i, item in enumerate(table_inventory):
-            if 'ref_id' not in item:
-                item['ref_id'] = f'TBL_{i+1:03d}'
-
-            # data_summary の検出（禁止パターン）
-            if 'data_summary' in item:
-                warnings.append(f"G_TABLE_ERROR: {item['ref_id']} uses data_summary (PROHIBITED)")
-
-            # headers と rows の存在確認
-            if not item.get('headers') and not item.get('rows'):
-                warnings.append(f"G_TABLE_WARN: {item['ref_id']} has no headers and no rows")
-
-            # row_count の正規化
-            if 'rows' in item and 'row_count' not in item:
-                item['row_count'] = len(item['rows'])
-            if 'headers' in item and 'col_count' not in item:
-                item['col_count'] = len(item['headers'])
-
-        if not source_inventory:
-            warnings.append("G_WARN: source_inventory is empty")
-
-        # 表統計を cross_validation に追加
-        if 'table_count' not in cross_validation:
-            cross_validation['table_count'] = len(table_inventory)
-        if 'total_table_rows' not in cross_validation:
-            cross_validation['total_table_rows'] = sum(t.get('row_count', 0) for t in table_inventory)
-
-        return {
-            'unified_text': unified_text,
-            'source_inventory': source_inventory,
-            'table_inventory': table_inventory,
-            'cross_validation': cross_validation,
-            'ref_count': len(source_inventory) + len(table_inventory),
-            'warnings': warnings,
-            'processing_mode': 'llm_merged',
-            'post_body': post_body or {}
-        }
-
-    def _split_paragraphs(self, text: str) -> List[str]:
-        """テキストを段落に分割"""
-        import re
-        # 空行または2連続改行で分割
-        paragraphs = re.split(r'\n\s*\n|\r\n\s*\r\n', text)
-        return [p.strip() for p in paragraphs if p.strip()]
-
-    # ============================================
-    # アンカーベースのH1/H2ルーティング
-    # ============================================
-    def route_anchors_to_stages(
+    def _legacy_route_anchors(
         self,
         stage_g_result: Dict[str, Any],
-        anchors: Optional[List[Dict]] = None
+        anchors: Optional[List[Dict]]
     ) -> Dict[str, Any]:
-        """
-        アンカー単位でH1/H2への振り分けを行う
+        """レガシーのアンカールーティング"""
+        logger.info("[Stage G] レガシールーティング使用")
 
-        Args:
-            stage_g_result: Stage G の通常処理結果
-            anchors: Stage F からのアンカー配列（あれば使用）
-
-        Returns:
-            {
-                'h1_payload': {
-                    'heavy_tables': List[Dict],  # H1で処理する重い表
-                    'table_anchors': List[str]   # H1に送るアンカーID
-                },
-                'h2_payload': {
-                    'text_anchors': List[Dict],  # H2で処理するテキスト
-                    'light_tables': List[Dict],  # H2で処理する軽い表
-                    'reduced_text': str          # 表テキストを除外した軽量テキスト
-                },
-                'anchor_map': Dict[str, str]     # anchor_id -> 'h1' or 'h2'
-            }
-        """
-        logger.info("[Stage G] アンカーベースのH1/H2ルーティング開始")
-
-        h1_payload = {
-            'heavy_tables': [],
-            'table_anchors': []
-        }
-        h2_payload = {
-            'text_anchors': [],
-            'light_tables': [],
-            'reduced_text': ''
-        }
+        h1_payload = {'heavy_tables': [], 'table_anchors': []}
+        h2_payload = {'text_anchors': [], 'light_tables': [], 'reduced_text': ''}
         anchor_map = {}
 
-        # アンカー配列がある場合（新形式）
-        if anchors:
-            logger.info(f"[Stage G] アンカー配列使用: {len(anchors)}個")
+        table_inventory = stage_g_result.get('table_inventory', [])
+        source_inventory = stage_g_result.get('source_inventory', [])
 
-            for anchor in anchors:
-                anchor_id = anchor.get('anchor_id', '')
-                anchor_type = anchor.get('type', 'text')
-                is_heavy = anchor.get('is_heavy', False)
+        # 表をH1/H2に振り分け
+        for tbl in table_inventory:
+            ref_id = tbl.get('ref_id', '')
+            rows = tbl.get('rows', [])
+            headers = tbl.get('headers', [])
+            is_heavy = len(rows) >= 20 or len(headers) >= 5
 
-                if anchor_type == 'table' and is_heavy:
-                    # 重い表 → H1
-                    h1_payload['heavy_tables'].append(anchor)
-                    h1_payload['table_anchors'].append(anchor_id)
-                    anchor_map[anchor_id] = 'h1'
-                    logger.debug(f"  [H1] {anchor_id}: {anchor.get('title', '表')} ({anchor.get('row_count', 0)}行)")
-
-                elif anchor_type == 'table':
-                    # 軽い表 → H2
-                    h2_payload['light_tables'].append(anchor)
-                    anchor_map[anchor_id] = 'h2'
-                    logger.debug(f"  [H2] {anchor_id}: 軽い表 ({anchor.get('row_count', 0)}行)")
-
-                else:
-                    # テキスト → H2
-                    h2_payload['text_anchors'].append(anchor)
-                    anchor_map[anchor_id] = 'h2'
-
-        # アンカー配列がない場合（従来形式からの変換）
-        else:
-            logger.info("[Stage G] 従来形式からアンカー生成")
-            table_inventory = stage_g_result.get('table_inventory', [])
-            source_inventory = stage_g_result.get('source_inventory', [])
-
-            # 表をH1/H2に振り分け
-            for tbl in table_inventory:
-                ref_id = tbl.get('ref_id', '')
-                rows = tbl.get('rows', [])
-                headers = tbl.get('headers', []) or tbl.get('columns', [])
-
-                # 重い表の判定（20行以上 or 5列以上）
-                is_heavy = len(rows) >= 20 or len(headers) >= 5
-
-                if is_heavy:
-                    h1_payload['heavy_tables'].append(tbl)
-                    h1_payload['table_anchors'].append(ref_id)
-                    anchor_map[ref_id] = 'h1'
-                else:
-                    h2_payload['light_tables'].append(tbl)
-                    anchor_map[ref_id] = 'h2'
-
-            # テキストはすべてH2
-            for src in source_inventory:
-                ref_id = src.get('ref_id', '')
-                h2_payload['text_anchors'].append(src)
+            if is_heavy:
+                h1_payload['heavy_tables'].append(tbl)
+                h1_payload['table_anchors'].append(ref_id)
+                anchor_map[ref_id] = 'h1'
+            else:
+                h2_payload['light_tables'].append(tbl)
                 anchor_map[ref_id] = 'h2'
 
-        # H2用の軽量化テキストを生成
-        unified_text = stage_g_result.get('unified_text', '')
-        h2_payload['reduced_text'] = self._generate_reduced_text_for_h2(
-            unified_text,
-            h1_payload['heavy_tables']
-        )
+        # テキストはH2
+        for src in source_inventory:
+            ref_id = src.get('ref_id', '')
+            h2_payload['text_anchors'].append(src)
+            anchor_map[ref_id] = 'h2'
 
-        # 統計をログ
-        logger.info(f"[Stage G] ルーティング完了:")
-        logger.info(f"  ├─ H1: {len(h1_payload['heavy_tables'])}表 (重い表)")
-        logger.info(f"  ├─ H2: {len(h2_payload['text_anchors'])}テキスト + {len(h2_payload['light_tables'])}表 (軽い)")
-        logger.info(f"  └─ テキスト削減: {len(unified_text)}→{len(h2_payload['reduced_text'])}文字")
+        h2_payload['reduced_text'] = stage_g_result.get('unified_text', '')
 
         return {
             'h1_payload': h1_payload,
@@ -787,58 +693,8 @@ class StageGRefiner:
             'anchor_map': anchor_map
         }
 
-    def _generate_reduced_text_for_h2(
-        self,
-        unified_text: str,
-        heavy_tables: List[Dict]
-    ) -> str:
-        """
-        H1で処理する重い表のテキストを除外した軽量テキストを生成
-
-        Args:
-            unified_text: 元の統合テキスト
-            heavy_tables: H1に送る重い表のリスト
-
-        Returns:
-            軽量化されたテキスト
-        """
-        if not heavy_tables:
-            return unified_text
-
-        result = unified_text
-
-        for table in heavy_tables:
-            # 表タイトルを除去
-            title = table.get('title', '') or table.get('table_title', '')
-            if title and len(title) > 3:
-                result = result.replace(f"【{title}】", '')
-                result = result.replace(title, '')
-
-            # 表の行データを除去
-            columns = table.get('columns', []) or table.get('headers', [])
-            rows = table.get('rows', [])
-
-            # ヘッダー行のテキストを除去
-            if columns:
-                header_text = ' | '.join(str(c) for c in columns)
-                result = result.replace(header_text, '')
-                # Markdown形式のヘッダーも除去
-                md_header = '| ' + ' | '.join(str(c) for c in columns) + ' |'
-                result = result.replace(md_header, '')
-
-            # 各行のテキストを除去（長い行のみ）
-            for row in rows:
-                if isinstance(row, list):
-                    row_text = ' | '.join(str(cell) for cell in row)
-                    if len(row_text) > 20:  # 短すぎる行は誤削除を避ける
-                        result = result.replace(row_text, '')
-                        # Markdown形式も除去
-                        md_row = '| ' + ' | '.join(str(cell) for cell in row) + ' |'
-                        result = result.replace(md_row, '')
-
-        # 連続する空行を整理
+    def _split_paragraphs(self, text: str) -> List[str]:
+        """テキストを段落に分割"""
         import re
-        result = re.sub(r'\n{3,}', '\n\n', result)
-        result = re.sub(r'\|[-]+\|', '', result)  # Markdownの区切り線を除去
-
-        return result.strip()
+        paragraphs = re.split(r'\n\s*\n|\r\n\s*\r\n', text)
+        return [p.strip() for p in paragraphs if p.strip()]

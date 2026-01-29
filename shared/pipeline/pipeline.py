@@ -133,7 +133,7 @@ class UnifiedDocumentPipeline:
 
         # 各ステージを初期化
         self.stage_e = StageEPreprocessor(self.llm_client)
-        self.stage_f = StageFVisualAnalyzer(self.llm_client, enable_hybrid_ocr=enable_hybrid_ocr)
+        self.stage_f = StageFVisualAnalyzer(self.llm_client, enable_surya=enable_hybrid_ocr)
         self.stage_g = StageGRefiner(self.llm_client)  # Stage G: 論理的精錬
         self.stage_hi = StageHICombined(self.llm_client)  # Stage H+I: 統合版（後方互換）
         self.stage_h1 = StageH1Table(self.llm_client)  # Stage H1: 表処理専門
@@ -275,28 +275,39 @@ class UnifiedDocumentPipeline:
 
             if progress_callback:
                 progress_callback("F")
-            vision_raw = self.stage_f.process(
+
+            # Stage Eの判定結果を直接使用（再計算しない）
+            requires_vision = stage_e_result.get('requires_vision', False)
+            requires_transcription = stage_e_result.get('requires_transcription', False)
+
+            # Stage F 呼び出し（正攻法: 全引数を正しく渡す）
+            stage_f_result = self.stage_f.process(
                 file_path=file_path,
+                mime_type=mime_type or '',
+                requires_vision=requires_vision,
+                requires_transcription=requires_transcription,
+                post_body=post_body,
+                progress_callback=progress_callback,
+                # YAMLから読み込んだ設定を渡す
                 prompt=prompt_f,
                 model=model_f,
                 extracted_text=extracted_text,
                 workspace=workspace,
-                progress_callback=progress_callback,
-                e2_table_bboxes=e2_table_bboxes,  # P2-2: E-2のtable_bboxes
-                post_body=post_body,  # 投稿本文（Stage H最優先文脈）
-                mime_type=mime_type  # MIMEタイプ（音声/映像判定用）
+                e2_table_bboxes=e2_table_bboxes
             )
-            logger.info(f"[Stage F完了] Vision結果: {len(vision_raw)}文字")
+            logger.info(f"[Stage F完了] Vision結果: {type(stage_f_result).__name__}")
 
             # イベントループに制御を返す（並列タスク実行のため）
             await asyncio.sleep(0)
 
             # ============================================
-            # Stage F 結果パース: JSON から構造化情報を取得
+            # Stage F 結果処理（Dict型を直接使用 - dumps/loads排除）
             # ============================================
-            import json
             try:
-                vision_json = json.loads(vision_raw)
+                # Stage F は Dict を直接返す（JSONの往復変換を排除）
+                vision_json = stage_f_result
+                # DB保存用にJSON文字列も保持（vision_raw）
+                vision_raw = json.dumps(stage_f_result, ensure_ascii=False)
 
                 # v1.1契約: Stage F payload をそのまま stage_f_structure として使用（再構成禁止）
                 stage_f_structure = vision_json
@@ -374,9 +385,11 @@ class UnifiedDocumentPipeline:
                     progress_callback("G")
 
                 try:
-                    # Stage F payload を Stage G に渡す
+                    # Stage E + Stage F を Stage G に渡す（v2.0: G-Gate + G1 + G2）
                     stage_g_result = self.stage_g.process(
+                        stage_e_result=stage_e_result,
                         stage_f_payload=stage_f_structure,
+                        post_body=post_body,
                         model=model_g,
                         workspace=workspace
                     )
@@ -428,8 +441,7 @@ class UnifiedDocumentPipeline:
                     progress_callback("H")
 
                 # Stage F の出力を辞書に変換（combined_text が JSON 文字列の場合）
-                import json
-                import re
+                # ※ json, re はモジュールレベルでインポート済み
                 try:
                     # Markdownのコードブロック (```json ... ```) を除去
                     json_text = combined_text.strip()
@@ -667,7 +679,6 @@ class UnifiedDocumentPipeline:
                             # 既存 metadata を保持（message_id, thread_id, subject など）
                             existing_metadata = doc.get('metadata', {})
                             if isinstance(existing_metadata, str):
-                                import json
                                 existing_metadata = json.loads(existing_metadata)
                             # display_* フィールドを保持
                             existing_display_fields = {
@@ -698,7 +709,6 @@ class UnifiedDocumentPipeline:
                         stage_f_text_ocr = self._sanitize_text(stage_f_structure.get('full_text', ''))
 
                         # v1.1契約: sections/tables の取得場所を適切に
-                        import json
                         sf_schema = stage_f_structure.get('schema_version', '')
                         if sf_schema == STAGE_H_INPUT_SCHEMA_VERSION:
                             # v1.1: layout_info.sections, トップレベル tables

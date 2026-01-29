@@ -55,4 +55,18 @@ F7_F8_MAX_TOKENS = 65536
 F7_F8_TEMPERATURE = 0.0
 
 # チャンク処理（MAX_TOKENSエラー回避）
-CHUNK_SIZE_PAGES = 5  # 5ページごとに分割処理
+# gemini-2.0-flash の出力上限は 8,192 トークンのため、1ページ単位で処理
+CHUNK_SIZE_PAGES = 1  # 1ページごとに分割処理
+
+# ============================================
+# Stage G / H1 / H2 モデル定義
+# ============================================
+
+# Stage G: Integration Refiner
+G_MODEL = "gemini-2.5-flash-lite"
+
+# Stage H1: Table Specialist
+H1_MODEL = "gemini-2.5-flash-lite"
+
+# Stage H2: Text Specialist
+H2_MODEL = "gemini-2.5-flash"

@@ -69,6 +69,14 @@ class StageFVisualAnalyzer:
         # Surya detector (lazy loading)
         self._surya_detector = None
 
+        # トークン使用量の収集用
+        self._f7_usage: List[Dict[str, Any]] = []
+        self._f8_usage: List[Dict[str, Any]] = []
+
+        # 列境界情報の保存用（F-3.5で検出、F-7で使用）
+        # {page_idx: [0, 250, 500, 750, 1000]} の形式
+        self._page_column_boundaries: Dict[int, List[int]] = {}
+
     @property
     def surya_detector(self):
         """Surya detector の遅延初期化"""
@@ -88,7 +96,13 @@ class StageFVisualAnalyzer:
         requires_vision: bool = False,
         requires_transcription: bool = False,
         post_body: Optional[Dict[str, Any]] = None,
-        progress_callback=None
+        progress_callback=None,
+        # 以下: pipeline.py から渡される追加引数（2026-01-28 統合）
+        prompt: str = None,
+        model: str = None,
+        extracted_text: str = None,
+        workspace: str = None,
+        e2_table_bboxes: List[Dict] = None
     ) -> Dict[str, Any]:
         """
         Stage F メイン処理（10ステップ）
@@ -100,11 +114,20 @@ class StageFVisualAnalyzer:
             requires_transcription: 音声書き起こしが必要か（Stage Eから）
             post_body: 投稿本文
             progress_callback: 進捗コールバック
+            prompt: YAMLから読み込んだプロンプト（F7/F8で使用）
+            model: YAMLから読み込んだモデル（F7/F8で使用）
+            extracted_text: Stage Eで抽出済みのテキスト
+            workspace: ワークスペース
+            e2_table_bboxes: Stage Eで検出した表のbbox座標
 
         Returns:
             Stage F 出力（Stage G への入力）
         """
         total_start = time.time()
+
+        # トークン使用量をリセット
+        self._f7_usage = []
+        self._f8_usage = []
 
         logger.info("=" * 60)
         logger.info("[Stage F] 独立読解 10段階 開始")
@@ -253,10 +276,15 @@ class StageFVisualAnalyzer:
                 progress_callback(f"F-3 ({chunk_idx + 1}/{total_chunks})")
             quantized_blocks = self._f3_quantize(surya_blocks, chunk_pages)
 
+            # F-3.5: Intelligent Filtering & Column Detection（トークン削減の肝）
+            if progress_callback:
+                progress_callback(f"F-3.5 ({chunk_idx + 1}/{total_chunks})")
+            filtered_blocks = self._f35_filter_and_columnize(quantized_blocks)
+
             # F-4: Logical Reading Order
             if progress_callback:
                 progress_callback(f"F-4 ({chunk_idx + 1}/{total_chunks})")
-            ordered_blocks = self._f4_reading_order(quantized_blocks)
+            ordered_blocks = self._f4_reading_order(filtered_blocks)
 
             # F-5: Block Classification
             if progress_callback:
@@ -275,10 +303,13 @@ class StageFVisualAnalyzer:
             path_a_result = {}
             path_b_result = {}
 
+            # このチャンク（ページ）の列境界情報を取得
+            page_column_boundaries = self._page_column_boundaries.get(chunk_start_page, [0, QUANTIZE_GRID_SIZE])
+
             with ThreadPoolExecutor(max_workers=2) as executor:
                 future_a = executor.submit(
                     self._f7_path_a_chunk_extraction,
-                    chunk_pages, block_map, chunk_idx, chunk_start_page
+                    chunk_pages, block_map, chunk_idx, chunk_start_page, page_column_boundaries
                 )
                 future_b = executor.submit(
                     self._f8_path_b_chunk_analysis,
@@ -539,12 +570,307 @@ class StageFVisualAnalyzer:
         return quantized
 
     # ============================================
+    # F-3.5: Intelligent Filtering & Column Detection
+    # ============================================
+    def _f35_filter_and_columnize(self, blocks: List[Dict]) -> List[Dict]:
+        """
+        F-3.5: ゴミ掃除 + 列自動判別 + 行統合
+
+        【トークン削減の肝】AIに渡す前の物理的なデータ圧縮
+
+        1. ゴミ除去: 極小ブロック、空ブロックを物理削除
+        2. 列検出: X座標ヒストグラムで「空白の縦ライン」を特定
+        3. 列分類: ブロックを列グループに分類
+        4. 行統合: 同じ列・近いY座標のブロックを1行に結合
+        """
+        f35_start = time.time()
+        original_count = len(blocks)
+        logger.info(f"[F-3.5] Intelligent Filtering 開始: {original_count}ブロック")
+
+        if not blocks:
+            return []
+
+        # ============================================
+        # Step 1: ゴミ掃除（Filtering）
+        # ============================================
+        MIN_BLOCK_SIZE = 10  # 最小サイズ（量子化後）
+        MIN_BLOCK_AREA = 200  # 最小面積
+
+        filtered = []
+        garbage_count = 0
+
+        for block in blocks:
+            bbox = block['bbox']
+            w = bbox[2] - bbox[0]
+            h = bbox[3] - bbox[1]
+            area = w * h
+
+            # 極小ブロックを除外
+            if w < MIN_BLOCK_SIZE or h < MIN_BLOCK_SIZE:
+                garbage_count += 1
+                continue
+            if area < MIN_BLOCK_AREA:
+                garbage_count += 1
+                continue
+
+            filtered.append(block)
+
+        logger.info(f"  ├─ ゴミ除去: {garbage_count}ブロック削除 → 残り{len(filtered)}ブロック")
+
+        # ============================================
+        # Step 2: 列自動判別（X-axis Histogram Analysis）
+        # ============================================
+        # ページごとに列を検出
+        pages = {}
+        for block in filtered:
+            page = block.get('page', 0)
+            if page not in pages:
+                pages[page] = []
+            pages[page].append(block)
+
+        all_columnized = []
+
+        for page_idx, page_blocks in pages.items():
+            # X座標の密度ヒストグラムを作成（1000グリッド）
+            x_histogram = [0] * QUANTIZE_GRID_SIZE
+            # 縦線検出用: 各X座標での最大ブロック高さ
+            x_max_height = [0] * QUANTIZE_GRID_SIZE
+
+            for block in page_blocks:
+                bbox = block['bbox']
+                x_start = max(0, int(bbox[0]))
+                x_end = min(QUANTIZE_GRID_SIZE, int(bbox[2]))
+                block_height = bbox[3] - bbox[1]
+                block_width = x_end - x_start
+
+                for x in range(x_start, x_end):
+                    x_histogram[x] += 1
+                    # 細いブロック（幅10以下）の高さを記録（罫線候補）
+                    if block_width <= 10:
+                        x_max_height[x] = max(x_max_height[x], block_height)
+
+            # 列境界を検出（空白 OR 罫線）
+            column_boundaries = [0]  # 左端
+            MIN_GAP_WIDTH = 20  # 最小空白幅
+            MIN_LINE_HEIGHT = 300  # 罫線とみなす最小高さ（1000グリッド中）
+
+            x = 0
+            while x < QUANTIZE_GRID_SIZE:
+                # パターン1: 空白の縦ライン（連続した0の領域）
+                if x_histogram[x] == 0:
+                    gap_start = x
+                    while x < QUANTIZE_GRID_SIZE and x_histogram[x] == 0:
+                        x += 1
+                    gap_width = x - gap_start
+                    if gap_width >= MIN_GAP_WIDTH:
+                        # 空白の中央を境界とする
+                        boundary = gap_start + gap_width // 2
+                        if boundary not in column_boundaries:
+                            column_boundaries.append(boundary)
+                    continue
+
+                # パターン2: 罫線（細くて高いブロック）
+                if x_max_height[x] >= MIN_LINE_HEIGHT and x_histogram[x] <= 3:
+                    line_start = x
+                    while x < QUANTIZE_GRID_SIZE and x_max_height[x] >= MIN_LINE_HEIGHT and x_histogram[x] <= 3:
+                        x += 1
+                    line_width = x - line_start
+                    if line_width <= 15:  # 罫線は細い（15px以下）
+                        # 罫線の中央を境界とする
+                        boundary = line_start + line_width // 2
+                        if boundary not in column_boundaries and boundary > 50 and boundary < 950:
+                            column_boundaries.append(boundary)
+                    continue
+
+                x += 1
+
+            column_boundaries.append(QUANTIZE_GRID_SIZE)  # 右端
+            column_boundaries = sorted(set(column_boundaries))  # 重複除去・ソート
+            num_columns = len(column_boundaries) - 1
+
+            logger.info(f"  ├─ ページ{page_idx}: {num_columns}列検出 (境界: {column_boundaries})")
+
+            # 列境界情報を保存（F-7の列クロッピングで使用）
+            self._page_column_boundaries[page_idx] = column_boundaries
+
+            # ============================================
+            # Step 3: 列ごとの分類（Vertical Splitting）
+            # ============================================
+            columns = {}  # column_id -> list of blocks
+
+            for block in page_blocks:
+                bbox = block['bbox']
+                x_center = (bbox[0] + bbox[2]) / 2
+
+                # どの列に属するか判定
+                column_id = 0
+                for i in range(len(column_boundaries) - 1):
+                    if column_boundaries[i] <= x_center < column_boundaries[i + 1]:
+                        column_id = i
+                        break
+
+                block['column_id'] = column_id
+                block['num_columns'] = num_columns
+                block['x_center'] = x_center
+                block['y_center'] = (bbox[1] + bbox[3]) / 2
+
+                if column_id not in columns:
+                    columns[column_id] = []
+                columns[column_id].append(block)
+
+            # ============================================
+            # Step 4: ページ完結型の列統合（Page-Complete Column Merging）
+            # ============================================
+            # 【核心】1列 = 1テーブル（ページ内で完結）
+            # 隙間があっても、同じ列なら全て1つに統合する
+            # ============================================
+
+            page_column_blocks = []
+
+            for col_id in sorted(columns.keys()):
+                col_blocks = columns[col_id]
+
+                if not col_blocks:
+                    continue
+
+                # Y座標でソート（読み順）
+                col_blocks.sort(key=lambda b: b['y_center'])
+
+                # 列内の全ブロックを1つに統合
+                merged_column = self._merge_column_blocks(
+                    col_blocks, page_idx, col_id, num_columns,
+                    column_boundaries[col_id], column_boundaries[col_id + 1]
+                )
+                page_column_blocks.append(merged_column)
+
+            logger.info(f"  ├─ ページ{page_idx}: {len(columns)}列 → {len(page_column_blocks)}ブロック（ページ完結）")
+            all_columnized.extend(page_column_blocks)
+
+        f35_elapsed = time.time() - f35_start
+        reduction_rate = (1 - len(all_columnized) / original_count) * 100 if original_count > 0 else 0
+        logger.info(f"[F-3.5完了] {original_count} → {len(all_columnized)}ブロック "
+                    f"({reduction_rate:.1f}%削減), {f35_elapsed:.2f}秒")
+
+        return all_columnized
+
+    def _merge_column_blocks(
+        self,
+        col_blocks: List[Dict],
+        page_idx: int,
+        column_id: int,
+        num_columns: int,
+        col_x_start: int,
+        col_x_end: int
+    ) -> Dict:
+        """
+        【ページ完結型】列内の全ブロックを1つのテーブルブロックに統合
+
+        Args:
+            col_blocks: この列に属する全ブロック（Y座標でソート済み）
+            page_idx: ページ番号
+            column_id: 列番号
+            num_columns: このページの総列数
+            col_x_start: 列の左端X座標
+            col_x_end: 列の右端X座標
+
+        Returns:
+            統合されたブロック（1ページ1列1ブロック）
+        """
+        if len(col_blocks) == 1:
+            block = col_blocks[0]
+            block['table_id'] = f"TBL_P{page_idx}_C{column_id}"
+            block['is_page_complete'] = True
+            block['row_count'] = 1
+            return block
+
+        # 全ブロックのバウンディングボックスを統合
+        x_min = min(b['bbox'][0] for b in col_blocks)
+        y_min = min(b['bbox'][1] for b in col_blocks)
+        x_max = max(b['bbox'][2] for b in col_blocks)
+        y_max = max(b['bbox'][3] for b in col_blocks)
+
+        # 行データを構築（Y座標順）
+        rows = []
+        for block in col_blocks:
+            rows.append({
+                'block_id': block['block_id'],
+                'y': block['y_center'],
+                'bbox': block['bbox']
+            })
+
+        # ページ跨ぎの判定（下端に近いか）
+        is_at_page_bottom = y_max > 900  # 1000グリッド中900以上
+        is_at_page_top = y_min < 100     # 1000グリッド中100以下
+
+        return {
+            'page': page_idx,
+            'block_id': f"col_P{page_idx}_C{column_id}",
+            'table_id': f"TBL_P{page_idx}_C{column_id}",
+            'bbox': [x_min, y_min, x_max, y_max],
+            'bbox_original': col_blocks[0].get('bbox_original'),
+            'page_width': col_blocks[0].get('page_width'),
+            'page_height': col_blocks[0].get('page_height'),
+            'column_id': column_id,
+            'num_columns': num_columns,
+            'col_x_range': [col_x_start, col_x_end],
+            'x_center': (x_min + x_max) / 2,
+            'y_center': (y_min + y_max) / 2,
+            # ページ完結型メタデータ
+            'is_page_complete': True,
+            'row_count': len(col_blocks),
+            'rows': rows,
+            'original_block_ids': [b['block_id'] for b in col_blocks],
+            # ページ跨ぎ用フラグ（Stage Hで使用）
+            'is_continued_from_prev': is_at_page_top,  # 前ページから続く可能性
+            'is_continued_to_next': is_at_page_bottom,  # 次ページに続く可能性
+            'stitch_hint': {
+                'prev_page': page_idx - 1 if is_at_page_top else None,
+                'next_page': page_idx + 1 if is_at_page_bottom else None,
+                'column_id': column_id
+            }
+        }
+
+    def _merge_row_blocks(self, row_blocks: List[Dict], page_idx: int, column_id: int) -> Dict:
+        """
+        同じ行のブロックを1つにマージ（レガシー互換用）
+        """
+        if len(row_blocks) == 1:
+            return row_blocks[0]
+
+        # X座標でソート
+        row_blocks.sort(key=lambda b: b['bbox'][0])
+
+        # バウンディングボックスを統合
+        x_min = min(b['bbox'][0] for b in row_blocks)
+        y_min = min(b['bbox'][1] for b in row_blocks)
+        x_max = max(b['bbox'][2] for b in row_blocks)
+        y_max = max(b['bbox'][3] for b in row_blocks)
+
+        # 元のblock_idを結合
+        merged_id = "+".join(b['block_id'] for b in row_blocks)
+
+        return {
+            'page': page_idx,
+            'block_id': f"merged_{merged_id}",
+            'bbox': [x_min, y_min, x_max, y_max],
+            'bbox_original': row_blocks[0].get('bbox_original'),
+            'page_width': row_blocks[0].get('page_width'),
+            'page_height': row_blocks[0].get('page_height'),
+            'confidence': min(b.get('confidence', 1.0) for b in row_blocks),
+            'column_id': column_id,
+            'x_center': (x_min + x_max) / 2,
+            'y_center': (y_min + y_max) / 2,
+            'merged_count': len(row_blocks),
+            'original_blocks': [b['block_id'] for b in row_blocks]
+        }
+
+    # ============================================
     # F-4: Logical Reading Order
     # ============================================
     def _f4_reading_order(self, blocks: List[Dict]) -> List[Dict]:
         """
         F-4: 読む順序の確定
-        段組を考慮したソート
+        F-3.5で検出された列を使用して正確にソート
         """
         f4_start = time.time()
         logger.info("[F-4] Logical Reading Order 開始")
@@ -552,18 +878,17 @@ class StageFVisualAnalyzer:
         if not blocks:
             return []
 
-        # 各ブロックに中心座標と段組IDを計算
+        # F-3.5で既にcolumn_id, x_center, y_centerが設定されている場合はそのまま使用
         for block in blocks:
-            bbox = block['bbox']
-            x_center = (bbox[0] + bbox[2]) / 2
-            y_center = (bbox[1] + bbox[3]) / 2
-
-            # 段組判定（左半分=0, 右半分=1）
-            column_id = 0 if x_center < QUANTIZE_GRID_SIZE / 2 else 1
-
-            block['x_center'] = x_center
-            block['y_center'] = y_center
-            block['column_id'] = column_id
+            if 'x_center' not in block:
+                bbox = block['bbox']
+                block['x_center'] = (bbox[0] + bbox[2]) / 2
+            if 'y_center' not in block:
+                bbox = block['bbox']
+                block['y_center'] = (bbox[1] + bbox[3]) / 2
+            if 'column_id' not in block:
+                # フォールバック: 左右2分割
+                block['column_id'] = 0 if block['x_center'] < QUANTIZE_GRID_SIZE / 2 else 1
 
         # ソート: page → column → y → x
         sorted_blocks = sorted(
@@ -1170,24 +1495,143 @@ class StageFVisualAnalyzer:
         chunk_pages: List[Dict],
         block_map: str,
         chunk_idx: int,
-        chunk_start_page: int
+        chunk_start_page: int,
+        column_boundaries: List[int] = None
     ) -> Dict[str, Any]:
         """
         F-7 Path A: チャンク用テキスト抽出（gemini-2.0-flash）
+        【列クロッピング対応】MAX_TOKENSエラー回避のため、列ごとに分割処理
 
         Args:
             chunk_pages: このチャンクのページ画像リスト
             block_map: このチャンク用のブロック地図
             chunk_idx: チャンクインデックス
             chunk_start_page: このチャンクの開始ページ番号
+            column_boundaries: 列境界座標リスト [0, 250, 500, 1000] 等
         """
         f7_start = time.time()
-        logger.info(f"[F-7] Path A - チャンク{chunk_idx + 1} Text Extraction 開始")
+        num_columns = len(column_boundaries) - 1 if column_boundaries and len(column_boundaries) > 1 else 1
+        logger.info(f"[F-7] Path A - チャンク{chunk_idx + 1} Text Extraction 開始 ({num_columns}列)")
 
-        # チャンク画像を一時ファイルに保存
-        temp_image_path = self._save_chunk_as_temp_image(chunk_pages, chunk_idx)
+        # 元画像を取得
+        if not chunk_pages or 'image' not in chunk_pages[0]:
+            logger.error(f"[F-7] チャンク{chunk_idx + 1} 画像データなし")
+            return {"error": "No image data", "extracted_texts": [], "tables": [], "full_text_ordered": ""}
 
-        prompt = self._build_f7_chunk_prompt(block_map, chunk_idx, chunk_start_page, len(chunk_pages))
+        original_image: Image.Image = chunk_pages[0]['image']
+        img_width, img_height = original_image.size
+
+        # 列境界がない場合は従来通り全体処理
+        if not column_boundaries or len(column_boundaries) < 2 or num_columns == 1:
+            return self._f7_process_single_image(
+                original_image, block_map, chunk_idx, chunk_start_page, f7_start
+            )
+
+        # ============================================
+        # 列ごとのクロッピング＆API呼び出し
+        # ============================================
+        all_extracted_texts = []
+        all_tables = []
+        all_full_texts = []
+        column_errors = []
+
+        for col_idx in range(num_columns):
+            col_start = column_boundaries[col_idx]
+            col_end = column_boundaries[col_idx + 1]
+
+            # 量子化座標（0-1000）を実ピクセルに変換
+            px_start = int(col_start * img_width / QUANTIZE_GRID_SIZE)
+            px_end = int(col_end * img_width / QUANTIZE_GRID_SIZE)
+
+            # クロッピング（左, 上, 右, 下）
+            cropped_image = original_image.crop((px_start, 0, px_end, img_height))
+
+            logger.info(f"[F-7] 列{col_idx + 1}/{num_columns} クロッピング: x={px_start}-{px_end} ({cropped_image.size[0]}x{cropped_image.size[1]})")
+
+            # 列画像を一時ファイルに保存
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=f'_chunk{chunk_idx}_col{col_idx}.png', delete=False) as f:
+                cropped_image.save(f, format='PNG')
+                temp_col_path = Path(f.name)
+
+            try:
+                # 列用プロンプト
+                col_prompt = self._build_f7_column_prompt(block_map, chunk_idx, chunk_start_page, col_idx, num_columns)
+
+                response = self.llm_client.generate_with_vision(
+                    prompt=col_prompt,
+                    image_path=str(temp_col_path),
+                    model=F7_MODEL_IMAGE,
+                    max_tokens=F7_F8_MAX_TOKENS,
+                    temperature=F7_F8_TEMPERATURE,
+                    response_format="json"
+                )
+
+                # JSON パース
+                try:
+                    col_result = json.loads(response)
+                except json.JSONDecodeError:
+                    import json_repair
+                    col_result = json_repair.repair_json(response, return_objects=True)
+
+                logger.info(f"[F-7完了] 列{col_idx + 1}/{num_columns}: {len(response)}文字")
+
+                # トークン使用量を収集
+                if hasattr(self.llm_client, 'last_usage') and self.llm_client.last_usage:
+                    usage = self.llm_client.last_usage.copy()
+                    usage['chunk_idx'] = chunk_idx
+                    usage['column_idx'] = col_idx
+                    self._f7_usage.append(usage)
+
+                # 結果を蓄積（列情報を付加）
+                for text_block in col_result.get("extracted_texts", []):
+                    text_block["column_idx"] = col_idx
+                    all_extracted_texts.append(text_block)
+
+                for table in col_result.get("tables", []):
+                    table["column_idx"] = col_idx
+                    all_tables.append(table)
+
+                all_full_texts.append(col_result.get("full_text_ordered", ""))
+
+            except Exception as e:
+                logger.error(f"[F-7] 列{col_idx + 1}/{num_columns} エラー: {e}")
+                column_errors.append(f"col{col_idx}: {str(e)}")
+
+            finally:
+                # 一時ファイル削除
+                try:
+                    temp_col_path.unlink()
+                except:
+                    pass
+
+        # 全列の結果を統合
+        f7_elapsed = time.time() - f7_start
+        logger.info(f"[F-7完了] チャンク{chunk_idx + 1} 全{num_columns}列完了: {f7_elapsed:.2f}秒")
+
+        return {
+            "extracted_texts": all_extracted_texts,
+            "tables": all_tables,
+            "full_text_ordered": "\n\n".join(all_full_texts),
+            "column_count": num_columns,
+            "errors": column_errors if column_errors else None
+        }
+
+    def _f7_process_single_image(
+        self,
+        image: Image.Image,
+        block_map: str,
+        chunk_idx: int,
+        chunk_start_page: int,
+        f7_start: float
+    ) -> Dict[str, Any]:
+        """F-7: 単一画像処理（列分割なし）"""
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=f'_chunk{chunk_idx}.png', delete=False) as f:
+            image.save(f, format='PNG')
+            temp_image_path = Path(f.name)
+
+        prompt = self._build_f7_chunk_prompt(block_map, chunk_idx, chunk_start_page, 1)
 
         try:
             response = self.llm_client.generate_with_vision(
@@ -1199,7 +1643,6 @@ class StageFVisualAnalyzer:
                 response_format="json"
             )
 
-            # JSON パース
             try:
                 result = json.loads(response)
             except json.JSONDecodeError:
@@ -1209,6 +1652,11 @@ class StageFVisualAnalyzer:
             f7_elapsed = time.time() - f7_start
             logger.info(f"[F-7完了] チャンク{chunk_idx + 1} Path A: {len(response)}文字, {f7_elapsed:.2f}秒")
 
+            if hasattr(self.llm_client, 'last_usage') and self.llm_client.last_usage:
+                usage = self.llm_client.last_usage.copy()
+                usage['chunk_idx'] = chunk_idx
+                self._f7_usage.append(usage)
+
             return result
 
         except Exception as e:
@@ -1216,11 +1664,25 @@ class StageFVisualAnalyzer:
             return {"error": str(e), "extracted_texts": [], "tables": [], "full_text_ordered": ""}
 
         finally:
-            # 一時ファイル削除
             try:
                 temp_image_path.unlink()
             except:
                 pass
+
+    def _build_f7_column_prompt(self, block_map: str, chunk_idx: int, start_page: int, col_idx: int, total_cols: int) -> str:
+        """F-7列クロッピング用プロンプト構築"""
+        base_prompt = self._build_f7_prompt(block_map)
+
+        column_info = f"""
+## 列情報（重要）
+- この画像は **元ページの{col_idx + 1}列目（全{total_cols}列中）** を切り抜いたものです
+- ページ番号: {start_page + 1}ページ目
+- **この列内の全テキスト・全表データを完全に抽出してください**
+
+**注意**: 切り抜き画像のため、一部のテキストが左右で途切れている可能性があります。
+見える部分は全て正確に読み取ってください。
+"""
+        return base_prompt + column_info
 
     def _build_f7_chunk_prompt(self, block_map: str, chunk_idx: int, start_page: int, page_count: int) -> str:
         """F-7チャンク用プロンプト構築"""
@@ -1279,6 +1741,13 @@ class StageFVisualAnalyzer:
 
             f8_elapsed = time.time() - f8_start
             logger.info(f"[F-8完了] チャンク{chunk_idx + 1} Path B: {len(response)}文字, {f8_elapsed:.2f}秒")
+
+            # トークン使用量を収集
+            if hasattr(self.llm_client, 'last_usage') and self.llm_client.last_usage:
+                usage = self.llm_client.last_usage.copy()
+                usage['chunk_idx'] = chunk_idx
+                self._f8_usage.append(usage)
+                logger.info(f"[F-8] トークン使用量: prompt={usage.get('prompt_tokens', 0)}, completion={usage.get('completion_tokens', 0)}")
 
             return result
 
@@ -1600,7 +2069,23 @@ class StageFVisualAnalyzer:
 
         logger.info(f"[F-10] 表統計: {table_count}テーブル, {total_rows}行, columns付き={tables_with_columns}")
 
-        # 6. 最終payload構築
+        # 6. トークン使用量の集計
+        f7_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model": F7_MODEL_IMAGE}
+        for u in self._f7_usage:
+            f7_total["prompt_tokens"] += u.get("prompt_tokens", 0)
+            f7_total["completion_tokens"] += u.get("completion_tokens", 0)
+            f7_total["total_tokens"] += u.get("total_tokens", 0)
+
+        f8_total = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "model": F8_MODEL}
+        for u in self._f8_usage:
+            f8_total["prompt_tokens"] += u.get("prompt_tokens", 0)
+            f8_total["completion_tokens"] += u.get("completion_tokens", 0)
+            f8_total["total_tokens"] += u.get("total_tokens", 0)
+
+        logger.info(f"[F-10] F7トークン合計: prompt={f7_total['prompt_tokens']}, completion={f7_total['completion_tokens']}")
+        logger.info(f"[F-10] F8トークン合計: prompt={f8_total['prompt_tokens']}, completion={f8_total['completion_tokens']}")
+
+        # 7. 最終payload構築
         payload = {
             "schema_version": STAGE_F_OUTPUT_SCHEMA_VERSION,
             "post_body": post_body or {},
@@ -1622,7 +2107,11 @@ class StageFVisualAnalyzer:
             },
             "media_type": "image",
             "processing_mode": "dual_vision",
-            "warnings": warnings
+            "warnings": warnings,
+            "llm_usage": {
+                "F7": f7_total,
+                "F8": f8_total
+            }
         }
 
         f10_elapsed = time.time() - f10_start

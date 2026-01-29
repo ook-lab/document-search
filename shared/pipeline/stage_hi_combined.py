@@ -131,7 +131,8 @@ class StageHICombined:
             # JSON抽出
             content = response.get("content", "")
             logger.info(f"[Stage H+I] ===== LLMレスポンス（最初の1000文字）=====\n{content[:1000]}")
-            result = self._extract_json_with_retry(content, model=model, max_retries=2)
+            # リトライ禁止（2026-01-28）: エラー時は即座にフォールバック
+            result = self._extract_json_with_retry(content, model=model, max_retries=0)
 
             # Stage F の構造化情報をマージ
             if stage_f_structure:

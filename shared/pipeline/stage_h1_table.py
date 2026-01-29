@@ -120,7 +120,8 @@ class StageH1Table:
         extracted_metadata = {}
         table_text_fragments = []
         removed_table_ids = set()
-        stats = {'total': len(table_inventory), 'processed': 0, 'skipped': 0}
+        unrepairable_tables = []  # G1で修復不能と判定された表
+        stats = {'total': len(table_inventory), 'processed': 0, 'skipped': 0, 'unrepairable': 0}
 
         # doc_type に対応するスキーマを取得
         schemas = self.TABLE_SCHEMAS.get(doc_type, self.TABLE_SCHEMAS['default'])
@@ -129,6 +130,27 @@ class StageH1Table:
             ref_id = table.get('ref_id', 'UNKNOWN')
             table_title = table.get('table_title', '')
             table_type = table.get('table_type', 'unknown')
+
+            # ============================================
+            # G1の「白旗」検知: unrepairable フラグ
+            # ============================================
+            if table.get('status') == 'unrepairable':
+                reason = table.get('unrepairable_reason', '理由不明')
+                logger.warning(f"[Stage H1] 修復不能表をスキップ: {ref_id} - {reason}")
+
+                # 修復不能表の情報を記録（レポート用）
+                unrepairable_tables.append({
+                    'ref_id': ref_id,
+                    'table_title': table_title,
+                    'reason': reason,
+                    'page': table.get('page', 0)
+                })
+                stats['unrepairable'] += 1
+                stats['skipped'] += 1
+
+                # H2への通知用：この表は処理できなかったことを伝える
+                removed_table_ids.add(ref_id)
+                continue  # 次の表へ（ハルシネーション防止）
 
             logger.debug(f"[Stage H1] 表処理: {ref_id} - {table_title} ({table_type})")
 
@@ -192,13 +214,18 @@ class StageH1Table:
                 else:
                     stats['skipped'] += 1
 
-        logger.info(f"[Stage H1] 完了: processed={stats['processed']}, skipped={stats['skipped']}")
+        logger.info(f"[Stage H1] 完了: processed={stats['processed']}, skipped={stats['skipped']}, unrepairable={stats['unrepairable']}")
+
+        # 修復不能表があれば警告
+        if unrepairable_tables:
+            logger.warning(f"[Stage H1] 修復不能表: {len(unrepairable_tables)}件 → H2へ通知済み")
 
         return {
             'processed_tables': processed_tables,
             'extracted_metadata': extracted_metadata,
             'table_text_fragments': table_text_fragments,
             'removed_table_ids': removed_table_ids,
+            'unrepairable_tables': unrepairable_tables,  # G1で修復不能と判定された表の一覧
             'statistics': stats
         }
 

@@ -108,6 +108,14 @@ class StageH2Text:
         try:
             # プロンプト構築
             logger.info("[Stage H2] プロンプト構築中...")
+
+            # H1の結果から情報を取得
+            h1_tables = h1_result.get('processed_tables', []) if h1_result else []
+            unrepairable_tables = h1_result.get('unrepairable_tables', []) if h1_result else []
+
+            if unrepairable_tables:
+                logger.info(f"[Stage H2] 修復不能表: {len(unrepairable_tables)}件 → プロンプトに通知")
+
             full_prompt = self._build_prompt(
                 prompt_template=prompt,
                 file_name=file_name,
@@ -116,7 +124,8 @@ class StageH2Text:
                 combined_text=reduced_text,
                 source_inventory=source_inventory,
                 table_inventory=table_inventory,
-                h1_tables=h1_result.get('processed_tables', []) if h1_result else []
+                h1_tables=h1_tables,
+                unrepairable_tables=unrepairable_tables
             )
             logger.info(f"[Stage H2] プロンプト構築完了 ({len(full_prompt)}文字)")
 
@@ -136,7 +145,8 @@ class StageH2Text:
             # JSON抽出
             content = response.get("content", "")
             logger.info(f"[Stage H2] ===== LLMレスポンス（最初の1000文字）=====\n{content[:1000]}")
-            result = self._extract_json_with_retry(content, model=model, max_retries=2)
+            # リトライ禁止（2026-01-28）: エラー時は即座にフォールバック
+            result = self._extract_json_with_retry(content, model=model, max_retries=0)
 
             # Stage F の構造化情報をマージ
             if stage_f_structure:
@@ -179,9 +189,10 @@ class StageH2Text:
         combined_text: str,
         source_inventory: List[Dict],
         table_inventory: List[Dict],
-        h1_tables: List[Dict]
+        h1_tables: List[Dict],
+        unrepairable_tables: List[Dict] = None
     ) -> str:
-        """プロンプトを構築"""
+        """プロンプトを構築（アンカー活用強化版）"""
         # source_inventory を簡略化
         inventory_summary = []
         for item in source_inventory[:30]:
@@ -215,7 +226,88 @@ class StageH2Text:
             table_count=len(h1_tables)
         )
 
+        # ============================================
+        # アンカー活用強化: H1で処理済みの表を参照させる
+        # ============================================
+        anchor_instructions = self._build_anchor_instructions(h1_tables, unrepairable_tables or [])
+        if anchor_instructions:
+            prompt = prompt + "\n\n" + anchor_instructions
+
         return prompt
+
+    def _build_anchor_instructions(
+        self,
+        h1_tables: List[Dict],
+        unrepairable_tables: List[Dict]
+    ) -> str:
+        """
+        アンカー活用のための追加指示を構築
+
+        G2が埋め込んだアンカー（[→ TBL_xxx 参照]）を
+        AIが最大限に活用するための指示
+        """
+        if not h1_tables and not unrepairable_tables:
+            return ""
+
+        instructions = []
+        instructions.append("=" * 50)
+        instructions.append("【重要: 表データの活用指示】")
+        instructions.append("=" * 50)
+
+        instructions.append("""
+テキスト中に `[→ TBL_xxx 参照]` というアンカー（しおり）が出現します。
+これは「ここに表データがある」という座標です。以下のルールで活用してください。
+
+【ルール1: アンカーは聖域】
+アンカーは情報の座標です。要約や構造化において、
+このアンカーの存在を認識し、表の内容を考慮して文脈を補完してください。
+
+【ルール2: 表の内容を参照】
+以下に、各アンカーに対応する表の概要を示します。
+要約やカレンダーイベント、タスク抽出の際は、これらの表データを活用してください。
+""")
+
+        # H1で処理済みの表
+        if h1_tables:
+            instructions.append("\n■ 処理済み表データ（H1で構造化済み）:")
+            for tbl in h1_tables[:10]:
+                ref_id = tbl.get('ref_id', '')
+                title = tbl.get('table_title', '(無題)')
+                ttype = tbl.get('table_type', 'generic')
+                rows = tbl.get('rows', [])
+                row_count = tbl.get('row_count', len(rows))
+
+                instructions.append(f"  - {ref_id}: {title} ({ttype}, {row_count}行)")
+
+                # 表の内容サンプル（最初の3行）
+                if rows and len(rows) > 0:
+                    sample_rows = rows[:3]
+                    for i, row in enumerate(sample_rows):
+                        if isinstance(row, dict):
+                            row_text = ', '.join(f"{k}:{v}" for k, v in list(row.items())[:4])
+                            instructions.append(f"      行{i+1}: {row_text[:80]}")
+
+        # 修復不能だった表
+        if unrepairable_tables:
+            instructions.append("\n■ 修復不能だった表（参照のみ）:")
+            for tbl in unrepairable_tables:
+                ref_id = tbl.get('ref_id', '')
+                title = tbl.get('table_title', '(無題)')
+                reason = tbl.get('reason', '')
+                instructions.append(f"  - {ref_id}: {title} (※構造化できず: {reason})")
+            instructions.append("  ※これらの表は構造化に失敗しましたが、テキスト中の情報として参照可能です。")
+
+        instructions.append("""
+【ルール3: カレンダー・タスクへの反映】
+表に日付や予定が含まれている場合は、calendar_events や tasks として抽出してください。
+表のデータは信頼できる情報源です。積極的に活用してください。
+
+【ルール4: 要約への反映】
+表の存在と概要を要約に含めてください。
+例: 「週間予定表によると、月曜は国語、火曜は算数...」
+""")
+
+        return "\n".join(instructions)
 
     def _extract_json_with_retry(
         self,

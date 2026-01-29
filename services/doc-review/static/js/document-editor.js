@@ -1036,7 +1036,7 @@ function renderDocumentList() {
         const isSelected = DocState.currentDoc?.id === doc.id;
         const isReviewed = doc.review_status === 'reviewed';
         const title = doc.title || doc.file_name || '(タイトルなし)';
-        const date = (doc.created_at || '').substring(0, 10);
+        const date = (doc.updated_at || doc.created_at || '').substring(0, 10);
         const docType = doc.doc_type || '';
 
         return `
