@@ -165,16 +165,25 @@ class StageH1Table:
             logger.debug(f"[Stage H1] 表処理: {ref_id} - {table_title} ({table_type})")
 
             # ============================================
-            # ドメインハンドラによる専用パース（プラグイン式）
+            # Step 1: 住所録方式で正規化（汎用処理）
+            # ============================================
+            normalized_cells = self._normalize_table_rows(table)
+
+            # ============================================
+            # Step 2: ドメインハンドラによる意味解釈（プラグイン式）
             # ============================================
             domain_handled = False
             for handler in self.domain_handlers:
                 if handler.detect(table_title, unified_text):
                     handler_name = handler.__class__.__name__
                     logger.info(f"[Stage H1] ドメイン検出: {handler_name} → {ref_id}")
-                    # raw_tokensを渡して肩付き注釈の精密判定を可能に
+                    # 正規化済みデータを渡す
                     processed_table = handler.process(
-                        table, ref_id, table_title, raw_tokens=raw_tokens
+                        normalized_cells=normalized_cells,
+                        table=table,
+                        ref_id=ref_id,
+                        table_title=table_title,
+                        raw_tokens=raw_tokens
                     )
                     if processed_table:
                         processed_tables.append(processed_table)
@@ -183,13 +192,13 @@ class StageH1Table:
                         removed_table_ids.add(ref_id)
                         stats['processed'] += 1
                         domain_handled = True
-                        break  # 最初にマッチしたハンドラで処理完了
+                        break
 
             if domain_handled:
-                continue  # 次の表へ
+                continue
 
-            # カラムナ形式を辞書リストに変換
-            rows_data = self._normalize_table_rows(table)
+            # ドメインハンドラなし → 汎用処理
+            rows_data = normalized_cells
 
             # スキーママッチング
             matched_schema = self._match_schema(table, schemas)
@@ -274,50 +283,158 @@ class StageH1Table:
 
     def _normalize_table_rows(self, table: Dict) -> List[Dict]:
         """
-        表の行データを正規化（カラムナ形式→辞書リスト）
-        【データ救済版】ヘッダーがなくても全データを保持
+        表の行データを正規化（住所録方式）
+
+        【住所録方式】
+        - 各データセルに、行ヘッダーと列ヘッダーの値を継承
+        - col=2 のセル → 2列目のヘッダー値を取得
+        - row=3 のセル → 3行目のラベル値を取得
 
         Args:
             table: 表データ
 
         Returns:
-            辞書リスト形式の行データ
+            辞書リスト形式の行データ（位置情報付き）
         """
         # cells形式（G6からの入力）
         if 'cells' in table and table['cells']:
-            cells = table['cells']
-            row_count = table.get('row_count', 0)
-            col_count = table.get('col_count', 0)
+            return self._normalize_cells_with_headers(table)
 
-            # セルをrow/col情報でグループ化、またはbboxのY座標でグループ化
-            rows_by_y = {}
-            for cell in cells:
-                text = cell.get('text', '').strip()
-                if not text:
-                    continue
+        # 他の形式は従来通り処理
+        return self._normalize_legacy_format(table)
 
-                # bboxからY座標を取得してグループ化
-                bbox = cell.get('bbox', [0, 0, 0, 0])
-                y_key = int(bbox[1] / 10) * 10 if bbox else 0  # 10px単位で量子化
+    def _normalize_cells_with_headers(self, table: Dict) -> List[Dict]:
+        """
+        cells形式を住所録方式で正規化
 
-                if y_key not in rows_by_y:
-                    rows_by_y[y_key] = []
-                rows_by_y[y_key].append({
-                    'text': text,
-                    'x': bbox[0] if bbox else 0,
-                    'bbox': bbox
-                })
+        1. 行ヘッダー（各行の左端）を検出
+        2. 列ヘッダー（上部の行）を検出
+        3. 各データセルに行・列ヘッダー値を付与
+        """
+        cells = table['cells']
+        columns = table.get('columns', []) or table.get('headers', [])
 
-            # Y座標順にソートして行リストを生成
+        # ============================================
+        # Step 1: 行・列のヘッダーを検出
+        # ============================================
+        row_headers = {}  # {row_idx: header_value}
+        col_headers = {}  # {col_idx: header_value}
+
+        # 列ヘッダー: columnsフィールドから
+        for i, header in enumerate(columns):
+            if header:
+                col_headers[i] = str(header).strip()
+
+        # セルから行・列ヘッダーを補完
+        for cell in cells:
+            text = str(cell.get('text', '')).strip()
+            if not text:
+                continue
+
+            row_idx = cell.get('row')
+            col_idx = cell.get('col')
+
+            # 列ヘッダー: 上部の行（row <= 2）かつ未設定
+            if row_idx is not None and row_idx <= 2 and col_idx is not None:
+                if col_idx not in col_headers:
+                    col_headers[col_idx] = text
+
+            # 行ヘッダー: 左端の列（col <= 1）かつ未設定
+            if col_idx is not None and col_idx <= 1 and row_idx is not None:
+                if row_idx not in row_headers:
+                    row_headers[row_idx] = text
+
+        logger.debug(f"[Stage H1] 列ヘッダー: {col_headers}")
+        logger.debug(f"[Stage H1] 行ヘッダー: {len(row_headers)}件")
+
+        # ============================================
+        # Step 2: データセルを正規化（位置情報付き）
+        # ============================================
+        result = []
+        for cell in cells:
+            text = str(cell.get('text', '')).strip()
+            if not text:
+                continue
+
+            row_idx = cell.get('row')
+            col_idx = cell.get('col')
+            bbox = cell.get('bbox', [0, 0, 0, 0])
+
+            # ヘッダー行/列自体はデータとして出力しない
+            if row_idx is not None and row_idx <= 2:
+                continue
+            if col_idx is not None and col_idx <= 1:
+                continue
+
+            # 行・列ヘッダー値を継承
+            row_dict = {
+                'text': text,
+                'row': row_idx,
+                'col': col_idx,
+                'bbox': bbox,
+                'row_header': row_headers.get(row_idx),
+                'col_header': col_headers.get(col_idx),
+            }
+            result.append(row_dict)
+
+        logger.debug(f"[Stage H1] 住所録方式で{len(result)}セルを正規化")
+        return result
+
+    def _normalize_legacy_format(self, table: Dict) -> List[Dict]:
+        """従来形式の正規化（後方互換）"""
+        # columns + rows 形式（カラムナ）
+        if 'columns' in table and 'rows' in table:
+            if is_columnar_format(table):
+                return recompose_columnar_data(table)
+
+        # headers + rows 形式
+        if 'headers' in table and 'rows' in table:
+            headers = table.get('headers', []) or []
+            rows = table.get('rows', []) or []
             result = []
-            for y_key in sorted(rows_by_y.keys()):
-                row_cells = sorted(rows_by_y[y_key], key=lambda c: c['x'])
-                row_dict = {f'col_{i+1}': c['text'] for i, c in enumerate(row_cells)}
-                if row_dict:
-                    result.append(row_dict)
 
-            logger.debug(f"[Stage H1] cells形式から{len(result)}行を生成")
+            for row_idx, row in enumerate(rows):
+                if isinstance(row, list):
+                    effective_headers = list(headers)
+                    while len(effective_headers) < len(row):
+                        effective_headers.append(f'column_{len(effective_headers) + 1}')
+
+                    row_dict = {}
+                    for i, value in enumerate(row):
+                        if i < len(effective_headers):
+                            key = effective_headers[i] or f'column_{i + 1}'
+                        else:
+                            key = f'column_{i + 1}'
+                        if value is not None and str(value).strip():
+                            row_dict[key] = value
+                            row_dict['col'] = i  # 列位置を保持
+
+                    if row_dict:
+                        result.append(row_dict)
+
+                elif isinstance(row, dict):
+                    if row:
+                        result.append(row)
+
             return result
+
+        # rows のみ
+        if 'rows' in table:
+            rows = table['rows']
+            if not isinstance(rows, list):
+                return []
+
+            result = []
+            for row in rows:
+                if isinstance(row, list):
+                    row_dict = {f'column_{i + 1}': v for i, v in enumerate(row) if v is not None and str(v).strip()}
+                    if row_dict:
+                        result.append(row_dict)
+                elif isinstance(row, dict) and row:
+                    result.append(row)
+            return result
+
+        return []
 
         # columns + rows 形式（カラムナ）
         if 'columns' in table and 'rows' in table:
