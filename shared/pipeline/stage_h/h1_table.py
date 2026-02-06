@@ -470,48 +470,33 @@ class StageH1Table:
         original_table: Dict[str, Any]
     ) -> None:
         """
-        処理済み表にUI表示用の2形式を追加
+        処理済み表にUI表示用の2形式を追加（汎用）
 
         Args:
             processed_table: 処理済み表データ（変更される）
             original_table: 元の表データ（cells等を含む）
         """
+        rows = processed_table.get('rows', [])
+        columns = processed_table.get('columns', [])
+
         # ============================================
-        # 1. flat_data: 正規化されたフラット表（検索・フィルタ用）
+        # 1. flat_data: 正規化されたフラット表
         # ============================================
         flat_data = []
         flat_columns = []
 
-        rows = processed_table.get('rows', [])
-        columns = processed_table.get('columns', [])
-
-        # ドメイン固有形式（Yotsuya等）の場合
-        if processed_table.get('domain') == 'yotsuya_hensachi':
-            # 階層構造をフラット化
-            flat_columns = ['偏差値', '学校名', '列', '試験日', 'フラグ', '個別偏差値']
-            for row in rows:
-                deviation = row.get('deviation')
-                for school in row.get('schools', []):
-                    flat_data.append({
-                        '偏差値': deviation,
-                        '学校名': school.get('name', ''),
-                        '列': school.get('column', ''),
-                        '試験日': school.get('test_date', ''),
-                        'フラグ': ''.join(school.get('flags', [])),
-                        '個別偏差値': school.get('individual_score'),
-                    })
-        else:
-            # 汎用形式: rows をそのまま使用
-            if rows and isinstance(rows[0], dict):
-                # 全行からカラムを収集
+        if rows:
+            if isinstance(rows[0], dict):
+                # オブジェクト配列 → キーを収集
                 all_keys = set()
                 for row in rows:
-                    all_keys.update(row.keys())
+                    if isinstance(row, dict):
+                        all_keys.update(row.keys())
                 flat_columns = sorted(all_keys)
                 flat_data = rows
-            elif rows and isinstance(rows[0], list):
-                # 2D配列形式
-                flat_columns = columns if columns else [f'列{i+1}' for i in range(len(rows[0]) if rows else 0)]
+            elif isinstance(rows[0], list):
+                # 2D配列 → 辞書に変換
+                flat_columns = columns if columns else [f'列{i+1}' for i in range(len(rows[0]))]
                 for row in rows:
                     row_dict = {flat_columns[i]: v for i, v in enumerate(row) if i < len(flat_columns)}
                     flat_data.append(row_dict)
@@ -523,7 +508,7 @@ class StageH1Table:
         processed_table['flat_columns'] = flat_columns
 
         # ============================================
-        # 2. grid_data: 元の表構造を保持（視覚表示用）
+        # 2. grid_data: 元の表構造を保持
         # ============================================
         grid_data = {
             'rows': [],
@@ -531,10 +516,9 @@ class StageH1Table:
             'cells': []
         }
 
-        # 元のcells情報があれば使用
-        if 'cells' in original_table and original_table['cells']:
-            cells = original_table['cells']
-
+        # 元のcells情報があれば使用（元の表構造を復元）
+        cells = original_table.get('cells', [])
+        if cells:
             # セルをY座標でグループ化
             rows_by_y = {}
             all_x = set()
@@ -548,42 +532,17 @@ class StageH1Table:
                     rows_by_y[y_key] = {}
                 rows_by_y[y_key][x_key] = cell.get('text', '')
 
-            # ソートしてグリッドを構築
             sorted_y = sorted(rows_by_y.keys())
             sorted_x = sorted(all_x)
 
             grid_data['columns'] = [f'列{i+1}' for i in range(len(sorted_x))]
-
             for y in sorted_y:
-                row_data = []
-                for x in sorted_x:
-                    row_data.append(rows_by_y[y].get(x, ''))
-                grid_data['rows'].append(row_data)
+                grid_data['rows'].append([rows_by_y[y].get(x, '') for x in sorted_x])
 
-            grid_data['cells'] = cells  # 元のcells情報も保持
-
-        # ドメイン固有のグリッド形式
-        elif processed_table.get('domain') == 'yotsuya_hensachi':
-            # 偏差値行 × 日付列 のグリッド
-            logical_headers = processed_table.get('columns', ['偏差値', '2/3', '2/4～'])
-            grid_data['columns'] = logical_headers
-
-            for row in rows:
-                deviation = row.get('deviation')
-                grid_row = [str(deviation)]
-
-                for col_name in logical_headers[1:]:
-                    schools_in_col = [
-                        s.get('name', '') + (f"({s.get('test_date')})" if s.get('test_date') else '')
-                        for s in row.get('schools', [])
-                        if s.get('column') == col_name
-                    ]
-                    grid_row.append(' / '.join(schools_in_col) if schools_in_col else '')
-
-                grid_data['rows'].append(grid_row)
+            grid_data['cells'] = cells
 
         else:
-            # 汎用: flat_dataから復元
+            # cellsがない場合はflat_dataから復元
             grid_data['columns'] = flat_columns
             for row in flat_data:
                 if isinstance(row, dict):

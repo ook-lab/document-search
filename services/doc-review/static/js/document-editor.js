@@ -889,8 +889,23 @@ function renderMultipleTables(key, tables, label) {
         // ============================================
         // H1 Ver 11.2: flat_data / grid_data 2タブ表示
         // ============================================
-        const hasFlatData = table.flat_data && Array.isArray(table.flat_data) && table.flat_data.length > 0;
-        const hasGridData = table.grid_data && table.grid_data.rows && table.grid_data.rows.length > 0;
+        let flatData = table.flat_data;
+        let flatColumns = table.flat_columns;
+        let gridData = table.grid_data;
+
+        // フォールバック: flat_data/grid_data がない場合、動的生成
+        const rows = table.rows || table.data || [];
+        const originalCells = table.cells || (table.grid_data && table.grid_data.cells) || [];
+
+        if (!flatData && rows.length > 0) {
+            const generated = generateDisplayFormats(rows, table.columns, originalCells);
+            flatData = generated.flatData;
+            flatColumns = generated.flatColumns;
+            gridData = generated.gridData;
+        }
+
+        const hasFlatData = flatData && Array.isArray(flatData) && flatData.length > 0;
+        const hasGridData = gridData && gridData.rows && gridData.rows.length > 0;
 
         if (hasFlatData || hasGridData) {
             html += `
@@ -904,11 +919,11 @@ function renderMultipleTables(key, tables, label) {
                     </div>
 
                     <div class="table-view-content" id="${tableId}-flat" style="display:block;">
-                        ${hasFlatData ? renderFlatTable(table.flat_data, table.flat_columns) : '<p class="no-data">フラットデータなし</p>'}
+                        ${hasFlatData ? renderFlatTable(flatData, flatColumns) : '<p class="no-data">フラットデータなし</p>'}
                     </div>
 
                     <div class="table-view-content" id="${tableId}-grid" style="display:none;">
-                        ${hasGridData ? renderGridTable(table.grid_data) : '<p class="no-data">グリッドデータなし</p>'}
+                        ${hasGridData ? renderGridTable(gridData) : '<p class="no-data">グリッドデータなし</p>'}
                     </div>
                 </div>
             `;
@@ -991,6 +1006,83 @@ function renderMultipleTables(key, tables, label) {
     `;
 
     return html;
+}
+
+// =============================================================================
+// 表示形式の動的生成（汎用 - 全ての表に適用）
+// =============================================================================
+
+function generateDisplayFormats(rows, columns, originalCells) {
+    let flatData = [];
+    let flatColumns = [];
+    let gridData = { rows: [], columns: [] };
+
+    // ============================================
+    // フラット形式: rowsをそのまま正規化
+    // ============================================
+    if (rows && rows.length > 0) {
+        const firstRow = rows[0];
+
+        if (typeof firstRow === 'object' && !Array.isArray(firstRow)) {
+            // オブジェクト配列 → キーを収集
+            const allKeys = new Set();
+            rows.forEach(row => {
+                if (row && typeof row === 'object') {
+                    Object.keys(row).forEach(k => allKeys.add(k));
+                }
+            });
+            flatColumns = Array.from(allKeys);
+            flatData = rows;
+
+        } else if (Array.isArray(firstRow)) {
+            // 2D配列 → 辞書に変換
+            flatColumns = columns || firstRow.map((_, i) => `列${i + 1}`);
+            rows.forEach(row => {
+                const rowObj = {};
+                flatColumns.forEach((col, i) => {
+                    rowObj[col] = row[i] !== undefined ? row[i] : '';
+                });
+                flatData.push(rowObj);
+            });
+        }
+    }
+
+    // ============================================
+    // グリッド形式: 元のcells構造を復元
+    // ============================================
+    if (originalCells && originalCells.length > 0) {
+        // cellsからY座標でグループ化して元の表構造を復元
+        const rowsByY = {};
+        const allX = new Set();
+
+        originalCells.forEach(cell => {
+            const bbox = cell.bbox || [0, 0, 0, 0];
+            const yKey = Math.round(bbox[1] / 10) * 10;
+            const xKey = Math.round(bbox[0] / 10) * 10;
+            allX.add(xKey);
+
+            if (!rowsByY[yKey]) rowsByY[yKey] = {};
+            rowsByY[yKey][xKey] = cell.text || '';
+        });
+
+        const sortedY = Object.keys(rowsByY).map(Number).sort((a, b) => a - b);
+        const sortedX = Array.from(allX).sort((a, b) => a - b);
+
+        gridData.columns = sortedX.map((_, i) => `列${i + 1}`);
+        sortedY.forEach(y => {
+            const gridRow = sortedX.map(x => rowsByY[y][x] || '');
+            gridData.rows.push(gridRow);
+        });
+
+    } else if (flatData.length > 0) {
+        // cellsがない場合はflatDataから復元
+        gridData.columns = flatColumns;
+        flatData.forEach(row => {
+            gridData.rows.push(flatColumns.map(c => row[c] !== undefined ? row[c] : ''));
+        });
+    }
+
+    return { flatData, flatColumns, gridData };
 }
 
 // =============================================================================
