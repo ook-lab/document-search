@@ -1,72 +1,58 @@
 """
-Stage F / Stage H 共通定数
+Pipeline Constants (Ver 9.0)
 
-v1.1 契約で使用するスキーマバージョンおよび定数を一元管理
-
-【設計 2026-01-26】新Stage F: 10ステップ構成対応
+I/O契約と定数を一元管理
 """
 
-# Stage H 入力スキーマバージョン
-STAGE_H_INPUT_SCHEMA_VERSION = "stage_h_input.v1.1"
+# スキーマバージョン
+STAGE_F_OUTPUT_SCHEMA_VERSION = "stage_f_output.v9.0"
 
-# Stage F 出力スキーマバージョン
-STAGE_F_OUTPUT_SCHEMA_VERSION = "stage_f_output.v2.0"
+# 座標グリッドサイズ（DEPRECATED: Ver 10.7で廃止。E8は生ピクセル座標を維持する。archive互換のため値は残す）
+QUANTIZE_GRID_SIZE = 1000
 
-# block_type の許可値（v1.1）
-BLOCK_TYPES_V1_1 = [
-    "post_body",      # 投稿本文（最優先文脈、必ず先頭）
-    "heading",        # 見出し
-    "paragraph",      # 段落
-    "list_item",      # 箇条書き
-    "table",          # 表（Markdown形式）
-    "table_text",     # 表内テキスト
-    "note",           # 注記
-]
+# チャンク処理
+CHUNK_SIZE_PAGES = 1
 
 # ============================================
-# Stage F: 10ステップ構成の定数
+# Stage F: I/O契約（固定）
+# ============================================
+#
+# F1出力: grid + has_table + quality + quality_detail + source + source_detail
+# F2出力: logical_structure
+# F3出力: structured_table（セル割当の確定）
+#
 # ============================================
 
-# F-1: Image Normalization
-F1_TARGET_DPI = 300  # 統一DPI
+# F2: 構造解析 - Gemini 2.5 Flash
+F2_MODEL = "gemini-2.5-flash"
+F2_MAX_TOKENS = 65536
+F2_TEMPERATURE = 0.0
 
-# F-2: Surya Block Detection
-SURYA_MAX_DIM = 2000  # Suryaリサイズ上限
+# F1: グリッド品質閾値（これ以下はフォールバック）
+# Aルート(vector) < 0.5 → Bルート(OpenCV) < 0.5 → Cルート(Form Parser)
+F1_QUALITY_THRESHOLD = 0.5
 
-# F-3: Coordinate Quantization（座標量子化）
-QUANTIZE_GRID_SIZE = 1000  # 1000×1000 グリッド
-
-# F-6 OCR 上限（レガシー互換）
-MAX_OCR_CALLS = 20
-MAX_CROP_LONG_EDGE = 1000  # リサイズ閾値
-PER_PAGE_MAX_UNION_ROI = 3
-MIN_ROI_AREA = 2000  # 最小ROI面積
-UNION_PADDING = 20  # union ROIのpadding (px)
-
-# F-7: Dual Read - Path A
-F7_MODEL_IMAGE = "gemini-2.0-flash"  # 画像用（テキストの鬼）
-F7_MODEL_AV = "gemini-2.5-flash-lite"  # 音声/動画用
-
-# F-8: Dual Read - Path B
-F8_MODEL = "gemini-2.5-flash"  # 構造解析（視覚の鬼）
-
-# F-7/F-8 共通
-F7_F8_MAX_TOKENS = 65536
-F7_F8_TEMPERATURE = 0.0
-
-# チャンク処理（MAX_TOKENSエラー回避）
-# gemini-2.0-flash の出力上限は 8,192 トークンのため、1ページ単位で処理
-CHUNK_SIZE_PAGES = 1  # 1ページごとに分割処理
+# F1: Form Parser設定（環境変数から取得）
+# - GCP_PROJECT_ID: GCPプロジェクトID
+# - GCP_LOCATION: Document AIリージョン（デフォルト: us）
+# - DOCUMENT_AI_FORM_PARSER_PROCESSOR_ID: プロセッサID
 
 # ============================================
-# Stage G / H1 / H2 モデル定義
+# Stage G: I/O契約（固定）
+# ============================================
+#
+# G3: Scrub（唯一の書き換えゾーン）
+# G4: Assemble（read-only組み立て）
+# G5: Audit（検算・品質・確定 = 唯一の正本出口）
+# G6: Packager（用途別出力整形、AI禁止）
+#
+# 絶対ルール:
+# 1. 値を書き換えるのは G3 だけ
+# 2. G4/G5/G6 は read-only
+# 3. G5の出力 scrubbed_data が唯一の正本
+# 4. G6は用途別フォーマットだけ
+#
 # ============================================
 
-# Stage G: Integration Refiner
-G_MODEL = "gemini-2.5-flash-lite"
-
-# Stage H1: Table Specialist
-H1_MODEL = "gemini-2.5-flash-lite"
-
-# Stage H2: Text Specialist
-H2_MODEL = "gemini-2.5-flash"
+# E7: 文字結合
+E7_MODEL = "gemini-2.5-flash-lite"

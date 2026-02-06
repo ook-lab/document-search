@@ -884,24 +884,50 @@ function renderMultipleTables(key, tables, label) {
 
         const tableTitle = table.table_title || table.table_name || table.description || `表 ${index + 1}`;
         const tableType = table.table_type || '';
+        const tableId = `table-${key}-${index}`;
 
-        // キー名の柔軟な対応: rows/data どちらも受け付ける
+        // ============================================
+        // H1 Ver 11.2: flat_data / grid_data 2タブ表示
+        // ============================================
+        const hasFlatData = table.flat_data && Array.isArray(table.flat_data) && table.flat_data.length > 0;
+        const hasGridData = table.grid_data && table.grid_data.rows && table.grid_data.rows.length > 0;
+
+        if (hasFlatData || hasGridData) {
+            html += `
+                <div class="structured-table-section">
+                    <h4 class="table-title">${escapeHtml(tableTitle)}</h4>
+                    ${tableType ? `<span class="table-type-badge">${escapeHtml(tableType)}</span>` : ''}
+
+                    <div class="table-view-tabs" data-table-id="${tableId}">
+                        <button class="table-view-tab active" data-view="flat">📋 フラット</button>
+                        <button class="table-view-tab" data-view="grid">📊 グリッド</button>
+                    </div>
+
+                    <div class="table-view-content" id="${tableId}-flat" style="display:block;">
+                        ${hasFlatData ? renderFlatTable(table.flat_data, table.flat_columns) : '<p class="no-data">フラットデータなし</p>'}
+                    </div>
+
+                    <div class="table-view-content" id="${tableId}-grid" style="display:none;">
+                        ${hasGridData ? renderGridTable(table.grid_data) : '<p class="no-data">グリッドデータなし</p>'}
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        // ============================================
+        // 従来形式（後方互換）
+        // ============================================
         const rows = table.rows || table.data || [];
-
-        // ヘッダーの柔軟な取得: columns/headers/header どちらも受け付ける（カラムナ形式優先）
-        // 行がオブジェクト配列の場合はキーから自動生成
         let headers = table.columns || table.headers || table.header || [];
         if ((!headers || headers.length === 0) && rows.length > 0) {
             if (Array.isArray(rows[0])) {
-                // 2D配列の場合: ヘッダーがなければインデックスベースで生成
                 headers = rows[0].map((_, i) => `列${i + 1}`);
             } else if (typeof rows[0] === 'object' && rows[0] !== null) {
-                // オブジェクト配列の場合: キーから自動生成
                 headers = Object.keys(rows[0]);
             }
         }
 
-        // data_summary がある場合は警告表示（テキスト要約ではなく構造化データが必要）
         const hasDataSummary = table.data_summary && (!rows || rows.length === 0);
 
         html += `
@@ -912,7 +938,6 @@ function renderMultipleTables(key, tables, label) {
         `;
 
         if (hasDataSummary) {
-            // data_summary のみでrows がない場合: テキストとして表示
             html += `
                 <div class="data-summary-notice" style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:4px;margin:10px 0;">
                     <strong>⚠️ 構造化データなし（要約のみ）</strong>
@@ -924,7 +949,6 @@ function renderMultipleTables(key, tables, label) {
             html += `<table class="data-table rendered-table">`;
             html += `<thead><tr>`;
 
-            // ヘッダー
             if (Array.isArray(headers) && headers.length > 0) {
                 headers.forEach(h => {
                     html += `<th>${escapeHtml(formatFieldName(String(h)))}</th>`;
@@ -933,16 +957,13 @@ function renderMultipleTables(key, tables, label) {
 
             html += `</tr></thead><tbody>`;
 
-            // 行データ（配列とオブジェクト両方に対応）
             rows.forEach(row => {
                 html += `<tr>`;
                 if (Array.isArray(row)) {
-                    // 2D配列形式: 各セルを順番に出力
                     row.forEach(cell => {
                         html += `<td title="${escapeHtml(formatCellValue(cell, 500))}">${escapeHtml(formatCellValue(cell))}</td>`;
                     });
                 } else if (typeof row === 'object' && row !== null) {
-                    // オブジェクト形式: ヘッダーのキーに対応する値を出力
                     headers.forEach(k => {
                         const value = row[k];
                         html += `<td title="${escapeHtml(formatCellValue(value, 500))}">${escapeHtml(formatCellValue(value))}</td>`;
@@ -968,6 +989,95 @@ function renderMultipleTables(key, tables, label) {
             <textarea class="json-editor" data-field="${key}" rows="10">${JSON.stringify(tables, null, 2)}</textarea>
         </details>
     `;
+
+    return html;
+}
+
+// =============================================================================
+// フラット表のレンダリング（検索・フィルタ用）
+// =============================================================================
+
+function renderFlatTable(flatData, flatColumns) {
+    if (!flatData || flatData.length === 0) {
+        return '<p class="no-data">データがありません</p>';
+    }
+
+    // カラムが指定されていない場合は全キーを収集
+    let columns = flatColumns;
+    if (!columns || columns.length === 0) {
+        const allKeys = new Set();
+        flatData.forEach(row => {
+            if (typeof row === 'object' && row !== null) {
+                Object.keys(row).forEach(k => allKeys.add(k));
+            }
+        });
+        columns = Array.from(allKeys);
+    }
+
+    let html = `
+        <div class="table-info">${flatData.length} 件</div>
+        <div class="table-wrapper">
+            <table class="data-table rendered-table flat-table">
+                <thead><tr>
+                    ${columns.map(c => `<th>${escapeHtml(formatFieldName(String(c)))}</th>`).join('')}
+                </tr></thead>
+                <tbody>
+    `;
+
+    flatData.forEach(row => {
+        html += '<tr>';
+        columns.forEach(col => {
+            const value = row[col];
+            const formatted = formatCellValue(value);
+            html += `<td title="${escapeHtml(formatCellValue(value, 500))}">${escapeHtml(formatted)}</td>`;
+        });
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+}
+
+// =============================================================================
+// グリッド表のレンダリング（元の表構造を保持）
+// =============================================================================
+
+function renderGridTable(gridData) {
+    if (!gridData || !gridData.rows || gridData.rows.length === 0) {
+        return '<p class="no-data">グリッドデータがありません</p>';
+    }
+
+    const columns = gridData.columns || [];
+    const rows = gridData.rows || [];
+
+    let html = `
+        <div class="table-info">${rows.length} 行 × ${columns.length || (rows[0] ? rows[0].length : 0)} 列</div>
+        <div class="table-wrapper">
+            <table class="data-table rendered-table grid-table">
+    `;
+
+    // ヘッダー行
+    if (columns.length > 0) {
+        html += '<thead><tr>';
+        columns.forEach(col => {
+            html += `<th>${escapeHtml(formatFieldName(String(col)))}</th>`;
+        });
+        html += '</tr></thead>';
+    }
+
+    // データ行
+    html += '<tbody>';
+    rows.forEach(row => {
+        html += '<tr>';
+        if (Array.isArray(row)) {
+            row.forEach(cell => {
+                const formatted = formatCellValue(cell);
+                html += `<td title="${escapeHtml(formatCellValue(cell, 500))}">${escapeHtml(formatted)}</td>`;
+            });
+        }
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
 
     return html;
 }
@@ -1951,6 +2061,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('review-btn')?.addEventListener('click', markReviewed);
     document.getElementById('unreview-btn')?.addEventListener('click', markUnreviewed);
     document.getElementById('delete-btn')?.addEventListener('click', deleteDocument);
+
+    // テーブルビュータブ切り替え（委譲イベント）
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('table-view-tab')) {
+            const tab = e.target;
+            const tabsContainer = tab.closest('.table-view-tabs');
+            if (!tabsContainer) return;
+
+            const tableId = tabsContainer.dataset.tableId;
+            const view = tab.dataset.view;
+
+            // タブのアクティブ状態を更新
+            tabsContainer.querySelectorAll('.table-view-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            // コンテンツの表示切り替え
+            document.getElementById(`${tableId}-flat`).style.display = view === 'flat' ? 'block' : 'none';
+            document.getElementById(`${tableId}-grid`).style.display = view === 'grid' ? 'block' : 'none';
+        }
+    });
 });
 
 // パネルトグル設定

@@ -78,7 +78,7 @@ def preprocess_image_for_ocr(
         except Exception as e:
             logger.warning(f"二値化処理失敗: {e}")
 
-    # 5. PaddleOCR互換性のためRGB形式に変換
+    # 5. PaddleOCR用にRGB形式に変換
     # PaddleOCRはRGB/カラー画像を期待するため、グレースケールから戻す
     if len(processed.shape) == 2:
         processed = cv2.cvtColor(processed, cv2.COLOR_GRAY2RGB)

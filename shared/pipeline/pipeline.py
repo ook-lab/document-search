@@ -39,15 +39,11 @@ from shared.common.connectors.google_drive import GoogleDriveConnector
 
 from .config_loader import ConfigLoader
 from .stage_e_preprocessing import StageEPreprocessor
-from .stage_f_visual import StageFVisualAnalyzer
-from .stage_g_refiner import StageGRefiner  # Stage G: 論理的精錬
-from .stage_hi_combined import StageHICombined  # Stage H+I: 統合版（後方互換）
-from .stage_h1_table import StageH1Table  # Stage H1: 表処理専門
-from .stage_h2_text import StageH2Text  # Stage H2: テキスト処理専門
-from .stage_h_kakeibo import StageHKakeibo  # 家計簿専用
+from .stage_f import StageFVisualAnalyzer  # 【Ver 10.6】E6→E7→E8→F1→F2→F3→G3→G4→G5→G6
+from .stage_h import StageH1Table, StageH2Text  # Stage H1/H2
+from .stage_h.h_kakeibo import StageHKakeibo  # 家計簿専用
 from .stage_j_chunking import StageJChunking
 from .stage_k_embedding import StageKEmbedding
-from .constants import STAGE_H_INPUT_SCHEMA_VERSION
 
 # Phase 5: Execution versioning
 from shared.processing.execution_manager import ExecutionManager, ExecutionContext
@@ -132,10 +128,9 @@ class UnifiedDocumentPipeline:
             enable_hybrid_ocr = self.config.get_hybrid_ocr_enabled('default')
 
         # 各ステージを初期化
-        self.stage_e = StageEPreprocessor(self.llm_client)
+        self.stage_e = StageEPreprocessor()
         self.stage_f = StageFVisualAnalyzer(self.llm_client, enable_surya=enable_hybrid_ocr)
-        self.stage_g = StageGRefiner(self.llm_client)  # Stage G: 論理的精錬
-        self.stage_hi = StageHICombined(self.llm_client)  # Stage H+I: 統合版（後方互換）
+        # Stage G は Ver 9.0 で Stage F 内部に統合（G3→G4→G5→G6）
         self.stage_h1 = StageH1Table(self.llm_client)  # Stage H1: 表処理専門
         self.stage_h2 = StageH2Text(self.llm_client)  # Stage H2: テキスト処理専門
         self.stage_h_kakeibo = StageHKakeibo(self.db)  # 家計簿専用
@@ -145,7 +140,7 @@ class UnifiedDocumentPipeline:
         # 家計簿専用のDB保存ハンドラー
         self.kakeibo_db_handler = KakeiboDBHandler(self.db) if KAKEIBO_AVAILABLE else None
 
-        logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（E→F→G→H1→H2→J→K, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
+        logger.info(f"✅ UnifiedDocumentPipeline 初期化完了（E→F(Ver9.0)→H1→H2→J→K, ハイブリッドOCR={'有効' if enable_hybrid_ocr else '無効'}）")
 
     async def process_document(
         self,
@@ -293,7 +288,8 @@ class UnifiedDocumentPipeline:
                 model=model_f,
                 extracted_text=extracted_text,
                 workspace=workspace,
-                e2_table_bboxes=e2_table_bboxes
+                e2_table_bboxes=e2_table_bboxes,
+                stage_e_metadata=stage_e_metadata  # 【Ver 6.4】座標付き文字情報
             )
             logger.info(f"[Stage F完了] Vision結果: {type(stage_f_result).__name__}")
 
@@ -309,55 +305,21 @@ class UnifiedDocumentPipeline:
                 # DB保存用にJSON文字列も保持（vision_raw）
                 vision_raw = json.dumps(stage_f_result, ensure_ascii=False)
 
-                # v1.1契約: Stage F payload をそのまま stage_f_structure として使用（再構成禁止）
+                # Stage F payload をそのまま使用（再構成禁止）
                 stage_f_structure = vision_json
                 schema_ver = vision_json.get('schema_version', '')
-                is_v1_1 = (schema_ver == STAGE_H_INPUT_SCHEMA_VERSION)
 
-                if is_v1_1:
-                    # v1.1: full_text をそのまま使用（混ぜ物合成禁止）
-                    combined_text = vision_json.get('full_text', '')
-                    post_body = vision_json.get('post_body', {})
-                    text_blocks = vision_json.get('text_blocks', [])
+                # full_text をそのまま使用（混ぜ物合成禁止）
+                combined_text = vision_json.get('full_text', '')
+                post_body = vision_json.get('post_body', {})
+                text_blocks = vision_json.get('text_blocks', [])
 
-                    logger.info(f"[Stage F→H] v1.1契約モード:")
-                    logger.info(f"  ├─ schema_version: {schema_ver}")
-                    logger.info(f"  ├─ full_text: {len(combined_text)}文字")
-                    logger.info(f"  ├─ post_body: {post_body.get('char_count', 0)}文字 (source: {post_body.get('source', 'unknown')})")
-                    logger.info(f"  ├─ text_blocks: {len(text_blocks)}ブロック")
-                    logger.info(f"  ├─ text_blocks[0]: {text_blocks[0].get('block_type') if text_blocks else 'N/A'}")
-                    logger.info(f"  └─ tables: {len(vision_json.get('tables', []))}個")
-                else:
-                    # レガシー: 従来の合成ロジック（後方互換）
-                    ocr_text = vision_json.get('full_text', '')
-                    text_parts = []
-
-                    # 1. 投稿文テキスト（Classroom等のメタデータから）
-                    if extra_metadata:
-                        display_post_text = extra_metadata.get('display_post_text', '')
-                        if display_post_text and display_post_text.strip():
-                            text_parts.append(f"[投稿文]\n{display_post_text}")
-                            logger.info(f"[Stage F→H] display_post_text追加: {len(display_post_text)}文字")
-
-                    # 2. OCR抽出テキスト
-                    if ocr_text and ocr_text.strip():
-                        text_parts.append(f"[OCR抽出テキスト]\n{ocr_text}")
-
-                    # 3. 画像の視覚的説明（visual_elements.notes）
-                    visual_elements = vision_json.get('visual_elements', {})
-                    notes = visual_elements.get('notes', [])
-                    if notes:
-                        notes_text = '\n'.join(notes)
-                        text_parts.append(f"[画像の視覚的説明]\n{notes_text}")
-                        logger.info(f"[Stage F→H] visual_elements.notes追加: {len(notes_text)}文字")
-
-                    combined_text = '\n\n'.join(text_parts)
-
-                    logger.info(f"[Stage F→H] レガシーモード:")
-                    logger.info(f"  ├─ combined_text: {len(combined_text)}文字")
-                    logger.info(f"  ├─ OCR full_text: {len(ocr_text)}文字")
-                    logger.info(f"  ├─ sections: {len(vision_json.get('layout_info', {}).get('sections', []))}個")
-                    logger.info(f"  └─ tables: {len(vision_json.get('layout_info', {}).get('tables', []))}個")
+                logger.info(f"[Stage F→H] データ受け渡し:")
+                logger.info(f"  ├─ schema_version: {schema_ver}")
+                logger.info(f"  ├─ full_text: {len(combined_text)}文字")
+                logger.info(f"  ├─ post_body: {post_body.get('char_count', 0)}文字 (source: {post_body.get('source', 'unknown')})")
+                logger.info(f"  ├─ text_blocks: {len(text_blocks)}ブロック")
+                logger.info(f"  └─ tables: {len(vision_json.get('tables', []))}個")
             except json.JSONDecodeError as e:
                 logger.warning(f"[Stage F→H] JSON解析失敗: {e}")
                 combined_text = vision_raw
@@ -369,60 +331,18 @@ class UnifiedDocumentPipeline:
                 combined_text = ""  # 空文字列として継続
 
             # ============================================
-            # Stage G: 論理的精錬（Logical Refinement）
+            # Stage G: Ver 9.0 では Stage F 内部で処理済み
             # ============================================
-            # Stage F の出力を整理し、REF_ID付き目録を作成
-            stage_g_result = None
-            stage_g_config = self.config.get_stage_config('stage_g', doc_type, workspace)
+            # G3(Scrub)→G4(Assemble)→G5(Audit)→G6(Packager) は orchestrator.py 内で実行
+            # stage_f_result には scrubbed_data (G5出力) が含まれる
+            logger.info("[Stage G] Ver 9.0: Stage F 内部で処理済み（G3→G4→G5→G6）")
 
-            # Stage G スキップ判定（家計簿や skip 設定がある場合）
-            skip_stage_g = stage_g_config.get('skip', False) or doc_type == 'kakeibo'
+            # Stage F の path_a_result から情報を取得
+            path_a_result = stage_f_structure.get('path_a_result', {})
 
-            if stage_f_structure and not skip_stage_g:
-                model_g = stage_g_config.get('model', 'gemini-2.0-flash-lite')
-                logger.info(f"[Stage G] 論理的精錬開始... (model={model_g})")
-                if progress_callback:
-                    progress_callback("G")
-
-                try:
-                    # Stage E + Stage F を Stage G に渡す（v2.0: G-Gate + G1 + G2）
-                    stage_g_result = self.stage_g.process(
-                        stage_e_result=stage_e_result,
-                        stage_f_payload=stage_f_structure,
-                        post_body=post_body,
-                        model=model_g,
-                        workspace=workspace
-                    )
-
-                    # Stage G の出力をログ
-                    logger.info(f"[Stage G完了] ref_count={stage_g_result.get('ref_count', 0)}, mode={stage_g_result.get('processing_mode', 'unknown')}")
-
-                    # Stage G の unified_text を combined_text として使用（後続に渡す）
-                    if stage_g_result.get('unified_text'):
-                        combined_text = stage_g_result['unified_text']
-                        logger.info(f"[Stage G→H] unified_text: {len(combined_text)}文字")
-
-                    # Stage G の source_inventory を stage_f_structure に追加（Stage Hで参照可能に）
-                    if stage_g_result.get('source_inventory'):
-                        stage_f_structure['source_inventory'] = stage_g_result['source_inventory']
-                        logger.info(f"[Stage G→H] source_inventory: {len(stage_g_result['source_inventory'])}件")
-
-                    if stage_g_result.get('table_inventory'):
-                        stage_f_structure['table_inventory'] = stage_g_result['table_inventory']
-                        logger.info(f"[Stage G→H] table_inventory: {len(stage_g_result['table_inventory'])}件")
-
-                    # 警告があれば出力
-                    for warning in stage_g_result.get('warnings', []):
-                        logger.warning(f"[Stage G警告] {warning}")
-
-                except Exception as e:
-                    logger.warning(f"[Stage G] 処理失敗、スキップして続行: {e}")
-                    # Stage G が失敗しても Stage H は続行可能
-
-                # イベントループに制御を返す（並列タスク実行のため）
-                await asyncio.sleep(0)
-            elif skip_stage_g:
-                logger.info(f"[Stage G] スキップ (doc_type={doc_type}, skip={stage_g_config.get('skip', False)})")
+            # 警告があれば出力
+            for warning in stage_f_structure.get('warnings', []):
+                logger.warning(f"[Stage F/G警告] {warning}")
 
             # ============================================
             # Stage H+I: 構造化 + 統合・要約
@@ -500,34 +420,24 @@ class UnifiedDocumentPipeline:
                 model_hi = stage_hi_config['model']
 
                 # -----------------------------------------
-                # アンカーベースのH1/H2ルーティング
+                # Ver 9.0: Stage F から直接データ取得
                 # -----------------------------------------
-                # Stage F からアンカー配列を取得（新形式）
+                # アンカー配列を取得（G5出力）
                 anchors = stage_f_structure.get('anchors', []) if stage_f_structure else []
+                # 表データを取得（path_a_result内）
+                tables = path_a_result.get('tables', [])
 
-                routing_result = self.stage_g.route_anchors_to_stages(
-                    stage_g_result=stage_g_result or {},
-                    anchors=anchors
-                )
-
-                h1_payload = routing_result.get('h1_payload', {})
-                h2_payload = routing_result.get('h2_payload', {})
-                anchor_map = routing_result.get('anchor_map', {})
-
-                logger.info(f"[Stage G→H] ルーティング完了: H1={len(h1_payload.get('heavy_tables', []))}表, H2テキスト={len(h2_payload.get('text_anchors', []))}件")
+                logger.info(f"[Stage F→H] Ver 9.0: anchors={len(anchors)}件, tables={len(tables)}件")
 
                 # -----------------------------------------
-                # Stage H1: 表処理専門（重い表のみ）
+                # Stage H1: 表処理専門
                 # -----------------------------------------
-                heavy_tables = h1_payload.get('heavy_tables', [])
-                table_inventory = stage_g_result.get('table_inventory', []) if stage_g_result else []
-
-                logger.info(f"[Stage H1] 表処理開始... (重い表: {len(heavy_tables)}件, 全表: {len(table_inventory)}件)")
+                logger.info(f"[Stage H1] 表処理開始... (表: {len(tables)}件)")
                 if progress_callback:
                     progress_callback("H1")
 
                 h1_result = self.stage_h1.process(
-                    table_inventory=table_inventory,
+                    table_inventory=tables,
                     doc_type=doc_type,
                     workspace=workspace,
                     unified_text=combined_text
@@ -542,22 +452,11 @@ class UnifiedDocumentPipeline:
                 await asyncio.sleep(0)
 
                 # -----------------------------------------
-                # H2用にテキストを軽量化（アンカーベース）
+                # H2用テキスト（Ver 9.0: full_text_ordered使用）
                 # -----------------------------------------
-                # 方法1: Stage G のルーティング結果を使用
-                reduced_text = h2_payload.get('reduced_text', '')
+                reduced_text = path_a_result.get('full_text_ordered', '') or combined_text
 
-                # 方法2: フォールバック（従来のフラグメントベース）
-                if not reduced_text:
-                    reduced_text = combined_text
-                    table_text_fragments = h1_result.get('table_text_fragments', [])
-
-                    if table_text_fragments:
-                        reduced_text = self.stage_h1.remove_table_text_from_unified(
-                            combined_text, table_text_fragments
-                        )
-
-                logger.info(f"[Stage H1→H2] テキスト軽量化: {len(combined_text)}→{len(reduced_text)}文字 (-{(len(combined_text) - len(reduced_text)) * 100 // max(len(combined_text), 1)}%)")
+                logger.info(f"[Stage H1→H2] テキスト: {len(reduced_text)}文字")
 
                 # -----------------------------------------
                 # Stage H2: テキスト処理専門
@@ -575,7 +474,7 @@ class UnifiedDocumentPipeline:
                     model=model_hi,
                     h1_result=h1_result,
                     stage_f_structure=stage_f_structure,
-                    stage_g_result=stage_g_result
+                    stage_g_result=None  # Ver 9.0: 旧Stage G削除
                 )
 
                 # イベントループに制御を返す（並列タスク実行のため）
@@ -587,7 +486,7 @@ class UnifiedDocumentPipeline:
                     logger.error(f"[Stage H2失敗] {error_msg}")
                     return {'success': False, 'error': error_msg}
 
-                # 結果を変数に展開（後続処理との互換性のため）
+                # 結果を変数に展開
                 document_date = stageHI_result.get('document_date')
                 tags = stageHI_result.get('tags', [])
                 stageH_metadata = stageHI_result.get('metadata', {})
@@ -612,10 +511,16 @@ class UnifiedDocumentPipeline:
                 stageH_metadata['_h1_h2_split'] = True
                 stageH_metadata['_h1_statistics'] = h1_stats
 
+                # 【Ver 9.0】監査ログをメタデータに追加（change_log from G5）
+                if stage_f_structure.get('change_log'):
+                    stageH_metadata['_v90_change_log'] = stage_f_structure['change_log']
+                if stage_f_structure.get('anomaly_report'):
+                    stageH_metadata['_v90_anomaly_report'] = stage_f_structure['anomaly_report']
+
                 logger.info(f"[Stage H1+H2完了] title={title[:30] if title else 'N/A'}..., "
                            f"calendar_events={len(calendar_events)}件, tasks={len(tasks)}件")
 
-                # Stage H 互換の結果オブジェクトを作成
+                # Stage H の結果オブジェクトを作成
                 stageH_result = {
                     'document_date': document_date,
                     'tags': tags,
@@ -708,17 +613,10 @@ class UnifiedDocumentPipeline:
                         # full_text を text OCR として保存
                         stage_f_text_ocr = self._sanitize_text(stage_f_structure.get('full_text', ''))
 
-                        # v1.1契約: sections/tables の取得場所を適切に
-                        sf_schema = stage_f_structure.get('schema_version', '')
-                        if sf_schema == STAGE_H_INPUT_SCHEMA_VERSION:
-                            # v1.1: layout_info.sections, トップレベル tables
-                            layout_info = stage_f_structure.get('layout_info', {})
-                            sections = layout_info.get('sections', [])
-                            tables = stage_f_structure.get('tables', [])
-                        else:
-                            # レガシー: 直下または layout_info から取得（後方互換）
-                            sections = stage_f_structure.get('sections', []) or stage_f_structure.get('layout_info', {}).get('sections', [])
-                            tables = stage_f_structure.get('tables', []) or stage_f_structure.get('layout_info', {}).get('tables', [])
+                        # sections/tables の取得
+                        layout_info = stage_f_structure.get('layout_info', {})
+                        sections = layout_info.get('sections', [])
+                        tables = stage_f_structure.get('tables', [])
 
                         stage_f_layout_ocr = json.dumps({
                             'sections': sections,
@@ -744,15 +642,14 @@ class UnifiedDocumentPipeline:
                 if stage_f_structure and 'anchors' in stage_f_structure:
                     stage_f_anchors = stage_f_structure.get('anchors', [])
 
-                # Stage G 結果を取得
-                stage_g_result_json = None
-                if stage_g_result:
-                    stage_g_result_json = {
-                        'source_inventory': stage_g_result.get('source_inventory', []),
-                        'table_inventory': stage_g_result.get('table_inventory', []),
-                        'cross_validation': stage_g_result.get('cross_validation', {}),
-                        'processing_mode': stage_g_result.get('processing_mode', '')
-                    }
+                # Ver 9.0: Stage G結果はStage F内部で処理済み（G3→G4→G5→G6）
+                # quality_detail と anomaly_report を保存
+                stage_g_result_json = {
+                    'quality_detail': stage_f_structure.get('quality_detail', {}),
+                    'anomaly_report': stage_f_structure.get('anomaly_report', []),
+                    'change_log': stage_f_structure.get('change_log', []),
+                    'schema_version': stage_f_structure.get('schema_version', '')
+                }
 
                 # Stage H1 結果を取得
                 stage_h1_tables_json = None

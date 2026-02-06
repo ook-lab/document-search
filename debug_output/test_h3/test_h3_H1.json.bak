@@ -1,0 +1,1318 @@
+{
+  "processed_tables": [
+    {
+      "ref_id": "TBL_001",
+      "table_title": "4教科(3教科)判定校 てつてい、未来のリーダーたち。 男子 2/3~ 2026年度用 合不合判定 テスト (第6回) Aライン 80偏差値一覧 四谷大塚 (2025年12月7日実施) · 2教科(1教科)判定校",
+      "table_type": "yotsuya_hensachi",
+      "schema_matched": true,
+      "domain": "yotsuya_hensachi",
+      "columns": [
+        "偏差値",
+        "2/3",
+        "2/4～"
+      ],
+      "rows": [
+        {
+          "deviation": 70,
+          "schools": [
+            {
+              "raw_text": "筑波大駒場 74",
+              "name": "筑波大駒場",
+              "individual_score": 74,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "聖光学院2 70",
+              "name": "聖光学院2",
+              "individual_score": 70,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 68,
+          "schools": [
+            {
+              "raw_text": "早稲田2",
+              "name": "早稲田2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "渋谷教育渋谷3 68",
+              "name": "渋谷教育渋谷3",
+              "individual_score": 68,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 67,
+          "schools": [
+            {
+              "raw_text": "海城2",
+              "name": "海城2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "広尾学園ISG2",
+              "name": "広尾学園ISG2",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 66,
+          "schools": [
+            {
+              "raw_text": "| 小石川(一般)",
+              "name": "| 小石川(一般)",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "本郷3 66",
+              "name": "本郷3",
+              "individual_score": 66,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 65,
+          "schools": [
+            {
+              "raw_text": "慶應中等部 筑波大附",
+              "name": "慶應中等部 筑波大附",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "市川2 広尾3 65",
+              "name": "市川2 広尾3",
+              "individual_score": 65,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 64,
+          "schools": [
+            {
+              "raw_text": "浅野 小石川ISG3",
+              "name": "浅野 小石川ISG3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "芝2",
+              "name": "芝2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "芝2 広尾小石川ISG4"
+            },
+            {
+              "raw_text": "広尾小石川ISG4",
+              "name": "広尾小石川ISG4",
+              "individual_score": null,
+              "test_date": "2/6",
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "芝2 広尾小石川ISG4"
+            },
+            {
+              "raw_text": "2/5 2/6",
+              "name": "2/6",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 63,
+          "schools": [
+            {
+              "raw_text": "| 明大明治2 横浜市立YSFH附属 広尾小石川3",
+              "name": "| 明大明治2 横浜市立YSFH附属 広尾小石川3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "◇ 攻玉社(特別) 広尾小石川4 63",
+              "name": "攻玉社(特別) 広尾小石川4",
+              "individual_score": 63,
+              "test_date": null,
+              "flags": [
+                "◇"
+              ],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 62,
+          "schools": [
+            {
+              "raw_text": "相模原 桜修館 武蔵高附属",
+              "name": "相模原 桜修館 武蔵高附属",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "東京農大第一4 62",
+              "name": "東京農大第一4",
+              "individual_score": 62,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 61,
+          "schools": [
+            {
+              "raw_text": "両国高附属 | 横浜市立南高附属 三田国際(MST)",
+              "name": "両国高附属 | 横浜市立南高附属 三田国際(MST)",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "サレジオ学院B 三田国際4ISC 61",
+              "name": "サレジオ学院B 三田国際4ISC",
+              "individual_score": 61,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 60,
+          "schools": [
+            {
+              "raw_text": "昭和秀英2 大泉高附属 東邦大東邦(後)",
+              "name": "昭和秀英2 大泉高附属 東邦大東邦(後)",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "城北3 巣鴨3 逗子開成3 60",
+              "name": "城北3 巣鴨3 逗子開成3",
+              "individual_score": 60,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "2/5 2/5",
+              "name": "2/5",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 59,
+          "schools": [
+            {
+              "raw_text": "| 逗子開成2 白鷗高附属(一般) 青山学院 横浜英和B",
+              "name": "| 逗子開成2 白鷗高附属(一般) 青山学院 横浜英和B",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "明大中野2 || 東京都市大付4 立教池袋2 59",
+              "name": "明大中野2 || 東京都市大付4 立教池袋2",
+              "individual_score": 59,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 58,
+          "schools": [
+            {
+              "raw_text": "東京都市大付3",
+              "name": "東京都市大付3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "富士高附属 三 南多摩 法政大学2 立教新座2",
+              "name": "富士高附属 三 南多摩 法政大学2 立教新座2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "暁星2",
+              "name": "暁星2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "国学院久我山ST2",
+              "name": "国学院久我山ST2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "国学院久我山ST2 神奈川大附3 明大付属世田谷2"
+            },
+            {
+              "raw_text": "明大付属世田谷2",
+              "name": "明大付属世田谷2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "国学院久我山ST2 神奈川大附3 明大付属世田谷2"
+            }
+          ]
+        },
+        {
+          "deviation": 57,
+          "schools": [
+            {
+              "raw_text": "平塚 学大世田谷 立川国際(一般) ● 開智日本橋3 ◇ 都立大等2特選",
+              "name": "平塚 学大世田谷 立川国際(一般)  開智日本橋3  都立大等2特選",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [
+                "◇",
+                "●"
+              ],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "世田谷学園3",
+              "name": "世田谷学園3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "世田谷学園3 高輪C 中央大附属2 法政第二2 | 法政大学3"
+            },
+            {
+              "raw_text": "法政大学3",
+              "name": "法政大学3",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "世田谷学園3 高輪C 中央大附属2 法政第二2 | 法政大学3"
+            },
+            {
+              "raw_text": "2/5 2/5 2/5",
+              "name": "2/5 2/5",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 56,
+          "schools": [
+            {
+              "raw_text": "成城2 | 学大早",
+              "name": "成城2 | 学大早",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "◇ 江戸川取手日東大 ◇ 江戸川取手日医科 成城3 56",
+              "name": "江戸川取手日東大  江戸川取手日医科 成城3",
+              "individual_score": 56,
+              "test_date": null,
+              "flags": [
+                "◇"
+              ],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 55,
+          "schools": [
+            {
+              "raw_text": "学習院2",
+              "name": "学習院2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3",
+              "_split_from": "学習院2 -- 明大付属八王子A2 安田学園5"
+            },
+            {
+              "raw_text": "安田学園5",
+              "name": "安田学園5",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3",
+              "_split_from": "学習院2 -- 明大付属八王子A2 安田学園5"
+            },
+            {
+              "raw_text": "国学院久我山ST3",
+              "name": "国学院久我山ST3",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "開智日本橋4 鎌倉学園3 国学院久我山ST3"
+            },
+            {
+              "raw_text": "鎌倉学園3",
+              "name": "鎌倉学園3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "開智日本橋4 鎌倉学園3 国学院久我山ST3"
+            }
+          ]
+        },
+        {
+          "deviation": 54,
+          "schools": [
+            {
+              "raw_text": "川崎市立川崎高附属",
+              "name": "川崎市立川崎高附属",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "桐蔭学園3 54",
+              "name": "桐蔭学園3",
+              "individual_score": 54,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 53,
+          "schools": [
+            {
+              "raw_text": "山手学院B",
+              "name": "山手学院B",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "成城学園2 東京大附 明星Inst2特待 芝国際3特待 ☆ 淑徳3 東大",
+              "name": "成城学園2 東京大附 明星Inst2特待 芝国際3特待  淑徳3 東大",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [
+                "☆"
+              ],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "帝京大学3",
+              "name": "帝京大学3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "☆ 明大付属八王子B",
+              "name": "明大付属八王子B",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [
+                "☆"
+              ],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 52,
+          "schools": [
+            {
+              "raw_text": "| 公文国際B 専修大松戸3A かえつ有明 日大豊山4 日大豊山4",
+              "name": "| 公文国際B 専修大松戸3A かえつ有明 日大豊山4 日大豊山4",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "獨協4 明星Inst4",
+              "name": "獨協4 明星Inst4",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "2/5 2/5 2/5 2/5",
+              "name": "2/5 2/5 2/5",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 51,
+          "schools": [
+            {
+              "raw_text": "明星Inst3",
+              "name": "明星Inst3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "森村学園3",
+              "name": "森村学園3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "森村学園3 成蹊2 東洋大学京北4 日本大学C(AF) 日本大学C(GL) 海陽(東京) 関東学院2"
+            },
+            {
+              "raw_text": "日本大学C(GL)",
+              "name": "日本大学C(GL)",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "森村学園3 成蹊2 東洋大学京北4 日本大学C(AF) 日本大学C(GL) 海陽(東京) 関東学院2"
+            },
+            {
+              "raw_text": "関東学院2",
+              "name": "関東学院2",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "森村学園3 成蹊2 東洋大学京北4 日本大学C(AF) 日本大学C(GL) 海陽(東京) 関東学院2"
+            },
+            {
+              "raw_text": "東洋大学京北4",
+              "name": "東洋大学京北4",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "森村学園3 成蹊2 東洋大学京北4 日本大学C(AF) 日本大学C(GL) 海陽(東京) 関東学院2"
+            },
+            {
+              "raw_text": "日本大学C(AF)",
+              "name": "日本大学C(AF)",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "森村学園3 成蹊2 東洋大学京北4 日本大学C(AF) 日本大学C(GL) 海陽(東京) 関東学院2"
+            },
+            {
+              "raw_text": "2/5 2/5",
+              "name": "2/5",
+              "individual_score": null,
+              "test_date": "2/5",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 50,
+          "schools": [
+            {
+              "raw_text": "関東学院1C",
+              "name": "関東学院1C",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3",
+              "_split_from": "関東学院1C 桐光学園3"
+            },
+            {
+              "raw_text": "桐光学園3",
+              "name": "桐光学園3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3",
+              "_split_from": "関東学院1C 桐光学園3"
+            },
+            {
+              "raw_text": "目黒日大4 ◇ 江戸川取手難開大 佼成学園2特奨 50",
+              "name": "目黒日大4  江戸川取手難開大 佼成学園2特奨",
+              "individual_score": 50,
+              "test_date": "2/5",
+              "flags": [
+                "◇"
+              ],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 49,
+          "schools": [
+            {
+              "raw_text": "淑徳巣鴨(力) 学大小金井 日大豊山3 横浜国大横浜 郁文館iP2",
+              "name": "淑徳巣鴨(力) 学大小金井 日大豊山3 横浜国大横浜 郁文館iP2",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "日大藤沢3 東京電機大4 49",
+              "name": "日大藤沢3 東京電機大4",
+              "individual_score": 49,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 48,
+          "schools": [
+            {
+              "raw_text": "☆ 淑徳2S特 足立学園特奨3",
+              "name": "淑徳2S特 足立学園特奨3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [
+                "☆"
+              ],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "明星6 48 ※この一覧表は合不合判定テストの合格可能性80%Aライン(男女合算の成績処理による偏差値)を表したもので、学校差を示すものではありません。",
+              "name": "明星6 48 ※この一覧表は合不合判定テストの合格可能性80%Aライン(男女合算の成績処理による偏差値)を表したもので、学校差を示すものではありません。",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 47,
+          "schools": [
+            {
+              "raw_text": "佼成学園3",
+              "name": "佼成学園3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "お茶の水女子大附 湘南学園C 明星4 桜美林(3日午後) 多摩大目黒特待",
+              "name": "お茶の水女子大附 湘南学園C 明星4 桜美林(3日午後) 多摩大目黒特待",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "明星5",
+              "name": "明星5",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "駒込5 湘南学園D 日大第一(2科2回) 47",
+              "name": "駒込5 湘南学園D 日大第一(2科2回)",
+              "individual_score": 47,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "2/6 2/6",
+              "name": "2/6",
+              "individual_score": null,
+              "test_date": "2/6",
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 46,
+          "schools": [
+            {
+              "raw_text": "日本工大駒場5 日大第二2 日大第一(2科1回) 実践学園給費生",
+              "name": "日本工大駒場5 日大第二2 日大第一(2科1回) 実践学園給費生",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "明治学院3 多摩大目黒特待 多摩大目黒特待 横浜創英5 46",
+              "name": "明治学院3 多摩大目黒特待 多摩大目黒特待 横浜創英5",
+              "individual_score": 46,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 45,
+          "schools": [
+            {
+              "raw_text": "本科",
+              "name": "本科",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "順天堂理数2 45",
+              "name": "順天堂理数2",
+              "individual_score": 45,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 44,
+          "schools": [
+            {
+              "raw_text": "京華3特選",
+              "name": "京華3特選",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "穎明館5 淑徳巣鴨3 サレジアン5(本科) 44",
+              "name": "穎明館5 淑徳巣鴨3 サレジアン5(本科)",
+              "individual_score": 44,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 43,
+          "schools": [
+            {
+              "raw_text": "日大第三3 聖学院(73)",
+              "name": "日大第三3 聖学院",
+              "individual_score": 73,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            }
+          ]
+        },
+        {
+          "deviation": 42,
+          "schools": [
+            {
+              "raw_text": "桜丘5 文教大付5 42",
+              "name": "桜丘5 文教大付5",
+              "individual_score": 42,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 41,
+          "schools": [
+            {
+              "raw_text": "東海大高輪台2 横浜国大鎌倉",
+              "name": "東海大高輪台2 横浜国大鎌倉",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            }
+          ]
+        },
+        {
+          "deviation": 40,
+          "schools": [
+            {
+              "raw_text": "京華3",
+              "name": "京華3",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "東海大高輪台3 40",
+              "name": "東海大高輪台3",
+              "individual_score": 40,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            }
+          ]
+        },
+        {
+          "deviation": 38,
+          "schools": [
+            {
+              "raw_text": "文化学園大杉並",
+              "name": "文化学園大杉並",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "文化学園大杉並",
+              "name": "文化学園大杉並",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "文化学園大杉並6"
+            },
+            {
+              "raw_text": "文化学園大杉並6",
+              "name": "文化学園大杉並6",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "文化学園大杉並6"
+            }
+          ]
+        },
+        {
+          "deviation": 33,
+          "schools": [
+            {
+              "raw_text": "………… 新設",
+              "name": "………… 新設",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～"
+            },
+            {
+              "raw_text": "☆ …… 試験日変更 教科数変更 2・4(2・3)教科選択(2教科判定)",
+              "name": "…… 試験日変更 教科数変更 2・4(2・3)教科選択(2教科判定)",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [
+                "☆"
+              ],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "……",
+              "name": "……",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/3"
+            },
+            {
+              "raw_text": "算+理受験校",
+              "name": "算+理受験校",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "算+理受験校 (算+理判定) 1教科受験校 …… 午後実施校"
+            },
+            {
+              "raw_text": "1教科受験校",
+              "name": "1教科受験校",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "算+理受験校 (算+理判定) 1教科受験校 …… 午後実施校"
+            },
+            {
+              "raw_text": "午後実施校",
+              "name": "午後実施校",
+              "individual_score": null,
+              "test_date": null,
+              "flags": [],
+              "column": "2/4～",
+              "_split_from": "算+理受験校 (算+理判定) 1教科受験校 …… 午後実施校"
+            }
+          ]
+        }
+      ],
+      "row_count": 32,
+      "source": "stage_h1_yotsuya"
+    }
+  ],
+  "extracted_metadata": {},
+  "table_text_fragments": [
+    "4教科(3教科)判定校 てつてい、未来のリーダーたち。 男子 2/3~ 2026年度用 合不合判定 テスト (第6回) Aライン 80偏差値一覧 四谷大塚 (2025年12月7日実施) · 2教科(1教科)判定校"
+  ],
+  "removed_table_ids": [
+    "TBL_001"
+  ],
+  "unrepairable_tables": [],
+  "reduced_text": "4教科(3教科)判定校\nてつてい、未来のリーダーたち。\n男子\n2/3~\n2026年度用\n合不合判定\nテスト\n(第6回)\nAライン\n80偏差値一覧\n四谷大塚\n(2025年12月7日実施)\n·\n2教科(1教科)判定校\n2\n/\n4\n~\n偏差値\n偏差値 男子\n2/3~\n(2025年12月7日実施) 2026年度用 合不合判定 2/3\nテスト\n(第6回) Aライン 80偏差値一覧 2 / 4 ~ · 4教科(3教科)判定校 2教科(1教科)判定校 四谷大塚 てつてい、未来のリーダーたち。 偏差値\n70\n筑波大駒場 74\n聖光学院2 70\n聖光学院2\n70\n69\n69\n69\n2/5\n2/5\n渋谷教育渋谷3\n68\n早稲田2\n渋谷教育渋谷3 68\n68\n2/5\n2/5\n67\n海城2\n広尾学園ISG2\n広尾学園ISG2\n2/5\n2/5\n66\n| 小石川(一般)\n本郷3 66\n本郷3\n66\n2/5\n2/5\n65\n慶應中等部 筑波大附\n市川2 広尾3 65\n市川2\n広尾3\n65\n2/6\n2/6\n64\n浅野 小石川ISG3\n芝2 広尾小石川ISG4 64\n芝2\n広尾小石川ISG4\n64\n2/5 2/6\n2/5\n2/6\n◇\n攻玉社(特別)\n広尾小石川4\n63\n63\n| 明大明治2 横浜市立YSFH附属 広尾小石川3\n◇ 攻玉社(特別) 広尾小石川4 63\n62\n相模原 桜修館 武蔵高附属\n東京農大第一4 62\n東京農大第一4\n62\n61\n両国高附属 | 横浜市立南高附属 三田国際(MST)\nサレジオ学院B 三田国際4ISC 61\nサレジオ学院B\n三田国際4ISC\n61\n2/5\n2/5\n60\n昭和秀英2 大泉高附属 東邦大東邦(後)\n城北3 巣鴨3 逗子開成3 60\n城北3\n巣鴨3\n逗子開成3\n60\n2/5 2/5\n2/5\n2/5\n明大中野2\n||\n東京都市大付4\n立教池袋2\n59\n59\n| 逗子開成2 白鷗高附属(一般) 青山学院 横浜英和B\n明大中野2 || 東京都市大付4 立教池袋2 59\n58\n九段B 都内\n東京都市大付3\n富士高附属 三 南多摩 法政大学2 立教新座2\n暁星2\n国学院久我山ST2 神奈川大附3 明大付属世田谷2 58\n神奈川大附3\n明大付属世田谷2\n58\n2/5\n2/5\n57\n平塚 学大世田谷 立川国際(一般) ● 開智日本橋3 ◇ 都立大等2特選\n世田谷学園3 高輪C 中央大附属2 法政第二2 | 法政大学3 57\n世田谷学園3\n高輪C\n中央大附属2\n法政第二2\n|\n法政大学3\n57\n2/5 2/5 2/5\n2/5\n2/5\n2/5\n56\n成城2 | 学大早\n◇ 江戸川取手日東大 ◇ 江戸川取手日医科 成城3 56\n◇\n江戸川取手日東大\n◇\n江戸川取手日医科\n成城3\n56\n2/5\n2/5\n55\n学習院2 -- 明大付属八王子A2 安田学園5\n開智日本橋4 鎌倉学園3 国学院久我山ST3\n開智日本橋4\n鎌倉学園3\n国学院久我山ST3\n2/5\n2/5\n54\n川崎市立川崎高附属\n桐蔭学園3 54\n桐蔭学園3\n54\n2/5\n2/5\n53\n山手学院B\n成城学園2 東京大附 明星Inst2特待 芝国際3特待 ☆ 淑徳3 東大\n帝京大学3\n☆ 明大付属八王子B\n☆\n明大付属八王子B\n2/5\n2/5\n52\n| 公文国際B 専修大松戸3A かえつ有明 日大豊山4 日大豊山4\n獨協4 明星Inst4\n獨協4\n明星Inst4\n2/5 2/5 2/5 2/5\n2/5\n2/5\n2/5\n2/5\n51\n明星Inst3\n森村学園3 成蹊2 東洋大学京北4 日本大学C(AF) 日本大学C(GL) 海陽(東京) 関東学院2 51\n森村学園3\n成蹊2\n東洋大学京北4\n日本大学C(AF)\n日本大学C(GL)\n海陽(東京)\n関東学院2\n51\n2/5 2/5\n2/5\n2/5\n50\n関東学院1C 桐光学園3\n目黒日大4 ◇ 江戸川取手難開大 佼成学園2特奨 50\n目黒日大4\n◇\n江戸川取手難開大\n佼成学園2特奨\n50\n49\n淑徳巣鴨(力) 学大小金井 日大豊山3 横浜国大横浜 郁文館iP2\n日大藤沢3 東京電機大4 49\n日大藤沢3\n東京電機大4\n49\n48\n☆ 淑徳2S特 足立学園特奨3\n明星6 48 ※この一覧表は合不合判定テストの合格可能性80%Aライン(男女合算の成績処理による偏差値)を表したもので、学校差を示すものではありません。\n明星6\n48\n※この一覧表は合不合判定テストの合格可能性80%Aライン(男女合算の成績処理による偏差値)を表したもので、学校差を示すものではありません。\n2/5\n2/5\n47\n佼成学園3\nお茶の水女子大附 湘南学園C 明星4 桜美林(3日午後) 多摩大目黒特待\n明星5\n駒込5 湘南学園D 日大第一(2科2回) 47\n駒込5\n湘南学園D\n日大第一(2科2回)\n47\n2/6 2/6\n2/6\n2/6\n明治学院3\n多摩大目黒特待\n横浜創英5\n46\n日本工大駒場5 日大第二2 日大第一(2科1回) 実践学園給費生\n明治学院3 多摩大目黒特待 多摩大目黒特待 横浜創英5 46\n多摩大目黒特待\n46\n45\n本科\n順天堂理数2 45\n順天堂理数2\n45\n2/5\n2/5\n穎明館5\n淑徳巣鴨3\nサレジアン5(本科)\n44\n44\n京華3特選\n穎明館5 淑徳巣鴨3 サレジアン5(本科) 44\n43\n日大第三3 聖学院(73)\n2\n2\n42\n桜丘5 文教大付5 42\n桜丘5\n文教大付5\n42\n41\n東海大高輪台2 横浜国大鎌倉\n41\n41\n2/5\n2/5\n東海大高輪台3\n40\n40\n京華3\n東海大高輪台3 40\n39\n39\n39\n38\n文化学園大杉並\n文化学園大杉並6 38\n文化学園大杉並6\n38\n37\n36\n36\n36\n35\n35\n35\n34\n34\n34\n33\n※試験日 32\n2026年\nの 実施予定日\n………… 新設\n☆ …… 試験日変更 教科数変更 2・4(2・3)教科選択(2教科判定)\n……\n算+理受験校 (算+理判定) 1教科受験校 …… 午後実施校\n※試験日\n2026年\nの\n実施予定日\n…………\n新設\n☆\n……\n試験日変更\n教科数変更\n2・4(2・3)教科選択(2教科判定)\n……\n算+理受験校\n(算+理判定)\n1教科受験校\n……\n午後実施校",
+  "statistics": {
+    "total": 1,
+    "processed": 1,
+    "skipped": 0,
+    "unrepairable": 0
+  },
+  "table_contexts": [
+    {
+      "id": "b5",
+      "text": "4教科(3教科)判定校",
+      "original_ocr": "4教科(3教科)判定校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1931,
+        48,
+        2169,
+        72
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1931,
+        48,
+        2169,
+        72
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 0,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b7",
+      "text": "てつてい、未来のリーダーたち。",
+      "original_ocr": "てつてい、未来のリーダーたち。",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2232,
+        57,
+        2313,
+        66
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2232,
+        57,
+        2313,
+        66
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 1,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b9",
+      "text": "男子",
+      "original_ocr": "男子",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        111,
+        62,
+        191,
+        97
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        111,
+        62,
+        191,
+        97
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 2,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b8",
+      "text": "2/3~",
+      "original_ocr": "2/3~",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        277,
+        58,
+        371,
+        92
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        277,
+        58,
+        371,
+        92
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 3,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b6",
+      "text": "2026年度用",
+      "original_ocr": "2026年度用",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        489,
+        54,
+        637,
+        86
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        489,
+        54,
+        637,
+        86
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 4,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b0",
+      "text": "合不合判定",
+      "original_ocr": "合不合判定",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        687,
+        48,
+        937,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        687,
+        48,
+        937,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 5,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b1",
+      "text": "テスト",
+      "original_ocr": "テスト",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        943,
+        48,
+        1081,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        943,
+        48,
+        1081,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 6,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b2",
+      "text": "(第6回)",
+      "original_ocr": "(第6回)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1094,
+        48,
+        1260,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1094,
+        48,
+        1260,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 7,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b3",
+      "text": "Aライン",
+      "original_ocr": "Aライン",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1267,
+        48,
+        1449,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1267,
+        48,
+        1449,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 8,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b4",
+      "text": "80偏差値一覧",
+      "original_ocr": "80偏差値一覧",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1448,
+        48,
+        1745,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1448,
+        48,
+        1745,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 9,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b10",
+      "text": "四谷大塚",
+      "original_ocr": "四谷大塚",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2196,
+        71,
+        2348,
+        108
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2196,
+        71,
+        2348,
+        108
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 10,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b13",
+      "text": "(2025年12月7日実施)",
+      "original_ocr": "(2025年12月7日実施)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        483,
+        86,
+        644,
+        107
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        483,
+        86,
+        644,
+        107
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 11,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b12",
+      "text": "·",
+      "original_ocr": "·",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1922,
+        79,
+        1928,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1922,
+        79,
+        1928,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 12,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    },
+    {
+      "id": "b11",
+      "text": "2教科(1教科)判定校",
+      "original_ocr": "2教科(1教科)判定校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1931,
+        73,
+        2168,
+        112
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1931,
+        73,
+        2168,
+        112
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision",
+      "reading_order": 13,
+      "context_for": "TBL_001",
+      "_context_type": "title"
+    }
+  ]
+}

@@ -521,11 +521,14 @@ class LLMClient:
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
 
-            # 生成設定
+            # 生成設定【Ver 5.7】蛇口全開固定
+            # 引数に依存せず、物理的に65536を強制
+            HARDCODED_MAX_TOKENS = 65536
             generation_config = genai.GenerationConfig(
-                max_output_tokens=max_tokens,
+                max_output_tokens=HARDCODED_MAX_TOKENS,
                 temperature=temperature
             )
+            logger.info(f"[Gemini Vision] max_output_tokens={HARDCODED_MAX_TOKENS} (ハードコード固定)")
 
             # response_format が指定されている場合
             if response_format in ["json", "json_object"]:
@@ -584,8 +587,9 @@ class LLMClient:
             # テキストを取得（finish_reasonに関わらず取得）
             text_content = candidate.content.parts[0].text if candidate.content.parts else ""
 
-            # finish_reason == 3 (MAX_TOKENS): トークン上限に達した場合
-            if candidate.finish_reason == 3:
+            # finish_reason == 2 (MAX_TOKENS): トークン上限に達した場合
+            # 注意: Gemini APIでは MAX_TOKENS = 2（3ではない）
+            if candidate.finish_reason == 2:
                 error_msg = f"MAX_TOKENS上限に達しました。出力が途中で切れています。({len(text_content)}文字)"
                 logger.error(f"[Gemini Vision] {error_msg}")
                 logger.error(f"[Gemini Vision] 途中で切れた出力（最後の500文字）: {text_content[-500:]}")

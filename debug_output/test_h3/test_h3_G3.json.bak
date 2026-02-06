@@ -1,0 +1,7713 @@
+{
+  "tagged_texts": [
+    {
+      "id": "b0",
+      "text": "合不合判定",
+      "original_ocr": "合不合判定",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        687,
+        48,
+        937,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        687,
+        48,
+        937,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b1",
+      "text": "テスト",
+      "original_ocr": "テスト",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        943,
+        48,
+        1081,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        943,
+        48,
+        1081,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b2",
+      "text": "(第6回)",
+      "original_ocr": "(第6回)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1094,
+        48,
+        1260,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1094,
+        48,
+        1260,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b3",
+      "text": "Aライン",
+      "original_ocr": "Aライン",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1267,
+        48,
+        1449,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1267,
+        48,
+        1449,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b4",
+      "text": "80偏差値一覧",
+      "original_ocr": "80偏差値一覧",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1448,
+        48,
+        1745,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1448,
+        48,
+        1745,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b5",
+      "text": "4教科(3教科)判定校",
+      "original_ocr": "4教科(3教科)判定校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1931,
+        48,
+        2169,
+        72
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1931,
+        48,
+        2169,
+        72
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b6",
+      "text": "2026年度用",
+      "original_ocr": "2026年度用",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        489,
+        54,
+        637,
+        86
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        489,
+        54,
+        637,
+        86
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b7",
+      "text": "てつてい、未来のリーダーたち。",
+      "original_ocr": "てつてい、未来のリーダーたち。",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2232,
+        57,
+        2313,
+        66
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2232,
+        57,
+        2313,
+        66
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b8",
+      "text": "2/3~",
+      "original_ocr": "2/3~",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        277,
+        58,
+        371,
+        92
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        277,
+        58,
+        371,
+        92
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b9",
+      "text": "男子",
+      "original_ocr": "男子",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        111,
+        62,
+        191,
+        97
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        111,
+        62,
+        191,
+        97
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b10",
+      "text": "四谷大塚",
+      "original_ocr": "四谷大塚",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2196,
+        71,
+        2348,
+        108
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2196,
+        71,
+        2348,
+        108
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b11",
+      "text": "2教科(1教科)判定校",
+      "original_ocr": "2教科(1教科)判定校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1931,
+        73,
+        2168,
+        112
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1931,
+        73,
+        2168,
+        112
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b12",
+      "text": "·",
+      "original_ocr": "·",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1922,
+        79,
+        1928,
+        113
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1922,
+        79,
+        1928,
+        113
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b13",
+      "text": "(2025年12月7日実施)",
+      "original_ocr": "(2025年12月7日実施)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        483,
+        86,
+        644,
+        107
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        483,
+        86,
+        644,
+        107
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b14",
+      "text": "偏差値",
+      "original_ocr": "偏差値",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        99,
+        131,
+        149,
+        148
+      ],
+      "page": 0,
+      "token_ids": [
+        "b14"
+      ],
+      "bbox_agg": [
+        99,
+        131,
+        149,
+        148
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b15",
+      "text": "偏差値",
+      "original_ocr": "偏差値",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2355,
+        131,
+        2405,
+        146
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2355,
+        131,
+        2405,
+        146
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b16",
+      "text": "2/3",
+      "original_ocr": "2/3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        708,
+        133,
+        732,
+        143
+      ],
+      "page": 0,
+      "token_ids": [
+        "b16"
+      ],
+      "bbox_agg": [
+        708,
+        133,
+        732,
+        143
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b17",
+      "text": "2",
+      "original_ocr": "2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1797,
+        133,
+        1806,
+        143
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1797,
+        133,
+        1806,
+        143
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b18",
+      "text": "/",
+      "original_ocr": "/",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1805,
+        133,
+        1812,
+        143
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1805,
+        133,
+        1812,
+        143
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b19",
+      "text": "4",
+      "original_ocr": "4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1811,
+        133,
+        1821,
+        143
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1811,
+        133,
+        1821,
+        143
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b20",
+      "text": "~",
+      "original_ocr": "~",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1826,
+        133,
+        1837,
+        143
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1826,
+        133,
+        1837,
+        143
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b21",
+      "text": "70",
+      "original_ocr": "70",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        172,
+        136,
+        188
+      ],
+      "page": 0,
+      "token_ids": [
+        "b21"
+      ],
+      "bbox_agg": [
+        111,
+        172,
+        136,
+        188
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b22",
+      "text": "筑波大駒場",
+      "original_ocr": "筑波大駒場",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        665,
+        172,
+        741,
+        187
+      ],
+      "page": 0,
+      "token_ids": [
+        "b22"
+      ],
+      "bbox_agg": [
+        665,
+        172,
+        776,
+        187
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b23",
+      "text": "74",
+      "original_ocr": "74",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        760,
+        172,
+        776,
+        187
+      ],
+      "page": 0,
+      "token_ids": [
+        "b23"
+      ],
+      "bbox_agg": [
+        665,
+        172,
+        776,
+        187
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b24",
+      "text": "聖光学院2",
+      "original_ocr": "聖光学院2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1780,
+        172,
+        1853,
+        186
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1780,
+        172,
+        1853,
+        186
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b25",
+      "text": "70",
+      "original_ocr": "70",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        172,
+        2391,
+        188
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        172,
+        2391,
+        188
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b26",
+      "text": "69",
+      "original_ocr": "69",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        212,
+        137,
+        228
+      ],
+      "page": 0,
+      "token_ids": [
+        "b26"
+      ],
+      "bbox_agg": [
+        110,
+        212,
+        137,
+        228
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b27",
+      "text": "69",
+      "original_ocr": "69",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        212,
+        2390,
+        228
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        212,
+        2390,
+        228
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b28",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1774,
+        236,
+        1795,
+        247
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1774,
+        236,
+        1795,
+        247
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b29",
+      "text": "68",
+      "original_ocr": "68",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        252,
+        135,
+        268
+      ],
+      "page": 0,
+      "token_ids": [
+        "b29"
+      ],
+      "bbox_agg": [
+        110,
+        252,
+        135,
+        268
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b30",
+      "text": "早稲田2",
+      "original_ocr": "早稲田2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        682,
+        252,
+        755,
+        267
+      ],
+      "page": 0,
+      "token_ids": [
+        "b30"
+      ],
+      "bbox_agg": [
+        682,
+        252,
+        755,
+        267
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b31",
+      "text": "渋谷教育渋谷3",
+      "original_ocr": "渋谷教育渋谷3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        252,
+        1855,
+        267
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        252,
+        1855,
+        267
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b32",
+      "text": "68",
+      "original_ocr": "68",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        252,
+        2390,
+        268
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        252,
+        2390,
+        268
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b33",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1773,
+        275,
+        1796,
+        287
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1773,
+        275,
+        1796,
+        287
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b34",
+      "text": "67",
+      "original_ocr": "67",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        291,
+        136,
+        307
+      ],
+      "page": 0,
+      "token_ids": [
+        "b34"
+      ],
+      "bbox_agg": [
+        110,
+        291,
+        136,
+        307
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b35",
+      "text": "海城2",
+      "original_ocr": "海城2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        682,
+        291,
+        756,
+        306
+      ],
+      "page": 0,
+      "token_ids": [
+        "b35"
+      ],
+      "bbox_agg": [
+        682,
+        291,
+        756,
+        306
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b36",
+      "text": "広尾学園ISG2",
+      "original_ocr": "広尾学園ISG2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1780,
+        292,
+        1851,
+        306
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1780,
+        292,
+        1851,
+        306
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b37",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1773,
+        315,
+        1796,
+        326
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1773,
+        315,
+        1796,
+        326
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b38",
+      "text": "66",
+      "original_ocr": "66",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        331,
+        139,
+        347
+      ],
+      "page": 0,
+      "token_ids": [
+        "b38"
+      ],
+      "bbox_agg": [
+        110,
+        331,
+        139,
+        347
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b39",
+      "text": "小石川(一般)",
+      "original_ocr": "小石川(一般)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        681,
+        331,
+        751,
+        345
+      ],
+      "page": 0,
+      "token_ids": [
+        "b39"
+      ],
+      "bbox_agg": [
+        676,
+        331,
+        751,
+        346
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b40",
+      "text": "本郷3",
+      "original_ocr": "本郷3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1780,
+        331,
+        1853,
+        346
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1780,
+        331,
+        1853,
+        346
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b41",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        676,
+        332,
+        681,
+        346
+      ],
+      "page": 0,
+      "token_ids": [
+        "b41"
+      ],
+      "bbox_agg": [
+        676,
+        331,
+        751,
+        346
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b42",
+      "text": "66",
+      "original_ocr": "66",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        332,
+        2391,
+        347
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        332,
+        2391,
+        347
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b43",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1822,
+        353,
+        1844,
+        365
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1822,
+        353,
+        1844,
+        365
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b44",
+      "text": "広尾3",
+      "original_ocr": "広尾3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1828,
+        369,
+        1901,
+        384
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1828,
+        369,
+        1901,
+        384
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b45",
+      "text": "65",
+      "original_ocr": "65",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        370,
+        137,
+        385
+      ],
+      "page": 0,
+      "token_ids": [
+        "b45"
+      ],
+      "bbox_agg": [
+        110,
+        370,
+        137,
+        385
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b46",
+      "text": "慶應中等部",
+      "original_ocr": "慶應中等部",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        636,
+        370,
+        711,
+        385
+      ],
+      "page": 0,
+      "token_ids": [
+        "b46"
+      ],
+      "bbox_agg": [
+        636,
+        370,
+        807,
+        385
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b47",
+      "text": "筑波大附",
+      "original_ocr": "筑波大附",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        730,
+        370,
+        807,
+        385
+      ],
+      "page": 0,
+      "token_ids": [
+        "b47"
+      ],
+      "bbox_agg": [
+        636,
+        370,
+        807,
+        385
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b48",
+      "text": "65",
+      "original_ocr": "65",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        370,
+        2392,
+        386
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        370,
+        2392,
+        386
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b49",
+      "text": "市川2",
+      "original_ocr": "市川2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1732,
+        371,
+        1806,
+        384
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1732,
+        371,
+        1806,
+        384
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b50",
+      "text": "2/6",
+      "original_ocr": "2/6",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1829,
+        393,
+        1852,
+        405
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1829,
+        393,
+        1852,
+        405
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b51",
+      "text": "小石川ISG3",
+      "original_ocr": "小石川ISG3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        755,
+        410,
+        805,
+        425
+      ],
+      "page": 0,
+      "token_ids": [
+        "b51"
+      ],
+      "bbox_agg": [
+        625,
+        410,
+        805,
+        425
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b52",
+      "text": "芝2",
+      "original_ocr": "芝2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1724,
+        410,
+        1798,
+        424
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1724,
+        410,
+        1798,
+        424
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b53",
+      "text": "広尾小石川ISG4",
+      "original_ocr": "広尾小石川ISG4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1838,
+        410,
+        1903,
+        425
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1838,
+        410,
+        1903,
+        425
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b54",
+      "text": "64",
+      "original_ocr": "64",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        410,
+        2393,
+        426
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        410,
+        2393,
+        426
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b55",
+      "text": "64",
+      "original_ocr": "64",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        411,
+        138,
+        426
+      ],
+      "page": 0,
+      "token_ids": [
+        "b55"
+      ],
+      "bbox_agg": [
+        111,
+        411,
+        138,
+        426
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b56",
+      "text": "浅野",
+      "original_ocr": "浅野",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        625,
+        411,
+        703,
+        425
+      ],
+      "page": 0,
+      "token_ids": [
+        "b56"
+      ],
+      "bbox_agg": [
+        625,
+        410,
+        805,
+        425
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b57",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1725,
+        433,
+        1747,
+        444
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1725,
+        433,
+        1747,
+        444
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b58",
+      "text": "2/6",
+      "original_ocr": "2/6",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1837,
+        433,
+        1860,
+        444
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1837,
+        433,
+        1860,
+        444
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b59",
+      "text": "※この一覧表は合不合判定テストの合格可能性80%Aライン(男女合算の成績処理による偏差値)を表したもので、学校差を示すものではありません。",
+      "original_ocr": "※この一覧表は合不合判定テストの合格可能性80%Aライン(男女合算の成績処理による偏差値)を表したもので、学校差を示すものではありません。",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2416,
+        435,
+        2436,
+        1684
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2416,
+        435,
+        2436,
+        1684
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b60",
+      "text": "攻玉社(特別)",
+      "original_ocr": "攻玉社(特別)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1733,
+        448,
+        1797,
+        463
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1733,
+        448,
+        1797,
+        463
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b61",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        572,
+        449,
+        584,
+        465
+      ],
+      "page": 0,
+      "token_ids": [
+        "b61"
+      ],
+      "bbox_agg": [
+        572,
+        449,
+        855,
+        465
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b62",
+      "text": "明大明治2",
+      "original_ocr": "明大明治2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        578,
+        449,
+        651,
+        465
+      ],
+      "page": 0,
+      "token_ids": [
+        "b62"
+      ],
+      "bbox_agg": [
+        572,
+        449,
+        855,
+        465
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b63",
+      "text": "横浜市立YSFH附属",
+      "original_ocr": "横浜市立YSFH附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        674,
+        449,
+        750,
+        465
+      ],
+      "page": 0,
+      "token_ids": [
+        "b63"
+      ],
+      "bbox_agg": [
+        572,
+        449,
+        855,
+        465
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b64",
+      "text": "広尾小石川4",
+      "original_ocr": "広尾小石川4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1847,
+        449,
+        1913,
+        464
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1847,
+        449,
+        1913,
+        464
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b65",
+      "text": "63",
+      "original_ocr": "63",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        450,
+        136,
+        465
+      ],
+      "page": 0,
+      "token_ids": [
+        "b65"
+      ],
+      "bbox_agg": [
+        110,
+        450,
+        136,
+        465
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b66",
+      "text": "広尾小石川3",
+      "original_ocr": "広尾小石川3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        789,
+        450,
+        855,
+        463
+      ],
+      "page": 0,
+      "token_ids": [
+        "b66"
+      ],
+      "bbox_agg": [
+        572,
+        449,
+        855,
+        465
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b67",
+      "text": "◇",
+      "original_ocr": "◇",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1712,
+        450,
+        1724,
+        464
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1712,
+        450,
+        1724,
+        464
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b68",
+      "text": "63",
+      "original_ocr": "63",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        450,
+        2391,
+        465
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        450,
+        2391,
+        465
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b69",
+      "text": "62",
+      "original_ocr": "62",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        489,
+        138,
+        505
+      ],
+      "page": 0,
+      "token_ids": [
+        "b69"
+      ],
+      "bbox_agg": [
+        110,
+        489,
+        138,
+        505
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b70",
+      "text": "相模原",
+      "original_ocr": "相模原",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        585,
+        489,
+        663,
+        504
+      ],
+      "page": 0,
+      "token_ids": [
+        "b70"
+      ],
+      "bbox_agg": [
+        585,
+        489,
+        855,
+        504
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b71",
+      "text": "桜修館",
+      "original_ocr": "桜修館",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        681,
+        489,
+        759,
+        504
+      ],
+      "page": 0,
+      "token_ids": [
+        "b71"
+      ],
+      "bbox_agg": [
+        585,
+        489,
+        855,
+        504
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b72",
+      "text": "武蔵高附属",
+      "original_ocr": "武蔵高附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        780,
+        489,
+        855,
+        504
+      ],
+      "page": 0,
+      "token_ids": [
+        "b72"
+      ],
+      "bbox_agg": [
+        585,
+        489,
+        855,
+        504
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b73",
+      "text": "東京農大第一4",
+      "original_ocr": "東京農大第一4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1780,
+        489,
+        1854,
+        504
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1780,
+        489,
+        1854,
+        504
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b74",
+      "text": "62",
+      "original_ocr": "62",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        489,
+        2393,
+        505
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        489,
+        2393,
+        505
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b75",
+      "text": "両国高附属",
+      "original_ocr": "両国高附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        571,
+        529,
+        646,
+        543
+      ],
+      "page": 0,
+      "token_ids": [
+        "b75"
+      ],
+      "bbox_agg": [
+        571,
+        529,
+        859,
+        544
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b76",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        651,
+        529,
+        656,
+        543
+      ],
+      "page": 0,
+      "token_ids": [
+        "b76"
+      ],
+      "bbox_agg": [
+        571,
+        529,
+        859,
+        544
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b77",
+      "text": "横浜市立南高附属",
+      "original_ocr": "横浜市立南高附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        667,
+        529,
+        743,
+        543
+      ],
+      "page": 0,
+      "token_ids": [
+        "b77"
+      ],
+      "bbox_agg": [
+        571,
+        529,
+        859,
+        544
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b78",
+      "text": "三田国際(MST)",
+      "original_ocr": "三田国際(MST)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        788,
+        529,
+        859,
+        544
+      ],
+      "page": 0,
+      "token_ids": [
+        "b78"
+      ],
+      "bbox_agg": [
+        571,
+        529,
+        859,
+        544
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b79",
+      "text": "サレジオ学院B",
+      "original_ocr": "サレジオ学院B",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1758,
+        529,
+        1798,
+        544
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1758,
+        529,
+        1798,
+        544
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b80",
+      "text": "61",
+      "original_ocr": "61",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        530,
+        134,
+        545
+      ],
+      "page": 0,
+      "token_ids": [
+        "b80"
+      ],
+      "bbox_agg": [
+        111,
+        530,
+        134,
+        545
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b81",
+      "text": "三田国際4ISC",
+      "original_ocr": "三田国際4ISC",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1836,
+        530,
+        1907,
+        544
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1836,
+        530,
+        1907,
+        544
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b82",
+      "text": "61",
+      "original_ocr": "61",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        530,
+        2389,
+        545
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        530,
+        2389,
+        545
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b83",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1870,
+        552,
+        1893,
+        563
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1870,
+        552,
+        1893,
+        563
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b84",
+      "text": "城北3",
+      "original_ocr": "城北3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1683,
+        567,
+        1758,
+        583
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1683,
+        567,
+        1758,
+        583
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b85",
+      "text": "巣鴨3",
+      "original_ocr": "巣鴨3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1780,
+        567,
+        1854,
+        584
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1780,
+        567,
+        1854,
+        584
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b86",
+      "text": "逗子開成3",
+      "original_ocr": "逗子開成3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1875,
+        567,
+        1949,
+        583
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1875,
+        567,
+        1949,
+        583
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b87",
+      "text": "60",
+      "original_ocr": "60",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        567,
+        2392,
+        584
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        567,
+        2392,
+        584
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b88",
+      "text": "60",
+      "original_ocr": "60",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        568,
+        136,
+        583
+      ],
+      "page": 0,
+      "token_ids": [
+        "b88"
+      ],
+      "bbox_agg": [
+        111,
+        568,
+        136,
+        583
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b89",
+      "text": "昭和秀英2",
+      "original_ocr": "昭和秀英2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        586,
+        568,
+        659,
+        584
+      ],
+      "page": 0,
+      "token_ids": [
+        "b89"
+      ],
+      "bbox_agg": [
+        586,
+        568,
+        850,
+        584
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b90",
+      "text": "大泉高附属",
+      "original_ocr": "大泉高附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        683,
+        568,
+        758,
+        584
+      ],
+      "page": 0,
+      "token_ids": [
+        "b90"
+      ],
+      "bbox_agg": [
+        586,
+        568,
+        850,
+        584
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b91",
+      "text": "東邦大東邦(後)",
+      "original_ocr": "東邦大東邦(後)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        778,
+        568,
+        850,
+        584
+      ],
+      "page": 0,
+      "token_ids": [
+        "b91"
+      ],
+      "bbox_agg": [
+        586,
+        568,
+        850,
+        584
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b92",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1870,
+        591,
+        1891,
+        602
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1870,
+        591,
+        1891,
+        602
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b93",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1773,
+        592,
+        1795,
+        602
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1773,
+        592,
+        1795,
+        602
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b94",
+      "text": "白鷗高附属(一般)",
+      "original_ocr": "白鷗高附属(一般)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        675,
+        607,
+        745,
+        623
+      ],
+      "page": 0,
+      "token_ids": [
+        "b94"
+      ],
+      "bbox_agg": [
+        571,
+        607,
+        857,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b95",
+      "text": "59",
+      "original_ocr": "59",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        608,
+        137,
+        624
+      ],
+      "page": 0,
+      "token_ids": [
+        "b95"
+      ],
+      "bbox_agg": [
+        110,
+        608,
+        137,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b96",
+      "text": "逗子開成2",
+      "original_ocr": "逗子開成2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        576,
+        608,
+        650,
+        623
+      ],
+      "page": 0,
+      "token_ids": [
+        "b96"
+      ],
+      "bbox_agg": [
+        571,
+        607,
+        857,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b97",
+      "text": "青山学院",
+      "original_ocr": "青山学院",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        788,
+        608,
+        819,
+        623
+      ],
+      "page": 0,
+      "token_ids": [
+        "b97"
+      ],
+      "bbox_agg": [
+        571,
+        607,
+        857,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b98",
+      "text": "横浜英和B",
+      "original_ocr": "横浜英和B",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        827,
+        608,
+        857,
+        622
+      ],
+      "page": 0,
+      "token_ids": [
+        "b98"
+      ],
+      "bbox_agg": [
+        571,
+        607,
+        857,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b99",
+      "text": "明大中野2",
+      "original_ocr": "明大中野2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1685,
+        608,
+        1757,
+        624
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1685,
+        608,
+        1757,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b100",
+      "text": "||",
+      "original_ocr": "||",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1766,
+        608,
+        1778,
+        624
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1766,
+        608,
+        1778,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b101",
+      "text": "東京都市大付4",
+      "original_ocr": "東京都市大付4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1780,
+        608,
+        1855,
+        624
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1780,
+        608,
+        1855,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b102",
+      "text": "立教池袋2",
+      "original_ocr": "立教池袋2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1879,
+        608,
+        1946,
+        624
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1879,
+        608,
+        1946,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b103",
+      "text": "59",
+      "original_ocr": "59",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        608,
+        2392,
+        623
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        608,
+        2392,
+        623
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b104",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        571,
+        609,
+        576,
+        624
+      ],
+      "page": 0,
+      "token_ids": [
+        "b104"
+      ],
+      "bbox_agg": [
+        571,
+        607,
+        857,
+        624
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b105",
+      "text": "58",
+      "original_ocr": "58",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        646,
+        2390,
+        662
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        646,
+        2390,
+        662
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b106",
+      "text": "58",
+      "original_ocr": "58",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        647,
+        136,
+        662
+      ],
+      "page": 0,
+      "token_ids": [
+        "b106"
+      ],
+      "bbox_agg": [
+        111,
+        647,
+        136,
+        662
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b107",
+      "text": "九段B",
+      "original_ocr": "九段B",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        280,
+        647,
+        319,
+        663
+      ],
+      "page": 0,
+      "token_ids": [
+        "b107"
+      ],
+      "bbox_agg": [
+        280,
+        647,
+        349,
+        663
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b108",
+      "text": "都内",
+      "original_ocr": "都内",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        328,
+        647,
+        349,
+        663
+      ],
+      "page": 0,
+      "token_ids": [
+        "b108"
+      ],
+      "bbox_agg": [
+        280,
+        647,
+        349,
+        663
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b109",
+      "text": "東京都市大付3",
+      "original_ocr": "東京都市大付3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        376,
+        647,
+        450,
+        663
+      ],
+      "page": 0,
+      "token_ids": [
+        "b109"
+      ],
+      "bbox_agg": [
+        376,
+        647,
+        450,
+        663
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b110",
+      "text": "富士高附属",
+      "original_ocr": "富士高附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        473,
+        647,
+        550,
+        663
+      ],
+      "page": 0,
+      "token_ids": [
+        "b110"
+      ],
+      "bbox_agg": [
+        473,
+        647,
+        932,
+        664
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b111",
+      "text": "南多摩",
+      "original_ocr": "南多摩",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        666,
+        647,
+        743,
+        664
+      ],
+      "page": 0,
+      "token_ids": [
+        "b111"
+      ],
+      "bbox_agg": [
+        473,
+        647,
+        932,
+        664
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b112",
+      "text": "法政大学2",
+      "original_ocr": "法政大学2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        762,
+        647,
+        836,
+        664
+      ],
+      "page": 0,
+      "token_ids": [
+        "b112"
+      ],
+      "bbox_agg": [
+        473,
+        647,
+        932,
+        664
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b113",
+      "text": "立教新座2",
+      "original_ocr": "立教新座2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        858,
+        647,
+        932,
+        664
+      ],
+      "page": 0,
+      "token_ids": [
+        "b113"
+      ],
+      "bbox_agg": [
+        473,
+        647,
+        932,
+        664
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b114",
+      "text": "国学院久我山ST2",
+      "original_ocr": "国学院久我山ST2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        1086,
+        647,
+        1150,
+        662
+      ],
+      "page": 0,
+      "token_ids": [
+        "b114"
+      ],
+      "bbox_agg": [
+        1086,
+        647,
+        1150,
+        662
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b115",
+      "text": "神奈川大附3",
+      "original_ocr": "神奈川大附3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1732,
+        647,
+        1806,
+        663
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1732,
+        647,
+        1806,
+        663
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b116",
+      "text": "明大付属世田谷2",
+      "original_ocr": "明大付属世田谷2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1830,
+        647,
+        1903,
+        663
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1830,
+        647,
+        1903,
+        663
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b117",
+      "text": "三",
+      "original_ocr": "三",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        566,
+        648,
+        585,
+        659
+      ],
+      "page": 0,
+      "token_ids": [
+        "b117"
+      ],
+      "bbox_agg": [
+        473,
+        647,
+        932,
+        664
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b118",
+      "text": "暁星2",
+      "original_ocr": "暁星2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        974,
+        648,
+        1039,
+        661
+      ],
+      "page": 0,
+      "token_ids": [
+        "b118"
+      ],
+      "bbox_agg": [
+        974,
+        648,
+        1039,
+        661
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b119",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1966,
+        671,
+        1989,
+        682
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1966,
+        671,
+        1989,
+        682
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b120",
+      "text": "57",
+      "original_ocr": "57",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        687,
+        137,
+        703
+      ],
+      "page": 0,
+      "token_ids": [
+        "b120"
+      ],
+      "bbox_agg": [
+        110,
+        687,
+        137,
+        703
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b121",
+      "text": "平塚",
+      "original_ocr": "平塚",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        450,
+        687,
+        528,
+        702
+      ],
+      "page": 0,
+      "token_ids": [
+        "b121"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b122",
+      "text": "学大世田谷",
+      "original_ocr": "学大世田谷",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        548,
+        687,
+        623,
+        702
+      ],
+      "page": 0,
+      "token_ids": [
+        "b122"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b123",
+      "text": "立川国際(一般)",
+      "original_ocr": "立川国際(一般)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        644,
+        687,
+        715,
+        702
+      ],
+      "page": 0,
+      "token_ids": [
+        "b123"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b124",
+      "text": "●",
+      "original_ocr": "●",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        736,
+        687,
+        749,
+        701
+      ],
+      "page": 0,
+      "token_ids": [
+        "b124"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b125",
+      "text": "開智日本橋3",
+      "original_ocr": "開智日本橋3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        775,
+        687,
+        840,
+        701
+      ],
+      "page": 0,
+      "token_ids": [
+        "b125"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b126",
+      "text": "◇",
+      "original_ocr": "◇",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        863,
+        687,
+        876,
+        702
+      ],
+      "page": 0,
+      "token_ids": [
+        "b126"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b127",
+      "text": "都立大等2特選",
+      "original_ocr": "都立大等2特選",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        914,
+        687,
+        983,
+        702
+      ],
+      "page": 0,
+      "token_ids": [
+        "b127"
+      ],
+      "bbox_agg": [
+        450,
+        687,
+        983,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b128",
+      "text": "世田谷学園3",
+      "original_ocr": "世田谷学園3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1588,
+        687,
+        1661,
+        703
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1588,
+        687,
+        1661,
+        703
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b129",
+      "text": "高輪C",
+      "original_ocr": "高輪C",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1684,
+        687,
+        1757,
+        703
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1684,
+        687,
+        1757,
+        703
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b130",
+      "text": "中央大附属2",
+      "original_ocr": "中央大附属2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        687,
+        1855,
+        703
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        687,
+        1855,
+        703
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b131",
+      "text": "法政第二2",
+      "original_ocr": "法政第二2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1877,
+        687,
+        1950,
+        703
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1877,
+        687,
+        1950,
+        703
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b132",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1967,
+        687,
+        1973,
+        702
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1967,
+        687,
+        1973,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b133",
+      "text": "法政大学3",
+      "original_ocr": "法政大学3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1974,
+        687,
+        2047,
+        702
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1974,
+        687,
+        2047,
+        702
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b134",
+      "text": "57",
+      "original_ocr": "57",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        687,
+        2391,
+        703
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        687,
+        2391,
+        703
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b135",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1677,
+        711,
+        1700,
+        722
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1677,
+        711,
+        1700,
+        722
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b136",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1790,
+        711,
+        1812,
+        722
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1790,
+        711,
+        1812,
+        722
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b137",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1886,
+        711,
+        1907,
+        722
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1886,
+        711,
+        1907,
+        722
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b138",
+      "text": "56",
+      "original_ocr": "56",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        726,
+        136,
+        743
+      ],
+      "page": 0,
+      "token_ids": [
+        "b138"
+      ],
+      "bbox_agg": [
+        110,
+        726,
+        136,
+        743
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b139",
+      "text": "成城2",
+      "original_ocr": "成城2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        634,
+        727,
+        708,
+        742
+      ],
+      "page": 0,
+      "token_ids": [
+        "b139"
+      ],
+      "bbox_agg": [
+        634,
+        727,
+        806,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b140",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        724,
+        727,
+        733,
+        742
+      ],
+      "page": 0,
+      "token_ids": [
+        "b140"
+      ],
+      "bbox_agg": [
+        634,
+        727,
+        806,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b141",
+      "text": "学大早",
+      "original_ocr": "学大早",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        729,
+        727,
+        806,
+        742
+      ],
+      "page": 0,
+      "token_ids": [
+        "b141"
+      ],
+      "bbox_agg": [
+        634,
+        727,
+        806,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b142",
+      "text": "◇",
+      "original_ocr": "◇",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1663,
+        727,
+        1676,
+        742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1663,
+        727,
+        1676,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b143",
+      "text": "江戸川取手日東大",
+      "original_ocr": "江戸川取手日東大",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1683,
+        727,
+        1756,
+        742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1683,
+        727,
+        1756,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b144",
+      "text": "◇",
+      "original_ocr": "◇",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1774,
+        727,
+        1791,
+        742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1774,
+        727,
+        1791,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b145",
+      "text": "江戸川取手日医科",
+      "original_ocr": "江戸川取手日医科",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1796,
+        727,
+        1873,
+        742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1796,
+        727,
+        1873,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b146",
+      "text": "成城3",
+      "original_ocr": "成城3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1893,
+        727,
+        1966,
+        742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1893,
+        727,
+        1966,
+        742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b147",
+      "text": "56",
+      "original_ocr": "56",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        727,
+        2393,
+        743
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        727,
+        2393,
+        743
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b148",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1878,
+        749,
+        1899,
+        761
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1878,
+        749,
+        1899,
+        761
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b149",
+      "text": "開智日本橋4",
+      "original_ocr": "開智日本橋4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1695,
+        765,
+        1762,
+        782
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1695,
+        765,
+        1762,
+        782
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b150",
+      "text": "国学院久我山ST3",
+      "original_ocr": "国学院久我山ST3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1885,
+        765,
+        1956,
+        781
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1885,
+        765,
+        1956,
+        781
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b151",
+      "text": "55",
+      "original_ocr": "55",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        766,
+        138,
+        782
+      ],
+      "page": 0,
+      "token_ids": [
+        "b151"
+      ],
+      "bbox_agg": [
+        110,
+        766,
+        138,
+        782
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b152",
+      "text": "学習院2",
+      "original_ocr": "学習院2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        585,
+        766,
+        659,
+        782
+      ],
+      "page": 0,
+      "token_ids": [
+        "b152"
+      ],
+      "bbox_agg": [
+        585,
+        766,
+        851,
+        782
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b153",
+      "text": "--",
+      "original_ocr": "--",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        670,
+        766,
+        676,
+        782
+      ],
+      "page": 0,
+      "token_ids": [
+        "b153"
+      ],
+      "bbox_agg": [
+        585,
+        766,
+        851,
+        782
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b154",
+      "text": "明大付属八王子A2",
+      "original_ocr": "明大付属八王子A2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        682,
+        766,
+        758,
+        782
+      ],
+      "page": 0,
+      "token_ids": [
+        "b154"
+      ],
+      "bbox_agg": [
+        585,
+        766,
+        851,
+        782
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b155",
+      "text": "安田学園5",
+      "original_ocr": "安田学園5",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        779,
+        766,
+        851,
+        782
+      ],
+      "page": 0,
+      "token_ids": [
+        "b155"
+      ],
+      "bbox_agg": [
+        585,
+        766,
+        851,
+        782
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b156",
+      "text": "鎌倉学園3",
+      "original_ocr": "鎌倉学園3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1787,
+        767,
+        1862,
+        781
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1787,
+        767,
+        1862,
+        781
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b157",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        789,
+        1803,
+        800
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        789,
+        1803,
+        800
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b158",
+      "text": "川崎市立川崎高附属",
+      "original_ocr": "川崎市立川崎高附属",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        681,
+        805,
+        757,
+        821
+      ],
+      "page": 0,
+      "token_ids": [
+        "b158"
+      ],
+      "bbox_agg": [
+        681,
+        805,
+        757,
+        821
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b159",
+      "text": "桐蔭学園3",
+      "original_ocr": "桐蔭学園3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1790,
+        805,
+        1855,
+        821
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1790,
+        805,
+        1855,
+        821
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b160",
+      "text": "54",
+      "original_ocr": "54",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        806,
+        137,
+        821
+      ],
+      "page": 0,
+      "token_ids": [
+        "b160"
+      ],
+      "bbox_agg": [
+        110,
+        806,
+        137,
+        821
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b161",
+      "text": "54",
+      "original_ocr": "54",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        806,
+        2391,
+        822
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        806,
+        2391,
+        822
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b162",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        829,
+        1804,
+        840
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        829,
+        1804,
+        840
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b163",
+      "text": "53",
+      "original_ocr": "53",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        844,
+        136,
+        861
+      ],
+      "page": 0,
+      "token_ids": [
+        "b163"
+      ],
+      "bbox_agg": [
+        110,
+        844,
+        136,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b164",
+      "text": "山手学院B",
+      "original_ocr": "山手学院B",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        372,
+        845,
+        438,
+        860
+      ],
+      "page": 0,
+      "token_ids": [
+        "b164"
+      ],
+      "bbox_agg": [
+        372,
+        845,
+        438,
+        860
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b165",
+      "text": "成城学園2",
+      "original_ocr": "成城学園2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        465,
+        845,
+        539,
+        861
+      ],
+      "page": 0,
+      "token_ids": [
+        "b165"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b166",
+      "text": "東京大附",
+      "original_ocr": "東京大附",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        561,
+        845,
+        639,
+        861
+      ],
+      "page": 0,
+      "token_ids": [
+        "b166"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b167",
+      "text": "明星Inst2特待",
+      "original_ocr": "明星Inst2特待",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        660,
+        845,
+        735,
+        861
+      ],
+      "page": 0,
+      "token_ids": [
+        "b167"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b168",
+      "text": "芝国際3特待",
+      "original_ocr": "芝国際3特待",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        769,
+        845,
+        842,
+        860
+      ],
+      "page": 0,
+      "token_ids": [
+        "b168"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b169",
+      "text": "帝京大学3",
+      "original_ocr": "帝京大学3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        1013,
+        845,
+        1079,
+        860
+      ],
+      "page": 0,
+      "token_ids": [
+        "b169"
+      ],
+      "bbox_agg": [
+        1013,
+        845,
+        1079,
+        860
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b170",
+      "text": "☆",
+      "original_ocr": "☆",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1768,
+        845,
+        1781,
+        860
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1768,
+        845,
+        1781,
+        860
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b171",
+      "text": "明大付属八王子B",
+      "original_ocr": "明大付属八王子B",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1787,
+        845,
+        1864,
+        860
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1787,
+        845,
+        1864,
+        860
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b172",
+      "text": "淑徳3",
+      "original_ocr": "淑徳3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        901,
+        846,
+        933,
+        860
+      ],
+      "page": 0,
+      "token_ids": [
+        "b172"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b173",
+      "text": "東大",
+      "original_ocr": "東大",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        940,
+        846,
+        964,
+        860
+      ],
+      "page": 0,
+      "token_ids": [
+        "b173"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b174",
+      "text": "☆",
+      "original_ocr": "☆",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        862,
+        848,
+        875,
+        858
+      ],
+      "page": 0,
+      "token_ids": [
+        "b174"
+      ],
+      "bbox_agg": [
+        465,
+        845,
+        964,
+        861
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b175",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1822,
+        868,
+        1843,
+        880
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1822,
+        868,
+        1843,
+        880
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b176",
+      "text": "日大豊山4",
+      "original_ocr": "日大豊山4",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        847,
+        884,
+        910,
+        900
+      ],
+      "page": 0,
+      "token_ids": [
+        "b176"
+      ],
+      "bbox_agg": [
+        515,
+        884,
+        910,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b177",
+      "text": "52",
+      "original_ocr": "52",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        885,
+        137,
+        901
+      ],
+      "page": 0,
+      "token_ids": [
+        "b177"
+      ],
+      "bbox_agg": [
+        111,
+        885,
+        137,
+        901
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b178",
+      "text": "|",
+      "original_ocr": "|",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        515,
+        885,
+        520,
+        899
+      ],
+      "page": 0,
+      "token_ids": [
+        "b178"
+      ],
+      "bbox_agg": [
+        515,
+        884,
+        910,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b179",
+      "text": "公文国際B",
+      "original_ocr": "公文国際B",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        522,
+        885,
+        595,
+        899
+      ],
+      "page": 0,
+      "token_ids": [
+        "b179"
+      ],
+      "bbox_agg": [
+        515,
+        884,
+        910,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b180",
+      "text": "専修大松戸3A",
+      "original_ocr": "専修大松戸3A",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        618,
+        885,
+        692,
+        899
+      ],
+      "page": 0,
+      "token_ids": [
+        "b180"
+      ],
+      "bbox_agg": [
+        515,
+        884,
+        910,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b181",
+      "text": "かえつ有明",
+      "original_ocr": "かえつ有明",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        737,
+        885,
+        768,
+        900
+      ],
+      "page": 0,
+      "token_ids": [
+        "b181"
+      ],
+      "bbox_agg": [
+        515,
+        884,
+        910,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b182",
+      "text": "日大豊山4",
+      "original_ocr": "日大豊山4",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        779,
+        885,
+        802,
+        900
+      ],
+      "page": 0,
+      "token_ids": [
+        "b182"
+      ],
+      "bbox_agg": [
+        515,
+        884,
+        910,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b183",
+      "text": "獨協4",
+      "original_ocr": "獨協4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1732,
+        886,
+        1806,
+        900
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1732,
+        886,
+        1806,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b184",
+      "text": "明星Inst4",
+      "original_ocr": "明星Inst4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1830,
+        886,
+        1903,
+        900
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1830,
+        886,
+        1903,
+        900
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b185",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2078,
+        907,
+        2101,
+        919
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2078,
+        907,
+        2101,
+        919
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b186",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1774,
+        908,
+        1795,
+        919
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1774,
+        908,
+        1795,
+        919
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b187",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1870,
+        908,
+        1892,
+        919
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1870,
+        908,
+        1892,
+        919
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b188",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1966,
+        908,
+        1989,
+        920
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1966,
+        908,
+        1989,
+        920
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b189",
+      "text": "明星Inst3",
+      "original_ocr": "明星Inst3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        684,
+        924,
+        759,
+        938
+      ],
+      "page": 0,
+      "token_ids": [
+        "b189"
+      ],
+      "bbox_agg": [
+        684,
+        924,
+        759,
+        938
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b190",
+      "text": "森村学園3",
+      "original_ocr": "森村学園3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1494,
+        924,
+        1558,
+        939
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1494,
+        924,
+        1558,
+        939
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b191",
+      "text": "日本大学C(GL)",
+      "original_ocr": "日本大学C(GL)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1877,
+        924,
+        1946,
+        939
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1877,
+        924,
+        1946,
+        939
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b192",
+      "text": "海陽(東京)",
+      "original_ocr": "海陽(東京)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1975,
+        924,
+        2038,
+        939
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1975,
+        924,
+        2038,
+        939
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b193",
+      "text": "関東学院2",
+      "original_ocr": "関東学院2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2080,
+        924,
+        2153,
+        939
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2080,
+        924,
+        2153,
+        939
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b194",
+      "text": "51",
+      "original_ocr": "51",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        924,
+        2388,
+        939
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        924,
+        2388,
+        939
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b195",
+      "text": "51",
+      "original_ocr": "51",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        925,
+        134,
+        940
+      ],
+      "page": 0,
+      "token_ids": [
+        "b195"
+      ],
+      "bbox_agg": [
+        110,
+        925,
+        134,
+        940
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b196",
+      "text": "東洋大学京北4",
+      "original_ocr": "東洋大学京北4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1682,
+        925,
+        1757,
+        940
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1682,
+        925,
+        1757,
+        940
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b197",
+      "text": "日本大学C(AF)",
+      "original_ocr": "日本大学C(AF)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        925,
+        1849,
+        940
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        925,
+        1849,
+        940
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b198",
+      "text": "成蹊2",
+      "original_ocr": "成蹊2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1588,
+        926,
+        1661,
+        941
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1588,
+        926,
+        1661,
+        941
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b199",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1797,
+        947,
+        1818,
+        959
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1797,
+        947,
+        1818,
+        959
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b200",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1893,
+        948,
+        1916,
+        959
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1893,
+        948,
+        1916,
+        959
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b201",
+      "text": "関東学院1C",
+      "original_ocr": "関東学院1C",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        634,
+        963,
+        707,
+        979
+      ],
+      "page": 0,
+      "token_ids": [
+        "b201"
+      ],
+      "bbox_agg": [
+        634,
+        963,
+        803,
+        979
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b202",
+      "text": "桐光学園3",
+      "original_ocr": "桐光学園3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        728,
+        963,
+        803,
+        978
+      ],
+      "page": 0,
+      "token_ids": [
+        "b202"
+      ],
+      "bbox_agg": [
+        634,
+        963,
+        803,
+        979
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b203",
+      "text": "◇",
+      "original_ocr": "◇",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        963,
+        1795,
+        979
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        963,
+        1795,
+        979
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b204",
+      "text": "江戸川取手難開大",
+      "original_ocr": "江戸川取手難開大",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1804,
+        963,
+        1877,
+        979
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1804,
+        963,
+        1877,
+        979
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b205",
+      "text": "50",
+      "original_ocr": "50",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        964,
+        137,
+        979
+      ],
+      "page": 0,
+      "token_ids": [
+        "b205"
+      ],
+      "bbox_agg": [
+        110,
+        964,
+        137,
+        979
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b206",
+      "text": "目黒日大4",
+      "original_ocr": "目黒日大4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1695,
+        964,
+        1760,
+        978
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1695,
+        964,
+        1760,
+        978
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b207",
+      "text": "佼成学園2特奨",
+      "original_ocr": "佼成学園2特奨",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1902,
+        964,
+        1968,
+        978
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1902,
+        964,
+        1968,
+        978
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b208",
+      "text": "50",
+      "original_ocr": "50",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        964,
+        2392,
+        979
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        964,
+        2392,
+        979
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b209",
+      "text": "郁文館iP2",
+      "original_ocr": "郁文館iP2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        894,
+        1002,
+        959,
+        1019
+      ],
+      "page": 0,
+      "token_ids": [
+        "b209"
+      ],
+      "bbox_agg": [
+        491,
+        1002,
+        959,
+        1019
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b210",
+      "text": "学大小金井",
+      "original_ocr": "学大小金井",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        586,
+        1003,
+        662,
+        1018
+      ],
+      "page": 0,
+      "token_ids": [
+        "b210"
+      ],
+      "bbox_agg": [
+        491,
+        1002,
+        959,
+        1019
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b211",
+      "text": "日大豊山3",
+      "original_ocr": "日大豊山3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        684,
+        1003,
+        756,
+        1019
+      ],
+      "page": 0,
+      "token_ids": [
+        "b211"
+      ],
+      "bbox_agg": [
+        491,
+        1002,
+        959,
+        1019
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b212",
+      "text": "横浜国大横浜",
+      "original_ocr": "横浜国大横浜",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        779,
+        1003,
+        854,
+        1019
+      ],
+      "page": 0,
+      "token_ids": [
+        "b212"
+      ],
+      "bbox_agg": [
+        491,
+        1002,
+        959,
+        1019
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b213",
+      "text": "淑徳巣鴨(力)",
+      "original_ocr": "淑徳巣鴨(力)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        491,
+        1004,
+        548,
+        1018
+      ],
+      "page": 0,
+      "token_ids": [
+        "b213"
+      ],
+      "bbox_agg": [
+        491,
+        1002,
+        959,
+        1019
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b214",
+      "text": "東京電機大4",
+      "original_ocr": "東京電機大4",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1839,
+        1004,
+        1906,
+        1018
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1839,
+        1004,
+        1906,
+        1018
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b215",
+      "text": "49",
+      "original_ocr": "49",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        109,
+        1005,
+        136,
+        1020
+      ],
+      "page": 0,
+      "token_ids": [
+        "b215"
+      ],
+      "bbox_agg": [
+        109,
+        1005,
+        136,
+        1020
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b216",
+      "text": "日大藤沢3",
+      "original_ocr": "日大藤沢3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1726,
+        1005,
+        1798,
+        1018
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1726,
+        1005,
+        1798,
+        1018
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b217",
+      "text": "49",
+      "original_ocr": "49",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2365,
+        1005,
+        2391,
+        1020
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2365,
+        1005,
+        2391,
+        1020
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b218",
+      "text": "☆",
+      "original_ocr": "☆",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        612,
+        1043,
+        626,
+        1058
+      ],
+      "page": 0,
+      "token_ids": [
+        "b218"
+      ],
+      "bbox_agg": [
+        612,
+        1043,
+        815,
+        1058
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b219",
+      "text": "淑徳2S特",
+      "original_ocr": "淑徳2S特",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        637,
+        1043,
+        706,
+        1058
+      ],
+      "page": 0,
+      "token_ids": [
+        "b219"
+      ],
+      "bbox_agg": [
+        612,
+        1043,
+        815,
+        1058
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b220",
+      "text": "足立学園特奨3",
+      "original_ocr": "足立学園特奨3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        745,
+        1043,
+        815,
+        1057
+      ],
+      "page": 0,
+      "token_ids": [
+        "b220"
+      ],
+      "bbox_agg": [
+        612,
+        1043,
+        815,
+        1058
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b221",
+      "text": "明星6",
+      "original_ocr": "明星6",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1790,
+        1043,
+        1857,
+        1058
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1790,
+        1043,
+        1857,
+        1058
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b222",
+      "text": "48",
+      "original_ocr": "48",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        109,
+        1044,
+        135,
+        1058
+      ],
+      "page": 0,
+      "token_ids": [
+        "b222"
+      ],
+      "bbox_agg": [
+        109,
+        1044,
+        135,
+        1058
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b223",
+      "text": "48",
+      "original_ocr": "48",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        1044,
+        2390,
+        1058
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        1044,
+        2390,
+        1058
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b224",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1878,
+        1066,
+        1901,
+        1077
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1878,
+        1066,
+        1901,
+        1077
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b225",
+      "text": "お茶の水女子大附",
+      "original_ocr": "お茶の水女子大附",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        472,
+        1082,
+        549,
+        1097
+      ],
+      "page": 0,
+      "token_ids": [
+        "b225"
+      ],
+      "bbox_agg": [
+        472,
+        1082,
+        958,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b226",
+      "text": "湘南学園C",
+      "original_ocr": "湘南学園C",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        570,
+        1082,
+        638,
+        1097
+      ],
+      "page": 0,
+      "token_ids": [
+        "b226"
+      ],
+      "bbox_agg": [
+        472,
+        1082,
+        958,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b227",
+      "text": "47",
+      "original_ocr": "47",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        1083,
+        135,
+        1098
+      ],
+      "page": 0,
+      "token_ids": [
+        "b227"
+      ],
+      "bbox_agg": [
+        110,
+        1083,
+        135,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b228",
+      "text": "佼成学園3",
+      "original_ocr": "佼成学園3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        379,
+        1083,
+        444,
+        1098
+      ],
+      "page": 0,
+      "token_ids": [
+        "b228"
+      ],
+      "bbox_agg": [
+        379,
+        1083,
+        444,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b229",
+      "text": "明星4",
+      "original_ocr": "明星4",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        659,
+        1083,
+        735,
+        1098
+      ],
+      "page": 0,
+      "token_ids": [
+        "b229"
+      ],
+      "bbox_agg": [
+        472,
+        1082,
+        958,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b230",
+      "text": "多摩大目黒特待",
+      "original_ocr": "多摩大目黒特待",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        893,
+        1083,
+        958,
+        1098
+      ],
+      "page": 0,
+      "token_ids": [
+        "b230"
+      ],
+      "bbox_agg": [
+        472,
+        1082,
+        958,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b231",
+      "text": "明星5",
+      "original_ocr": "明星5",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        1006,
+        1083,
+        1070,
+        1097
+      ],
+      "page": 0,
+      "token_ids": [
+        "b231"
+      ],
+      "bbox_agg": [
+        1006,
+        1083,
+        1070,
+        1097
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b232",
+      "text": "湘南学園D",
+      "original_ocr": "湘南学園D",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1791,
+        1083,
+        1856,
+        1097
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1791,
+        1083,
+        1856,
+        1097
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b233",
+      "text": "日大第一(2科2回)",
+      "original_ocr": "日大第一(2科2回)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1895,
+        1083,
+        1953,
+        1097
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1895,
+        1083,
+        1953,
+        1097
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b234",
+      "text": "47",
+      "original_ocr": "47",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        1083,
+        2391,
+        1098
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        1083,
+        2391,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b235",
+      "text": "桜美林(3日午後)",
+      "original_ocr": "桜美林(3日午後)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        781,
+        1084,
+        846,
+        1098
+      ],
+      "page": 0,
+      "token_ids": [
+        "b235"
+      ],
+      "bbox_agg": [
+        472,
+        1082,
+        958,
+        1098
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b236",
+      "text": "駒込5",
+      "original_ocr": "駒込5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1678,
+        1084,
+        1744,
+        1097
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1678,
+        1084,
+        1744,
+        1097
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b237",
+      "text": "2/6",
+      "original_ocr": "2/6",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1821,
+        1106,
+        1846,
+        1117
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1821,
+        1106,
+        1846,
+        1117
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b238",
+      "text": "2/6",
+      "original_ocr": "2/6",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1918,
+        1106,
+        1942,
+        1117
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1918,
+        1106,
+        1942,
+        1117
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b239",
+      "text": "日本工大駒場5",
+      "original_ocr": "日本工大駒場5",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        533,
+        1121,
+        598,
+        1136
+      ],
+      "page": 0,
+      "token_ids": [
+        "b239"
+      ],
+      "bbox_agg": [
+        533,
+        1121,
+        917,
+        1137
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b240",
+      "text": "横浜創英5",
+      "original_ocr": "横浜創英5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1927,
+        1121,
+        1992,
+        1137
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1927,
+        1121,
+        1992,
+        1137
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b241",
+      "text": "日大第二2",
+      "original_ocr": "日大第二2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        628,
+        1122,
+        700,
+        1136
+      ],
+      "page": 0,
+      "token_ids": [
+        "b241"
+      ],
+      "bbox_agg": [
+        533,
+        1121,
+        917,
+        1137
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b242",
+      "text": "日大第一(2科1回)",
+      "original_ocr": "日大第一(2科1回)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        726,
+        1122,
+        790,
+        1137
+      ],
+      "page": 0,
+      "token_ids": [
+        "b242"
+      ],
+      "bbox_agg": [
+        533,
+        1121,
+        917,
+        1137
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b243",
+      "text": "実践学園給費生",
+      "original_ocr": "実践学園給費生",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        852,
+        1122,
+        917,
+        1137
+      ],
+      "page": 0,
+      "token_ids": [
+        "b243"
+      ],
+      "bbox_agg": [
+        533,
+        1121,
+        917,
+        1137
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b244",
+      "text": "明治学院3",
+      "original_ocr": "明治学院3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1636,
+        1122,
+        1709,
+        1136
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1636,
+        1122,
+        1709,
+        1136
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b245",
+      "text": "多摩大目黒特待",
+      "original_ocr": "多摩大目黒特待",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1734,
+        1122,
+        1799,
+        1136
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1734,
+        1122,
+        1799,
+        1136
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b246",
+      "text": "46",
+      "original_ocr": "46",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        1123,
+        136,
+        1138
+      ],
+      "page": 0,
+      "token_ids": [
+        "b246"
+      ],
+      "bbox_agg": [
+        110,
+        1123,
+        136,
+        1138
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b247",
+      "text": "多摩大目黒特待",
+      "original_ocr": "多摩大目黒特待",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1831,
+        1123,
+        1896,
+        1137
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1831,
+        1123,
+        1896,
+        1137
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b248",
+      "text": "46",
+      "original_ocr": "46",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        1123,
+        2392,
+        1138
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        1123,
+        2392,
+        1138
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b249",
+      "text": "45",
+      "original_ocr": "45",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        109,
+        1162,
+        137,
+        1178
+      ],
+      "page": 0,
+      "token_ids": [
+        "b249"
+      ],
+      "bbox_agg": [
+        109,
+        1162,
+        137,
+        1178
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b250",
+      "text": "本科",
+      "original_ocr": "本科",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        753,
+        1162,
+        766,
+        1176
+      ],
+      "page": 0,
+      "token_ids": [
+        "b250"
+      ],
+      "bbox_agg": [
+        753,
+        1162,
+        766,
+        1176
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b251",
+      "text": "順天堂理数2",
+      "original_ocr": "順天堂理数2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1790,
+        1162,
+        1856,
+        1177
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1790,
+        1162,
+        1856,
+        1177
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b252",
+      "text": "45",
+      "original_ocr": "45",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        1163,
+        2392,
+        1178
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        1163,
+        2392,
+        1178
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b253",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1870,
+        1186,
+        1891,
+        1197
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1870,
+        1186,
+        1891,
+        1197
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b254",
+      "text": "淑徳巣鴨3",
+      "original_ocr": "淑徳巣鴨3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1783,
+        1201,
+        1847,
+        1218
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1783,
+        1201,
+        1847,
+        1218
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b255",
+      "text": "44",
+      "original_ocr": "44",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        1202,
+        136,
+        1216
+      ],
+      "page": 0,
+      "token_ids": [
+        "b255"
+      ],
+      "bbox_agg": [
+        110,
+        1202,
+        136,
+        1216
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b256",
+      "text": "穎明館5",
+      "original_ocr": "穎明館5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1683,
+        1202,
+        1757,
+        1216
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1683,
+        1202,
+        1757,
+        1216
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b257",
+      "text": "サレジアン5(本科)",
+      "original_ocr": "サレジアン5(本科)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1914,
+        1202,
+        1948,
+        1216
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1914,
+        1202,
+        1948,
+        1216
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b258",
+      "text": "44",
+      "original_ocr": "44",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2365,
+        1202,
+        2393,
+        1217
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2365,
+        1202,
+        2393,
+        1217
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b259",
+      "text": "京華3特選",
+      "original_ocr": "京華3特選",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        683,
+        1203,
+        752,
+        1217
+      ],
+      "page": 0,
+      "token_ids": [
+        "b259"
+      ],
+      "bbox_agg": [
+        683,
+        1203,
+        752,
+        1217
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b260",
+      "text": "2",
+      "original_ocr": "2",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2364,
+        1238,
+        2389,
+        1259
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2364,
+        1238,
+        2389,
+        1259
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b261",
+      "text": "43",
+      "original_ocr": "43",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        1241,
+        135,
+        1256
+      ],
+      "page": 0,
+      "token_ids": [
+        "b261"
+      ],
+      "bbox_agg": [
+        110,
+        1241,
+        135,
+        1256
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b262",
+      "text": "日大第三3",
+      "original_ocr": "日大第三3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        623,
+        1241,
+        685,
+        1256
+      ],
+      "page": 0,
+      "token_ids": [
+        "b262"
+      ],
+      "bbox_agg": [
+        623,
+        1241,
+        810,
+        1256
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b263",
+      "text": "聖学院(73)",
+      "original_ocr": "聖学院(73)",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        748,
+        1242,
+        810,
+        1256
+      ],
+      "page": 0,
+      "token_ids": [
+        "b263"
+      ],
+      "bbox_agg": [
+        623,
+        1241,
+        810,
+        1256
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b264",
+      "text": "42",
+      "original_ocr": "42",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        1281,
+        135,
+        1297
+      ],
+      "page": 0,
+      "token_ids": [
+        "b264"
+      ],
+      "bbox_agg": [
+        110,
+        1281,
+        135,
+        1297
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b265",
+      "text": "桜丘5",
+      "original_ocr": "桜丘5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1735,
+        1281,
+        1800,
+        1295
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1735,
+        1281,
+        1800,
+        1295
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b266",
+      "text": "42",
+      "original_ocr": "42",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        1281,
+        2390,
+        1297
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        1281,
+        2390,
+        1297
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b267",
+      "text": "文教大付5",
+      "original_ocr": "文教大付5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1847,
+        1282,
+        1913,
+        1296
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1847,
+        1282,
+        1913,
+        1296
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b268",
+      "text": "東海大高輪台2",
+      "original_ocr": "東海大高輪台2",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        633,
+        1319,
+        707,
+        1335
+      ],
+      "page": 0,
+      "token_ids": [
+        "b268"
+      ],
+      "bbox_agg": [
+        633,
+        1319,
+        800,
+        1335
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b269",
+      "text": "横浜国大鎌倉",
+      "original_ocr": "横浜国大鎌倉",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        733,
+        1320,
+        800,
+        1334
+      ],
+      "page": 0,
+      "token_ids": [
+        "b269"
+      ],
+      "bbox_agg": [
+        633,
+        1319,
+        800,
+        1335
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b270",
+      "text": "41",
+      "original_ocr": "41",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        109,
+        1321,
+        134,
+        1336
+      ],
+      "page": 0,
+      "token_ids": [
+        "b270"
+      ],
+      "bbox_agg": [
+        109,
+        1321,
+        134,
+        1336
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b271",
+      "text": "41",
+      "original_ocr": "41",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2365,
+        1321,
+        2390,
+        1336
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2365,
+        1321,
+        2390,
+        1336
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b272",
+      "text": "2/5",
+      "original_ocr": "2/5",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1773,
+        1344,
+        1794,
+        1354
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1773,
+        1344,
+        1794,
+        1354
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b273",
+      "text": "40",
+      "original_ocr": "40",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        110,
+        1360,
+        137,
+        1376
+      ],
+      "page": 0,
+      "token_ids": [
+        "b273"
+      ],
+      "bbox_agg": [
+        110,
+        1360,
+        137,
+        1376
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b274",
+      "text": "京華3",
+      "original_ocr": "京華3",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        692,
+        1360,
+        758,
+        1375
+      ],
+      "page": 0,
+      "token_ids": [
+        "b274"
+      ],
+      "bbox_agg": [
+        692,
+        1360,
+        758,
+        1375
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b275",
+      "text": "東海大高輪台3",
+      "original_ocr": "東海大高輪台3",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1781,
+        1360,
+        1854,
+        1374
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1781,
+        1360,
+        1854,
+        1374
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b276",
+      "text": "40",
+      "original_ocr": "40",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2366,
+        1360,
+        2391,
+        1375
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2366,
+        1360,
+        2391,
+        1375
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b277",
+      "text": "39",
+      "original_ocr": "39",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1399,
+        136,
+        1415
+      ],
+      "page": 0,
+      "token_ids": [
+        "b277"
+      ],
+      "bbox_agg": [
+        111,
+        1399,
+        136,
+        1415
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b278",
+      "text": "39",
+      "original_ocr": "39",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        1399,
+        2392,
+        1415
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        1399,
+        2392,
+        1415
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b279",
+      "text": "38",
+      "original_ocr": "38",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1439,
+        136,
+        1454
+      ],
+      "page": 0,
+      "token_ids": [
+        "b279"
+      ],
+      "bbox_agg": [
+        111,
+        1439,
+        136,
+        1454
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b280",
+      "text": "文化学園大杉並",
+      "original_ocr": "文化学園大杉並",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        692,
+        1439,
+        753,
+        1453
+      ],
+      "page": 0,
+      "token_ids": [
+        "b280"
+      ],
+      "bbox_agg": [
+        692,
+        1439,
+        753,
+        1453
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b281",
+      "text": "文化学園大杉並6",
+      "original_ocr": "文化学園大杉並6",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1782,
+        1439,
+        1850,
+        1453
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1782,
+        1439,
+        1850,
+        1453
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b282",
+      "text": "38",
+      "original_ocr": "38",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        1439,
+        2392,
+        1454
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        1439,
+        2392,
+        1454
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b283",
+      "text": "37",
+      "original_ocr": "37",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1479,
+        137,
+        1495
+      ],
+      "page": 0,
+      "token_ids": [
+        "b283"
+      ],
+      "bbox_agg": [
+        111,
+        1479,
+        137,
+        1495
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b284",
+      "text": "36",
+      "original_ocr": "36",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1517,
+        137,
+        1534
+      ],
+      "page": 0,
+      "token_ids": [
+        "b284"
+      ],
+      "bbox_agg": [
+        111,
+        1517,
+        137,
+        1534
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b285",
+      "text": "36",
+      "original_ocr": "36",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        1517,
+        2393,
+        1534
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        1517,
+        2393,
+        1534
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b286",
+      "text": "35",
+      "original_ocr": "35",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1557,
+        136,
+        1574
+      ],
+      "page": 0,
+      "token_ids": [
+        "b286"
+      ],
+      "bbox_agg": [
+        111,
+        1557,
+        136,
+        1574
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b287",
+      "text": "35",
+      "original_ocr": "35",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        1558,
+        2392,
+        1574
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        1558,
+        2392,
+        1574
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b288",
+      "text": "34",
+      "original_ocr": "34",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1597,
+        137,
+        1612
+      ],
+      "page": 0,
+      "token_ids": [
+        "b288"
+      ],
+      "bbox_agg": [
+        111,
+        1597,
+        137,
+        1612
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b289",
+      "text": "34",
+      "original_ocr": "34",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        2367,
+        1597,
+        2392,
+        1612
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        2367,
+        1597,
+        2392,
+        1612
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b290",
+      "text": "33",
+      "original_ocr": "33",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1636,
+        136,
+        1652
+      ],
+      "page": 0,
+      "token_ids": [
+        "b290"
+      ],
+      "bbox_agg": [
+        111,
+        1636,
+        136,
+        1652
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b291",
+      "text": "32",
+      "original_ocr": "32",
+      "x_header": "",
+      "y_header": "",
+      "type": "cell",
+      "bbox": [
+        111,
+        1675,
+        136,
+        1691
+      ],
+      "page": 0,
+      "token_ids": [
+        "b291"
+      ],
+      "bbox_agg": [
+        111,
+        1675,
+        136,
+        1691
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b292",
+      "text": "…………",
+      "original_ocr": "…………",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        380,
+        1723,
+        409,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        380,
+        1723,
+        409,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b293",
+      "text": "新設",
+      "original_ocr": "新設",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        405,
+        1723,
+        435,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        405,
+        1723,
+        435,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b294",
+      "text": "☆",
+      "original_ocr": "☆",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        450,
+        1723,
+        470,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        450,
+        1723,
+        470,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b295",
+      "text": "……",
+      "original_ocr": "……",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        474,
+        1723,
+        502,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        474,
+        1723,
+        502,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b296",
+      "text": "試験日変更",
+      "original_ocr": "試験日変更",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        491,
+        1723,
+        563,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        491,
+        1723,
+        563,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b297",
+      "text": "教科数変更",
+      "original_ocr": "教科数変更",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        619,
+        1723,
+        690,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        619,
+        1723,
+        690,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b298",
+      "text": "2・4(2・3)教科選択(2教科判定)",
+      "original_ocr": "2・4(2・3)教科選択(2教科判定)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        751,
+        1723,
+        986,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        751,
+        1723,
+        986,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b299",
+      "text": "……",
+      "original_ocr": "……",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1021,
+        1723,
+        1044,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1021,
+        1723,
+        1044,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b300",
+      "text": "算+理受験校",
+      "original_ocr": "算+理受験校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1044,
+        1723,
+        1130,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1044,
+        1723,
+        1130,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b301",
+      "text": "(算+理判定)",
+      "original_ocr": "(算+理判定)",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1132,
+        1723,
+        1213,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1132,
+        1723,
+        1213,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b302",
+      "text": "1教科受験校",
+      "original_ocr": "1教科受験校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1274,
+        1723,
+        1355,
+        1742
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1274,
+        1723,
+        1355,
+        1742
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b303",
+      "text": "※試験日",
+      "original_ocr": "※試験日",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        96,
+        1724,
+        156,
+        1741
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        96,
+        1724,
+        156,
+        1741
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b304",
+      "text": "2026年",
+      "original_ocr": "2026年",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        178,
+        1724,
+        237,
+        1741
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        178,
+        1724,
+        237,
+        1741
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b305",
+      "text": "の",
+      "original_ocr": "の",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        240,
+        1724,
+        251,
+        1741
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        240,
+        1724,
+        251,
+        1741
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b306",
+      "text": "実施予定日",
+      "original_ocr": "実施予定日",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        252,
+        1724,
+        330,
+        1741
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        252,
+        1724,
+        330,
+        1741
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b307",
+      "text": "……",
+      "original_ocr": "……",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1386,
+        1724,
+        1411,
+        1741
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1386,
+        1724,
+        1411,
+        1741
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    },
+    {
+      "id": "b308",
+      "text": "午後実施校",
+      "original_ocr": "午後実施校",
+      "x_header": "",
+      "y_header": "",
+      "type": "untagged",
+      "bbox": [
+        1412,
+        1724,
+        1482,
+        1741
+      ],
+      "page": 0,
+      "token_ids": [],
+      "bbox_agg": [
+        1412,
+        1724,
+        1482,
+        1741
+      ],
+      "_scrubbed": false,
+      "_source": "e6_vision"
+    }
+  ],
+  "x_headers": [],
+  "y_headers": [],
+  "text_source": "vision_ocr",
+  "text_source_by_page": {
+    "0": "vision_ocr"
+  },
+  "change_log": [],
+  "stats": {
+    "e1_replaced": 0,
+    "e6_adopted": 309,
+    "total_changes": 0,
+    "elapsed": 0.0
+  }
+}

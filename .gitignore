@@ -25,12 +25,12 @@ project_full_backup_*.md
 # macOS
 .DS_Store
 
-# テスト・デバッグスクリプト
-test_*.py
-check_*.py
-debug_*.py
-apply_*.py
-collect_codebase2.py
+# テスト・デバッグスクリプト（ルートのみ、tests/は除外しない）
+/test_*.py
+/check_*.py
+/debug_*.py
+/apply_*.py
+/collect_codebase2.py
 
 # 一時ファイル・デバッグファイル
 temp/
@@ -53,3 +53,6 @@ PROJECT_SNAPSHOT*
 tmpclaude-*
 
 .tmp.driveupload/
+
+# Test fixtures (large binary files)
+tests/fixtures/**/*.pdf

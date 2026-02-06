@@ -1829,3 +1829,68 @@ body {
     color: #888;
     margin-bottom: 10px;
 }
+
+/* =============================================================================
+   テーブルビュー切り替えタブ（フラット/グリッド）
+   ============================================================================= */
+
+.table-view-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 10px 0;
+    border-bottom: 2px solid #e0e0e0;
+    padding-bottom: 0;
+}
+
+.table-view-tab {
+    padding: 8px 16px;
+    border: none;
+    background: #f0f0f0;
+    color: #666;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.2s;
+}
+
+.table-view-tab:hover {
+    background: #e0e8ff;
+    color: #333;
+}
+
+.table-view-tab.active {
+    background: #667eea;
+    color: white;
+}
+
+.table-view-content {
+    padding: 10px 0;
+}
+
+/* フラット表スタイル */
+.flat-table {
+    font-size: 13px;
+}
+
+.flat-table th {
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+}
+
+/* グリッド表スタイル */
+.grid-table {
+    font-size: 13px;
+}
+
+.grid-table th {
+    background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+    color: white;
+}
+
+.grid-table td {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

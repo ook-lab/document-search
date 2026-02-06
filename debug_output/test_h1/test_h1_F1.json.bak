@@ -1,0 +1,15 @@
+{
+  "line_candidates": {
+    "horizontal": [
+      {
+        "orientation": "h",
+        "style": "solid",
+        "position": 124.0,
+        "span_start": 94,
+        "span_end": 2409,
+        "span": 2315,
+        "coverage": 1.0,
+        "score": 0.9201112877583466,
+        "source": "hough",
+        "segment_count": 1,
+        "is_short": 

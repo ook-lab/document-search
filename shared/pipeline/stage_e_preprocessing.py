@@ -78,13 +78,9 @@ class StageEPreprocessor:
         'video/mov',
     }
 
-    def __init__(self, llm_client=None):
-        """
-        Args:
-            llm_client: LLMクライアント（後方互換性のため残すが使用しない）
-        """
-        # AI排除版: llm_client は使用しない
-        self.pdf_processor = PDFProcessor(llm_client=None)  # AI不使用
+    def __init__(self):
+        """Stage E 前処理（AI不使用）"""
+        self.pdf_processor = PDFProcessor(llm_client=None)
         self.office_processor = OfficeProcessor()
 
     def extract_text(
@@ -102,7 +98,7 @@ class StageEPreprocessor:
             file_path: ファイルパス
             mime_type: MIMEタイプ
             pre_extracted_text: 既に抽出済みのテキスト（HTML→PNG等の場合）
-            workspace: ワークスペース（未使用、後方互換性のため残す）
+            workspace: ワークスペース（未使用）
             progress_callback: 進捗コールバック
 
         Returns:
@@ -274,6 +270,41 @@ class StageEPreprocessor:
                 content = result.get('content', '')
                 method = 'pdf_physical'
                 metadata = result.get('metadata', {})
+
+            # 【Ver 6.4】座標付き1文字リストを抽出（物理証拠）
+            try:
+                import pdfplumber
+                physical_chars = []
+                with pdfplumber.open(str(file_path)) as pdf:
+                    for page_idx, page in enumerate(pdf.pages):
+                        w, h = float(page.width), float(page.height)
+                        for char in page.chars:
+                            # Stage F と同じ 1000x1000 グリッドに正規化
+                            physical_chars.append({
+                                "text": char.get("text", ""),
+                                "bbox": [
+                                    int(char.get("x0", 0) * 1000 / w) if w > 0 else 0,
+                                    int(char.get("top", 0) * 1000 / h) if h > 0 else 0,
+                                    int(char.get("x1", 0) * 1000 / w) if w > 0 else 0,
+                                    int(char.get("bottom", 0) * 1000 / h) if h > 0 else 0
+                                ],
+                                "page": page_idx
+                            })
+                metadata['physical_chars'] = physical_chars
+                logger.info(f"  ├─ 座標付き文字: {len(physical_chars)} 文字")
+
+                # 【E-1】全文字ログ出力
+                logger.info(f"[E-1] ===== 生成物ログ開始（physical_chars） =====")
+                logger.info(f"[E-1] physical_chars数: {len(physical_chars)}")
+                for i, char in enumerate(physical_chars):
+                    text = char.get('text', '')
+                    bbox = char.get('bbox', [])
+                    page = char.get('page', 0)
+                    logger.info(f"[E-1]   [{i+1}] page={page}, bbox={bbox}, text='{text}'")
+                logger.info(f"[E-1] ===== 生成物ログ終了 =====")
+            except Exception as e:
+                logger.warning(f"  ├─ 座標抽出失敗: {e}")
+
             logger.info(f"  └─ PDF抽出完了: {len(content)} 文字")
 
         # Office文書処理

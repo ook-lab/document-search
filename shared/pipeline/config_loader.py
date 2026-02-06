@@ -28,13 +28,10 @@ class ConfigLoader:
 
         # パイプラインルーティング設定を読み込み
         pipeline_routing = self.config_dir / "pipeline_routing.yaml"
-        if pipeline_routing.exists():
-            self.routes_config = self._load_yaml(pipeline_routing)
-            logger.info(f"✅ pipeline_routing.yaml を読み込みました")
-        else:
-            # フォールバック: 旧 pipeline_routes.yaml
-            self.routes_config = self._load_yaml(self.config_dir / "pipeline_routes.yaml")
-            logger.warning(f"⚠️ pipeline_routing.yaml が見つかりません。pipeline_routes.yaml を使用します")
+        if not pipeline_routing.exists():
+            raise FileNotFoundError(f"pipeline_routing.yaml が見つかりません: {pipeline_routing}")
+        self.routes_config = self._load_yaml(pipeline_routing)
+        logger.info(f"✅ pipeline_routing.yaml を読み込みました")
 
         # プロンプト設定を読み込み
         prompts_file = self.config_dir / "prompts.yaml"
@@ -99,34 +96,18 @@ class ConfigLoader:
             プロンプトテキスト
         """
         # prompts.yaml から読み込み
-        if self.prompts_config and stage in self.prompts_config:
-            if prompt_key in self.prompts_config[stage]:
-                prompt = self.prompts_config[stage][prompt_key]
-                logger.debug(f"プロンプト読み込み: {stage}/{prompt_key} ({len(prompt)}文字)")
-                return prompt
-            elif prompt_key != 'default' and 'default' in self.prompts_config[stage]:
-                # フォールバック: default プロンプトを試す
-                logger.warning(f"プロンプトキー '{prompt_key}' が見つかりません。default を使用します: {stage}")
-                prompt = self.prompts_config[stage]['default']
-                logger.debug(f"プロンプト読み込み: {stage}/default ({len(prompt)}文字)")
-                return prompt
+        if not self.prompts_config:
+            raise ValueError("prompts.yaml が読み込まれていません")
 
-        # フォールバック: MDファイルから読み込み（後方互換性）
-        prompt_file = self.config_dir / "prompts" / stage / f"{stage}_{prompt_key}.md"
-        try:
-            with open(prompt_file, 'r', encoding='utf-8') as f:
-                prompt = f.read()
-                logger.debug(f"プロンプト読み込み（MDファイル）: {stage}/{stage}_{prompt_key}.md ({len(prompt)}文字)")
-                return prompt
-        except FileNotFoundError:
-            logger.warning(f"プロンプトが見つかりません: {stage}/{prompt_key}")
-            # 最後のフォールバック: default プロンプトを試す
-            if prompt_key != 'default':
-                return self.get_prompt(stage, 'default')
-            return ""
-        except Exception as e:
-            logger.error(f"プロンプト読み込みエラー: {prompt_file} - {e}")
-            return ""
+        if stage not in self.prompts_config:
+            raise KeyError(f"ステージ '{stage}' のプロンプト設定がありません")
+
+        if prompt_key not in self.prompts_config[stage]:
+            raise KeyError(f"プロンプトキー '{prompt_key}' がステージ '{stage}' に見つかりません")
+
+        prompt = self.prompts_config[stage][prompt_key]
+        logger.debug(f"プロンプト読み込み: {stage}/{prompt_key} ({len(prompt)}文字)")
+        return prompt
 
     def get_model(self, stage: str, model_key: str) -> str:
         """
@@ -140,21 +121,16 @@ class ConfigLoader:
             モデル名
         """
         models = self.models_config.get('models', {})
-        stage_models = models.get(stage, {})
+        if stage not in models:
+            raise KeyError(f"ステージ '{stage}' のモデル設定がありません")
 
-        model = stage_models.get(model_key)
-        if model:
-            logger.debug(f"モデル選択: {stage}/{model_key} → {model}")
-            return model
+        stage_models = models[stage]
+        if model_key not in stage_models:
+            raise KeyError(f"モデルキー '{model_key}' がステージ '{stage}' に見つかりません")
 
-        # フォールバック: default モデル
-        default_model = stage_models.get('default')
-        if default_model:
-            logger.debug(f"モデル選択（フォールバック）: {stage}/default → {default_model}")
-            return default_model
-
-        logger.error(f"モデルが見つかりません: {stage}/{model_key}")
-        return ""
+        model = stage_models[model_key]
+        logger.debug(f"モデル選択: {stage}/{model_key} → {model}")
+        return model
 
     def get_stage_config(
         self,

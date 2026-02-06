@@ -33,16 +33,11 @@ class OCRConfig:
     OCR_ENGINE_PRIORITY = [
         'paddleocr',  # 1. PaddleOCR（日本語に強い）
         'surya',      # 2. Surya（レイアウト解析）
-        'gemini'      # 3. Gemini Vision（フォールバック）
     ]
 
     # 画像前処理設定
     ENABLE_PREPROCESSING = True          # 画像前処理を有効化
     PREPROCESSING_QUALITY_THRESHOLD = 0.7  # この品質以下で前処理適用
-
-    # Geminiフォールバック設定
-    ENABLE_GEMINI_FALLBACK = True        # 低信頼度時Geminiフォールバック
-    GEMINI_FALLBACK_THRESHOLD = 0.6      # この信頼度以下でフォールバック
 
 
 class OCRResultCache:
@@ -167,7 +162,7 @@ class OCRResultCache:
 
 
 class PaddleOCRVersionAdapter:
-    """PaddleOCRバージョン互換性アダプター"""
+    """PaddleOCR結果抽出アダプター"""
 
     @staticmethod
     def detect_version() -> str:

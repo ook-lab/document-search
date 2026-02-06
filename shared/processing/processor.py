@@ -23,8 +23,8 @@ from uuid import uuid4
 from loguru import logger
 from shared.common.database.client import DatabaseClient
 from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.pipeline import UnifiedDocumentPipeline
 from shared.logging import TaskLogger  # Per-Task Logging
+# Note: UnifiedDocumentPipeline は循環インポート回避のため __init__ 内で遅延インポート
 from .state_manager import StateManager, get_state_manager
 from .resource_manager import AdaptiveResourceManager, get_cgroup_memory, get_cgroup_cpu
 from .execution_policy import ExecutionPolicy, get_execution_policy
@@ -147,6 +147,8 @@ class DocumentProcessor:
         else:
             self.db = DatabaseClient(use_service_role=use_service_role)
 
+        # 循環インポート回避: ここで遅延インポート
+        from shared.pipeline import UnifiedDocumentPipeline
         self.pipeline = UnifiedDocumentPipeline(db_client=self.db)
         self.drive = GoogleDriveConnector()
         self.temp_dir = Path("./temp")
