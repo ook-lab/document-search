@@ -164,23 +164,33 @@ class YotsuyaDomainHandler:
         }
 
     def _group_cells_by_row(self, cells: List[Dict]) -> Dict[int, List[Dict]]:
-        """セルをY座標でグループ化"""
-        rows_by_y = {}
+        """
+        セルを行でグループ化（Ver 11.2: F8/G6のrowインデックスを優先）
+        """
+        rows_by_key = {}
         for cell in cells:
             text = cell.get('text', '').strip()
             bbox = cell.get('bbox', [0, 0, 0, 0])
-            y_key = int(bbox[1] / 10) * 10 if bbox else 0
 
-            if y_key not in rows_by_y:
-                rows_by_y[y_key] = []
+            # F8/G6のrowインデックスを優先
+            row_key = cell.get('row')
+            if row_key is None:
+                # フォールバック：座標から計算（非推奨パス）
+                row_key = int(bbox[1] / 10) * 10 if bbox else 0
 
-            rows_by_y[y_key].append({
+            col_idx = cell.get('col')  # 列インデックスも保持
+
+            if row_key not in rows_by_key:
+                rows_by_key[row_key] = []
+
+            rows_by_key[row_key].append({
                 'text': text,
                 'x': bbox[0] if bbox else 0,
+                'col': col_idx,
                 'bbox': bbox
             })
 
-        return rows_by_y
+        return rows_by_key
 
     def _detect_column_roles(
         self,

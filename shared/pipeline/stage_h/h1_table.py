@@ -275,7 +275,7 @@ class StageH1Table:
     def _normalize_table_rows(self, table: Dict) -> List[Dict]:
         """
         表の行データを正規化（カラムナ形式→辞書リスト）
-        【データ救済版】ヘッダーがなくても全データを保持
+        【Ver 11.2】F8/G6のrow/colインデックスを尊重し、左詰めを防止
 
         Args:
             table: 表データ
@@ -286,37 +286,49 @@ class StageH1Table:
         # cells形式（G6からの入力）
         if 'cells' in table and table['cells']:
             cells = table['cells']
-            row_count = table.get('row_count', 0)
-            col_count = table.get('col_count', 0)
 
-            # セルをrow/col情報でグループ化、またはbboxのY座標でグループ化
-            rows_by_y = {}
+            # F8/G6で付与された論理インデックス（row/col）を最優先で使用
+            # 列位置を固定することで、空セルがあっても左詰めを防止
+            indexed_rows = {}
+            max_col = 0
+
             for cell in cells:
                 text = cell.get('text', '').strip()
-                if not text:
-                    continue
+                # 空セルも位置情報として保持（左詰め防止のため）
 
-                # bboxからY座標を取得してグループ化
-                bbox = cell.get('bbox', [0, 0, 0, 0])
-                y_key = int(bbox[1] / 10) * 10 if bbox else 0  # 10px単位で量子化
+                # F8/G6のrow/colを取得
+                r = cell.get('row')
+                c = cell.get('col')
 
-                if y_key not in rows_by_y:
-                    rows_by_y[y_key] = []
-                rows_by_y[y_key].append({
-                    'text': text,
-                    'x': bbox[0] if bbox else 0,
-                    'bbox': bbox
-                })
+                # インデックスがない場合のみ座標フォールバック（救済措置）
+                if r is None:
+                    bbox = cell.get('bbox', [0, 0, 0, 0])
+                    r = int(bbox[1] / 10) * 10
+                    logger.warning(f"[Stage H1] row欠落、座標フォールバック: y={bbox[1]} → row={r}")
 
-            # Y座標順にソートして行リストを生成
+                if c is None:
+                    bbox = cell.get('bbox', [0, 0, 0, 0])
+                    c = int(bbox[0] / 50) * 50  # X座標から仮列番号
+                    logger.warning(f"[Stage H1] col欠落、座標フォールバック: x={bbox[0]} → col={c}")
+
+                if r not in indexed_rows:
+                    indexed_rows[r] = {}
+
+                # 絶対的な列番号をキーにする（左詰めを防止）
+                col_key = f'col_{c}'
+                indexed_rows[r][col_key] = text
+                if c > max_col:
+                    max_col = c
+
+            # 行番号順にソートして辞書リストを生成
             result = []
-            for y_key in sorted(rows_by_y.keys()):
-                row_cells = sorted(rows_by_y[y_key], key=lambda c: c['x'])
-                row_dict = {f'col_{i+1}': c['text'] for i, c in enumerate(row_cells)}
-                if row_dict:
-                    result.append(row_dict)
+            for r in sorted(indexed_rows.keys()):
+                row_data = indexed_rows[r]
+                # テキストが1つでもある行を採用
+                if any(v for v in row_data.values()):
+                    result.append(row_data)
 
-            logger.debug(f"[Stage H1] cells形式から{len(result)}行を生成")
+            logger.info(f"[Stage H1] F8/G6インデックス使用: {len(result)}行, 最大列={max_col}")
             return result
 
         # columns + rows 形式（カラムナ）
