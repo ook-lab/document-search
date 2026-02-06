@@ -76,7 +76,12 @@ class YotsuyaDomainHandler:
         raw_tokens: List[Dict] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        四谷大塚 偏差値一覧表の専用パース処理（Ver 11.1: 肩付き注釈精密判定）
+        四谷大塚 偏差値一覧表の専用パース処理（Ver 12.0: 住所録方式）
+
+        【設計思想】
+        - 「ヘッダー（箱）を先に用意してデータを詰める」のではない
+        - 「データ（学校名）に住所（偏差値・日程）を振る」だけ
+        - 同じ住所に何校いても問題ない（フラットなリスト出力）
         """
         cells = table.get('cells', [])
         raw_tokens = raw_tokens or []
@@ -85,71 +90,158 @@ class YotsuyaDomainHandler:
             logger.warning(f"[Yotsuya] cells が空: {ref_id}")
             return None
 
-        # Step 1: セルをY座標（行）でグループ化
-        rows_by_y = self._group_cells_by_row(cells)
-        sorted_y_keys = sorted(rows_by_y.keys())
-        if not sorted_y_keys:
-            return None
+        # ============================================
+        # Step 1: 住所ラベルの辞書を構築
+        # ============================================
+        # 偏差値ラベル: row番号 → 偏差値（2桁数字）
+        # 日程ラベル: col番号 → 日程（M/D形式）
+        row_deviation_labels = {}  # {row: "70"}
+        col_date_labels = {}       # {col: "2/3"}
+        data_cells = []            # 学校名などの実体データ
 
-        # Step 2: 列の役割を推定（強制アライメント）
-        column_roles = self._detect_column_roles(rows_by_y, sorted_y_keys)
-        logger.info(f"[Yotsuya] 列役割検出: {column_roles}")
+        for cell in cells:
+            text = cell.get('text', '').strip()
+            if not text:
+                continue
 
-        # Step 3: E8トークンから日付注釈インデックスを構築
+            r = cell.get('row')
+            c = cell.get('col')
+            bbox = cell.get('bbox', [0, 0, 0, 0])
+            x = bbox[0] if bbox else 0
+
+            # 偏差値ラベルの特定（2桁数字、通常は最左列 col=0 付近）
+            if re.match(r'^\d{2}$', text) and c is not None and c <= 1:
+                try:
+                    deviation = int(text)
+                    if 30 <= deviation <= 80:
+                        row_deviation_labels[r] = text
+                        continue
+                except ValueError:
+                    pass
+
+            # 日程ラベルの特定（M/D形式、通常は最上行 row=0 付近）
+            if re.match(r'^\d{1,2}/\d{1,2}', text) and r is not None and r <= 2:
+                col_date_labels[c] = text
+                continue
+
+            # ノイズ判定
+            is_noise = False
+            for pattern in self.NOISE_PATTERNS:
+                if re.search(pattern, text):
+                    is_noise = True
+                    break
+            if is_noise:
+                continue
+
+            # 学校名候補（1文字より長いテキスト）
+            if len(text) > 1:
+                data_cells.append({
+                    'text': text,
+                    'row': r,
+                    'col': c,
+                    'bbox': bbox,
+                    'x': x
+                })
+
+        logger.info(f"[Yotsuya] 住所ラベル: 偏差値={len(row_deviation_labels)}行, 日程={len(col_date_labels)}列")
+        logger.debug(f"[Yotsuya] 偏差値ラベル: {row_deviation_labels}")
+        logger.debug(f"[Yotsuya] 日程ラベル: {col_date_labels}")
+
+        # ============================================
+        # Step 2: E8トークンから肩付き日付注釈インデックスを構築
+        # ============================================
         date_annotations = self._build_date_annotation_index(raw_tokens)
-        logger.info(f"[Yotsuya] 日付注釈検出: {len(date_annotations)}個")
+        logger.info(f"[Yotsuya] 肩付き日付注釈: {len(date_annotations)}個")
 
-        # Step 4: データ行の処理
-        structured_rows = []
-        current_deviation = None
-        current_test_date = None  # 行レベルの日付継承用（偏差値列に記載された日付）
+        # ============================================
+        # Step 3: 各データセルに住所を振る（住所録方式）
+        # ============================================
+        entities = []
 
-        for y_key in sorted_y_keys:
-            row_cells = sorted(rows_by_y[y_key], key=lambda c: c.get('x', 0))
-            if not row_cells:
-                continue
+        for cell in data_cells:
+            text = cell['text']
+            r = cell['row']
+            c = cell['col']
+            bbox = cell['bbox']
 
-            # 偏差値列を探す
-            deviation_value = self._extract_deviation_from_row(row_cells, column_roles)
+            # --- 住所A: 偏差値（行ラベルから取得） ---
+            base_deviation = row_deviation_labels.get(r)
 
-            if deviation_value is not None:
-                current_deviation = deviation_value
+            # --- 住所B: 日程（列ラベルから取得） ---
+            base_date = col_date_labels.get(c)
 
-            if current_deviation is None:
-                continue
+            # --- 住所の上書きA: カッコ内偏差値 ---
+            # "開成(72)" → 偏差値を72に上書き
+            name = text
+            score_match = re.search(r'\((\d{2})\)', text)
+            if score_match:
+                base_deviation = score_match.group(1)
+                name = re.sub(r'\(\d{2}\)', '', text).strip()
 
-            # 偏差値列にある日付のみ行全体に継承（肩付き注釈は個別処理）
-            deviation_col_date = self._extract_date_from_deviation_column(
-                row_cells, column_roles
-            )
-            if deviation_col_date:
-                current_test_date = deviation_col_date
-                logger.debug(f"[Yotsuya] 偏差値列日付: {current_test_date}")
+            # --- 住所の上書きB: 肩付き日程 ---
+            # 学校名の真上に日付があれば、それを日程として採用
+            shoulder_date = self._find_shoulder_annotation(bbox, date_annotations)
+            if shoulder_date:
+                base_date = shoulder_date
 
-            # 学校データを抽出（肩付き注釈の精密判定付き）
-            schools = self._extract_schools_with_annotations(
-                row_cells, column_roles, current_deviation,
-                current_test_date, date_annotations, raw_tokens
-            )
+            # フラグの分離（☆◇▼など）
+            flags = []
+            for flag in self.FLAGS:
+                if flag in name:
+                    flags.append(flag)
+                    name = name.replace(flag, '').strip()
 
-            if schools:
-                # 同じ偏差値の既存行があればマージ
-                existing_row = next(
-                    (r for r in structured_rows if r['deviation'] == current_deviation),
-                    None
-                )
-                if existing_row:
-                    existing_row['schools'].extend(schools)
-                else:
-                    structured_rows.append({
-                        'deviation': current_deviation,
-                        'schools': schools
-                    })
+            # 学校名の分離（連結されている場合）
+            school_names = self._split_school_names(name, bbox, raw_tokens)
 
-        # 偏差値でソート（降順）
-        structured_rows.sort(key=lambda r: r['deviation'], reverse=True)
+            for school_name, school_bbox in school_names:
+                if not school_name:
+                    continue
 
-        logger.info(f"[Yotsuya] 構造化完了: {len(structured_rows)}行")
+                # 分離後の学校にも肩付き日程をチェック
+                final_date = base_date
+                if school_bbox:
+                    shoulder = self._find_shoulder_annotation(school_bbox, date_annotations)
+                    if shoulder:
+                        final_date = shoulder
+
+                # 表示用学校名: フラグを先頭に付加（☆開成）
+                display_name = ''.join(flags) + school_name if flags else school_name
+
+                entities.append({
+                    '学校名': display_name,
+                    '偏差値': base_deviation,
+                    '日程': final_date,
+                    # 内部メタデータ（デバッグ用、UIには非表示）
+                    '_meta': {
+                        'raw_name': school_name,
+                        'flags': flags.copy(),
+                        'bbox': school_bbox or bbox,
+                        'original': text
+                    }
+                })
+
+        # 偏差値でソート（降順）、同偏差値内は元の順序維持
+        entities.sort(key=lambda e: int(e['偏差値']) if e['偏差値'] else 0, reverse=True)
+
+        logger.info(f"[Yotsuya] 住所録方式で {len(entities)} 校を構造化")
+
+        # ============================================
+        # 出力1: flat_data（フラット表：エンティティリスト）
+        # ============================================
+        flat_data = [
+            {
+                '学校名': e['学校名'],
+                '偏差値': e['偏差値'],
+                '日程': e['日程']
+            }
+            for e in entities
+        ]
+
+        # ============================================
+        # 出力2: grid_data（グリッド表：データに基づく論理構造）
+        # ============================================
+        grid_data = self._build_grid_data(entities)
 
         return {
             'ref_id': ref_id,
@@ -157,11 +249,130 @@ class YotsuyaDomainHandler:
             'table_type': 'yotsuya_hensachi',
             'schema_matched': True,
             'domain': 'yotsuya_hensachi',
-            'columns': self.LOGICAL_HEADERS,
-            'rows': structured_rows,
-            'row_count': len(structured_rows),
-            'source': 'stage_h1_yotsuya'
+            # フラット表用
+            'columns': ['学校名', '偏差値', '日程'],
+            'rows': flat_data,
+            'flat_data': flat_data,
+            'flat_columns': ['学校名', '偏差値', '日程'],
+            # グリッド表用（元の表構造）
+            'grid_data': grid_data,
+            # 内部用
+            '_entities': entities,
+            'row_count': len(flat_data),
+            'source': 'stage_h1_yotsuya_v12'
         }
+
+    def _build_grid_data(self, entities: List[Dict]) -> Dict[str, Any]:
+        """
+        データに基づいた論理グリッドを構築
+
+        紙の制約（書ききれない等）に縛られず、
+        実際のデータに合わせた完全なグリッドを生成。
+
+        - 行: 実際に存在する偏差値（74, 72, 71, 70, ...）
+        - 列: 実際に存在する日程（2/1, 2/4, 2/5, 2/6, ...）
+
+        Args:
+            entities: 処理済みエンティティ（学校名、偏差値、日程を含む）
+
+        Returns:
+            {
+                'columns': ['偏差値', '2/1', '2/4', '2/5', ...],
+                'rows': [['74', '筑駒', '', '', ...], ...],
+                'row_headers': ['74', '72', '71', ...],
+                'col_headers': ['2/1', '2/4', '2/5', ...],
+            }
+        """
+        # 全エンティティから実際の偏差値・日程を収集
+        all_deviations = set()
+        all_dates = set()
+
+        for e in entities:
+            dev = e.get('偏差値')
+            date = e.get('日程')
+            if dev:
+                all_deviations.add(dev)
+            if date:
+                all_dates.add(date)
+
+        # 行ヘッダー: 偏差値降順
+        row_headers = sorted(all_deviations, key=lambda d: int(d), reverse=True)
+
+        # 列ヘッダー: 日付順（M/D形式）
+        def date_sort_key(d):
+            try:
+                parts = d.split('/')
+                return (int(parts[0]), int(parts[1]))
+            except:
+                return (99, 99)
+
+        col_headers = sorted(all_dates, key=date_sort_key)
+
+        # マッピング
+        dev_to_row = {d: i for i, d in enumerate(row_headers)}
+        date_to_col = {d: i for i, d in enumerate(col_headers)}
+
+        # グリッド初期化
+        num_rows = len(row_headers)
+        num_cols = len(col_headers)
+        grid = [['' for _ in range(num_cols)] for _ in range(num_rows)]
+
+        # エンティティをグリッドに配置（実際の偏差値・日程で）
+        for e in entities:
+            name = e.get('学校名', '')
+            dev = e.get('偏差値')
+            date = e.get('日程')
+
+            if dev in dev_to_row and date in date_to_col:
+                grid_row = dev_to_row[dev]
+                grid_col = date_to_col[date]
+                # 同じセルに複数校がある場合は改行で連結
+                if grid[grid_row][grid_col]:
+                    grid[grid_row][grid_col] += '\n' + name
+                else:
+                    grid[grid_row][grid_col] = name
+
+        # 出力形式: 行ラベルを含む2D配列
+        rows_with_labels = []
+        for i, row_data in enumerate(grid):
+            rows_with_labels.append([row_headers[i]] + row_data)
+
+        return {
+            'columns': ['偏差値'] + col_headers,
+            'rows': rows_with_labels,
+            'row_headers': row_headers,
+            'col_headers': col_headers,
+            'grid_only': grid,
+        }
+
+    def _split_school_names(
+        self,
+        name: str,
+        bbox: List[float],
+        raw_tokens: List[Dict]
+    ) -> List[Tuple[str, Optional[List[float]]]]:
+        """
+        学校名を分離（マージされた名前の分離対応）
+
+        Args:
+            name: 学校名（マージされている可能性あり）
+            bbox: セル全体のbbox
+            raw_tokens: E8トークン（個別bbox検索用）
+
+        Returns:
+            [(学校名, bbox), ...] - 単一の場合は1要素のリスト
+        """
+        # まずE8トークンから個別の学校名を探す
+        school_bboxes = self._find_all_school_bboxes_in_merged_name(name, raw_tokens)
+
+        if len(school_bboxes) >= 2:
+            # マージされた名前：個別に分離
+            logger.debug(f"[Yotsuya] 学校名分離: '{name}' -> {[s[0] for s in school_bboxes]}")
+            return school_bboxes
+
+        # 単一の学校名：トークンからbboxを探す
+        token_bbox = self._find_school_token_bbox(name, raw_tokens)
+        return [(name, token_bbox or bbox)]
 
     def _group_cells_by_row(self, cells: List[Dict]) -> Dict[int, List[Dict]]:
         """セルをY座標でグループ化"""

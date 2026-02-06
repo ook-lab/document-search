@@ -472,85 +472,104 @@ class StageH1Table:
         """
         処理済み表にUI表示用の2形式を追加（汎用）
 
+        ドメインハンドラ（yotsuya等）が既に flat_data/grid_data を
+        生成している場合は、それを保持して上書きしない。
+
         Args:
             processed_table: 処理済み表データ（変更される）
             original_table: 元の表データ（cells等を含む）
         """
+        # ============================================
+        # ドメインハンドラの出力を保護
+        # flat_data / grid_data が既に存在する場合はスキップ
+        # ============================================
+        has_flat = 'flat_data' in processed_table and processed_table['flat_data']
+        has_grid = 'grid_data' in processed_table and processed_table['grid_data']
+
+        if has_flat and has_grid:
+            logger.debug(f"[Stage H1] ドメイン出力を保持: {processed_table.get('ref_id', '?')}")
+            return  # ドメインハンドラの出力をそのまま使用
+
         rows = processed_table.get('rows', [])
         columns = processed_table.get('columns', [])
 
         # ============================================
         # 1. flat_data: 正規化されたフラット表
         # ============================================
-        flat_data = []
-        flat_columns = []
+        if not has_flat:
+            flat_data = []
+            flat_columns = []
 
-        if rows:
-            if isinstance(rows[0], dict):
-                # オブジェクト配列 → キーを収集
-                all_keys = set()
-                for row in rows:
-                    if isinstance(row, dict):
-                        all_keys.update(row.keys())
-                flat_columns = sorted(all_keys)
-                flat_data = rows
-            elif isinstance(rows[0], list):
-                # 2D配列 → 辞書に変換
-                flat_columns = columns if columns else [f'列{i+1}' for i in range(len(rows[0]))]
-                for row in rows:
-                    row_dict = {flat_columns[i]: v for i, v in enumerate(row) if i < len(flat_columns)}
-                    flat_data.append(row_dict)
-            else:
-                flat_data = rows
-                flat_columns = columns
+            if rows:
+                if isinstance(rows[0], dict):
+                    # オブジェクト配列 → キーを収集
+                    all_keys = set()
+                    for row in rows:
+                        if isinstance(row, dict):
+                            all_keys.update(row.keys())
+                    flat_columns = sorted(all_keys)
+                    flat_data = rows
+                elif isinstance(rows[0], list):
+                    # 2D配列 → 辞書に変換
+                    flat_columns = columns if columns else [f'列{i+1}' for i in range(len(rows[0]))]
+                    for row in rows:
+                        row_dict = {flat_columns[i]: v for i, v in enumerate(row) if i < len(flat_columns)}
+                        flat_data.append(row_dict)
+                else:
+                    flat_data = rows
+                    flat_columns = columns
 
-        processed_table['flat_data'] = flat_data
-        processed_table['flat_columns'] = flat_columns
+            processed_table['flat_data'] = flat_data
+            processed_table['flat_columns'] = flat_columns
+        else:
+            flat_data = processed_table['flat_data']
+            flat_columns = processed_table.get('flat_columns', [])
 
         # ============================================
         # 2. grid_data: 元の表構造を保持
         # ============================================
-        grid_data = {
-            'rows': [],
-            'columns': [],
-            'cells': []
-        }
+        if not has_grid:
+            grid_data = {
+                'rows': [],
+                'columns': [],
+                'cells': []
+            }
 
-        # 元のcells情報があれば使用（元の表構造を復元）
-        cells = original_table.get('cells', [])
-        if cells:
-            # セルをY座標でグループ化
-            rows_by_y = {}
-            all_x = set()
-            for cell in cells:
-                bbox = cell.get('bbox', [0, 0, 0, 0])
-                y_key = int(bbox[1] / 10) * 10
-                x_key = int(bbox[0] / 10) * 10
-                all_x.add(x_key)
+            # 元のcells情報があれば使用（元の表構造を復元）
+            cells = original_table.get('cells', [])
+            if cells:
+                # セルをY座標でグループ化
+                rows_by_y = {}
+                all_x = set()
+                for cell in cells:
+                    bbox = cell.get('bbox', [0, 0, 0, 0])
+                    y_key = int(bbox[1] / 10) * 10
+                    x_key = int(bbox[0] / 10) * 10
+                    all_x.add(x_key)
 
-                if y_key not in rows_by_y:
-                    rows_by_y[y_key] = {}
-                rows_by_y[y_key][x_key] = cell.get('text', '')
+                    if y_key not in rows_by_y:
+                        rows_by_y[y_key] = {}
+                    rows_by_y[y_key][x_key] = cell.get('text', '')
 
-            sorted_y = sorted(rows_by_y.keys())
-            sorted_x = sorted(all_x)
+                sorted_y = sorted(rows_by_y.keys())
+                sorted_x = sorted(all_x)
 
-            grid_data['columns'] = [f'列{i+1}' for i in range(len(sorted_x))]
-            for y in sorted_y:
-                grid_data['rows'].append([rows_by_y[y].get(x, '') for x in sorted_x])
+                grid_data['columns'] = [f'列{i+1}' for i in range(len(sorted_x))]
+                for y in sorted_y:
+                    grid_data['rows'].append([rows_by_y[y].get(x, '') for x in sorted_x])
 
-            grid_data['cells'] = cells
+                grid_data['cells'] = cells
 
-        else:
-            # cellsがない場合はflat_dataから復元
-            grid_data['columns'] = flat_columns
-            for row in flat_data:
-                if isinstance(row, dict):
-                    grid_data['rows'].append([row.get(c, '') for c in flat_columns])
-                elif isinstance(row, list):
-                    grid_data['rows'].append(row)
+            else:
+                # cellsがない場合はflat_dataから復元
+                grid_data['columns'] = flat_columns
+                for row in flat_data:
+                    if isinstance(row, dict):
+                        grid_data['rows'].append([row.get(c, '') for c in flat_columns])
+                    elif isinstance(row, list):
+                        grid_data['rows'].append(row)
 
-        processed_table['grid_data'] = grid_data
+            processed_table['grid_data'] = grid_data
 
     def remove_table_text_from_unified(
         self,
