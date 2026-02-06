@@ -927,72 +927,7 @@ function renderMultipleTables(key, tables, label) {
                     </div>
                 </div>
             `;
-            return;
         }
-
-        // ============================================
-        // 従来形式（後方互換）
-        // ============================================
-        const rows = table.rows || table.data || [];
-        let headers = table.columns || table.headers || table.header || [];
-        if ((!headers || headers.length === 0) && rows.length > 0) {
-            if (Array.isArray(rows[0])) {
-                headers = rows[0].map((_, i) => `列${i + 1}`);
-            } else if (typeof rows[0] === 'object' && rows[0] !== null) {
-                headers = Object.keys(rows[0]);
-            }
-        }
-
-        const hasDataSummary = table.data_summary && (!rows || rows.length === 0);
-
-        html += `
-            <div class="structured-table-section">
-                <h4 class="table-title">${escapeHtml(tableTitle)}</h4>
-                ${tableType ? `<span class="table-type-badge">${escapeHtml(tableType)}</span>` : ''}
-                <div class="table-info">${rows.length} 行</div>
-        `;
-
-        if (hasDataSummary) {
-            html += `
-                <div class="data-summary-notice" style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:4px;margin:10px 0;">
-                    <strong>⚠️ 構造化データなし（要約のみ）</strong>
-                    <pre style="white-space:pre-wrap;margin:8px 0 0 0;font-size:13px;">${escapeHtml(table.data_summary)}</pre>
-                </div>
-            `;
-        } else if (rows.length > 0) {
-            html += `<div class="table-wrapper">`;
-            html += `<table class="data-table rendered-table">`;
-            html += `<thead><tr>`;
-
-            if (Array.isArray(headers) && headers.length > 0) {
-                headers.forEach(h => {
-                    html += `<th>${escapeHtml(formatFieldName(String(h)))}</th>`;
-                });
-            }
-
-            html += `</tr></thead><tbody>`;
-
-            rows.forEach(row => {
-                html += `<tr>`;
-                if (Array.isArray(row)) {
-                    row.forEach(cell => {
-                        html += `<td title="${escapeHtml(formatCellValue(cell, 500))}">${escapeHtml(formatCellValue(cell))}</td>`;
-                    });
-                } else if (typeof row === 'object' && row !== null) {
-                    headers.forEach(k => {
-                        const value = row[k];
-                        html += `<td title="${escapeHtml(formatCellValue(value, 500))}">${escapeHtml(formatCellValue(value))}</td>`;
-                    });
-                }
-                html += `</tr>`;
-            });
-
-            html += `</tbody></table></div>`;
-        } else {
-            html += `<p class="no-data">データがありません</p>`;
-        }
-
-        html += `</div>`;
     });
 
     html += `</div>`;
