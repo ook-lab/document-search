@@ -3,7 +3,8 @@ Stage F: Visual Analysis Orchestrator (司令塔)
 
 【Ver 10.7】Fは物理：位置だけ。意味理解は次段。ピクセル座標統一。
   E-6: Vision OCR (stage_e/e6_vision_ocr.py)
-  E-7: 文字結合 (stage_e/e7_text_merger.py)
+  E-7L: LLM差分抽出 (stage_e/e7l_llm_merger.py)
+  E-7P: Pythonパッチ適用 (stage_e/e7p_patch_applier.py)
   E-8: bbox正規化 (stage_e/e8_bbox_normalizer.py)
   F-1: 罫線観測 (f1_grid_detector.py) - 候補全件保持、モデル不要
   F-2: 構造解析 (f2_structure_analyzer.py) - 物理条件のみでgrid構築
@@ -33,10 +34,12 @@ from .f1_grid_detector import F1GridDetector
 from .f2_structure_analyzer import F2StructureAnalyzer
 from .f3_cell_assigner import F3CellAssigner
 
-# Stage G (Ver 9.0)
+# Stage G (Ver 9.0 → 14.0: G7/G8追加)
 from ..stage_g import G3Scrub, G4Assemble, G5Audit, G6Packager
+from ..stage_g.g7_header_detector import G7HeaderDetector
+from ..stage_g.g8_header_enricher import G8HeaderEnricher
 
-from ..stage_e import E6VisionOCR, E7TextMerger, E8BboxNormalizer
+from ..stage_e import E6VisionOCR, E7LMergeDetector, E7PPatchApplier, E8BboxNormalizer
 
 from ..constants import (
     STAGE_F_OUTPUT_SCHEMA_VERSION,
@@ -52,7 +55,8 @@ class StageFVisualAnalyzer:
 
         # Stage E
         self._e6_ocr = E6VisionOCR()
-        self._e7_merger = E7TextMerger(llm_client)
+        self._e7l = E7LMergeDetector(llm_client)  # E-7L: LLM差分抽出
+        self._e7p = E7PPatchApplier()              # E-7P: Pythonパッチ適用
         self._e8_normalizer = E8BboxNormalizer()
 
         # Stage F (Ver 9.0)
@@ -94,8 +98,10 @@ class StageFVisualAnalyzer:
         self._g4_assemble = G4Assemble()
         self._g5_audit = G5Audit()
         self._g6_packager = G6Packager()
+        self._g7_header = G7HeaderDetector(llm_client)
+        self._g8_enricher = G8HeaderEnricher()
 
-        logger.info("[Ver 10.6] E6→E7→E8→F1→F2→F3→G3→G4→G5→G6")
+        logger.info("[Ver 14.0] E6→E7L→E7P→E8→F1→F2→F3→G3→G4→G5→G6→G7→G8")
 
         self._e_content = ''
         self._e_physical_chars = []
@@ -211,10 +217,15 @@ class StageFVisualAnalyzer:
                     continue
                 vision_tokens = e6_result.get('vision_tokens', [])
 
-                # E-7: 文字結合（Vision Glue & Repair）
+                # E-7L: LLM差分抽出（接着候補の検出のみ）
                 if progress_callback:
-                    progress_callback(f"E-7 ({chunk_idx + 1}/{total_chunks})")
-                merged_tokens = self._e7_merger.merge(vision_tokens, image_path=str(tmp_path))
+                    progress_callback(f"E-7L ({chunk_idx + 1}/{total_chunks})")
+                merge_instructions = self._e7l.detect(vision_tokens, image_path=str(tmp_path))
+
+                # E-7P: Pythonパッチ適用（物理結合の実行）
+                if progress_callback:
+                    progress_callback(f"E-7P ({chunk_idx + 1}/{total_chunks})")
+                merged_tokens = self._e7p.apply(vision_tokens, merge_instructions)
 
                 # E-8: bbox正規化
                 if progress_callback:
@@ -401,12 +412,29 @@ class StageFVisualAnalyzer:
                 metadata={"total_pages": total_pages, "total_chunks": total_chunks, "has_table": False}
             )
             payload["warnings"].extend(warnings_list)
+
+            # G6: Packager（表なしでも実行）
+            if progress_callback:
+                progress_callback("G-6")
+            logger.info("[G-6] Packager開始（表なし）")
+            self._g6_packager.package(payload)
+
+            # G7/G8: 表なしのためスキップ
+            logger.info("[G-7/G-8] 表なし → スキップ")
             return payload
 
         # ━━━ Ver 10.8: 全トークンをF3に渡す（フィルタ撤廃）━━━
         # F3内部で「セル内/セル外」をタグ付けする方式に変更
-        # table_bboxは参照情報としてF3に渡す（フィルタには使わない）
-        table_bbox = (header_info or {}).get('table_bbox')
+        # table_bboxは全パネルの合計範囲にする（第1パネルだけだと右側が圏外になる）
+        all_panels = (aggregated_structure or {}).get('panels', [])
+        if all_panels:
+            _x0 = min(p['panel_bbox'][0] for p in all_panels)
+            _y0 = min(p['panel_bbox'][1] for p in all_panels)
+            _x1 = max(p['panel_bbox'][2] for p in all_panels)
+            _y1 = max(p['panel_bbox'][3] for p in all_panels)
+            table_bbox = [_x0, _y0, _x1, _y1]
+        else:
+            table_bbox = (header_info or {}).get('table_bbox')
 
         logger.info(f"[F-3] 全トークンをF3に渡す: {len(aggregated_blocks)}件")
         if table_bbox:
@@ -463,6 +491,38 @@ class StageFVisualAnalyzer:
             metadata={"total_pages": total_pages, "total_chunks": total_chunks}
         )
         payload["warnings"].extend(warnings_list)
+
+        # ============================================
+        # G6: Packager（用途別出力整形）
+        # ============================================
+        if progress_callback:
+            progress_callback("G-6")
+        logger.info("[G-6] Packager開始")
+
+        g6_result = self._g6_packager.package(payload)
+
+        # ============================================
+        # G7: Header Detector（ヘッダー位置検出）
+        # ============================================
+        if progress_callback:
+            progress_callback("G-7")
+        logger.info("[G-7] Header Detector開始")
+
+        tables = payload.get("path_a_result", {}).get("tables", [])
+        if tables:
+            tables = self._g7_header.process(tables)
+            payload["path_a_result"]["tables"] = tables
+
+        # ============================================
+        # G8: Header Enricher（ヘッダー紐付け）
+        # ============================================
+        if progress_callback:
+            progress_callback("G-8")
+        logger.info("[G-8] Header Enricher開始")
+
+        if tables:
+            tables = self._g8_enricher.process(tables)
+            payload["path_a_result"]["tables"] = tables
 
         return payload
 

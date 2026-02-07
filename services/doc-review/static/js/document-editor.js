@@ -901,7 +901,10 @@ function renderMultipleTables(key, tables, label) {
             const generated = generateDisplayFormats(rows, table.columns, originalCells);
             flatData = generated.flatData;
             flatColumns = generated.flatColumns;
-            gridData = generated.gridData;
+            // gridData は既存があれば保持（ドメインハンドラの構造を優先）
+            if (!gridData) {
+                gridData = generated.gridData;
+            }
         }
 
         const hasFlatData = flatData && Array.isArray(flatData) && flatData.length > 0;
@@ -1003,7 +1006,10 @@ function generateDisplayFormats(rows, columns, originalCells) {
         const sortedY = Object.keys(rowsByY).map(Number).sort((a, b) => a - b);
         const sortedX = Array.from(allX).sort((a, b) => a - b);
 
-        gridData.columns = sortedX.map((_, i) => `列${i + 1}`);
+        // 列ヘッダー: row 0 から取得
+        const firstY = sortedY.shift();
+        gridData.columns = sortedX.map(x => rowsByY[firstY][x] || '');
+
         sortedY.forEach(y => {
             const gridRow = sortedX.map(x => rowsByY[y][x] || '');
             gridData.rows.push(gridRow);
@@ -1011,9 +1017,9 @@ function generateDisplayFormats(rows, columns, originalCells) {
 
     } else if (flatData.length > 0) {
         // cellsがない場合はflatDataから復元
-        gridData.columns = flatColumns;
+        gridData.columns = columns;
         flatData.forEach(row => {
-            gridData.rows.push(flatColumns.map(c => row[c] !== undefined ? row[c] : ''));
+            gridData.rows.push(columns.map(c => row[c] !== undefined ? row[c] : ''));
         });
     }
 

@@ -1,0 +1,20 @@
+{
+  "doc_type": "school_letter",
+  "schemas": {
+    "weekly_schedule": {
+      "required_columns": ["曜日", "時間", "科目"],
+      "alt_columns": [["日", "時限", "教科"], ["曜", "時間割", "授業"]],
+      "table_type": "schedule"
+    },
+    "event_list": {
+      "required_columns": ["日付", "行事"],
+      "alt_columns": [["日", "イベント"], ["月日", "予定"]],
+      "table_type": "event"
+    },
+    "item_list": {
+      "required_columns": ["品目", "数量"],
+      "alt_columns": [["持ち物", "個数"], ["もちもの", "かず"]],
+      "table_type": "item_list"
+    }
+  }
+}

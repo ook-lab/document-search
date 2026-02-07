@@ -8,14 +8,14 @@
   # 全行程を実行（キャッシュがあればスキップ）
   python run_debug_pipeline.py [UUID] --pdf path/to/file.pdf
 
-  # E7だけを再実行（E6のキャッシュを使用）
-  python run_debug_pipeline.py [UUID] --stage E7 --force
+  # E7Lだけを再実行（E6のキャッシュを使用）
+  python run_debug_pipeline.py [UUID] --stage E7L --force
 
   # F1から最後まで再実行
   python run_debug_pipeline.py [UUID] --stage F1 --mode from --force
 
   # タグ付きで保存（比較用）
-  python run_debug_pipeline.py [UUID] --stage E7 --tag "v2_chain_merge"
+  python run_debug_pipeline.py [UUID] --stage E7P --tag "v2_patch"
 """
 
 import os
@@ -36,9 +36,11 @@ from loguru import logger
 
 # ステージのインポート
 from shared.ai.llm_client.llm_client import LLMClient
-from shared.pipeline.stage_e import E6VisionOCR, E7TextMerger, E8BboxNormalizer
+from shared.pipeline.stage_e import E6VisionOCR, E7LMergeDetector, E7PPatchApplier, E8BboxNormalizer
 from shared.pipeline.stage_f import F1GridDetector, F2StructureAnalyzer, F3CellAssigner
 from shared.pipeline.stage_g import G3Scrub, G4Assemble, G5Audit, G6Packager
+from shared.pipeline.stage_g.g7_header_detector import G7HeaderDetector
+from shared.pipeline.stage_g.g8_header_enricher import G8HeaderEnricher
 from shared.pipeline.stage_h import StageH1Table, StageH2Text
 
 # PDF→画像変換
@@ -54,7 +56,7 @@ class DebugPipeline:
     """デバッグ用パイプライン（ステージ結果をローカル保存）"""
 
     # ステージ定義（実行順序）
-    STAGES = ["E6", "E7", "E8", "F1", "F2", "F3", "G3", "G4", "G5", "G6", "H1", "H2"]
+    STAGES = ["E6", "E7L", "E7P", "E8", "F1", "F2", "F3", "G3", "G4", "G5", "G6", "G7", "G8", "H1", "H2"]
 
     def __init__(
         self,
@@ -72,7 +74,8 @@ class DebugPipeline:
 
         # ステージインスタンス
         self._e6_ocr = E6VisionOCR()
-        self._e7_merger = E7TextMerger(self.llm_client)
+        self._e7l = E7LMergeDetector(self.llm_client)
+        self._e7p = E7PPatchApplier()
         self._e8_normalizer = E8BboxNormalizer()
         self._f1_detector = F1GridDetector()
         self._f2_analyzer = F2StructureAnalyzer(self.llm_client)
@@ -81,6 +84,8 @@ class DebugPipeline:
         self._g4_assemble = G4Assemble()
         self._g5_audit = G5Audit()
         self._g6_packager = G6Packager()
+        self._g7_header = G7HeaderDetector(self.llm_client)
+        self._g8_enricher = G8HeaderEnricher()
         self._h1_table = StageH1Table(self.llm_client)
         self._h2_text = StageH2Text(self.llm_client)
 
@@ -236,23 +241,44 @@ class DebugPipeline:
                 raise FileNotFoundError(f"[{stage}] キャッシュがありません")
 
             # ================================================
-            # E7: Text Merger (Glue & Repair)
+            # E7L: LLM差分抽出（接着候補の検出のみ）
             # ================================================
-            stage = "E7"
-            e7_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, e7_data is not None):
+            stage = "E7L"
+            e7l_data = self.load_stage(stage)
+            if self.should_run(stage, target_stage, mode, force, e7l_data is not None):
                 logger.info(f"[{stage}] 実行中...")
                 vision_tokens = e6_data.get("vision_tokens", [])
-                merged_tokens = self._e7_merger.merge(vision_tokens, image_path=img_path_str)
-                e7_data = {
+                merge_instructions = self._e7l.detect(vision_tokens, image_path=img_path_str)
+                e7l_data = {
+                    "merge_instructions": merge_instructions,
+                    "input_count": len(vision_tokens),
+                    "merge_count": len(merge_instructions)
+                }
+                self.save_stage(stage, e7l_data)
+            results[stage] = e7l_data
+
+            if not e7l_data:
+                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
+
+            # ================================================
+            # E7P: Pythonパッチ適用（物理結合の実行）
+            # ================================================
+            stage = "E7P"
+            e7p_data = self.load_stage(stage)
+            if self.should_run(stage, target_stage, mode, force, e7p_data is not None):
+                logger.info(f"[{stage}] 実行中...")
+                vision_tokens = e6_data.get("vision_tokens", [])
+                merge_instructions = e7l_data.get("merge_instructions", [])
+                merged_tokens = self._e7p.apply(vision_tokens, merge_instructions)
+                e7p_data = {
                     "merged_tokens": merged_tokens,
                     "input_count": len(vision_tokens),
                     "output_count": len(merged_tokens)
                 }
-                self.save_stage(stage, e7_data)
-            results[stage] = e7_data
+                self.save_stage(stage, e7p_data)
+            results[stage] = e7p_data
 
-            if not e7_data:
+            if not e7p_data:
                 raise FileNotFoundError(f"[{stage}] キャッシュがありません")
 
             # ================================================
@@ -262,7 +288,7 @@ class DebugPipeline:
             e8_data = self.load_stage(stage)
             if self.should_run(stage, target_stage, mode, force, e8_data is not None):
                 logger.info(f"[{stage}] 実行中...")
-                merged_tokens = e7_data.get("merged_tokens", [])
+                merged_tokens = e7p_data.get("merged_tokens", [])
                 normalized_tokens = self._e8_normalizer.normalize(merged_tokens, page_size)
                 e8_data = {
                     "normalized_tokens": normalized_tokens,
@@ -295,7 +321,7 @@ class DebugPipeline:
                 raise FileNotFoundError(f"[{stage}] キャッシュがありません")
 
             # ================================================
-            # F2: Structure Analyzer（Ver 10.3 API対応）
+            # F2: Structure Analyzer
             # ================================================
             stage = "F2"
             f2_data = self.load_stage(stage)
@@ -304,6 +330,8 @@ class DebugPipeline:
                 line_candidates = f1_data.get("line_candidates", {"horizontal": [], "vertical": []})
                 table_bbox_candidate = f1_data.get("table_bbox_candidate")
                 panel_candidates = f1_data.get("panel_candidates", [])
+                separator_candidates_all = f1_data.get("separator_candidates_all", [])
+                separator_candidates_ranked = f1_data.get("separator_candidates_ranked", [])
                 tokens = e8_data.get("normalized_tokens", [])
 
                 # tokensをchunk_blocks形式に変換
@@ -324,6 +352,8 @@ class DebugPipeline:
                     page_size=page_size,
                     table_bbox_candidate=table_bbox_candidate,
                     panel_candidates=panel_candidates,
+                    separator_candidates_all=separator_candidates_all,
+                    separator_candidates_ranked=separator_candidates_ranked,
                     doc_type="debug"
                 )
                 f2_data = f2_result
@@ -334,16 +364,16 @@ class DebugPipeline:
                 raise FileNotFoundError(f"[{stage}] キャッシュがありません")
 
             # ================================================
-            # F3: Cell Assigner（Ver 10.3: F2のgridを使用）
+            # F3: Cell Assigner（マルチパネル3点座標対応）
             # ================================================
             stage = "F3"
             f3_data = self.load_stage(stage)
             if self.should_run(stage, target_stage, mode, force, f3_data is not None):
                 logger.info(f"[{stage}] 実行中...")
-                # F2から取得したgrid（Ver 10.3 API）
                 grid = f2_data.get("grid", {})
                 tokens = e8_data.get("normalized_tokens", [])
                 structure = f2_data
+                f2_panels = f2_data.get("panels", [])
 
                 # tokensをchunk_blocks形式に変換
                 chunk_blocks = [
@@ -359,7 +389,8 @@ class DebugPipeline:
                 f3_result, low_confidence = self._f3_assigner.assign(
                     grid=grid,
                     tokens=chunk_blocks,
-                    structure=structure
+                    structure=structure,
+                    panels=f2_panels
                 )
                 f3_data = {
                     "structured_table": f3_result,
@@ -448,6 +479,104 @@ class DebugPipeline:
                 raise FileNotFoundError(f"[{stage}] キャッシュがありません")
 
             # ================================================
+            # G7: Header Detector（構造ベースのヘッダー検出）
+            # ================================================
+            stage = "G7"
+            g7_data = self.load_stage(stage)
+            if self.should_run(stage, target_stage, mode, force, g7_data is not None):
+                logger.info(f"[{stage}] 実行中...")
+
+                # G4の tables（cells_flat 付き）を入力にする
+                g4_tables = g4_data.get("tables", [])
+                if not g4_tables:
+                    # G4にtablesがない場合、path_a_result経由で構築
+                    path_a = g4_data.get("path_a_result", g5_data.get("path_a_result", {}))
+                    tagged_texts = path_a.get("tagged_texts", [])
+                    cell_tokens = [t for t in tagged_texts if t.get("type") == "cell"]
+                    if cell_tokens:
+                        g4_tables = [{"ref_id": "T0", "cells_flat": cell_tokens}]
+
+                g7_result = self._g7_header.process(g4_tables)
+
+                # 結果ログ
+                logger.info("=" * 60)
+                logger.info(f"[G7 RESULT] === ヘッダー検出結果 ===")
+                for tbl in g7_result:
+                    ref_id = tbl.get("ref_id", "?")
+                    hmap = tbl.get("header_map", {})
+                    panels = hmap.get("panels", {})
+                    logger.info(f"[G7 RESULT] {ref_id}:")
+                    for pk, pv in panels.items():
+                        ch_rows = pv.get("col_header_rows", [])
+                        rh_cols = pv.get("row_header_cols", [])
+                        logger.info(f"[G7 RESULT]   {pk}: col_header_rows={ch_rows}, row_header_cols={rh_cols}")
+
+                        # ヘッダー行/列の実際のテキストをログ出力
+                        cells_flat = tbl.get("cells_flat", [])
+                        pid_str = pk.replace("P", "")
+                        for r in ch_rows:
+                            row_texts = [
+                                c.get("text", "")
+                                for c in cells_flat
+                                if str(c.get("panel_id", 0) or 0) == pid_str and c.get("row") == r
+                            ]
+                            logger.info(f"[G7 RESULT]     col_header R{r} texts: {row_texts}")
+                        # ローカル列番号→グローバル列番号の逆引きマップ構築
+                        panel_cells = [
+                            c for c in cells_flat
+                            if str(c.get("panel_id", 0) or 0) == pid_str
+                        ]
+                        unique_cols = sorted(set(c.get("col", 0) for c in panel_cells))
+                        local_to_global = {lc: gc for lc, gc in enumerate(unique_cols)}
+                        for col_local in rh_cols:
+                            col_global = local_to_global.get(col_local, col_local)
+                            col_texts = [
+                                c.get("text", "")
+                                for c in panel_cells
+                                if c.get("col") == col_global
+                            ]
+                            logger.info(f"[G7 RESULT]     row_header C{col_local}(global={col_global}) texts: {col_texts}")
+                logger.info("=" * 60)
+
+                g7_data = {"tables": g7_result}
+                self.save_stage(stage, g7_data)
+            results[stage] = g7_data
+
+            if not g7_data:
+                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
+
+            # ================================================
+            # G8: Header Enricher（ヘッダー紐付け強化）
+            # ================================================
+            stage = "G8"
+            g8_data = self.load_stage(stage)
+            if self.should_run(stage, target_stage, mode, force, g8_data is not None):
+                logger.info(f"[{stage}] 実行中...")
+
+                # G7の tables（cells_flat + header_map 付き）を入力にする
+                g7_tables = g7_data.get("tables", [])
+                g8_result = self._g8_enricher.process(g7_tables)
+
+                # 結果ログ
+                logger.info("=" * 60)
+                logger.info(f"[G8 RESULT] === ヘッダー紐付け結果 ===")
+                for tbl in g8_result:
+                    ref_id = tbl.get("ref_id", "?")
+                    enriched = tbl.get("cells_enriched", [])
+                    data_cells = [c for c in enriched if not c.get("is_header")]
+                    logger.info(f"[G8 RESULT] {ref_id}: {len(enriched)}セル (データ: {len(data_cells)})")
+                    for c in data_cells:
+                        logger.info(f"[G8 RESULT]   {c.get('enriched_text', '')[:100]}")
+                logger.info("=" * 60)
+
+                g8_data = {"tables": g8_result}
+                self.save_stage(stage, g8_data)
+            results[stage] = g8_data
+
+            if not g8_data:
+                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
+
+            # ================================================
             # H1: Table Specialist（表処理専門）
             # ================================================
             stage = "H1"
@@ -486,6 +615,19 @@ class DebugPipeline:
                                    if ctx.get("context_for") == anchor_id]
                     table_title = " ".join(tbl_context) if tbl_context else ""
 
+                    # G7のheader_mapを探す
+                    g7_tables = g7_data.get("tables", [])
+                    header_map = {}
+                    for g7t in g7_tables:
+                        if g7t.get("ref_id") == anchor_id:
+                            header_map = g7t.get("header_map", {})
+                            break
+                    # ref_idで見つからなければインデックスで取得
+                    if not header_map and len(g7_tables) > len(table_inventory):
+                        idx = len(table_inventory)
+                        if idx < len(g7_tables):
+                            header_map = g7_tables[idx].get("header_map", {})
+
                     table_inventory.append({
                         "ref_id": anchor_id,
                         "table_title": table_title,
@@ -495,10 +637,29 @@ class DebugPipeline:
                         "x_headers": tbl.get("x_headers", []),
                         "y_headers": tbl.get("y_headers", []),
                         "cells": tbl_cells,
-                        "is_heavy": tbl.get("is_heavy", False)
+                        "is_heavy": tbl.get("is_heavy", False),
+                        "header_map": header_map,
                     })
 
+                # G8の cells_enriched を table_inventory に追加
+                g8_tables = g8_data.get("tables", [])
+                for i, inv in enumerate(table_inventory):
+                    ref_id = inv.get("ref_id")
+                    matched = False
+                    for g8t in g8_tables:
+                        if g8t.get("ref_id") == ref_id:
+                            inv["cells_enriched"] = g8t.get("cells_enriched", [])
+                            inv["cells_flat"] = g8t.get("cells_flat", [])
+                            matched = True
+                            break
+                    if not matched and i < len(g8_tables):
+                        inv["cells_enriched"] = g8_tables[i].get("cells_enriched", [])
+                        inv["cells_flat"] = g8_tables[i].get("cells_flat", [])
+
                 logger.info(f"[{stage}] table_inventory構築: {len(table_inventory)}表, cells={len(cells_raw)}")
+                for inv in table_inventory:
+                    enriched_count = len(inv.get('cells_enriched', []))
+                    logger.info(f"[{stage}]   {inv.get('ref_id')}: cells_enriched={enriched_count}, header_map={inv.get('header_map', {})}")
 
                 # E8のトークン座標を取得（肩付き注釈の精密判定用）
                 raw_tokens = e8_data.get("normalized_tokens", [])
@@ -619,14 +780,17 @@ def main():
   # 全行程を実行
   python run_debug_pipeline.py abc123 --pdf input.pdf
 
-  # E7だけを再実行
-  python run_debug_pipeline.py abc123 --stage E7 --force
+  # E7Lだけを再実行
+  python run_debug_pipeline.py abc123 --stage E7L --force
+
+  # E7Pだけを再実行（E7Lのキャッシュを使用）
+  python run_debug_pipeline.py abc123 --stage E7P --force
 
   # F1から最後まで再実行
   python run_debug_pipeline.py abc123 --stage F1 --mode from --force
 
   # タグ付きで保存（比較用）
-  python run_debug_pipeline.py abc123 --stage E7 --tag "v2_test" --force
+  python run_debug_pipeline.py abc123 --stage E7P --tag "v2_test" --force
         """
     )
     parser.add_argument("uuid", help="対象のUUID（任意の識別子）")

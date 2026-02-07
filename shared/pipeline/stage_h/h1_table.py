@@ -1,89 +1,40 @@
 """
 Stage H1: Table Specialist (表処理専門)
 
-【Ver 10.8】ドメイン理解専門 + プラグイン式ドメインハンドラ
+【Ver 14.0】Pure Python ピボット構築（LLM不要）
 
-役割: Stage G の table_inventory から定型表・構造化表を処理
-      スキーママッチング・メタデータ抽出・カラムナ復元のみ担当
+G8が各データセルに col_header / row_header を付与済み。
+H1はLLMを使わず、Pure Pythonでこれらをピボットテーブル（論理表）に組み立てる。
 
 ============================================
 入力:
-  - table_inventory: REF_ID付き表リスト（Stage G出力、G4で座標ロック済み）
-  - doc_type: ドキュメントタイプ
-  - workspace: ワークスペース
+  - table_inventory: G8出力済みテーブルリスト（cells_enriched + header_map 付き）
+  - unified_text: H2用テキスト（テーブルタグ置換用）
 
 出力:
-  - processed_tables: 処理済み表データ
-  - extracted_metadata: 表から抽出したメタデータ
-  - table_text_fragments: H2から削除すべきテキスト断片
-
-特徴:
-  - 物理座標ロックはG4で完了済み（H1は一切関与しない）
-  - スキーママッチング・メタデータ抽出のみ
-  - カラムナ形式を辞書リストに復元
-  - H2への入力量削減のため、処理済み表のテキストを返す
-  - ドメイン固有ロジックは domains/ フォルダにプラグイン式で配置
+  - processed_tables: ピボット形式の処理済み表
+  - reduced_text: テーブルタグ埋め込み済みテキスト
 ============================================
 """
 import re
-from typing import Dict, Any, List, Optional, Set
+from collections import defaultdict, OrderedDict
+from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from ..utils.table_parser import recompose_columnar_data, is_columnar_format, extract_table_text_for_removal
-from .domains import DOMAIN_HANDLERS
+from ..utils.table_parser import extract_table_text_for_removal
 
 
 class StageH1Table:
-    """Stage H1: 表処理専門（Ver 10.8: プラグイン式ドメインハンドラ）"""
+    """Stage H1: 表処理専門（Ver 14.0: Pure Python ピボット構築）"""
 
-    # 定型表のスキーマ定義（doc_type別）
-    TABLE_SCHEMAS = {
-        "school_letter": {
-            "weekly_schedule": {
-                "required_columns": ["曜日", "時間", "科目"],
-                "alt_columns": [["日", "時限", "教科"], ["曜", "時間割", "授業"]],
-                "table_type": "schedule"
-            },
-            "event_list": {
-                "required_columns": ["日付", "行事"],
-                "alt_columns": [["日", "イベント"], ["月日", "予定"]],
-                "table_type": "event"
-            },
-            "持ち物リスト": {
-                "required_columns": ["品目", "数量"],
-                "alt_columns": [["持ち物", "個数"], ["もちもの", "かず"]],
-                "table_type": "item_list"
-            }
-        },
-        "flyer": {
-            "price_list": {
-                "required_columns": ["商品", "価格"],
-                "alt_columns": [["品名", "金額"], ["メニュー", "値段"]],
-                "table_type": "price"
-            },
-            "schedule": {
-                "required_columns": ["日時", "内容"],
-                "alt_columns": [["時間", "プログラム"]],
-                "table_type": "schedule"
-            }
-        },
-        "default": {
-            "generic_table": {
-                "required_columns": [],
-                "table_type": "generic"
-            }
-        }
-    }
-
-    def __init__(self, llm_client=None):
+    def __init__(self, llm_client=None, model=None):
         """
         Args:
-            llm_client: LLMクライアント（オプション、複雑な表処理時に使用）
+            llm_client: 互換性維持（使用しない）
+            model: 互換性維持（使用しない）
         """
-        self.llm = llm_client
-        # ドメインハンドラをインスタンス化
-        self.domain_handlers = [handler_class() for handler_class in DOMAIN_HANDLERS]
-        logger.debug(f"[Stage H1] {len(self.domain_handlers)}個のドメインハンドラを登録")
+        # LLMは使わない（シグネチャのみ互換維持）
+        pass
 
     def process(
         self,
@@ -94,26 +45,19 @@ class StageH1Table:
         raw_tokens: List[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        表データを処理
+        G8 enriched セルからピボットテーブルを構築
 
         Args:
-            table_inventory: Stage G の table_inventory
+            table_inventory: G8出力済みテーブルリスト
             doc_type: ドキュメントタイプ
             workspace: ワークスペース
-            unified_text: Stage G の unified_text（テキスト断片抽出用）
-            raw_tokens: E8のトークン座標（肩付き注釈の精密判定用）
+            unified_text: H2用テキスト
+            raw_tokens: E8トークン座標（互換性維持、未使用）
 
         Returns:
-            {
-                'processed_tables': List[Dict],  # 処理済み表
-                'extracted_metadata': Dict,       # 表から抽出したメタデータ
-                'table_text_fragments': List[str], # H2で削除すべきテキスト
-                'removed_table_ids': Set[str],    # H2から除外する表のID
-                'statistics': Dict                 # 処理統計
-            }
+            H2互換の出力構造
         """
-        raw_tokens = raw_tokens or []
-        logger.info(f"[Stage H1] 表処理開始: {len(table_inventory)}表 (doc_type={doc_type}, raw_tokens={len(raw_tokens)})")
+        logger.info(f"[Stage H1] ピボット構築開始: {len(table_inventory)}表")
 
         if not table_inventory:
             logger.info("[Stage H1] 表なし、スキップ")
@@ -122,614 +66,301 @@ class StageH1Table:
                 'extracted_metadata': {},
                 'table_text_fragments': [],
                 'removed_table_ids': [],
-                'reduced_text': unified_text,  # 軽量化なし
+                'unrepairable_tables': [],
+                'reduced_text': unified_text,
+                'h2_hint': '',
                 'statistics': {'total': 0, 'processed': 0, 'skipped': 0}
             }
 
         processed_tables = []
-        extracted_metadata = {}
         table_text_fragments = []
-        removed_table_ids = set()
-        unrepairable_tables = []  # G1で修復不能と判定された表
-        stats = {'total': len(table_inventory), 'processed': 0, 'skipped': 0, 'unrepairable': 0}
-
-        # doc_type に対応するスキーマを取得
-        schemas = self.TABLE_SCHEMAS.get(doc_type, self.TABLE_SCHEMAS['default'])
+        removed_table_ids = []
+        unrepairable_tables = []
+        clean_text = unified_text
+        stats = {'total': len(table_inventory), 'processed': 0, 'skipped': 0}
 
         for table in table_inventory:
             ref_id = table.get('ref_id', 'UNKNOWN')
             table_title = table.get('table_title', '')
-            table_type = table.get('table_type', 'unknown')
+            cells_enriched = table.get('cells_enriched', [])
+            header_map = table.get('header_map', {})
 
-            # ============================================
-            # G1の「白旗」検知: unrepairable フラグ
-            # ============================================
+            # unrepairable チェック
             if table.get('status') == 'unrepairable':
                 reason = table.get('unrepairable_reason', '理由不明')
                 logger.warning(f"[Stage H1] 修復不能表をスキップ: {ref_id} - {reason}")
-
-                # 修復不能表の情報を記録（レポート用）
                 unrepairable_tables.append({
                     'ref_id': ref_id,
                     'table_title': table_title,
                     'reason': reason,
-                    'page': table.get('page', 0)
                 })
-                stats['unrepairable'] += 1
                 stats['skipped'] += 1
-
-                # H2への通知用：この表は処理できなかったことを伝える
-                removed_table_ids.add(ref_id)
-                continue  # 次の表へ（ハルシネーション防止）
-
-            logger.debug(f"[Stage H1] 表処理: {ref_id} - {table_title} ({table_type})")
-
-            # ============================================
-            # Step 1: 住所録方式で正規化（汎用処理）
-            # ============================================
-            normalized_cells = self._normalize_table_rows(table)
-
-            # ============================================
-            # Step 2: ドメインハンドラによる意味解釈（プラグイン式）
-            # ============================================
-            domain_handled = False
-            for handler in self.domain_handlers:
-                if handler.detect(table_title, unified_text):
-                    handler_name = handler.__class__.__name__
-                    logger.info(f"[Stage H1] ドメイン検出: {handler_name} → {ref_id}")
-                    # 正規化済みデータを渡す
-                    processed_table = handler.process(
-                        normalized_cells=normalized_cells,
-                        table=table,
-                        ref_id=ref_id,
-                        table_title=table_title,
-                        raw_tokens=raw_tokens
-                    )
-                    if processed_table:
-                        processed_tables.append(processed_table)
-                        fragments = extract_table_text_for_removal(table)
-                        table_text_fragments.extend(fragments)
-                        removed_table_ids.add(ref_id)
-                        stats['processed'] += 1
-                        domain_handled = True
-                        break
-
-            if domain_handled:
+                removed_table_ids.append(ref_id)
                 continue
 
-            # ドメインハンドラなし → 汎用処理
-            rows_data = normalized_cells
+            if not cells_enriched:
+                # cells_flat フォールバック
+                cells_enriched = table.get('cells_flat', [])
 
-            # スキーママッチング
-            matched_schema = self._match_schema(table, schemas)
+            if not cells_enriched:
+                logger.warning(f"[Stage H1] セルなし: {ref_id}")
+                stats['skipped'] += 1
+                continue
 
-            if matched_schema:
-                # 定型表として処理
-                logger.info(f"[Stage H1] 定型表検出: {ref_id} → {matched_schema['table_type']}")
+            # 入力ログ
+            _total = len(cells_enriched)
+            _headers = sum(1 for c in cells_enriched if c.get('is_header', False))
+            _data = sum(1 for c in cells_enriched if not c.get('is_header', False) and str(c.get('text', '')).strip())
+            _with_col = sum(1 for c in cells_enriched if c.get('col_header') is not None and not c.get('is_header', False))
+            _with_row = sum(1 for c in cells_enriched if c.get('row_header') is not None and not c.get('is_header', False))
+            logger.info(f"[Stage H1] {ref_id} 入力: total={_total}, header={_headers}, data={_data}, col_header付={_with_col}/{_data}, row_header付={_with_row}/{_data}")
 
-                processed_table = {
-                    'ref_id': ref_id,
-                    'table_title': table_title,
-                    'table_type': matched_schema['table_type'],
-                    'schema_matched': True,
-                    'columns': table.get('columns', []) or table.get('headers', []),
-                    'rows': rows_data,
-                    'row_count': len(rows_data),
-                    'source': table.get('source', 'stage_g')
-                }
-                processed_tables.append(processed_table)
+            # ピボット構築
+            pivot = self._pivot_enriched_cells(cells_enriched, header_map)
+            columns = pivot['columns']
+            rows = pivot['rows']
 
-                # メタデータ抽出（特定のtable_typeに対して）
-                meta = self._extract_metadata_from_table(processed_table, matched_schema['table_type'])
-                if meta:
-                    extracted_metadata.update(meta)
+            logger.info(f"[Stage H1] {ref_id} 出力: columns={columns}, rows={len(rows)}行")
+            for i, row in enumerate(rows[:3]):
+                logger.info(f"[Stage H1]   row[{i}]: {row}")
+            if len(rows) > 3:
+                logger.info(f"[Stage H1]   ... 残り{len(rows) - 3}行")
 
-                # H2から削除すべきテキスト断片を収集
-                fragments = extract_table_text_for_removal(table)
-                table_text_fragments.extend(fragments)
+            # テキスト断片を収集（H2での重複除去用）
+            fragments = extract_table_text_for_removal(table)
+            table_text_fragments.extend(fragments)
 
-                # この表はH1で処理済みとしてマーク
-                removed_table_ids.add(ref_id)
-                stats['processed'] += 1
+            # テキスト中のテーブル領域をタグに置換
+            tag = f"[表{ref_id}: {table_title}]" if table_title else f"[表{ref_id}]"
+            clean_text = self._replace_table_with_tag(clean_text, fragments, tag)
 
-            else:
-                # 定型外の表は軽量処理のみ
-                logger.debug(f"[Stage H1] 汎用表: {ref_id}")
+            # processed_table 構築
+            processed_table = {
+                'ref_id': ref_id,
+                'table_title': table_title,
+                'table_type': 'pivot',
+                'columns': columns,
+                'rows': rows,
+                'row_count': len(rows),
+                'source': 'stage_h1_g8_pivot',
+            }
 
-                processed_table = {
-                    'ref_id': ref_id,
-                    'table_title': table_title,
-                    'table_type': table_type or 'generic',
-                    'schema_matched': False,
-                    'columns': table.get('columns', []) or table.get('headers', []),
-                    'rows': rows_data,
-                    'row_count': len(rows_data),
-                    'source': table.get('source', 'stage_g')
-                }
-                processed_tables.append(processed_table)
+            # UI表示用フォーマット付与
+            self._add_display_formats(processed_table, table)
 
-                # 【Ver 6.7】スキップ禁止: どんな表も処理対象とする
-                # F9/F10で「表」と判定されたものは必ず価値があるデータ
-                fragments = extract_table_text_for_removal(table)
-                table_text_fragments.extend(fragments)
-                removed_table_ids.add(ref_id)
-                stats['processed'] += 1
+            processed_tables.append(processed_table)
+            removed_table_ids.append(ref_id)
+            stats['processed'] += 1
 
-        logger.info(f"[Stage H1] 完了: processed={stats['processed']}, skipped={stats['skipped']}, unrepairable={stats['unrepairable']}")
-
-        # 修復不能表があれば警告
-        if unrepairable_tables:
-            logger.warning(f"[Stage H1] 修復不能表: {len(unrepairable_tables)}件 → H2へ通知済み")
-
-        # ============================================
-        # 全表に flat_data / grid_data を付与（UI表示用）
-        # ============================================
-        for i, processed_table in enumerate(processed_tables):
-            original_table = table_inventory[i] if i < len(table_inventory) else {}
-            self._add_display_formats(processed_table, original_table)
-
-        # H2用の軽量化テキストを生成
-        reduced_text = self.remove_table_text_from_unified(unified_text, table_text_fragments)
+        logger.info(f"[Stage H1] 完了: processed={stats['processed']}, skipped={stats['skipped']}")
 
         return {
             'processed_tables': processed_tables,
-            'extracted_metadata': extracted_metadata,
+            'extracted_metadata': {},
             'table_text_fragments': table_text_fragments,
-            'removed_table_ids': list(removed_table_ids),  # JSON用にlistへ変換
-            'unrepairable_tables': unrepairable_tables,  # G1で修復不能と判定された表の一覧
-            'reduced_text': reduced_text,  # H2用の軽量化テキスト
-            'statistics': stats
+            'removed_table_ids': removed_table_ids,
+            'unrepairable_tables': unrepairable_tables,
+            'reduced_text': clean_text,
+            'h2_hint': '',
+            'statistics': stats,
         }
 
-    def _normalize_table_rows(self, table: Dict) -> List[Dict]:
+    # ------------------------------------------------------------------
+    # ピボット構築
+    # ------------------------------------------------------------------
+
+    def _find_row_label(
+        self,
+        cells_enriched: List[Dict],
+        header_map: Dict,
+    ) -> str:
         """
-        表の行データを正規化（住所録方式）
+        行ラベル名を特定する（例: "偏差値"）
 
-        【住所録方式】
-        - 各データセルに、行ヘッダーと列ヘッダーの値を継承
-        - col=2 のセル → 2列目のヘッダー値を取得
-        - row=3 のセル → 3行目のラベル値を取得
+        row_header_cols を持つパネルの row=0 ヘッダーセルのテキストを返す。
+        row_header_cols の列自体に row=0 セルがない場合は、
+        同パネル row=0 の任意のヘッダーセルを採用する。
+        """
+        panels = header_map.get('panels', {})
+        for pk, cfg in panels.items():
+            rh_cols = cfg.get('row_header_cols', [])
+            if not rh_cols:
+                continue
 
-        Args:
-            table: 表データ
+            # このパネルの panel_id を取得（"P0" → "0"）
+            pid = pk.lstrip('P')
+
+            # row=0 のセルを収集
+            row0_cells = [
+                c for c in cells_enriched
+                if str(c.get('panel_id', 0) or 0) == pid and c.get('row', -1) == 0
+            ]
+
+            # まず row_header_cols に属する row=0 セルを探す
+            for cell in row0_cells:
+                if cell.get('col', -1) in rh_cols:
+                    text = str(cell.get('text', '')).strip()
+                    if text:
+                        return text
+
+            # なければ同パネル row=0 の任意のヘッダーセルを採用
+            for cell in row0_cells:
+                if cell.get('is_header', False):
+                    text = str(cell.get('text', '')).strip()
+                    if text:
+                        return text
+
+        return "行ヘッダー"
+
+    def _pivot_enriched_cells(
+        self,
+        cells_enriched: List[Dict],
+        header_map: Dict,
+    ) -> Dict[str, Any]:
+        """
+        enriched セルからピボットテーブルを構築
 
         Returns:
-            辞書リスト形式の行データ（位置情報付き）
+            {"columns": [...], "rows": [{...}, ...]}
         """
-        # cells形式（G6からの入力）
-        if 'cells' in table and table['cells']:
-            return self._normalize_cells_with_headers(table)
+        # データセルのみ抽出（非ヘッダー、テキストあり）
+        data_cells = [
+            c for c in cells_enriched
+            if not c.get('is_header', False) and str(c.get('text', '')).strip()
+        ]
 
-        # 他の形式は従来通り処理
-        return self._normalize_legacy_format(table)
+        if not data_cells:
+            return {'columns': [], 'rows': []}
 
-    def _normalize_cells_with_headers(self, table: Dict) -> List[Dict]:
+        # 行ヘッダー: 出現順を保持した unique リスト
+        row_headers = list(OrderedDict.fromkeys(
+            c.get('row_header') for c in data_cells if c.get('row_header') is not None
+        ))
+
+        # 列ヘッダー: global_col の最小値でソート（左→右の物理順）
+        col_header_min_gc = {}
+        for c in data_cells:
+            ch = c.get('col_header')
+            if ch is not None:
+                gc = c.get('global_col', c.get('col', 0))
+                if ch not in col_header_min_gc or gc < col_header_min_gc[ch]:
+                    col_header_min_gc[ch] = gc
+        col_headers = sorted(col_header_min_gc.keys(), key=lambda h: col_header_min_gc[h])
+
+        row_label = self._find_row_label(cells_enriched, header_map)
+
+        # (row_header, col_header) でグルーピング
+        groups = defaultdict(list)
+        for c in data_cells:
+            rh = c.get('row_header')
+            ch = c.get('col_header')
+            groups[(rh, ch)].append(str(c.get('text', '')).strip())
+
+        # ピボット行を構築
+        columns = [row_label] + col_headers
+        rows = []
+        for rh in row_headers:
+            record = {row_label: rh}
+            for ch in col_headers:
+                record[ch] = groups.get((rh, ch), [])
+            rows.append(record)
+
+        return {'columns': columns, 'rows': rows}
+
+    # ------------------------------------------------------------------
+    # テキスト置換
+    # ------------------------------------------------------------------
+
+    def _replace_table_with_tag(
+        self,
+        text: str,
+        fragments: List[str],
+        tag: str,
+    ) -> str:
         """
-        cells形式を住所録方式で正規化
+        テキスト中のテーブル断片をタグに置換
 
-        1. 行ヘッダー（各行の左端）を検出
-        2. 列ヘッダー（上部の行）を検出
-        3. 各データセルに行・列ヘッダー値を付与
+        長い断片から順に置換し、最初に見つかった位置にタグを挿入。
         """
-        cells = table['cells']
-        columns = table.get('columns', []) or table.get('headers', [])
+        if not fragments or not text:
+            return text
 
-        # ============================================
-        # Step 1: 行・列のヘッダーを検出
-        # ============================================
-        row_headers = {}  # {row_idx: header_value}
-        col_headers = {}  # {col_idx: header_value}
+        tag_inserted = False
+        sorted_fragments = sorted(fragments, key=len, reverse=True)
 
-        # 列ヘッダー: columnsフィールドから
-        for i, header in enumerate(columns):
-            if header:
-                col_headers[i] = str(header).strip()
-
-        # セルから行・列ヘッダーを補完
-        for cell in cells:
-            text = str(cell.get('text', '')).strip()
-            if not text:
+        for frag in sorted_fragments:
+            if len(frag) < 10:
                 continue
+            if frag in text:
+                if not tag_inserted:
+                    text = text.replace(frag, tag, 1)
+                    tag_inserted = True
+                    # 残りの同じ断片も削除
+                    text = text.replace(frag, '')
+                else:
+                    text = text.replace(frag, '')
 
-            row_idx = cell.get('row')
-            col_idx = cell.get('col')
+        # 連続空行を整理
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
 
-            # 列ヘッダー: 上部の行（row <= 2）かつ未設定
-            if row_idx is not None and row_idx <= 2 and col_idx is not None:
-                if col_idx not in col_headers:
-                    col_headers[col_idx] = text
-
-            # 行ヘッダー: 左端の列（col <= 1）かつ未設定
-            if col_idx is not None and col_idx <= 1 and row_idx is not None:
-                if row_idx not in row_headers:
-                    row_headers[row_idx] = text
-
-        logger.debug(f"[Stage H1] 列ヘッダー: {col_headers}")
-        logger.debug(f"[Stage H1] 行ヘッダー: {len(row_headers)}件")
-
-        # ============================================
-        # Step 2: データセルを正規化（位置情報付き）
-        # ============================================
-        result = []
-        for cell in cells:
-            text = str(cell.get('text', '')).strip()
-            if not text:
-                continue
-
-            row_idx = cell.get('row')
-            col_idx = cell.get('col')
-            bbox = cell.get('bbox', [0, 0, 0, 0])
-
-            # ヘッダー行/列自体はデータとして出力しない
-            if row_idx is not None and row_idx <= 2:
-                continue
-            if col_idx is not None and col_idx <= 1:
-                continue
-
-            # 行・列ヘッダー値を継承
-            row_dict = {
-                'text': text,
-                'row': row_idx,
-                'col': col_idx,
-                'bbox': bbox,
-                'row_header': row_headers.get(row_idx),
-                'col_header': col_headers.get(col_idx),
-            }
-            result.append(row_dict)
-
-        logger.debug(f"[Stage H1] 住所録方式で{len(result)}セルを正規化")
-        return result
-
-    def _normalize_legacy_format(self, table: Dict) -> List[Dict]:
-        """従来形式の正規化（後方互換）"""
-        # columns + rows 形式（カラムナ）
-        if 'columns' in table and 'rows' in table:
-            if is_columnar_format(table):
-                return recompose_columnar_data(table)
-
-        # headers + rows 形式
-        if 'headers' in table and 'rows' in table:
-            headers = table.get('headers', []) or []
-            rows = table.get('rows', []) or []
-            result = []
-
-            for row_idx, row in enumerate(rows):
-                if isinstance(row, list):
-                    effective_headers = list(headers)
-                    while len(effective_headers) < len(row):
-                        effective_headers.append(f'column_{len(effective_headers) + 1}')
-
-                    row_dict = {}
-                    for i, value in enumerate(row):
-                        if i < len(effective_headers):
-                            key = effective_headers[i] or f'column_{i + 1}'
-                        else:
-                            key = f'column_{i + 1}'
-                        if value is not None and str(value).strip():
-                            row_dict[key] = value
-                            row_dict['col'] = i  # 列位置を保持
-
-                    if row_dict:
-                        result.append(row_dict)
-
-                elif isinstance(row, dict):
-                    if row:
-                        result.append(row)
-
-            return result
-
-        # rows のみ
-        if 'rows' in table:
-            rows = table['rows']
-            if not isinstance(rows, list):
-                return []
-
-            result = []
-            for row in rows:
-                if isinstance(row, list):
-                    row_dict = {f'column_{i + 1}': v for i, v in enumerate(row) if v is not None and str(v).strip()}
-                    if row_dict:
-                        result.append(row_dict)
-                elif isinstance(row, dict) and row:
-                    result.append(row)
-            return result
-
-        return []
-
-        # columns + rows 形式（カラムナ）
-        if 'columns' in table and 'rows' in table:
-            if is_columnar_format(table):
-                return recompose_columnar_data(table)
-
-        # headers + rows 形式
-        if 'headers' in table and 'rows' in table:
-            headers = table.get('headers', []) or []
-            rows = table.get('rows', []) or []
-            result = []
-
-            for row_idx, row in enumerate(rows):
-                if isinstance(row, list):
-                    # 【データ救済】ヘッダーが不足している場合、仮ヘッダーを生成
-                    effective_headers = list(headers)  # コピー
-                    while len(effective_headers) < len(row):
-                        effective_headers.append(f'column_{len(effective_headers) + 1}')
-
-                    # 全データを辞書に格納（ヘッダーがなくても消さない）
-                    row_dict = {}
-                    for i, value in enumerate(row):
-                        if i < len(effective_headers):
-                            key = effective_headers[i] or f'column_{i + 1}'
-                        else:
-                            key = f'column_{i + 1}'
-                        # 値が存在すれば必ず保持
-                        if value is not None and str(value).strip():
-                            row_dict[key] = value
-
-                    # 空でない行のみ追加
-                    if row_dict:
-                        result.append(row_dict)
-
-                elif isinstance(row, dict):
-                    if row:  # 空でない辞書のみ
-                        result.append(row)
-
-            return result
-
-        # rows のみ（ヘッダーなし）→ 仮ヘッダーで辞書化
-        if 'rows' in table:
-            rows = table['rows']
-            if not isinstance(rows, list):
-                return []
-
-            result = []
-            for row in rows:
-                if isinstance(row, list):
-                    # 仮ヘッダーで辞書化
-                    row_dict = {f'column_{i + 1}': v for i, v in enumerate(row) if v is not None and str(v).strip()}
-                    if row_dict:
-                        result.append(row_dict)
-                elif isinstance(row, dict) and row:
-                    result.append(row)
-            return result
-
-        return []
-
-    def _match_schema(self, table: Dict, schemas: Dict) -> Optional[Dict]:
-        """
-        表がスキーマにマッチするかチェック
-
-        Args:
-            table: 表データ
-            schemas: スキーマ定義
-
-        Returns:
-            マッチしたスキーマ、またはNone
-        """
-        columns = table.get('columns', []) or table.get('headers', [])
-        if not columns:
-            return None
-
-        columns_lower = [str(c).lower() for c in columns]
-
-        for schema_name, schema in schemas.items():
-            required = schema.get('required_columns', [])
-            alt_sets = schema.get('alt_columns', [])
-
-            # 必須カラムのチェック
-            if required:
-                required_lower = [c.lower() for c in required]
-                if all(any(req in col for col in columns_lower) for req in required_lower):
-                    return schema
-
-            # 代替カラムセットのチェック
-            for alt_set in alt_sets:
-                alt_lower = [c.lower() for c in alt_set]
-                if all(any(alt in col for col in columns_lower) for alt in alt_lower):
-                    return schema
-
-        return None
-
-    def _extract_metadata_from_table(self, table: Dict, table_type: str) -> Dict[str, Any]:
-        """
-        表からメタデータを抽出
-
-        Args:
-            table: 処理済み表データ
-            table_type: 表タイプ
-
-        Returns:
-            抽出したメタデータ
-        """
-        metadata = {}
-        rows = table.get('rows', [])
-
-        if table_type == 'schedule':
-            # 時間割/スケジュール表
-            schedule_items = []
-            for row in rows:
-                if isinstance(row, dict):
-                    schedule_items.append(row)
-            if schedule_items:
-                metadata['weekly_schedule'] = schedule_items
-
-        elif table_type == 'event':
-            # イベントリスト
-            events = []
-            for row in rows:
-                if isinstance(row, dict):
-                    events.append(row)
-            if events:
-                metadata['event_list'] = events
-
-        elif table_type == 'item_list':
-            # 持ち物リスト
-            items = []
-            for row in rows:
-                if isinstance(row, dict):
-                    items.append(row)
-            if items:
-                metadata['required_items'] = items
-
-        elif table_type == 'price':
-            # 価格表
-            prices = []
-            for row in rows:
-                if isinstance(row, dict):
-                    prices.append(row)
-            if prices:
-                metadata['price_list'] = prices
-
-        return metadata
+    # ------------------------------------------------------------------
+    # UI表示用フォーマット
+    # ------------------------------------------------------------------
 
     def _add_display_formats(
         self,
         processed_table: Dict[str, Any],
-        original_table: Dict[str, Any]
+        original_table: Dict[str, Any],
     ) -> None:
         """
-        処理済み表にUI表示用の2形式を追加（汎用）
+        処理済み表にUI表示用の flat_data / grid_data を追加
 
-        ドメインハンドラ（yotsuya等）が既に flat_data/grid_data を
-        生成している場合は、それを保持して上書きしない。
-
-        Args:
-            processed_table: 処理済み表データ（変更される）
-            original_table: 元の表データ（cells等を含む）
+        既にドメインハンドラ等で生成済みの場合はスキップ。
         """
-        # ============================================
-        # ドメインハンドラの出力を保護
-        # flat_data / grid_data が既に存在する場合はスキップ
-        # ============================================
         has_flat = 'flat_data' in processed_table and processed_table['flat_data']
         has_grid = 'grid_data' in processed_table and processed_table['grid_data']
 
         if has_flat and has_grid:
-            logger.debug(f"[Stage H1] ドメイン出力を保持: {processed_table.get('ref_id', '?')}")
-            return  # ドメインハンドラの出力をそのまま使用
+            return
 
         rows = processed_table.get('rows', [])
         columns = processed_table.get('columns', [])
 
-        # ============================================
-        # 1. flat_data: 正規化されたフラット表
-        # ============================================
+        # flat_data: ピボット行をそのまま使用（値リストを文字列に展開）
         if not has_flat:
             flat_data = []
-            flat_columns = []
-
-            if rows:
-                if isinstance(rows[0], dict):
-                    # オブジェクト配列 → キーを収集
-                    all_keys = set()
-                    for row in rows:
-                        if isinstance(row, dict):
-                            all_keys.update(row.keys())
-                    flat_columns = sorted(all_keys)
-                    flat_data = rows
-                elif isinstance(rows[0], list):
-                    # 2D配列 → 辞書に変換
-                    flat_columns = columns if columns else [f'列{i+1}' for i in range(len(rows[0]))]
-                    for row in rows:
-                        row_dict = {flat_columns[i]: v for i, v in enumerate(row) if i < len(flat_columns)}
-                        flat_data.append(row_dict)
+            for row in rows:
+                if isinstance(row, dict):
+                    flat_row = {}
+                    for k, v in row.items():
+                        if isinstance(v, list):
+                            flat_row[k] = ", ".join(str(x) for x in v)
+                        else:
+                            flat_row[k] = v
+                    flat_data.append(flat_row)
                 else:
-                    flat_data = rows
-                    flat_columns = columns
+                    flat_data.append(row)
 
             processed_table['flat_data'] = flat_data
-            processed_table['flat_columns'] = flat_columns
-        else:
-            flat_data = processed_table['flat_data']
-            flat_columns = processed_table.get('flat_columns', [])
+            processed_table['flat_columns'] = columns
 
-        # ============================================
-        # 2. grid_data: 元の表構造を保持
-        # ============================================
+        # grid_data: 2D配列表現
         if not has_grid:
             grid_data = {
+                'columns': columns,
                 'rows': [],
-                'columns': [],
-                'cells': []
+                'cells': original_table.get('cells', []),
             }
-
-            # 元のcells情報があれば使用（元の表構造を復元）
-            cells = original_table.get('cells', [])
-            if cells:
-                # セルをY座標でグループ化
-                rows_by_y = {}
-                all_x = set()
-                for cell in cells:
-                    bbox = cell.get('bbox', [0, 0, 0, 0])
-                    y_key = int(bbox[1] / 10) * 10
-                    x_key = int(bbox[0] / 10) * 10
-                    all_x.add(x_key)
-
-                    if y_key not in rows_by_y:
-                        rows_by_y[y_key] = {}
-                    rows_by_y[y_key][x_key] = cell.get('text', '')
-
-                sorted_y = sorted(rows_by_y.keys())
-                sorted_x = sorted(all_x)
-
-                grid_data['columns'] = [f'列{i+1}' for i in range(len(sorted_x))]
-                for y in sorted_y:
-                    grid_data['rows'].append([rows_by_y[y].get(x, '') for x in sorted_x])
-
-                grid_data['cells'] = cells
-
-            else:
-                # cellsがない場合はflat_dataから復元
-                grid_data['columns'] = flat_columns
-                for row in flat_data:
-                    if isinstance(row, dict):
-                        grid_data['rows'].append([row.get(c, '') for c in flat_columns])
-                    elif isinstance(row, list):
-                        grid_data['rows'].append(row)
+            for row in rows:
+                if isinstance(row, dict):
+                    grid_row = []
+                    for col in columns:
+                        val = row.get(col, [])
+                        if isinstance(val, list):
+                            grid_row.append(", ".join(str(x) for x in val))
+                        else:
+                            grid_row.append(str(val) if val else "")
+                    grid_data['rows'].append(grid_row)
 
             processed_table['grid_data'] = grid_data
-
-    def remove_table_text_from_unified(
-        self,
-        unified_text: str,
-        table_text_fragments: List[str]
-    ) -> str:
-        """
-        unified_text から表関連テキストを削除
-
-        H2への入力量を削減するため、H1で処理済みの表の
-        テキスト表現を削除
-
-        Args:
-            unified_text: Stage G の unified_text
-            table_text_fragments: 削除すべきテキスト断片
-
-        Returns:
-            軽量化された unified_text
-        """
-        if not table_text_fragments:
-            return unified_text
-
-        result = unified_text
-
-        # 断片を長い順にソート（部分一致を避けるため）
-        sorted_fragments = sorted(table_text_fragments, key=len, reverse=True)
-
-        for fragment in sorted_fragments:
-            if len(fragment) < 10:
-                continue  # 短すぎる断片はスキップ
-
-            # 断片を削除（複数回出現する可能性あり）
-            if fragment in result:
-                result = result.replace(fragment, '')
-
-        # 連続する空行を整理
-        import re
-        result = re.sub(r'\n{3,}', '\n\n', result)
-
-        original_len = len(unified_text)
-        reduced_len = len(result)
-        reduction = original_len - reduced_len
-
-        logger.info(f"[Stage H1] テキスト軽量化: {original_len}→{reduced_len}文字 (-{reduction}文字, -{reduction*100//original_len if original_len > 0 else 0}%)")
-
-        return result.strip()

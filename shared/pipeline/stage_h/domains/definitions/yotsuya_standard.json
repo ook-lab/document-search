@@ -1,0 +1,271 @@
+{
+  "domain_id": "yotsuya_hensachi",
+  "domain_label": "Yotsuya Otsuka Deviation Value List",
+  "version": "3.2",
+
+  "fingerprint": {
+    "keywords": ["四谷大塚", "合不合判定", "80偏差値", "Aライン"],
+    "structural_detection": {
+      "required_text": "偏差値",
+      "indicator_texts": [
+        "開成", "灘", "麻布", "駒場東邦", "渋谷教育",
+        "聖光学院", "早稲田", "海城", "広尾学園", "小石川",
+        "本郷", "慶應中等部", "筑波大附", "市川", "浅野",
+        "芝", "明大明治", "聖学院", "明大中野", "巣鴨",
+        "攻玉社", "世田谷学園", "城北", "桐朋", "暁星",
+        "サレジオ", "逗子開成", "鎌倉学園", "横浜市立YSFH",
+        "富士高附属", "南多摩", "日大豊山", "東京電機大", "獨協",
+        "三田国際"
+      ],
+      "indicator_markers_reuse": true
+    }
+  },
+
+  "noise_patterns": [
+    "^テスト$", "^男子$", "^女子$", "^合不合判定",
+    "^判定校$", "^教科$", "^Aライン", "^80偏差値",
+    "^\\d{4}年", "^偏差値", "^試験日$", "^学校名$", "^備考$",
+    "判定校.*判定校",
+    "偏差値一覧",
+    "^未来のリーダー",
+    "^4教科", "^2教科", "^3教科",
+    "^\\d{1,2}月\\d{1,2}日実施",
+    "^\\d{2}$",
+    "^[力三]$",
+    "^[・·˙]$",
+    "^※",
+    "^ˋ$",
+    "^~$",
+    "^[　\\s]*$"
+  ],
+
+  "max_entity_length": 30,
+
+  "special_markers": ["☆", "◇", "▼", "●", "□", "◎", "○", "△"],
+
+  "table_rules": {
+    "require_entity_text": {
+      "enabled": true,
+      "description": "エンティティ（学校名）には非数字のテキストが必須。数値のみのセルは学校名とみなさない",
+      "rule": "entityフィールドに漢字・ひらがな・カタカナ・英字のいずれかが1文字以上含まれていなければ無効として除外する",
+      "min_entity_chars": 2,
+      "min_entity_chars_description": "1文字のみ（「三」「力」等）のエンティティは除外する。ただしcell_splitting内で学校名の一部として連結される場合は例外",
+      "examples_invalid": ["36", "35", "34", "32", "70", "三", "力"],
+      "examples_valid": ["開成", "聖光学院2", "☆筑波大駒場", "芝"]
+    },
+
+    "format_detection": {
+      "flat_indicator_col_header": "学校名"
+    },
+
+    "column_date_system": {
+      "description": "この表は正確に8つの日程カラムを持つ。以下のリストがカラムヘッダーの完全なホワイトリストであり、これ以外のテキストはカラムヘッダーとして認識してはならない",
+      "strict_whitelist": true,
+      "only_these_headers": [
+        "1月前半(~ 1/19)",
+        "1月後半(1/20 ~)",
+        "2/1 午前",
+        "2/1 午後",
+        "2/2 午前",
+        "2/2 午後",
+        "2/3",
+        "2/4 ~"
+      ],
+      "reject_other_headers": "上記8つに一致しないテキストはカラムヘッダーではない。ノイズ・タイトル・注釈として無視すること",
+      "columns": [
+        {
+          "header": "1月前半(~ 1/19)",
+          "date_rule": "superscript",
+          "date_rule_description": "肩付き注釈に記載された具体日付を使用する",
+          "default_date": null
+        },
+        {
+          "header": "1月後半(1/20 ~)",
+          "date_rule": "superscript",
+          "date_rule_description": "肩付き注釈に記載された具体日付を使用する",
+          "default_date": null
+        },
+        {
+          "header": "2/1 午前",
+          "date_rule": "fixed",
+          "date": "2/1 午前"
+        },
+        {
+          "header": "2/1 午後",
+          "date_rule": "fixed",
+          "date": "2/1 午後"
+        },
+        {
+          "header": "2/2 午前",
+          "date_rule": "fixed",
+          "date": "2/2 午前"
+        },
+        {
+          "header": "2/2 午後",
+          "date_rule": "fixed",
+          "date": "2/2 午後"
+        },
+        {
+          "header": "2/3",
+          "date_rule": "fixed",
+          "date": "2/3"
+        },
+        {
+          "header": "2/4 ~",
+          "date_rule": "divider_with_default",
+          "date_rule_description": "デフォルトは '2/4'。日付デバイダーで上書き。肩付き日付があればさらに優先",
+          "default_date": "2/4",
+          "divider_propagation": "forward_fill_only"
+        }
+      ]
+    },
+
+    "date_divider_rows": {
+      "description": "日付セルによる日程更新は、以下の幾何学的条件を満たす場合のみ、その直下の学校に限定して適用する",
+      "strict_contact_rule": {
+        "enabled": true,
+        "max_vertical_distance_px": 10,
+        "horizontal_overlap_required": "left_half",
+        "trigger_sequence": "date_on_top_then_school_below",
+        "propagation": "none",
+        "propagation_description": "行以降への伝播は一切禁止。直下の1校に適用した時点で終了せよ"
+      }
+    },
+
+    "cell_splitting": {
+      "description": "1つのセルに偏差値+学校名が複数混在するケースを分割する",
+      "split_trigger": "deviation_value_only",
+      "split_trigger_description": "分割トリガーは偏差値（2桁数値30-80）の出現のみ。空白・スペース・漢字単独では絶対に分割しない",
+      "split_on_whitespace": false,
+      "must_contain_deviation": true,
+      "mixed_cell_pattern": "[偏差値(2桁)] + [学校名(カッコ含む)] + [回次(任意1桁)] の順序の繰り返し。偏差値が省略されている場合は直前の偏差値を引き継ぐ",
+      "keep_brackets": true,
+      "protected_patterns": ["\\(.*?\\)", "（.*?）"],
+      "bracket_protection": "カッコ () （） を含む文字列は1つの学校名として保護し、途中で分割しない",
+      "examples": [
+        {
+          "input": "70 筑波大駒場 74 聖光学院2",
+          "output": [
+            {"entity": "筑波大駒場", "metric": "70"},
+            {"entity": "聖光学院", "metric": "74", "session": "2"}
+          ]
+        },
+        {
+          "input": "68 早稲田2 渋谷教育渋谷3",
+          "output": [
+            {"entity": "早稲田", "metric": "68", "session": "2"},
+            {"entity": "渋谷教育渋谷", "metric": "68", "session": "3"}
+          ]
+        },
+        {
+          "input": "☆開成",
+          "output": [
+            {"entity": "開成", "markers": ["☆"]}
+          ]
+        },
+        {
+          "input": "50 聖学院(アドバンスト) 日大豊山",
+          "output": [
+            {"entity": "聖学院(アドバンスト)", "metric": "50"},
+            {"entity": "日大豊山", "metric": "50"}
+          ]
+        },
+        {
+          "input": "46 東京電機大 獨協",
+          "output": [
+            {"entity": "東京電機大", "metric": "46"},
+            {"entity": "獨協", "metric": "46"}
+          ]
+        },
+        {
+          "input": "44 富士高附属 三田国際2 南多摩",
+          "note": "「三田国際」は1つの学校名。「三」で分割してはならない",
+          "output": [
+            {"entity": "富士高附属", "metric": "44"},
+            {"entity": "三田国際", "metric": "44", "session": "2"},
+            {"entity": "南多摩", "metric": "44"}
+          ]
+        }
+      ]
+    },
+
+    "session_number": {
+      "description": "学校名末尾の1桁数字は入試回次（第N回）を意味する。ただし直前の文字が数字でないこと",
+      "pattern": "(?<=\\D)(\\d)$ — 直前が非数字の場合のみ末尾1桁をキャプチャ",
+      "interpret_as_date_index": true,
+      "interpret_as_date_index_description": "回次は試験日を特定する手がかりになる。例: session=2 の場合、その学校の第2回入試の日程を適用",
+      "exceptions": "学校名自体に数字を含む場合（例: 'YSFH附属', '21世紀'）は回次として分離しない。indicator_texts に含まれる学校名はそのまま保持",
+      "examples": [
+        {"input": "聖光学院2", "entity": "聖光学院", "session": "2"},
+        {"input": "早稲田2", "entity": "早稲田", "session": "2"},
+        {"input": "渋谷教育渋谷3", "entity": "渋谷教育渋谷", "session": "3"},
+        {"input": "三田国際2", "entity": "三田国際", "session": "2"},
+        {"input": "開成", "entity": "開成", "session": null},
+        {"input": "聖学院(アドバンスト)", "entity": "聖学院(アドバンスト)", "session": null},
+        {"input": "横浜市立YSFH附属", "entity": "横浜市立YSFH附属", "session": null}
+      ],
+      "display_format": "学校名②（session=2の場合）"
+    },
+
+
+    "marker_separation": {
+      "strip_from_entity": true,
+      "prepend_to_display_name": true
+    },
+
+    "metric_validation": {
+      "type": "integer_range",
+      "min": 30,
+      "max": 80
+    },
+
+    "date_normalization": {
+      "output_format": "M/D or M/D 午前|午後",
+      "keep_ampm": true,
+      "keep_ampm_description": "「2/1 午前」「2/1 午後」の午前/午後は日付の一部として保持する",
+      "input_patterns": [
+        {"regex": "(\\d{4})-(\\d{1,2})-(\\d{1,2})", "groups": [2, 3]},
+        {"regex": "(\\d{1,2})月(\\d{1,2})", "groups": [1, 2]},
+        {"regex": "(\\d{1,2})/(\\d{1,2})", "groups": [1, 2]}
+      ]
+    },
+
+    "dedup": {
+      "key_fields": ["entity", "row_header", "col_header", "session"]
+    },
+
+    "sort": {
+      "field": "row_header",
+      "order": "descending",
+      "type": "integer"
+    }
+  },
+
+  "grid_construction": {
+    "row_sort": "integer_descending",
+    "col_sort": "date_md_ascending",
+    "cell_separator": "\n",
+    "context_aware_date": true,
+    "direction": "downward",
+    "ampm_columns": "「2/1 午前」「2/1 午後」「2/2 午前」「2/2 午後」は別カラムとして扱う",
+    "panel_column_resolution": {
+      "description": "各パネルには8カラムの一部が含まれる。AIはパネル内のヘッダー行を読み、column_date_system.columns の定義と照合して date_rule を適用すること",
+      "rule": "パネル内の (header) セルの ch: 値を column_date_system.only_these_headers と照合し、一致するカラムの date_rule (fixed / superscript / divider_with_default) に従って日付を決定する",
+      "cross_panel_prohibition": "他パネルのヘッダーやデバイダーを参照してはならない"
+    }
+  },
+
+  "output": {
+    "table_type": "yotsuya_hensachi",
+    "source_tag": "stage_h1_ai_engine_v3.2",
+    "flat_columns": ["entity", "row_header", "col_header", "session"],
+    "column_names": {
+      "entity": "学校名",
+      "row_header": "偏差値",
+      "col_header": "日程",
+      "session": "回次"
+    }
+  },
+
+  "h2_context_hint": "This document contains a deviation value ranking table (偏差値一覧表). Table data has already been structured by H1. Focus on titles, annotations, notes, and any supplementary text outside the table."
+}

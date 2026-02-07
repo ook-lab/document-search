@@ -144,23 +144,55 @@ class G4Assemble:
         logical_structure: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
-        F2の幾何境界を用いてトークンを数学的に最適なセルへ強制ロックする
+        F3のrow/colインデックスとテキストをそのまま継承する
 
-        F3の仮配分に依存せず、G3の確定テキストのbbox中心座標と
-        F2のrow_boundaries/col_boundariesのみで再配置を行う。
+        文字列の結合（join）は行わない。F3が「別の単語」として
+        仕分けたトークンは、同一セル内でも独立したアイテムとして
+        H1へ渡す。AIが癒着の解釈を行う。
 
         Args:
-            tagged_texts: G3の洗い替え済みテキスト
-            logical_structure: F2の出力
+            tagged_texts: G3の洗い替え済みテキスト（F3の row/col 付き）
+            logical_structure: F2の出力（参照用）
 
         Returns:
             locked_table: {row_count, col_count, cells_flat} or None
         """
-        # F2の物理境界を取得
+        # F3のrow/colを持つセルトークンのみ対象
+        cell_tokens = [tt for tt in tagged_texts
+                       if tt.get('type') == 'cell'
+                       and tt.get('row') is not None
+                       and tt.get('col') is not None]
+
+        if not cell_tokens:
+            logger.info("[G4] F3 row/col 付きセルなし → 座標ロック不可")
+            return None
+
+        # グリッドサイズはF3のインデックスから算出
+        max_row = max(tt['row'] for tt in cell_tokens)
+        max_col = max(tt['col'] for tt in cell_tokens)
+        rows = max_row + 1
+        cols = max_col + 1
+
+        # F3トークンを結合せず、個別アイテムとしてcells_flatに格納
+        # X座標順にソートして読み順を保証
+        cells_flat = sorted(
+            [
+                {
+                    'row': tt['row'],
+                    'col': tt['col'],
+                    'text': tt.get('text', ''),
+                    'type': 'cell',
+                    'bbox': tt.get('bbox') or tt.get('bbox_agg') or [0, 0, 0, 0],
+                    'panel_id': tt.get('panel_id'),
+                }
+                for tt in cell_tokens
+            ],
+            key=lambda t: (t['row'], t['col'], t['bbox'][0] if t['bbox'] else 0)
+        )
+
+        # F2の物理境界（参照用に保持）
         row_boundaries = logical_structure.get('row_boundaries', [])
         col_boundaries = logical_structure.get('col_boundaries', [])
-
-        # panels構造がある場合は最初のpanelのcol_boundariesを使用
         if not col_boundaries:
             panels = logical_structure.get('panels', [])
             if panels:
@@ -169,66 +201,16 @@ class G4Assemble:
         row_y = [b['y'] for b in row_boundaries if isinstance(b, dict) and 'y' in b]
         col_x = [b['x'] for b in col_boundaries if isinstance(b, dict) and 'x' in b]
 
-        if len(row_y) < 2 or len(col_x) < 2:
-            logger.info(f"[G4] 座標ロック不可: row_y={len(row_y)}, col_x={len(col_x)} (各2以上必要)")
-            return None
-
-        rows = len(row_y) - 1
-        cols = len(col_x) - 1
-
-        # グリッド初期化
-        grid = [[[] for _ in range(cols)] for _ in range(rows)]
-        unmapped_count = 0
-
-        for tt in tagged_texts:
-            bbox = tt.get('bbox') or tt.get('bbox_agg')
-            if not bbox or len(bbox) < 4:
-                unmapped_count += 1
-                continue
-
-            cx = (bbox[0] + bbox[2]) / 2
-            cy = (bbox[1] + bbox[3]) / 2
-
-            # 中心座標に基づき、行・列のIndexを決定
-            r_idx = self._find_interval_index(cy, row_y)
-            c_idx = self._find_interval_index(cx, col_x)
-
-            grid[r_idx][c_idx].append(tt)
-
-        if unmapped_count > 0:
-            logger.info(f"[G4] bbox不足で未マッピング: {unmapped_count}件")
-
-        # セルごとのテキスト統合とフラット化
-        cells_flat = []
-        for r in range(rows):
-            for c in range(cols):
-                # 同一セル内のトークンをX座標順に並べて結合
-                tokens = sorted(grid[r][c], key=lambda t: (t.get('bbox', [0])[0] if t.get('bbox') else 0))
-                text = ' '.join(t.get('text', '') for t in tokens if t.get('text', '').strip())
-                cells_flat.append({
-                    'row': r,
-                    'col': c,
-                    'text': text,
-                    'type': 'cell',
-                    'bbox': [col_x[c], row_y[r], col_x[c + 1], row_y[r + 1]],
-                    'token_count': len(tokens)
-                })
+        logger.info(f"[G4] F3トークン個別継承: {len(cells_flat)}アイテム → {rows}行x{cols}列（結合なし）")
 
         return {
+            'ref_id': 'TBL_001',
             'row_count': rows,
             'col_count': cols,
             'cells_flat': cells_flat,
             'row_boundaries': row_y,
             'col_boundaries': col_x
         }
-
-    def _find_interval_index(self, value: float, boundaries: List[float]) -> int:
-        """境界配列内でvalueが属する区間のインデックスを返す"""
-        n = len(boundaries) - 1
-        for i in range(n):
-            if value < boundaries[i + 1]:
-                return i
-        return n - 1
 
     # ============================================================
     # アンカー構築

@@ -117,9 +117,12 @@ class StageH2Text:
             # H1の結果から情報を取得
             h1_tables = h1_result.get('processed_tables', []) if h1_result else []
             unrepairable_tables = h1_result.get('unrepairable_tables', []) if h1_result else []
+            h2_hint = h1_result.get('h2_hint', '') if h1_result else ''
 
             if unrepairable_tables:
                 logger.info(f"[Stage H2] 修復不能表: {len(unrepairable_tables)}件 → プロンプトに通知")
+            if h2_hint:
+                logger.info(f"[Stage H2] h2_hint受信: {h2_hint[:100]}")
 
             full_prompt = self._build_prompt(
                 prompt_template=prompt,
@@ -130,7 +133,8 @@ class StageH2Text:
                 source_inventory=source_inventory,
                 table_inventory=table_inventory,
                 h1_tables=h1_tables,
-                unrepairable_tables=unrepairable_tables
+                unrepairable_tables=unrepairable_tables,
+                h2_hint=h2_hint
             )
             logger.info(f"[Stage H2] プロンプト構築完了 ({len(full_prompt)}文字)")
 
@@ -165,17 +169,62 @@ class StageH2Text:
                 result, reduced_text, source_inventory
             )
 
-            # 結果の整形
+            # 結果の整形（表関連のフィールドはすべて削除）
+            # H1 が既に処理済みの純粋 Python ピボット結果を保護
+            metadata = result.get('metadata', {})
+
+            # AI が生成した表関連フィールドをすべて削除
+            for key in ['structured_tables', 'tables', 'table_data', 'table_list']:
+                if key in metadata:
+                    logger.warning(f"[Stage H2] AI が生成した '{key}' を削除（H1の結果を保護）")
+                    del metadata[key]
+
+            # JSON本体にも表関連フィールドがあれば削除
+            for key in ['structured_tables', 'tables', 'table_data', 'table_list']:
+                if key in result:
+                    logger.warning(f"[Stage H2] AI結果から '{key}' を削除（H1の結果を保護）")
+                    del result[key]
+
             final_result = {
                 'document_date': result.get('document_date'),
                 'tags': result.get('tags', []),
-                'metadata': result.get('metadata', {}),
+                'metadata': metadata,
                 'title': result.get('title', ''),
                 'summary': result.get('summary', ''),
                 'calendar_events': result.get('calendar_events', []),
                 'tasks': result.get('tasks', []),
                 'audit_canonical_text': audit_canonical_text
             }
+
+            # ============================================
+            # 【H2全出力ダンプ】
+            # ============================================
+            logger.info("=" * 80)
+            logger.info("[H2 OUTPUT DUMP] === H2 全生成物 ===")
+            logger.info(f"[H2 OUTPUT] document_date: {final_result.get('document_date')}")
+            logger.info(f"[H2 OUTPUT] title: {final_result.get('title')}")
+            logger.info(f"[H2 OUTPUT] tags: {final_result.get('tags')}")
+            logger.info(f"[H2 OUTPUT] summary: {final_result.get('summary', '')[:200]}...")
+            logger.info(f"[H2 OUTPUT] calendar_events: {len(final_result.get('calendar_events', []))}件")
+            for i, ev in enumerate(final_result.get('calendar_events', [])[:5]):
+                logger.info(f"[H2 OUTPUT]   event[{i}]: {ev}")
+            logger.info(f"[H2 OUTPUT] tasks: {len(final_result.get('tasks', []))}件")
+            for i, task in enumerate(final_result.get('tasks', [])[:5]):
+                logger.info(f"[H2 OUTPUT]   task[{i}]: {task}")
+            # metadata内のextracted_tables（H1から来る）
+            metadata = final_result.get('metadata', {})
+            logger.info(f"[H2 OUTPUT] metadata keys: {list(metadata.keys())}")
+            tables = metadata.get('extracted_tables', [])
+            logger.info(f"[H2 OUTPUT] metadata.extracted_tables: {len(tables)}件")
+            for i, tbl in enumerate(tables[:3]):
+                logger.info(f"[H2 OUTPUT]   table[{i}].ref_id: {tbl.get('ref_id')}")
+                logger.info(f"[H2 OUTPUT]   table[{i}].columns: {tbl.get('columns')}")
+                logger.info(f"[H2 OUTPUT]   table[{i}].flat_columns: {tbl.get('flat_columns')}")
+                gd = tbl.get('grid_data', {})
+                logger.info(f"[H2 OUTPUT]   table[{i}].grid_data.columns: {gd.get('columns')}")
+                logger.info(f"[H2 OUTPUT]   table[{i}].grid_data.row_headers: {gd.get('row_headers')}")
+            logger.info(f"[H2 OUTPUT] audit_canonical_text: {len(final_result.get('audit_canonical_text', ''))}文字")
+            logger.info("=" * 80)
 
             logger.info(f"[Stage H2完了] title={final_result['title'][:50] if final_result['title'] else 'N/A'}...")
             return final_result
@@ -194,7 +243,8 @@ class StageH2Text:
         source_inventory: List[Dict],
         table_inventory: List[Dict],
         h1_tables: List[Dict],
-        unrepairable_tables: List[Dict] = None
+        unrepairable_tables: List[Dict] = None,
+        h2_hint: str = ""
     ) -> str:
         """プロンプトを構築（アンカー活用強化版）"""
         # source_inventory を簡略化
@@ -231,87 +281,26 @@ class StageH2Text:
         )
 
         # ============================================
-        # アンカー活用強化: H1で処理済みの表を参照させる
+        # ドメインコンテキスト: H1から受け取ったヒント
         # ============================================
-        anchor_instructions = self._build_anchor_instructions(h1_tables, unrepairable_tables or [])
-        if anchor_instructions:
-            prompt = prompt + "\n\n" + anchor_instructions
+        if h2_hint:
+            prompt = prompt + "\n\n" + "=" * 50 + "\n"
+            prompt += "【Domain Context from H1】\n"
+            prompt += h2_hint + "\n"
+            prompt += "Table data has already been structured by H1. Focus on titles, annotations, notes.\n"
+            prompt += "=" * 50
+
+        # ============================================
+        # 表は H1 で pure Python により処理済み
+        # H2 は表に関する指示を一切出さない
+        # ============================================
+        # （H2 は表の生成・参照・言及を行わない）
 
         return prompt
 
-    def _build_anchor_instructions(
-        self,
-        h1_tables: List[Dict],
-        unrepairable_tables: List[Dict]
-    ) -> str:
-        """
-        アンカー活用のための追加指示を構築
-
-        G2が埋め込んだアンカー（[→ TBL_xxx 参照]）を
-        AIが最大限に活用するための指示
-        """
-        if not h1_tables and not unrepairable_tables:
-            return ""
-
-        instructions = []
-        instructions.append("=" * 50)
-        instructions.append("【重要: 表データの活用指示】")
-        instructions.append("=" * 50)
-
-        instructions.append("""
-テキスト中に `[→ TBL_xxx 参照]` というアンカー（しおり）が出現します。
-これは「ここに表データがある」という座標です。以下のルールで活用してください。
-
-【ルール1: アンカーは聖域】
-アンカーは情報の座標です。要約や構造化において、
-このアンカーの存在を認識し、表の内容を考慮して文脈を補完してください。
-
-【ルール2: 表の内容を参照】
-以下に、各アンカーに対応する表の概要を示します。
-要約やカレンダーイベント、タスク抽出の際は、これらの表データを活用してください。
-""")
-
-        # H1で処理済みの表
-        if h1_tables:
-            instructions.append("\n■ 処理済み表データ（H1で構造化済み）:")
-            for tbl in h1_tables[:10]:
-                ref_id = tbl.get('ref_id', '')
-                title = tbl.get('table_title', '(無題)')
-                ttype = tbl.get('table_type', 'generic')
-                rows = tbl.get('rows', [])
-                row_count = tbl.get('row_count', len(rows))
-
-                instructions.append(f"  - {ref_id}: {title} ({ttype}, {row_count}行)")
-
-                # 表の内容サンプル（最初の3行）
-                if rows and len(rows) > 0:
-                    sample_rows = rows[:3]
-                    for i, row in enumerate(sample_rows):
-                        if isinstance(row, dict):
-                            row_text = ', '.join(f"{k}:{v}" for k, v in list(row.items())[:4])
-                            instructions.append(f"      行{i+1}: {row_text[:80]}")
-
-        # 修復不能だった表
-        if unrepairable_tables:
-            instructions.append("\n■ 修復不能だった表（参照のみ）:")
-            for tbl in unrepairable_tables:
-                ref_id = tbl.get('ref_id', '')
-                title = tbl.get('table_title', '(無題)')
-                reason = tbl.get('reason', '')
-                instructions.append(f"  - {ref_id}: {title} (※構造化できず: {reason})")
-            instructions.append("  ※これらの表は構造化に失敗しましたが、テキスト中の情報として参照可能です。")
-
-        instructions.append("""
-【ルール3: カレンダー・タスクへの反映】
-表に日付や予定が含まれている場合は、calendar_events や tasks として抽出してください。
-表のデータは信頼できる情報源です。積極的に活用してください。
-
-【ルール4: 要約への反映】
-表の存在と概要を要約に含めてください。
-例: 「週間予定表によると、月曜は国語、火曜は算数...」
-""")
-
-        return "\n".join(instructions)
+    # 【削除】_build_anchor_instructions() メソッド
+    # H2 は表に関する指示を一切出さないため、このメソッドは不要になった。
+    # 2026-02-08: H1 が pure Python で表を完全に処理するため削除
 
     def _extract_json_with_retry(
         self,

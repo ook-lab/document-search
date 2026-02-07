@@ -76,7 +76,7 @@ class G3Scrub:
 
         # 洗い替え処理
         scrubbed_data = []
-        for tt in tagged_texts:
+        for idx, tt in enumerate(tagged_texts):
             scrubbed_item, source_type = self._scrub_item(tt, e_char_index, has_physical)
             scrubbed_data.append(scrubbed_item)
 
@@ -85,6 +85,27 @@ class G3Scrub:
                 page_physical_count[page] = page_physical_count.get(page, 0) + 1
             else:
                 page_vision_count[page] = page_vision_count.get(page, 0) + 1
+
+            # --- 全トークン出力 ---
+            tid = scrubbed_item.get('id', '')
+            src = scrubbed_item.get('_source', '')
+            scrubbed = scrubbed_item.get('_scrubbed', False)
+            orig = scrubbed_item.get('original_ocr', '')
+            final = scrubbed_item.get('text', '')
+            panel = scrubbed_item.get('panel_id', '')
+            row = scrubbed_item.get('row', '')
+            col = scrubbed_item.get('col', '')
+            e_cnt = scrubbed_item.get('_e_char_count', 0)
+            if scrubbed and orig != final:
+                logger.info(
+                    f"[G3]   [{idx}] id={tid} P{panel} R{row}C{col} "
+                    f"[{src}] 変更: '{orig}' → '{final}' (E1文字={e_cnt})"
+                )
+            else:
+                logger.info(
+                    f"[G3]   [{idx}] id={tid} P{panel} R{row}C{col} "
+                    f"[{src}] 維持: '{final}'"
+                )
 
         # ページ単位の正本ソース決定
         all_pages = set(page_physical_count.keys()) | set(page_vision_count.keys())
@@ -96,6 +117,21 @@ class G3Scrub:
         # 統計
         e1_count = sum(1 for d in scrubbed_data if d.get('_source') == 'e1_physical')
         e6_count = len(scrubbed_data) - e1_count
+
+        # --- ページ別ソース判定ログ ---
+        for page in sorted(all_pages):
+            src = text_source_by_page.get(page, '?')
+            p = page_physical_count.get(page, 0)
+            v = page_vision_count.get(page, 0)
+            logger.info(f"[G3]   ページ{page}: source={src} (physical={p}, vision={v})")
+
+        # --- change_log 全件出力 ---
+        for ci, ch in enumerate(self._change_log):
+            logger.info(
+                f"[G3]   変更[{ci}] id={ch.get('item_id','')} "
+                f"reason={ch.get('reason','')} "
+                f"'{ch.get('before','')}' → '{ch.get('after','')}'"
+            )
 
         elapsed = time.time() - g3_start
         logger.info(f"[G3] Scrub完了: E1={e1_count}, E6={e6_count}, changes={len(self._change_log)}")
@@ -155,6 +191,10 @@ class G3Scrub:
             'page': page,
             'token_ids': tt.get('token_ids', []),
             'bbox_agg': tt.get('bbox_agg'),
+            'panel_id': tt.get('panel_id'),
+            'cell_targets': tt.get('cell_targets'),
+            'row': tt.get('row'),
+            'col': tt.get('col'),
         }
 
         # bboxなし or E1なし → そのまま

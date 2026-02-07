@@ -132,6 +132,7 @@ class G6Packager:
                     'page': t.get('page', 0),
                     'bbox': t.get('bbox'),
                     'source': t.get('_source', 'unknown'),
+                    'panel_id': t.get('panel_id'),
                 })
 
         # provenance

@@ -1,10 +1,10 @@
 """
 F3: 物理仕分け（セル割当）
 
-【Ver 10.8】I/O契約 + トークン中心処理
+【Ver 10.8】I/O契約 + トークン中心処理 + マルチパネル対応
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 入力:
-  - grid: F2が確定したgrid正本
+  - grid: F2が確定したgrid正本（フォールバック用）
   - tokens: 文字トークン（E1 or E6）- 全トークン（フィルタなし）
   - structure: F2が解析した構造情報
   - panels: F2が生成したpanels配列（オプション）
@@ -26,7 +26,8 @@ F3: 物理仕分け（セル割当）
 
 モデル: 不要（完全決定論）
 
-処理（Ver 10.8: トークン中心）:
+処理（Ver 10.8: トークン中心 + マルチパネル）:
+- 全パネルのセルを統合し、(panel_id, row, col) の3点座標で管理
 - 全トークンをループし、各トークンにタグ付け
 - セル内: type='cell' + cell_targets
 - セル外: type='untagged' + _reason
@@ -44,7 +45,8 @@ from loguru import logger
 class F3CellAssigner:
     """F3: 物理仕分け（セル割当） - 決定論・モデル不要
 
-    Ver 10.8: トークン中心処理 + bbox完全保持
+    Ver 10.8: トークン中心処理 + マルチパネル対応
+    - 全パネルのセルを (panel_id, row, col) の3点座標で管理
     - 全トークンを受け取り、タグ付けして返す
     - セル内/セル外を「分ける」のではなく「属性を付加」する
     - bbox（座標情報）は全トークンで必ず保持
@@ -70,13 +72,13 @@ class F3CellAssigner:
         panels: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[Dict[str, Any], List[Dict]]:
         """
-        トークンをセルに決定論で割り当てる
+        トークンをセルに決定論で割り当てる（マルチパネル対応）
 
         Args:
-            grid: F2が確定したgrid（互換性: panels[0].grid）
+            grid: F2が確定したgrid（フォールバック: panels[0].grid）
             tokens: 文字トークン
             structure: F2が解析した構造情報
-            panels: F2のpanels配列（オプション、あればpanelごとに処理）
+            panels: F2のpanels配列（あれば全パネルのセルを統合）
 
         Returns:
             (structured_table, low_confidence_items)
@@ -103,7 +105,24 @@ class F3CellAssigner:
         }
         low_confidence = []
 
-        if not grid or not grid.get('cells'):
+        # ============================================
+        # 全パネルからセルを統合（マルチパネル対応）
+        # ============================================
+        all_cells = []
+        if panels:
+            for panel in panels:
+                p_id = panel.get('panel_id', 0)
+                p_grid = panel.get('grid')
+                if p_grid and p_grid.get('cells'):
+                    for cell in p_grid['cells']:
+                        all_cells.append({**cell, 'panel_id': p_id})
+
+        # フォールバック: panelsにgridがなければ単一gridを使用
+        if not all_cells and grid and grid.get('cells'):
+            for cell in grid['cells']:
+                all_cells.append({**cell, 'panel_id': 0})
+
+        if not all_cells:
             logger.warning("[F3] gridなし → 全トークンをテキスト扱い")
             for token in tokens:
                 result['tagged_texts'].append({
@@ -119,14 +138,14 @@ class F3CellAssigner:
                 })
             return result, low_confidence
 
-        cells = grid.get('cells', [])
-        row_count = grid.get('row_count', 0)
-        col_count = grid.get('col_count', 0)
+        panel_ids_found = sorted(set(c['panel_id'] for c in all_cells))
+        logger.info(f"[F3]   統合セル数: {len(all_cells)} (panels: {panel_ids_found})")
 
         header_rows = set(structure.get('header_rows', []))
         header_cols = set(structure.get('header_cols', []))
 
-        cell_index = {(c['row'], c['col']): {
+        # cell_index: (panel_id, row, col) の3点座標でキー管理
+        cell_index = {(c['panel_id'], c['row'], c['col']): {
             **c,
             'tokens': [],
             'text': '',
@@ -135,16 +154,13 @@ class F3CellAssigner:
             'bbox_agg': None,     # セル内bbox合成
             '_span_assigned': False,   # 結合セル由来の複製フラグ
             '_span_uncertain': False   # 大きいspan（曖昧さフラグ）
-        } for c in cells}
+        } for c in all_cells}
 
         # Stats: 2系統に分離（Ver 10.2）
         assigned_unique_tokens = 0   # 処理したユニークtoken数
         assigned_cell_links = 0      # token→cell のリンク数（複製により増加）
         span_assignments = []        # span割当のログ用
         unassigned = []
-
-        # panel_idのデフォルト値（panelsがない場合は0）
-        default_panel_id = 0
 
         for token in tokens:
             bbox = token.get('bbox') or token.get('coords', {}).get('bbox')
@@ -156,8 +172,8 @@ class F3CellAssigner:
             ty = (bbox[1] + bbox[3]) / 2
             token_id = token.get('block_id') or token.get('id') or f"t{assigned_unique_tokens}"
 
-            # 複数セル割当を試行（Ver 10.3: 無制限通過・記録のみ）
-            targets = self._find_cells_for_token(tx, ty, bbox, cells)
+            # 複数セル割当を試行（3点座標: (panel_id, row, col)）
+            targets = self._find_cells_for_token(tx, ty, bbox, all_cells)
 
             if targets:
                 assigned_unique_tokens += 1
@@ -166,9 +182,9 @@ class F3CellAssigner:
                 # cell_targets を構築（panel_id付き）
                 cell_targets = []
                 for target in targets:
-                    row, col = target
+                    panel_id, row, col = target
                     cell_targets.append({
-                        'panel_id': default_panel_id,
+                        'panel_id': panel_id,
                         'row': row,
                         'col': col,
                         'reason': 'overlap' if is_span else 'center',
@@ -180,8 +196,8 @@ class F3CellAssigner:
                     bbox_w = bbox[2] - bbox[0]
                     bbox_h = bbox[3] - bbox[1]
                     token_area = bbox_w * bbox_h
-                    rows_in_span = sorted(set(t[0] for t in targets))
-                    cols_in_span = sorted(set(t[1] for t in targets))
+                    rows_in_span = sorted(set(t[1] for t in targets))
+                    cols_in_span = sorted(set(t[2] for t in targets))
                     span_direction = "HORIZONTAL" if len(rows_in_span) == 1 else "VERTICAL"
                     is_large_span = len(targets) >= self.LARGE_SPAN_WARN_THRESHOLD
 
@@ -224,7 +240,7 @@ class F3CellAssigner:
         x_headers = []
         y_headers = []
 
-        for (row, col), cell in cell_index.items():
+        for (panel_id, row, col), cell in cell_index.items():
             sorted_tokens = sorted(cell['tokens'], key=lambda t: (t['_center'][1], t['_center'][0]))
             cell['text'] = ' '.join(t.get('text', '') for t in sorted_tokens).strip()
 
@@ -257,21 +273,22 @@ class F3CellAssigner:
 
         # トークンIDからセル情報へのマッピングを構築
         token_to_cell_info = {}
-        for (row, col), cell in cell_index.items():
+        for (panel_id, row, col), cell in cell_index.items():
             if row in header_rows or col in header_cols:
                 continue  # ヘッダーはスキップ
 
             x_h = x_headers[col] if col < len(x_headers) else ''
             y_h = ''
             for hc in header_cols:
-                hcell = cell_index.get((row, hc))
+                # 同一パネル内のヘッダー列を参照
+                hcell = cell_index.get((panel_id, row, hc))
                 if hcell and hcell['text']:
                     y_h = hcell['text']
                     break
 
             # cell_targets を構築
             cell_target = {
-                'panel_id': default_panel_id,
+                'panel_id': panel_id,
                 'row': row,
                 'col': col,
                 'reason': 'center',
@@ -298,6 +315,7 @@ class F3CellAssigner:
             # このセルに属する全トークンIDに情報を紐付け
             for token_id in cell.get('token_ids', []):
                 token_to_cell_info[token_id] = {
+                    'panel_id': panel_id,
                     'row': row,
                     'col': col,
                     'x_header': x_h,
@@ -335,6 +353,7 @@ class F3CellAssigner:
                     'token_ids': [token_id],
                     'source': cell_info['source'],
                     'cell_targets': cell_info['cell_targets'],
+                    'panel_id': cell_info['panel_id'],
                     'row': cell_info['row'],
                     'col': cell_info['col'],
                     '_physical_decision': True,
@@ -372,6 +391,8 @@ class F3CellAssigner:
             'large_span_count': len(large_spans),         # 大きいspan（警告対象）
             'max_span_size': max((s['cell_count'] for s in span_assignments), default=0),
             'unassigned': len(unassigned),
+            'total_cells': len(all_cells),
+            'panel_count': len(panel_ids_found),
             'elapsed': time.time() - f3_start
         }
 
@@ -379,6 +400,7 @@ class F3CellAssigner:
         self._log_assignment_result(result, cell_index, x_headers, y_headers, unassigned, span_assignments)
 
         logger.info(f"[F3] 完了: unique_tokens={assigned_unique_tokens}, cell_links={assigned_cell_links}, "
+                   f"panels={len(panel_ids_found)}, total_cells={len(all_cells)}, "
                    f"span(V={len(vertical_spans)}/H={len(horizontal_spans)}/LARGE={len(large_spans)}), "
                    f"unassigned={len(unassigned)}")
         return result, low_confidence
@@ -389,9 +411,9 @@ class F3CellAssigner:
         ty: float,
         bbox: List[float],
         cells: List[Dict]
-    ) -> List[Tuple[int, int]]:
+    ) -> List[Tuple[int, int, int]]:
         """
-        トークンが割り当たる全セルを返す（Ver 10.3: 無制限通過・記録のみ）
+        トークンが割り当たる全セルを返す（マルチパネル対応・3点座標）
 
         原則:
         - F3は殺さない
@@ -405,8 +427,7 @@ class F3CellAssigner:
         4. 大きいspanは警告ログだけ出して通す
 
         Returns:
-            割当先セルの (row, col) リスト（空なら割当不可）
-            ※ _span_uncertain フラグ付きの場合あり（呼び出し元で処理）
+            割当先セルの (panel_id, row, col) リスト（空なら割当不可）
         """
         bbox_w = bbox[2] - bbox[0]
         bbox_h = bbox[3] - bbox[1]
@@ -427,6 +448,7 @@ class F3CellAssigner:
             overlap_ratio = self._overlap_ratio(bbox, cell_bbox, token_area)
             if overlap_ratio >= self.SPAN_OVERLAP_THRESHOLD:
                 candidates.append({
+                    'panel_id': c.get('panel_id', 0),
                     'row': c['row'],
                     'col': c['col'],
                     'overlap_ratio': overlap_ratio,
@@ -439,7 +461,7 @@ class F3CellAssigner:
 
         if len(candidates) == 1:
             # 単一セル → そのまま返す
-            return [(candidates[0]['row'], candidates[0]['col'])]
+            return [(candidates[0]['panel_id'], candidates[0]['row'], candidates[0]['col'])]
 
         # 複数候補あり → 連続性チェック（形だけ判定）
         rows = sorted(set(c['row'] for c in candidates))
@@ -473,7 +495,7 @@ class F3CellAssigner:
             else:
                 # バラバラ → overlap最大のセルに絞る（単一）
                 best = max(candidates, key=lambda c: c['overlap_ratio'])
-                return [(best['row'], best['col'])]
+                return [(best['panel_id'], best['row'], best['col'])]
 
         # 方向決定
         span_direction = "HORIZONTAL" if is_horizontal_span else "VERTICAL"
@@ -486,7 +508,7 @@ class F3CellAssigner:
             )
 
         # 複数セルに割当（必ず通す）
-        result = [(c['row'], c['col']) for c in candidates]
+        result = [(c['panel_id'], c['row'], c['col']) for c in candidates]
         result.sort()
 
         # 通常ログ（span適用）
@@ -497,16 +519,16 @@ class F3CellAssigner:
 
         return result
 
-    def _find_cell_by_center(self, tx: float, ty: float, cells: List[Dict]) -> List[Tuple[int, int]]:
-        """中心点ルールで単一セルを探す（フォールバック用）"""
+    def _find_cell_by_center(self, tx: float, ty: float, cells: List[Dict]) -> List[Tuple[int, int, int]]:
+        """中心点ルールで単一セルを探す（フォールバック用・3点座標）"""
         for c in cells:
             b = c['bbox']
             if b[0] - self.CENTER_MARGIN <= tx <= b[2] + self.CENTER_MARGIN:
                 if b[1] - self.CENTER_MARGIN <= ty <= b[3] + self.CENTER_MARGIN:
-                    return [(c['row'], c['col'])]
+                    return [(c.get('panel_id', 0), c['row'], c['col'])]
         return []
 
-    def _find_cell(self, tx, ty, bbox, cells) -> Optional[Tuple[int, int]]:
+    def _find_cell(self, tx, ty, bbox, cells) -> Optional[Tuple[int, int, int]]:
         """単一セルを返す（互換性のためのラッパー）"""
         targets = self._find_cells_for_token(tx, ty, bbox, cells)
         if targets:
@@ -563,6 +585,7 @@ class F3CellAssigner:
         logger.info(f"[F3] Stats:")
         logger.info(f"[F3]   unique_tokens: {stats.get('assigned_unique_tokens', stats.get('assigned', 0))}")
         logger.info(f"[F3]   cell_links: {stats.get('assigned_cell_links', 0)}")
+        logger.info(f"[F3]   total_cells: {stats.get('total_cells', 0)}, panels: {stats.get('panel_count', 0)}")
         logger.info(f"[F3]   span_count: {stats.get('span_count', 0)} "
                    f"(V={stats.get('vertical_span_count', 0)}, H={stats.get('horizontal_span_count', 0)}, "
                    f"LARGE={stats.get('large_span_count', 0)})")
@@ -580,7 +603,7 @@ class F3CellAssigner:
                 bbox_area = sa.get('bbox_area', 0)
                 is_large = sa.get('is_large', False)
                 large_flag = ' [LARGE]' if is_large else ''
-                cells_str = ', '.join(f"({r},{c})" for r, c in cells[:10])
+                cells_str = ', '.join(f"(P{p},{r},{c})" for p, r, c in cells[:10])
                 if cell_count > 10:
                     cells_str += f"... (+{cell_count - 10})"
                 logger.info(f"[F3]   [{direction}]{large_flag} '{text}' -> {cell_count}セル (area={bbox_area:.0f}): [{cells_str}]")
@@ -598,12 +621,12 @@ class F3CellAssigner:
 
         # 全セル割当（全件）
         logger.info(f"[F3] ----- 全セル割当 ({len(cell_index)}件) -----")
-        for (row, col), cell in sorted(cell_index.items()):
+        for (panel_id, row, col), cell in sorted(cell_index.items()):
             text = cell['text'].replace('\n', '\\n') if cell['text'] else '(empty)'
             token_count = len(cell.get('tokens', []))
             token_ids = cell.get('token_ids', [])
             span_flag = ' [SPAN]' if cell.get('_span_assigned') else ''
-            logger.info(f"[F3]   [{row},{col}] '{text}' (tokens={token_count}, ids={token_ids}){span_flag}")
+            logger.info(f"[F3]   [P{panel_id},{row},{col}] '{text}' (tokens={token_count}, ids={token_ids}){span_flag}")
 
         # 未割当トークン（全件）
         logger.info(f"[F3] ----- 未割当トークン ({len(unassigned)}件) -----")
@@ -624,7 +647,8 @@ class F3CellAssigner:
             y_h = t.get('y_header', '')
             token_ids = t.get('token_ids', [])
             if t_type == 'cell':
-                logger.info(f"[F3]   [cell] '{text}' x_header='{x_h}' y_header='{y_h}' token_ids={token_ids}")
+                p_id = t.get('panel_id', '?')
+                logger.info(f"[F3]   [cell P{p_id}] '{text}' x_header='{x_h}' y_header='{y_h}' token_ids={token_ids}")
             else:
                 reason = t.get('_reason', '')
                 logger.info(f"[F3]   [untagged] '{text}' reason={reason}")

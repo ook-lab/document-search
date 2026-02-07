@@ -81,7 +81,7 @@ class F1GridDetector:
     SEPARATOR_SEGMENT_BONUS = 0.10       # segment_count >= 3 のボーナス
     SEPARATOR_CV_THRESHOLD = 0.25        # 等間隔判定の CV 閾値
     SEPARATOR_CV_BONUS = 0.10            # 等間隔ボーナス
-    MIN_PANEL_WIDTH_RATIO = 0.12         # パネル最小幅（表幅の割合）
+    MIN_PANEL_WIDTH_RATIO = 0.02         # パネル最小幅（表幅の割合）※狭いヘッダー列を許容
 
     # Whitespace/Gutter検出用閾値（Ver 10.6）
     GUTTER_MIN_WIDTH_RATIO = 0.015       # ガター最小幅（表幅の割合）

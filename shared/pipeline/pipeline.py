@@ -310,16 +310,47 @@ class UnifiedDocumentPipeline:
                 schema_ver = vision_json.get('schema_version', '')
 
                 # full_text をそのまま使用（混ぜ物合成禁止）
-                combined_text = vision_json.get('full_text', '')
+                # Ver 14.0: G5出力は path_a_result.full_text_ordered にテキストを格納
+                _pa = vision_json.get('path_a_result', {})
+                combined_text = _pa.get('full_text_ordered', '') or vision_json.get('full_text', '')
                 post_body = vision_json.get('post_body', {})
                 text_blocks = vision_json.get('text_blocks', [])
 
+                _tables = _pa.get('tables', [])
                 logger.info(f"[Stage F→H] データ受け渡し:")
                 logger.info(f"  ├─ schema_version: {schema_ver}")
-                logger.info(f"  ├─ full_text: {len(combined_text)}文字")
+                logger.info(f"  ├─ full_text_ordered: {len(combined_text)}文字")
                 logger.info(f"  ├─ post_body: {post_body.get('char_count', 0)}文字 (source: {post_body.get('source', 'unknown')})")
                 logger.info(f"  ├─ text_blocks: {len(text_blocks)}ブロック")
-                logger.info(f"  └─ tables: {len(vision_json.get('tables', []))}個")
+                logger.info(f"  ├─ tables: {len(_tables)}個")
+                for _t in _tables:
+                    _rid = _t.get('ref_id', '?')
+                    _hm = _t.get('header_map', {})
+                    _ce = _t.get('cells_enriched', [])
+                    _cf = _t.get('cells_flat', [])
+                    _panels = _hm.get('panels', {})
+                    logger.info(f"  │   {_rid}: cells_enriched={len(_ce)}, cells_flat={len(_cf)}, header_map panels={len(_panels)}")
+                    # G7: パネルごとのヘッダー位置
+                    for _pk, _pcfg in _panels.items():
+                        logger.info(f"  │     {_pk}: col_header_rows={_pcfg.get('col_header_rows', [])}, row_header_cols={_pcfg.get('row_header_cols', [])}")
+                    # G8: パネルごとのenrichment紐付け率
+                    if _ce:
+                        _by_panel = {}
+                        for _c in _ce:
+                            _pid = f"P{_c.get('panel_id', 0) or 0}"
+                            if _pid not in _by_panel:
+                                _by_panel[_pid] = {'total': 0, 'data': 0, 'col': 0, 'row': 0}
+                            _by_panel[_pid]['total'] += 1
+                            if not _c.get('is_header', False) and str(_c.get('text', '')).strip():
+                                _by_panel[_pid]['data'] += 1
+                                if _c.get('col_header'):
+                                    _by_panel[_pid]['col'] += 1
+                                if _c.get('row_header'):
+                                    _by_panel[_pid]['row'] += 1
+                        for _pid in sorted(_by_panel.keys()):
+                            _s = _by_panel[_pid]
+                            logger.info(f"  │     {_pid} enrichment: data={_s['data']}, col_header={_s['col']}/{_s['data']}, row_header={_s['row']}/{_s['data']}")
+                logger.info(f"  └─ (G7/G8 enrichment {'済' if _tables and _tables[0].get('cells_enriched') else '未'})")
             except json.JSONDecodeError as e:
                 logger.warning(f"[Stage F→H] JSON解析失敗: {e}")
                 combined_text = vision_raw
@@ -445,8 +476,16 @@ class UnifiedDocumentPipeline:
 
                 # H1の結果をログ
                 h1_stats = h1_result.get('statistics', {})
-                logger.info(f"[Stage H1完了] processed={h1_stats.get('processed', 0)}, "
-                           f"extracted_meta_keys={list(h1_result.get('extracted_metadata', {}).keys())}")
+                logger.info(f"[Stage H1完了] processed={h1_stats.get('processed', 0)}, skipped={h1_stats.get('skipped', 0)}")
+                for _pt in h1_result.get('processed_tables', []):
+                    _cols = _pt.get('columns', [])
+                    _rows = _pt.get('rows', [])
+                    logger.info(f"  ├─ {_pt.get('ref_id')}: columns={_cols}, rows={len(_rows)}行")
+                    for _ri, _row in enumerate(_rows[:3]):
+                        logger.info(f"  │   row[{_ri}]: {_row}")
+                    if len(_rows) > 3:
+                        logger.info(f"  │   ... 残り{len(_rows) - 3}行")
+                logger.info(f"  └─ reduced_text: {len(h1_result.get('reduced_text', ''))}文字")
 
                 # イベントループに制御を返す
                 await asyncio.sleep(0)
