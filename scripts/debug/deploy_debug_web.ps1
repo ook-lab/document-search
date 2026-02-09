@@ -25,10 +25,10 @@ try {
     Write-Host "============================================"
 
     # ビルドコンテキストはプロジェクトルート（shared/ をコピーするため）
-    gcloud builds submit `
+    # --config で Dockerfile パスを指定、ソース . で .gcloudignore 適用
+    gcloud builds submit . `
         --region=$REGION `
-        --tag $IMAGE_NAME `
-        --dockerfile scripts/debug/Dockerfile `
+        --config=scripts/debug/cloudbuild.yaml `
         --timeout=1800
 
     if ($LASTEXITCODE -ne 0) {

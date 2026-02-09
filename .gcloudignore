@@ -21,10 +21,16 @@ env/
 
 # Logs
 *.log
+logs/
 
 # Temporary files
+.tmp.driveupload/
+tmpclaude-*/
 tmpclaude-*
 *.tmp
+temp/
+cache/
+_runtime/
 
 # Node modules (if any)
 node_modules/
@@ -33,13 +39,41 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Other services
+# Other services (not needed for build)
 services/web-frontend/
 services/app-backend/
 services/notifier/
+
+# Frontend / UI (separate builds)
+frontend/
+kakeibo_ui/
+K_kakeibo/
+
+# Database / Supabase
+supabase/
+database/
+
+# Debug output data (large PDFs, images, JSONs)
+debug_output/
+scripts/debug/debug_output/
 
 # Tests and docs
 tests/
 docs/
 *.md
 !README.md
+
+# Snapshot / pipeline docs
+PIPELINE_*.md
+PROJECT_SNAPSHOT_*.md
+PROJECT_FULL_*.md
+PIPELINE_PROMPTS_*.md
+
+# Misc root files not needed for build
+reports/
+backups/
+data/
+*.bat
+docker-compose.yml
+simple_build.yaml
+tmp_*.ps1
