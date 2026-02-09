@@ -38,8 +38,20 @@ from shared.common.database.client import DatabaseClient
 from shared.common.connectors.google_drive import GoogleDriveConnector
 
 from .config_loader import ConfigLoader
-from .stage_e_preprocessing import StageEPreprocessor
-from .stage_f import StageFVisualAnalyzer  # 【Ver 10.6】E6→E7→E8→F1→F2→F3→G3→G4→G5→G6
+from .stage_e import (
+    StageEPreprocessor,          # E1
+    E2TableDetector,             # E2
+    E3OpenCVBlocks,              # E3
+    E4CoordinateIntegrator,      # E4
+    E5MaskGenerator,             # E5
+    E6VisionOCR,                 # E6
+    E7TextAggregator,            # E7
+    E8VisionAggregator,          # E8
+    E9TextReplacer,              # E9
+    E11BboxNormalizer,           # E11
+    StageEOrchestrator           # E1-E2-E3-E4-E5-E6-E7-E8-E9-E11統合
+)
+from .stage_f import StageFVisualAnalyzer  # 【Ver 11.0】F1→F2→F3→G3→G4→G5→G6（E6-E8はStage Eに移動）
 from .stage_h import StageH1Table, StageH2Text  # Stage H1/H2
 from .stage_h.h_kakeibo import StageHKakeibo  # 家計簿専用
 from .stage_j_chunking import StageJChunking
@@ -128,9 +140,23 @@ class UnifiedDocumentPipeline:
             enable_hybrid_ocr = self.config.get_hybrid_ocr_enabled('default')
 
         # 各ステージを初期化
-        self.stage_e = StageEPreprocessor()
+        # Stage E（E1-E2-E3-E4-E5-E6-E7-E8-E9-E11統合）
+        self.stage_e = StageEOrchestrator(
+            llm_client=self.llm_client,
+            stage_e_preprocessor=StageEPreprocessor(),          # E1
+            e2_table_detector=E2TableDetector(),                # E2
+            e3_opencv_blocks=E3OpenCVBlocks(),                  # E3
+            e4_coordinate_integrator=E4CoordinateIntegrator(),  # E4
+            e5_mask_generator=E5MaskGenerator(),                # E5
+            e6_ocr=E6VisionOCR(),                               # E6
+            e7_text_aggregator=E7TextAggregator(),              # E7
+            e8_vision_aggregator=E8VisionAggregator(),          # E8
+            e9_text_replacer=E9TextReplacer(),                  # E9
+            e11_normalizer=E11BboxNormalizer()                  # E11
+        )
+        # Stage F（F1-F3 + G3-G6、E6-E8を削除）
         self.stage_f = StageFVisualAnalyzer(self.llm_client, enable_surya=enable_hybrid_ocr)
-        # Stage G は Ver 9.0 で Stage F 内部に統合（G3→G4→G5→G6）
+        # Stage H
         self.stage_h1 = StageH1Table(self.llm_client)  # Stage H1: 表処理専門
         self.stage_h2 = StageH2Text(self.llm_client)  # Stage H2: テキスト処理専門
         self.stage_h_kakeibo = StageHKakeibo(self.db)  # 家計簿専用
@@ -189,21 +215,20 @@ class UnifiedDocumentPipeline:
             logger.info(f"📄 ドキュメント処理開始: {file_name} (doc_type={doc_type}, workspace={workspace})")
 
             # ============================================
-            # Stage E: Pre-processing
+            # Stage E: E1-E8統合処理（PDF抽出 + Vision OCR）
             # ============================================
-            logger.info("[Stage E] Pre-processing開始...")
+            logger.info("[Stage E] E1-E8統合処理開始...")
             if progress_callback:
                 progress_callback("E1")
 
-            # extra_metadata から既に抽出済みのテキスト（attachment_text）を取得
-            # HTMLファイル等、Ingestion時にテキスト抽出済みの場合に使用
-            pre_extracted_text = extra_metadata.get('attachment_text', '') if extra_metadata else ''
+            # ドキュメント判定（PDFかどうか）
+            is_document = mime_type and mime_type.startswith('application/pdf')
 
-            stage_e_result = self.stage_e.extract_text(
-                file_path,
-                mime_type,
-                pre_extracted_text=pre_extracted_text,
-                workspace=workspace,
+            # Stage E: E1-E8を実行
+            stage_e_result = self.stage_e.process(
+                file_path=file_path,
+                mime_type=mime_type,
+                is_document=is_document,
                 progress_callback=progress_callback
             )
 
@@ -212,14 +237,22 @@ class UnifiedDocumentPipeline:
 
             # Stage E の結果をチェック
             if not stage_e_result.get('success'):
-                error_msg = f"Stage E失敗: {stage_e_result.get('error', 'テキスト抽出エラー')}"
+                error_msg = f"Stage E失敗: {stage_e_result.get('error', 'E1-E8処理エラー')}"
                 logger.error(f"[Stage E失敗] {error_msg}")
                 return {'success': False, 'error': error_msg}
 
-            extracted_text = stage_e_result.get('content', '')
-            # P2-2: E-2で検出した表のbbox情報を取得
+            # Stage E の出力を取得
+            normalized_tokens = stage_e_result.get('normalized_tokens', [])
+            e_physical_chars = stage_e_result.get('e_physical_chars', [])
+            extracted_text = stage_e_result.get('extracted_text', '')
+            page_images = stage_e_result.get('page_images', [])
             stage_e_metadata = stage_e_result.get('metadata', {})
             e2_table_bboxes = stage_e_metadata.get('table_bboxes', [])
+
+            logger.info(f"[Stage E完了] normalized_tokens={len(normalized_tokens)}, "
+                       f"e_physical_chars={len(e_physical_chars)}, "
+                       f"extracted_text={len(extracted_text)}文字, "
+                       f"page_images={len(page_images)}ページ")
             # ログ出力は Stage E 内で既に実施済み
 
             # ============================================
@@ -271,14 +304,19 @@ class UnifiedDocumentPipeline:
             if progress_callback:
                 progress_callback("F")
 
-            # Stage Eの判定結果を直接使用（再計算しない）
-            requires_vision = stage_e_result.get('requires_vision', False)
-            requires_transcription = stage_e_result.get('requires_transcription', False)
+            # Stage E が既に Vision 処理を完了しているため、常に vision を実行
+            requires_vision = True
+            requires_transcription = False
 
-            # Stage F 呼び出し（正攻法: 全引数を正しく渡す）
+            # stage_e_metadata に physical_chars を追加
+            stage_e_metadata['physical_chars'] = e_physical_chars
+
+            # Stage F 呼び出し（Ver 11.0: E6-E8の出力を渡す）
             stage_f_result = self.stage_f.process(
                 file_path=file_path,
                 mime_type=mime_type or '',
+                normalized_tokens=normalized_tokens,  # Stage E（E6-E8）の出力
+                page_images=page_images,  # ページ画像
                 requires_vision=requires_vision,
                 requires_transcription=requires_transcription,
                 post_body=post_body,
@@ -289,7 +327,7 @@ class UnifiedDocumentPipeline:
                 extracted_text=extracted_text,
                 workspace=workspace,
                 e2_table_bboxes=e2_table_bboxes,
-                stage_e_metadata=stage_e_metadata  # 【Ver 6.4】座標付き文字情報
+                stage_e_metadata=stage_e_metadata  # 【Ver 6.4】座標付き文字情報（physical_chars含む）
             )
             logger.info(f"[Stage F完了] Vision結果: {type(stage_f_result).__name__}")
 
@@ -467,8 +505,13 @@ class UnifiedDocumentPipeline:
                 if progress_callback:
                     progress_callback("H1")
 
+                # G4の読み順済みテキストを取得（ドメイン検出用）
+                all_tagged_texts = path_a_result.get('tagged_texts', [])
+                logger.info(f"[Stage H1] all_tagged_texts: {len(all_tagged_texts)}件")
+
                 h1_result = self.stage_h1.process(
                     table_inventory=tables,
+                    all_tagged_texts=all_tagged_texts,
                     doc_type=doc_type,
                     workspace=workspace,
                     unified_text=combined_text

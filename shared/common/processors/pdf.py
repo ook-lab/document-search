@@ -110,6 +110,9 @@ class PDFProcessor:
                 progress_callback("E4")
             vision_corrections = {}
 
+            # 注: 現在のアーキテクチャ（Ver 12.0）では、Vision処理はE6で実行されます
+            # この古いVision処理コードは互換性のために残されていますが、
+            # E1（StageEPreprocessor）は llm_client=None で初期化するため実行されません
             if vision_target_pages and self.llm_client and PDF2IMAGE_AVAILABLE:
                 logger.info(f"[E-4] Gemini Vision差分検出開始: {len(vision_target_pages)} ページ")
                 vision_corrections = self._extract_with_gemini_vision(
@@ -117,10 +120,8 @@ class PDFProcessor:
                     vision_target_pages,
                     page_texts
                 )
-            elif vision_target_pages and not PDF2IMAGE_AVAILABLE:
+            elif vision_target_pages and self.llm_client and not PDF2IMAGE_AVAILABLE:
                 logger.warning("[E-4] pdf2image が利用できないため、Vision差分検出をスキップします")
-            elif vision_target_pages and not self.llm_client:
-                logger.warning("[E-4] LLMClient が未指定のため、Vision差分検出をスキップします")
 
             # ============================================
             # E-5: VisionのOCR結果を適用

@@ -240,6 +240,15 @@ def get_document(doc_id: str):
                 metadata = {}
         document['metadata'] = metadata
 
+        # stage_g_structured_data をパース（UI用構造化データ）
+        stage_g_data = document.get('stage_g_structured_data') or {}
+        if isinstance(stage_g_data, str):
+            try:
+                stage_g_data = json.loads(stage_g_data)
+            except json.JSONDecodeError:
+                stage_g_data = {}
+        document['stage_g_structured_data'] = stage_g_data
+
         return jsonify(document)
 
     except Exception as e:

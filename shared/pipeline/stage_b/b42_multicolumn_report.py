@@ -1,0 +1,396 @@
+"""
+B-42: Multi-Column Report Processor（業務帳票・多段組専用）
+
+同一項目（順位・氏名・校舎・点数）が横に複数セット並んでいる
+マルチカラム帳票を攻略するための特化型プロセッサ。
+
+処理フロー:
+1. カラム・セグメンテーション（垂直スライス）
+2. アンカーベースのレコード結合（Y軸アラインメント）
+3. マルチライン・セルのマージ（氏名と校舎の親子関係）
+4. 不規則なヘッダー・フッターの除外
+"""
+
+from pathlib import Path
+from typing import Dict, Any, List, Tuple
+from loguru import logger
+import statistics
+
+
+class B42MultiColumnReportProcessor:
+    """B-42: Multi-Column Report Processor（業務帳票・多段組専用）"""
+
+    # ガター検出の閾値（pt）
+    GUTTER_THRESHOLD = 30.0
+
+    # Y座標の許容誤差（pt）
+    Y_TOLERANCE = 3.0
+
+    # アンカー（順位）のパターン（数字のみ）
+    ANCHOR_PATTERN = r'^\d+$'
+
+    def process(self, file_path: Path) -> Dict[str, Any]:
+        """
+        マルチカラム帳票から構造化データを抽出
+
+        Args:
+            file_path: PDFファイルパス
+
+        Returns:
+            {
+                'is_structured': bool,
+                'data_type': str,                # 'report_multicolumn'
+                'records': [...],                # レコードリスト
+                'columns': [...],                # カラム情報
+                'tags': {...},                   # メタ情報
+                'purged_image_path': str         # テキスト消去後の画像
+            }
+        """
+        logger.info(f"[B-42] Multi-Column Report処理開始: {file_path.name}")
+
+        try:
+            import pdfplumber
+            import re
+        except ImportError:
+            logger.error("[B-42] pdfplumber がインストールされていません")
+            return self._error_result("pdfplumber not installed")
+
+        try:
+            with pdfplumber.open(str(file_path)) as pdf:
+                all_records = []
+                all_columns = []
+
+                for page_num, page in enumerate(pdf.pages):
+                    logger.info(f"[B-42] ページ {page_num + 1} 処理中...")
+
+                    # 1. カラム・セグメンテーション
+                    columns = self._detect_columns(page)
+                    logger.info(f"[B-42]   カラム検出: {len(columns)}個")
+
+                    # 2. 各カラムからレコードを抽出
+                    for col_idx, column_bbox in enumerate(columns):
+                        records = self._extract_records_from_column(
+                            page, column_bbox, page_num, col_idx
+                        )
+                        all_records.extend(records)
+                        logger.info(f"[B-42]   カラム {col_idx}: {len(records)}レコード")
+
+                    all_columns.extend(columns)
+
+                # メタ情報
+                tags = {
+                    'page_count': len(pdf.pages),
+                    'column_count': len(all_columns),
+                    'record_count': len(all_records)
+                }
+
+                logger.info(f"[B-42] 抽出完了: {len(all_records)}レコード")
+
+                return {
+                    'is_structured': True,
+                    'data_type': 'report_multicolumn',
+                    'records': all_records,
+                    'columns': all_columns,
+                    'tags': tags,
+                    'purged_image_path': ''  # TODO: Layer Purge
+                }
+
+        except Exception as e:
+            logger.error(f"[B-42] 処理エラー: {e}", exc_info=True)
+            return self._error_result(str(e))
+
+    def _detect_columns(self, page) -> List[Tuple[float, float, float, float]]:
+        """
+        カラム・セグメンテーション（垂直スライス）
+
+        Args:
+            page: pdfplumberのPageオブジェクト
+
+        Returns:
+            [(x0, y0, x1, y1), ...] カラムのbboxリスト
+        """
+        # ページ全体のサイズ
+        page_width = float(page.width)
+        page_height = float(page.height)
+
+        # 全文字のX座標を収集
+        chars = page.chars
+        if not chars:
+            return [(0, 0, page_width, page_height)]
+
+        x_coords = [c['x0'] for c in chars] + [c['x1'] for c in chars]
+        x_coords = sorted(set(x_coords))
+
+        # X座標の密度分布を計算（ヒストグラム）
+        # 1pt単位でビンを作成
+        bins = {}
+        for x in x_coords:
+            bin_key = int(x)
+            bins[bin_key] = bins.get(bin_key, 0) + 1
+
+        # ガター（空白領域）を検出
+        gutters = []
+        in_gutter = False
+        gutter_start = None
+
+        for x in range(int(page_width)):
+            density = bins.get(x, 0)
+
+            if density == 0:  # 空白
+                if not in_gutter:
+                    gutter_start = x
+                    in_gutter = True
+            else:  # 文字あり
+                if in_gutter:
+                    gutter_width = x - gutter_start
+                    if gutter_width >= self.GUTTER_THRESHOLD:
+                        gutters.append((gutter_start, x))
+                    in_gutter = False
+
+        # ガターでページを分割
+        if not gutters:
+            # ガターがない場合は全体を1カラムとする
+            return [(0, 0, page_width, page_height)]
+
+        columns = []
+
+        # 最初のカラム（左端〜最初のガター）
+        columns.append((0, 0, gutters[0][0], page_height))
+
+        # 中間のカラム
+        for i in range(len(gutters) - 1):
+            x0 = gutters[i][1]
+            x1 = gutters[i + 1][0]
+            columns.append((x0, 0, x1, page_height))
+
+        # 最後のカラム（最後のガター〜右端）
+        columns.append((gutters[-1][1], 0, page_width, page_height))
+
+        return columns
+
+    def _extract_records_from_column(
+        self,
+        page,
+        column_bbox: Tuple[float, float, float, float],
+        page_num: int,
+        col_idx: int
+    ) -> List[Dict[str, Any]]:
+        """
+        カラム内からレコードを抽出（アンカーベース）
+
+        Args:
+            page: pdfplumberのPageオブジェクト
+            column_bbox: カラムのbbox (x0, y0, x1, y1)
+            page_num: ページ番号
+            col_idx: カラムインデックス
+
+        Returns:
+            [{
+                'rank': str,
+                'name': str,
+                'organization': str,
+                'score': str,
+                'page': int,
+                'column_index': int
+            }, ...]
+        """
+        import re
+
+        x0, y0, x1, y1 = column_bbox
+
+        # カラム内の文字を抽出
+        cropped = page.within_bbox((x0, y0, x1, y1))
+        chars = cropped.chars
+
+        if not chars:
+            return []
+
+        # 文字をY座標でグループ化（行を作成）
+        lines = self._group_chars_by_y(chars)
+
+        # アンカー（順位）を検出
+        anchors = []
+        for line in lines:
+            text = line['text'].strip()
+            # 数字のみの行をアンカーとする
+            if re.match(self.ANCHOR_PATTERN, text):
+                anchors.append({
+                    'rank': text,
+                    'y': line['y'],
+                    'line_index': line['index']
+                })
+
+        if not anchors:
+            logger.warning(f"[B-42] カラム {col_idx}: アンカー（順位）が見つかりません")
+            return []
+
+        # 各アンカーからレコードを構築
+        records = []
+        for i, anchor in enumerate(anchors):
+            # 次のアンカーまでのY範囲を決定
+            y_start = anchor['y']
+            y_end = anchors[i + 1]['y'] if i + 1 < len(anchors) else y1
+
+            # この範囲内の文字を収集
+            record_chars = [c for c in chars if y_start <= c['top'] <= y_end]
+
+            # レコードを構築
+            record = self._build_record(
+                record_chars, anchor['rank'], page_num, col_idx
+            )
+
+            if record:
+                records.append(record)
+
+        return records
+
+    def _group_chars_by_y(self, chars: List[Dict]) -> List[Dict[str, Any]]:
+        """
+        文字をY座標でグループ化（行を作成）
+
+        Args:
+            chars: 文字リスト
+
+        Returns:
+            [{
+                'index': int,
+                'y': float,
+                'text': str,
+                'chars': [...]
+            }, ...]
+        """
+        if not chars:
+            return []
+
+        # Y座標でソート
+        chars_sorted = sorted(chars, key=lambda c: (c['top'], c['x0']))
+
+        # グループ化
+        lines = []
+        current_line = []
+        prev_y = None
+
+        for char in chars_sorted:
+            if prev_y is None or abs(char['top'] - prev_y) < self.Y_TOLERANCE:
+                current_line.append(char)
+            else:
+                if current_line:
+                    lines.append({
+                        'index': len(lines),
+                        'y': statistics.mean([c['top'] for c in current_line]),
+                        'text': ''.join([c['text'] for c in current_line]),
+                        'chars': current_line
+                    })
+                current_line = [char]
+            prev_y = char['top']
+
+        if current_line:
+            lines.append({
+                'index': len(lines),
+                'y': statistics.mean([c['top'] for c in current_line]),
+                'text': ''.join([c['text'] for c in current_line]),
+                'chars': current_line
+            })
+
+        return lines
+
+    def _build_record(
+        self,
+        record_chars: List[Dict],
+        rank: str,
+        page_num: int,
+        col_idx: int
+    ) -> Dict[str, Any]:
+        """
+        文字リストからレコードを構築
+
+        Args:
+            record_chars: レコード範囲内の文字リスト
+            rank: 順位
+            page_num: ページ番号
+            col_idx: カラムインデックス
+
+        Returns:
+            {
+                'rank': str,
+                'name': str,
+                'organization': str,
+                'score': str,
+                'page': int,
+                'column_index': int
+            }
+        """
+        import re
+
+        # 行をグループ化
+        lines = self._group_chars_by_y(record_chars)
+
+        # 順位行を除外
+        lines = [line for line in lines if line['text'].strip() != rank]
+
+        if not lines:
+            return None
+
+        # フォントサイズで分類（大きい＝氏名、小さい＝校舎、数字＝点数）
+        name_candidates = []
+        org_candidates = []
+        score_candidates = []
+
+        for line in lines:
+            text = line['text'].strip()
+            if not text:
+                continue
+
+            # フォントサイズの平均を計算
+            avg_size = statistics.mean([c.get('size', 10) for c in line['chars']])
+
+            # 数字のみ（点数）
+            if re.match(r'^\d+$', text):
+                score_candidates.append({'text': text, 'size': avg_size, 'y': line['y']})
+            # それ以外
+            else:
+                # フォントサイズで氏名と校舎を分離
+                if avg_size > 8:  # 閾値は調整可能
+                    name_candidates.append({'text': text, 'size': avg_size, 'y': line['y']})
+                else:
+                    org_candidates.append({'text': text, 'size': avg_size, 'y': line['y']})
+
+        # 最も大きいフォントサイズの行を氏名とする
+        name = ''
+        if name_candidates:
+            name = max(name_candidates, key=lambda x: x['size'])['text']
+        elif org_candidates:
+            # 校舎候補しかない場合、最初のものを氏名とする
+            name = org_candidates[0]['text']
+            org_candidates = org_candidates[1:]
+
+        # 校舎（氏名の次に大きいもの、または最初のもの）
+        organization = ''
+        if org_candidates:
+            organization = org_candidates[0]['text']
+
+        # 点数（最後のもの）
+        score = ''
+        if score_candidates:
+            score = score_candidates[-1]['text']
+
+        return {
+            'rank': rank,
+            'name': name,
+            'organization': organization,
+            'score': score,
+            'page': page_num,
+            'column_index': col_idx
+        }
+
+    def _error_result(self, error_message: str) -> Dict[str, Any]:
+        """エラー結果を返す"""
+        return {
+            'is_structured': False,
+            'error': error_message,
+            'data_type': 'unknown',
+            'records': [],
+            'columns': [],
+            'tags': {},
+            'purged_image_path': ''
+        }

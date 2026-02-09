@@ -1,26 +1,30 @@
 """
-Stage F: Visual Analysis (Ver 10.6)
+Stage F: Data Fusion & Normalization（データ統合・正規化）
 
-Fは物理：位置だけ。意味理解は次段。
+Stage B（デジタル抽出）と Stage E（視覚抽出）の結果を統合し、
+日付や表構造を機械が扱いやすい形式に正規化する。
 
-処理フロー:
-  E6 → E7 → E8 → F1 → F2 → F3 → G3 → G4 → G5 → G6
+パイプライン:
+F-1: Controller（オーケストレーター）
+  ├─ F-1: Data Fusion Merger（ハイブリッド統合）
+  ├─ F-3: Smart Date/Time Normalizer（日付正規化 - Gemini 2.5 Flash-lite）
+  └─ F-5: Logical Table Joiner（表結合）
 
-分割構成:
-  - f1_grid_detector.py: F1 罫線観測（候補全件保持、モデル不要）
-  - f2_structure_analyzer.py: F2 構造解析（物理条件のみ）
-  - f3_cell_assigner.py: F3 物理仕分け（セル住所付け、モデル不要）
-  - orchestrator.py: 司令塔
+出力:
+- 正規化されたイベント（ISO 8601 形式の日付）
+- 統合されたテキスト
+- 結合された表データ
+- メタデータ（トークン使用量等）
 """
 
-from .orchestrator import StageFVisualAnalyzer
-from .f1_grid_detector import F1GridDetector
-from .f2_structure_analyzer import F2StructureAnalyzer
-from .f3_cell_assigner import F3CellAssigner
+from .f1_controller import F1Controller
+from .f1_data_fusion_merger import F1DataFusionMerger
+from .f3_smart_date_normalizer import F3SmartDateNormalizer
+from .f5_logical_table_joiner import F5LogicalTableJoiner
 
 __all__ = [
-    'StageFVisualAnalyzer',
-    'F1GridDetector',
-    'F2StructureAnalyzer',
-    'F3CellAssigner',
+    'F1Controller',
+    'F1DataFusionMerger',
+    'F3SmartDateNormalizer',
+    'F5LogicalTableJoiner',
 ]

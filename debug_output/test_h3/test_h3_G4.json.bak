@@ -16692,6 +16692,7 @@
   ],
   "tables": [
     {
+      "ref_id": "TBL_001",
       "row_count": 60,
       "col_count": 4,
       "cells_flat": [
@@ -21719,7 +21720,7 @@
     "e1_replaced": 0,
     "e6_adopted": 395,
     "total_changes": 0,
-    "elapsed": 0.0,
+    "elapsed": 0.031369686126708984,
     "anchor_count": 1,
     "table_count": 1,
     "coordinate_locked": true,

@@ -17,7 +17,9 @@
             148
           ],
           "panel_id": 0,
-          "reading_order": 21
+          "reading_order": 21,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 0,
@@ -31,7 +33,9 @@
             146
           ],
           "panel_id": 3,
-          "reading_order": 24
+          "reading_order": 24,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 0,
@@ -45,7 +49,9 @@
             143
           ],
           "panel_id": 2,
-          "reading_order": 23
+          "reading_order": 23,
+          "is_header": true,
+          "global_col": 5
         },
         {
           "row": 0,
@@ -59,7 +65,9 @@
             143
           ],
           "panel_id": 1,
-          "reading_order": 22
+          "reading_order": 22,
+          "is_header": true,
+          "global_col": 3
         },
         {
           "row": 1,
@@ -73,7 +81,9 @@
             188
           ],
           "panel_id": 0,
-          "reading_order": 29
+          "reading_order": 29,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 1,
@@ -87,7 +97,9 @@
             188
           ],
           "panel_id": 3,
-          "reading_order": 30
+          "reading_order": 30,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 1,
@@ -101,7 +113,9 @@
             186
           ],
           "panel_id": 2,
-          "reading_order": 27
+          "reading_order": 27,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 1,
@@ -115,7 +129,9 @@
             186
           ],
           "panel_id": 2,
-          "reading_order": 28
+          "reading_order": 28,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 1,
@@ -129,7 +145,9 @@
             187
           ],
           "panel_id": 1,
-          "reading_order": 25
+          "reading_order": 25,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 1,
@@ -143,7 +161,9 @@
             187
           ],
           "panel_id": 1,
-          "reading_order": 26
+          "reading_order": 26,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 2,
@@ -157,7 +177,9 @@
             228
           ],
           "panel_id": 0,
-          "reading_order": 31
+          "reading_order": 31,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 2,
@@ -171,7 +193,9 @@
             228
           ],
           "panel_id": 3,
-          "reading_order": 32
+          "reading_order": 32,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 3,
@@ -185,7 +209,9 @@
             247
           ],
           "panel_id": 2,
-          "reading_order": 33
+          "reading_order": 33,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 4,
@@ -199,7 +225,9 @@
             268
           ],
           "panel_id": 0,
-          "reading_order": 38
+          "reading_order": 38,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 4,
@@ -213,7 +241,9 @@
             268
           ],
           "panel_id": 3,
-          "reading_order": 39
+          "reading_order": 39,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 4,
@@ -227,7 +257,9 @@
             267
           ],
           "panel_id": 2,
-          "reading_order": 36
+          "reading_order": 36,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 4,
@@ -241,7 +273,9 @@
             267
           ],
           "panel_id": 2,
-          "reading_order": 37
+          "reading_order": 37,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 4,
@@ -255,7 +289,9 @@
             267
           ],
           "panel_id": 1,
-          "reading_order": 34
+          "reading_order": 34,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 4,
@@ -269,7 +305,9 @@
             267
           ],
           "panel_id": 1,
-          "reading_order": 35
+          "reading_order": 35,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 5,
@@ -283,7 +321,9 @@
             287
           ],
           "panel_id": 2,
-          "reading_order": 40
+          "reading_order": 40,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 6,
@@ -297,7 +337,9 @@
             307
           ],
           "panel_id": 0,
-          "reading_order": 41
+          "reading_order": 41,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 6,
@@ -311,7 +353,9 @@
             306
           ],
           "panel_id": 2,
-          "reading_order": 44
+          "reading_order": 44,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 6,
@@ -325,7 +369,9 @@
             306
           ],
           "panel_id": 1,
-          "reading_order": 42
+          "reading_order": 42,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 6,
@@ -339,7 +385,9 @@
             302
           ],
           "panel_id": 1,
-          "reading_order": 43
+          "reading_order": 43,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 7,
@@ -353,7 +401,9 @@
             326
           ],
           "panel_id": 2,
-          "reading_order": 45
+          "reading_order": 45,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 8,
@@ -367,7 +417,9 @@
             347
           ],
           "panel_id": 0,
-          "reading_order": 46
+          "reading_order": 46,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 8,
@@ -381,7 +433,9 @@
             347
           ],
           "panel_id": 3,
-          "reading_order": 51
+          "reading_order": 51,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 8,
@@ -395,7 +449,9 @@
             345
           ],
           "panel_id": 2,
-          "reading_order": 49
+          "reading_order": 49,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 8,
@@ -409,7 +465,9 @@
             346
           ],
           "panel_id": 2,
-          "reading_order": 50
+          "reading_order": 50,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 8,
@@ -423,7 +481,9 @@
             346
           ],
           "panel_id": 1,
-          "reading_order": 47
+          "reading_order": 47,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 8,
@@ -437,7 +497,9 @@
             345
           ],
           "panel_id": 1,
-          "reading_order": 48
+          "reading_order": 48,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 9,
@@ -451,7 +513,9 @@
             365
           ],
           "panel_id": 2,
-          "reading_order": 52
+          "reading_order": 52,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 10,
@@ -465,7 +529,9 @@
             385
           ],
           "panel_id": 0,
-          "reading_order": 53
+          "reading_order": 53,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 10,
@@ -479,7 +545,9 @@
             386
           ],
           "panel_id": 3,
-          "reading_order": 60
+          "reading_order": 60,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 10,
@@ -493,7 +561,9 @@
             384
           ],
           "panel_id": 2,
-          "reading_order": 56
+          "reading_order": 56,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 10,
@@ -507,7 +577,9 @@
             382
           ],
           "panel_id": 2,
-          "reading_order": 57
+          "reading_order": 57,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 10,
@@ -521,7 +593,9 @@
             384
           ],
           "panel_id": 2,
-          "reading_order": 58
+          "reading_order": 58,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 10,
@@ -535,7 +609,9 @@
             383
           ],
           "panel_id": 2,
-          "reading_order": 59
+          "reading_order": 59,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 10,
@@ -549,7 +625,9 @@
             385
           ],
           "panel_id": 1,
-          "reading_order": 54
+          "reading_order": 54,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 10,
@@ -563,7 +641,9 @@
             385
           ],
           "panel_id": 1,
-          "reading_order": 55
+          "reading_order": 55,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 11,
@@ -577,7 +657,9 @@
             405
           ],
           "panel_id": 2,
-          "reading_order": 61
+          "reading_order": 61,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 12,
@@ -591,7 +673,9 @@
             426
           ],
           "panel_id": 0,
-          "reading_order": 62
+          "reading_order": 62,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 12,
@@ -605,7 +689,9 @@
             426
           ],
           "panel_id": 3,
-          "reading_order": 68
+          "reading_order": 68,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 12,
@@ -619,7 +705,9 @@
             424
           ],
           "panel_id": 2,
-          "reading_order": 65
+          "reading_order": 65,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 12,
@@ -633,7 +721,9 @@
             422
           ],
           "panel_id": 2,
-          "reading_order": 66
+          "reading_order": 66,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 12,
@@ -647,7 +737,9 @@
             425
           ],
           "panel_id": 2,
-          "reading_order": 67
+          "reading_order": 67,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 12,
@@ -661,7 +753,9 @@
             425
           ],
           "panel_id": 1,
-          "reading_order": 63
+          "reading_order": 63,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 12,
@@ -675,7 +769,9 @@
             425
           ],
           "panel_id": 1,
-          "reading_order": 64
+          "reading_order": 64,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 13,
@@ -689,7 +785,9 @@
             444
           ],
           "panel_id": 2,
-          "reading_order": 69
+          "reading_order": 69,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 13,
@@ -703,7 +801,9 @@
             444
           ],
           "panel_id": 2,
-          "reading_order": 70
+          "reading_order": 70,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 14,
@@ -717,7 +817,9 @@
             465
           ],
           "panel_id": 0,
-          "reading_order": 72
+          "reading_order": 72,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 14,
@@ -731,7 +833,9 @@
             465
           ],
           "panel_id": 3,
-          "reading_order": 83
+          "reading_order": 83,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 14,
@@ -745,7 +849,9 @@
             464
           ],
           "panel_id": 2,
-          "reading_order": 79
+          "reading_order": 79,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 14,
@@ -759,7 +865,9 @@
             463
           ],
           "panel_id": 2,
-          "reading_order": 80
+          "reading_order": 80,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 14,
@@ -773,7 +881,9 @@
             464
           ],
           "panel_id": 2,
-          "reading_order": 81
+          "reading_order": 81,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 14,
@@ -787,7 +897,9 @@
             464
           ],
           "panel_id": 2,
-          "reading_order": 82
+          "reading_order": 82,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 14,
@@ -801,7 +913,9 @@
             465
           ],
           "panel_id": 1,
-          "reading_order": 73
+          "reading_order": 73,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 14,
@@ -815,7 +929,9 @@
             465
           ],
           "panel_id": 1,
-          "reading_order": 74
+          "reading_order": 74,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 14,
@@ -829,7 +945,9 @@
             465
           ],
           "panel_id": 1,
-          "reading_order": 75
+          "reading_order": 75,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 14,
@@ -843,7 +961,9 @@
             465
           ],
           "panel_id": 1,
-          "reading_order": 76
+          "reading_order": 76,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 14,
@@ -857,7 +977,9 @@
             463
           ],
           "panel_id": 1,
-          "reading_order": 77
+          "reading_order": 77,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 14,
@@ -871,7 +993,9 @@
             463
           ],
           "panel_id": 1,
-          "reading_order": 78
+          "reading_order": 78,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 15,
@@ -885,7 +1009,9 @@
             505
           ],
           "panel_id": 0,
-          "reading_order": 84
+          "reading_order": 84,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 15,
@@ -899,7 +1025,9 @@
             505
           ],
           "panel_id": 3,
-          "reading_order": 90
+          "reading_order": 90,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 15,
@@ -913,7 +1041,9 @@
             504
           ],
           "panel_id": 2,
-          "reading_order": 88
+          "reading_order": 88,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 15,
@@ -927,7 +1057,9 @@
             503
           ],
           "panel_id": 2,
-          "reading_order": 89
+          "reading_order": 89,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 15,
@@ -941,7 +1073,9 @@
             504
           ],
           "panel_id": 1,
-          "reading_order": 85
+          "reading_order": 85,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 15,
@@ -955,7 +1089,9 @@
             504
           ],
           "panel_id": 1,
-          "reading_order": 86
+          "reading_order": 86,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 15,
@@ -969,7 +1105,9 @@
             504
           ],
           "panel_id": 1,
-          "reading_order": 87
+          "reading_order": 87,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 16,
@@ -983,7 +1121,9 @@
             545
           ],
           "panel_id": 0,
-          "reading_order": 91
+          "reading_order": 91,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 16,
@@ -997,7 +1137,9 @@
             545
           ],
           "panel_id": 3,
-          "reading_order": 98
+          "reading_order": 98,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 16,
@@ -1011,7 +1153,9 @@
             544
           ],
           "panel_id": 2,
-          "reading_order": 96
+          "reading_order": 96,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 16,
@@ -1025,7 +1169,9 @@
             544
           ],
           "panel_id": 2,
-          "reading_order": 97
+          "reading_order": 97,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 16,
@@ -1039,7 +1185,9 @@
             543
           ],
           "panel_id": 1,
-          "reading_order": 92
+          "reading_order": 92,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 16,
@@ -1053,7 +1201,9 @@
             543
           ],
           "panel_id": 1,
-          "reading_order": 93
+          "reading_order": 93,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 16,
@@ -1067,7 +1217,9 @@
             543
           ],
           "panel_id": 1,
-          "reading_order": 94
+          "reading_order": 94,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 16,
@@ -1081,7 +1233,9 @@
             544
           ],
           "panel_id": 1,
-          "reading_order": 95
+          "reading_order": 95,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 17,
@@ -1095,7 +1249,9 @@
             563
           ],
           "panel_id": 2,
-          "reading_order": 99
+          "reading_order": 99,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1109,7 +1265,9 @@
             583
           ],
           "panel_id": 0,
-          "reading_order": 100
+          "reading_order": 100,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 18,
@@ -1123,7 +1281,9 @@
             584
           ],
           "panel_id": 3,
-          "reading_order": 111
+          "reading_order": 111,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 18,
@@ -1137,7 +1297,9 @@
             583
           ],
           "panel_id": 2,
-          "reading_order": 105
+          "reading_order": 105,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1151,7 +1313,9 @@
             582
           ],
           "panel_id": 2,
-          "reading_order": 106
+          "reading_order": 106,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1165,7 +1329,9 @@
             583
           ],
           "panel_id": 2,
-          "reading_order": 107
+          "reading_order": 107,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1179,7 +1345,9 @@
             584
           ],
           "panel_id": 2,
-          "reading_order": 108
+          "reading_order": 108,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1193,7 +1361,9 @@
             583
           ],
           "panel_id": 2,
-          "reading_order": 109
+          "reading_order": 109,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1207,7 +1377,9 @@
             583
           ],
           "panel_id": 2,
-          "reading_order": 110
+          "reading_order": 110,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 18,
@@ -1221,7 +1393,9 @@
             584
           ],
           "panel_id": 1,
-          "reading_order": 101
+          "reading_order": 101,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 18,
@@ -1235,7 +1409,9 @@
             584
           ],
           "panel_id": 1,
-          "reading_order": 102
+          "reading_order": 102,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 18,
@@ -1249,7 +1425,9 @@
             584
           ],
           "panel_id": 1,
-          "reading_order": 103
+          "reading_order": 103,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 18,
@@ -1263,7 +1441,9 @@
             584
           ],
           "panel_id": 1,
-          "reading_order": 104
+          "reading_order": 104,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 19,
@@ -1277,7 +1457,9 @@
             602
           ],
           "panel_id": 2,
-          "reading_order": 112
+          "reading_order": 112,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 19,
@@ -1291,7 +1473,9 @@
             602
           ],
           "panel_id": 2,
-          "reading_order": 113
+          "reading_order": 113,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1305,7 +1489,9 @@
             624
           ],
           "panel_id": 0,
-          "reading_order": 114
+          "reading_order": 114,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 20,
@@ -1319,7 +1505,9 @@
             623
           ],
           "panel_id": 3,
-          "reading_order": 127
+          "reading_order": 127,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 20,
@@ -1333,7 +1521,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 120
+          "reading_order": 120,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1347,7 +1537,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 121
+          "reading_order": 121,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1361,7 +1553,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 122
+          "reading_order": 122,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1375,7 +1569,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 123
+          "reading_order": 123,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1389,7 +1585,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 124
+          "reading_order": 124,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1403,7 +1601,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 125
+          "reading_order": 125,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1417,7 +1617,9 @@
             624
           ],
           "panel_id": 2,
-          "reading_order": 126
+          "reading_order": 126,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 20,
@@ -1431,7 +1633,9 @@
             624
           ],
           "panel_id": 1,
-          "reading_order": 115
+          "reading_order": 115,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 20,
@@ -1445,7 +1649,9 @@
             623
           ],
           "panel_id": 1,
-          "reading_order": 116
+          "reading_order": 116,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 20,
@@ -1459,7 +1665,9 @@
             623
           ],
           "panel_id": 1,
-          "reading_order": 117
+          "reading_order": 117,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 20,
@@ -1473,7 +1681,9 @@
             623
           ],
           "panel_id": 1,
-          "reading_order": 118
+          "reading_order": 118,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 20,
@@ -1487,7 +1697,9 @@
             623
           ],
           "panel_id": 1,
-          "reading_order": 119
+          "reading_order": 119,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1501,7 +1713,9 @@
             662
           ],
           "panel_id": 0,
-          "reading_order": 128
+          "reading_order": 128,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 21,
@@ -1515,7 +1729,9 @@
             663
           ],
           "panel_id": 1,
-          "reading_order": 129
+          "reading_order": 129,
+          "is_header": false,
+          "global_col": 1
         },
         {
           "row": 21,
@@ -1529,7 +1745,9 @@
             662
           ],
           "panel_id": 3,
-          "reading_order": 146
+          "reading_order": 146,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 21,
@@ -1543,7 +1761,9 @@
             663
           ],
           "panel_id": 1,
-          "reading_order": 130
+          "reading_order": 130,
+          "is_header": false,
+          "global_col": 2
         },
         {
           "row": 21,
@@ -1557,7 +1777,9 @@
             663
           ],
           "panel_id": 1,
-          "reading_order": 131
+          "reading_order": 131,
+          "is_header": false,
+          "global_col": 2
         },
         {
           "row": 21,
@@ -1571,7 +1793,9 @@
             663
           ],
           "panel_id": 2,
-          "reading_order": 142
+          "reading_order": 142,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 21,
@@ -1585,7 +1809,9 @@
             663
           ],
           "panel_id": 2,
-          "reading_order": 143
+          "reading_order": 143,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 21,
@@ -1599,7 +1825,9 @@
             663
           ],
           "panel_id": 2,
-          "reading_order": 144
+          "reading_order": 144,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 21,
@@ -1613,7 +1841,9 @@
             663
           ],
           "panel_id": 2,
-          "reading_order": 145
+          "reading_order": 145,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 21,
@@ -1627,7 +1857,9 @@
             663
           ],
           "panel_id": 1,
-          "reading_order": 132
+          "reading_order": 132,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1641,7 +1873,9 @@
             659
           ],
           "panel_id": 1,
-          "reading_order": 133
+          "reading_order": 133,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1655,7 +1889,9 @@
             664
           ],
           "panel_id": 1,
-          "reading_order": 134
+          "reading_order": 134,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1669,7 +1905,9 @@
             664
           ],
           "panel_id": 1,
-          "reading_order": 135
+          "reading_order": 135,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1683,7 +1921,9 @@
             664
           ],
           "panel_id": 1,
-          "reading_order": 136
+          "reading_order": 136,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1697,7 +1937,9 @@
             664
           ],
           "panel_id": 1,
-          "reading_order": 137
+          "reading_order": 137,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1711,7 +1953,9 @@
             664
           ],
           "panel_id": 1,
-          "reading_order": 138
+          "reading_order": 138,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1725,7 +1969,9 @@
             661
           ],
           "panel_id": 1,
-          "reading_order": 139
+          "reading_order": 139,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1739,7 +1985,9 @@
             661
           ],
           "panel_id": 1,
-          "reading_order": 140
+          "reading_order": 140,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 21,
@@ -1753,7 +2001,9 @@
             662
           ],
           "panel_id": 1,
-          "reading_order": 141
+          "reading_order": 141,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 22,
@@ -1767,7 +2017,9 @@
             682
           ],
           "panel_id": 2,
-          "reading_order": 147
+          "reading_order": 147,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1781,7 +2033,9 @@
             703
           ],
           "panel_id": 0,
-          "reading_order": 148
+          "reading_order": 148,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 23,
@@ -1795,7 +2049,9 @@
             703
           ],
           "panel_id": 3,
-          "reading_order": 168
+          "reading_order": 168,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 23,
@@ -1809,7 +2065,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 158
+          "reading_order": 158,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1823,7 +2081,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 159
+          "reading_order": 159,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1837,7 +2097,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 160
+          "reading_order": 160,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1851,7 +2113,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 161
+          "reading_order": 161,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1865,7 +2129,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 162
+          "reading_order": 162,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1879,7 +2145,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 163
+          "reading_order": 163,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1893,7 +2161,9 @@
             703
           ],
           "panel_id": 2,
-          "reading_order": 164
+          "reading_order": 164,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1907,7 +2177,9 @@
             702
           ],
           "panel_id": 2,
-          "reading_order": 165
+          "reading_order": 165,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1921,7 +2193,9 @@
             702
           ],
           "panel_id": 2,
-          "reading_order": 166
+          "reading_order": 166,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1935,7 +2209,9 @@
             702
           ],
           "panel_id": 2,
-          "reading_order": 167
+          "reading_order": 167,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 23,
@@ -1949,7 +2225,9 @@
             702
           ],
           "panel_id": 1,
-          "reading_order": 149
+          "reading_order": 149,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -1963,7 +2241,9 @@
             702
           ],
           "panel_id": 1,
-          "reading_order": 150
+          "reading_order": 150,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -1977,7 +2257,9 @@
             701
           ],
           "panel_id": 1,
-          "reading_order": 151
+          "reading_order": 151,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -1991,7 +2273,9 @@
             701
           ],
           "panel_id": 1,
-          "reading_order": 152
+          "reading_order": 152,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -2005,7 +2289,9 @@
             701
           ],
           "panel_id": 1,
-          "reading_order": 153
+          "reading_order": 153,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -2019,7 +2305,9 @@
             702
           ],
           "panel_id": 1,
-          "reading_order": 154
+          "reading_order": 154,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -2033,7 +2321,9 @@
             702
           ],
           "panel_id": 1,
-          "reading_order": 155
+          "reading_order": 155,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -2047,7 +2337,9 @@
             702
           ],
           "panel_id": 1,
-          "reading_order": 156
+          "reading_order": 156,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 23,
@@ -2061,7 +2353,9 @@
             702
           ],
           "panel_id": 1,
-          "reading_order": 157
+          "reading_order": 157,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 24,
@@ -2075,7 +2369,9 @@
             722
           ],
           "panel_id": 2,
-          "reading_order": 169
+          "reading_order": 169,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 24,
@@ -2089,7 +2385,9 @@
             722
           ],
           "panel_id": 2,
-          "reading_order": 170
+          "reading_order": 170,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 24,
@@ -2103,7 +2401,9 @@
             722
           ],
           "panel_id": 2,
-          "reading_order": 171
+          "reading_order": 171,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2117,7 +2417,9 @@
             743
           ],
           "panel_id": 0,
-          "reading_order": 172
+          "reading_order": 172,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 25,
@@ -2131,7 +2433,9 @@
             743
           ],
           "panel_id": 3,
-          "reading_order": 185
+          "reading_order": 185,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 25,
@@ -2145,7 +2449,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 178
+          "reading_order": 178,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2159,7 +2465,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 179
+          "reading_order": 179,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2173,7 +2481,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 180
+          "reading_order": 180,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2187,7 +2497,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 181
+          "reading_order": 181,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2201,7 +2513,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 182
+          "reading_order": 182,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2215,7 +2529,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 183
+          "reading_order": 183,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2229,7 +2545,9 @@
             742
           ],
           "panel_id": 2,
-          "reading_order": 184
+          "reading_order": 184,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 25,
@@ -2243,7 +2561,9 @@
             742
           ],
           "panel_id": 1,
-          "reading_order": 173
+          "reading_order": 173,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 25,
@@ -2257,7 +2577,9 @@
             738
           ],
           "panel_id": 1,
-          "reading_order": 174
+          "reading_order": 174,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 25,
@@ -2271,7 +2593,9 @@
             742
           ],
           "panel_id": 1,
-          "reading_order": 175
+          "reading_order": 175,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 25,
@@ -2285,7 +2609,9 @@
             742
           ],
           "panel_id": 1,
-          "reading_order": 176
+          "reading_order": 176,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 25,
@@ -2299,7 +2625,9 @@
             742
           ],
           "panel_id": 1,
-          "reading_order": 177
+          "reading_order": 177,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 26,
@@ -2313,7 +2641,9 @@
             761
           ],
           "panel_id": 2,
-          "reading_order": 186
+          "reading_order": 186,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 27,
@@ -2327,7 +2657,9 @@
             782
           ],
           "panel_id": 0,
-          "reading_order": 187
+          "reading_order": 187,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 27,
@@ -2341,7 +2673,9 @@
             782
           ],
           "panel_id": 2,
-          "reading_order": 194
+          "reading_order": 194,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 27,
@@ -2355,7 +2689,9 @@
             781
           ],
           "panel_id": 2,
-          "reading_order": 195
+          "reading_order": 195,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 27,
@@ -2369,7 +2705,9 @@
             781
           ],
           "panel_id": 2,
-          "reading_order": 196
+          "reading_order": 196,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 27,
@@ -2383,7 +2721,9 @@
             781
           ],
           "panel_id": 2,
-          "reading_order": 197
+          "reading_order": 197,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 27,
@@ -2397,7 +2737,9 @@
             781
           ],
           "panel_id": 2,
-          "reading_order": 198
+          "reading_order": 198,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 27,
@@ -2411,7 +2753,9 @@
             782
           ],
           "panel_id": 1,
-          "reading_order": 188
+          "reading_order": 188,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 27,
@@ -2425,7 +2769,9 @@
             782
           ],
           "panel_id": 1,
-          "reading_order": 189
+          "reading_order": 189,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 27,
@@ -2439,7 +2785,9 @@
             782
           ],
           "panel_id": 1,
-          "reading_order": 190
+          "reading_order": 190,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 27,
@@ -2453,7 +2801,9 @@
             782
           ],
           "panel_id": 1,
-          "reading_order": 191
+          "reading_order": 191,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 27,
@@ -2467,7 +2817,9 @@
             782
           ],
           "panel_id": 1,
-          "reading_order": 192
+          "reading_order": 192,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 27,
@@ -2481,7 +2833,9 @@
             782
           ],
           "panel_id": 1,
-          "reading_order": 193
+          "reading_order": 193,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 28,
@@ -2495,7 +2849,9 @@
             800
           ],
           "panel_id": 2,
-          "reading_order": 199
+          "reading_order": 199,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 29,
@@ -2509,7 +2865,9 @@
             821
           ],
           "panel_id": 0,
-          "reading_order": 200
+          "reading_order": 200,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 29,
@@ -2523,7 +2881,9 @@
             822
           ],
           "panel_id": 3,
-          "reading_order": 204
+          "reading_order": 204,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 29,
@@ -2537,7 +2897,9 @@
             821
           ],
           "panel_id": 2,
-          "reading_order": 202
+          "reading_order": 202,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 29,
@@ -2551,7 +2913,9 @@
             820
           ],
           "panel_id": 2,
-          "reading_order": 203
+          "reading_order": 203,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 29,
@@ -2565,7 +2929,9 @@
             821
           ],
           "panel_id": 1,
-          "reading_order": 201
+          "reading_order": 201,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 30,
@@ -2579,7 +2945,9 @@
             840
           ],
           "panel_id": 2,
-          "reading_order": 205
+          "reading_order": 205,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 31,
@@ -2593,7 +2961,9 @@
             861
           ],
           "panel_id": 0,
-          "reading_order": 206
+          "reading_order": 206,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 31,
@@ -2607,7 +2977,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 207
+          "reading_order": 207,
+          "is_header": false,
+          "global_col": 2
         },
         {
           "row": 31,
@@ -2621,7 +2993,9 @@
             860
           ],
           "panel_id": 2,
-          "reading_order": 220
+          "reading_order": 220,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 31,
@@ -2635,7 +3009,9 @@
             860
           ],
           "panel_id": 2,
-          "reading_order": 221
+          "reading_order": 221,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 31,
@@ -2649,7 +3025,9 @@
             861
           ],
           "panel_id": 1,
-          "reading_order": 208
+          "reading_order": 208,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2663,7 +3041,9 @@
             861
           ],
           "panel_id": 1,
-          "reading_order": 209
+          "reading_order": 209,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2677,7 +3057,9 @@
             861
           ],
           "panel_id": 1,
-          "reading_order": 210
+          "reading_order": 210,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2691,7 +3073,9 @@
             861
           ],
           "panel_id": 1,
-          "reading_order": 211
+          "reading_order": 211,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2705,7 +3089,9 @@
             859
           ],
           "panel_id": 1,
-          "reading_order": 212
+          "reading_order": 212,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2719,7 +3105,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 213
+          "reading_order": 213,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2733,7 +3121,9 @@
             858
           ],
           "panel_id": 1,
-          "reading_order": 214
+          "reading_order": 214,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2747,7 +3137,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 215
+          "reading_order": 215,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2761,7 +3153,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 216
+          "reading_order": 216,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2775,7 +3169,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 217
+          "reading_order": 217,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2789,7 +3185,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 218
+          "reading_order": 218,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 31,
@@ -2803,7 +3201,9 @@
             860
           ],
           "panel_id": 1,
-          "reading_order": 219
+          "reading_order": 219,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 32,
@@ -2817,7 +3217,9 @@
             880
           ],
           "panel_id": 2,
-          "reading_order": 222
+          "reading_order": 222,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 33,
@@ -2831,7 +3233,9 @@
             901
           ],
           "panel_id": 0,
-          "reading_order": 223
+          "reading_order": 223,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 33,
@@ -2845,7 +3249,9 @@
             900
           ],
           "panel_id": 2,
-          "reading_order": 230
+          "reading_order": 230,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 33,
@@ -2859,7 +3265,9 @@
             897
           ],
           "panel_id": 2,
-          "reading_order": 231
+          "reading_order": 231,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 33,
@@ -2873,7 +3281,9 @@
             900
           ],
           "panel_id": 2,
-          "reading_order": 232
+          "reading_order": 232,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 33,
@@ -2887,7 +3297,9 @@
             899
           ],
           "panel_id": 1,
-          "reading_order": 224
+          "reading_order": 224,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 33,
@@ -2901,7 +3313,9 @@
             899
           ],
           "panel_id": 1,
-          "reading_order": 225
+          "reading_order": 225,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 33,
@@ -2915,7 +3329,9 @@
             899
           ],
           "panel_id": 1,
-          "reading_order": 226
+          "reading_order": 226,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 33,
@@ -2929,7 +3345,9 @@
             900
           ],
           "panel_id": 1,
-          "reading_order": 227
+          "reading_order": 227,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 33,
@@ -2943,7 +3361,9 @@
             900
           ],
           "panel_id": 1,
-          "reading_order": 228
+          "reading_order": 228,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 33,
@@ -2957,7 +3377,9 @@
             899
           ],
           "panel_id": 1,
-          "reading_order": 229
+          "reading_order": 229,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 34,
@@ -2971,7 +3393,9 @@
             919
           ],
           "panel_id": 2,
-          "reading_order": 233
+          "reading_order": 233,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 34,
@@ -2985,7 +3409,9 @@
             919
           ],
           "panel_id": 2,
-          "reading_order": 234
+          "reading_order": 234,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 34,
@@ -2999,7 +3425,9 @@
             920
           ],
           "panel_id": 2,
-          "reading_order": 235
+          "reading_order": 235,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 34,
@@ -3013,7 +3441,9 @@
             919
           ],
           "panel_id": 2,
-          "reading_order": 236
+          "reading_order": 236,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3027,7 +3457,9 @@
             940
           ],
           "panel_id": 0,
-          "reading_order": 237
+          "reading_order": 237,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 35,
@@ -3041,7 +3473,9 @@
             939
           ],
           "panel_id": 2,
-          "reading_order": 240
+          "reading_order": 240,
+          "is_header": false,
+          "global_col": 4
         },
         {
           "row": 35,
@@ -3055,7 +3489,9 @@
             938
           ],
           "panel_id": 2,
-          "reading_order": 241
+          "reading_order": 241,
+          "is_header": false,
+          "global_col": 4
         },
         {
           "row": 35,
@@ -3069,7 +3505,9 @@
             939
           ],
           "panel_id": 3,
-          "reading_order": 252
+          "reading_order": 252,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 35,
@@ -3083,7 +3521,9 @@
             938
           ],
           "panel_id": 2,
-          "reading_order": 242
+          "reading_order": 242,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3097,7 +3537,9 @@
             941
           ],
           "panel_id": 2,
-          "reading_order": 243
+          "reading_order": 243,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3111,7 +3553,9 @@
             940
           ],
           "panel_id": 2,
-          "reading_order": 244
+          "reading_order": 244,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3125,7 +3569,9 @@
             940
           ],
           "panel_id": 2,
-          "reading_order": 245
+          "reading_order": 245,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3139,7 +3585,9 @@
             940
           ],
           "panel_id": 2,
-          "reading_order": 246
+          "reading_order": 246,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3153,7 +3601,9 @@
             939
           ],
           "panel_id": 2,
-          "reading_order": 247
+          "reading_order": 247,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3167,7 +3617,9 @@
             939
           ],
           "panel_id": 2,
-          "reading_order": 248
+          "reading_order": 248,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3181,7 +3633,9 @@
             939
           ],
           "panel_id": 2,
-          "reading_order": 249
+          "reading_order": 249,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3195,7 +3649,9 @@
             939
           ],
           "panel_id": 2,
-          "reading_order": 250
+          "reading_order": 250,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3209,7 +3665,9 @@
             939
           ],
           "panel_id": 2,
-          "reading_order": 251
+          "reading_order": 251,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 35,
@@ -3223,7 +3681,9 @@
             938
           ],
           "panel_id": 1,
-          "reading_order": 238
+          "reading_order": 238,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 35,
@@ -3237,7 +3697,9 @@
             938
           ],
           "panel_id": 1,
-          "reading_order": 239
+          "reading_order": 239,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 36,
@@ -3251,7 +3713,9 @@
             959
           ],
           "panel_id": 2,
-          "reading_order": 253
+          "reading_order": 253,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 36,
@@ -3265,7 +3729,9 @@
             959
           ],
           "panel_id": 2,
-          "reading_order": 254
+          "reading_order": 254,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 37,
@@ -3279,7 +3745,9 @@
             979
           ],
           "panel_id": 0,
-          "reading_order": 255
+          "reading_order": 255,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 37,
@@ -3293,7 +3761,9 @@
             979
           ],
           "panel_id": 3,
-          "reading_order": 264
+          "reading_order": 264,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 37,
@@ -3307,7 +3777,9 @@
             978
           ],
           "panel_id": 2,
-          "reading_order": 259
+          "reading_order": 259,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 37,
@@ -3321,7 +3793,9 @@
             978
           ],
           "panel_id": 2,
-          "reading_order": 260
+          "reading_order": 260,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 37,
@@ -3335,7 +3809,9 @@
             979
           ],
           "panel_id": 2,
-          "reading_order": 261
+          "reading_order": 261,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 37,
@@ -3349,7 +3825,9 @@
             979
           ],
           "panel_id": 2,
-          "reading_order": 262
+          "reading_order": 262,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 37,
@@ -3363,7 +3841,9 @@
             978
           ],
           "panel_id": 2,
-          "reading_order": 263
+          "reading_order": 263,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 37,
@@ -3377,7 +3857,9 @@
             979
           ],
           "panel_id": 1,
-          "reading_order": 256
+          "reading_order": 256,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 37,
@@ -3391,7 +3873,9 @@
             978
           ],
           "panel_id": 1,
-          "reading_order": 257
+          "reading_order": 257,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 37,
@@ -3405,7 +3889,9 @@
             978
           ],
           "panel_id": 1,
-          "reading_order": 258
+          "reading_order": 258,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 38,
@@ -3419,7 +3905,9 @@
             1020
           ],
           "panel_id": 0,
-          "reading_order": 265
+          "reading_order": 265,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 38,
@@ -3433,7 +3921,9 @@
             1020
           ],
           "panel_id": 3,
-          "reading_order": 276
+          "reading_order": 276,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 38,
@@ -3447,7 +3937,9 @@
             1018
           ],
           "panel_id": 2,
-          "reading_order": 272
+          "reading_order": 272,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 38,
@@ -3461,7 +3953,9 @@
             1018
           ],
           "panel_id": 2,
-          "reading_order": 273
+          "reading_order": 273,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 38,
@@ -3475,7 +3969,9 @@
             1018
           ],
           "panel_id": 2,
-          "reading_order": 274
+          "reading_order": 274,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 38,
@@ -3489,7 +3985,9 @@
             1018
           ],
           "panel_id": 2,
-          "reading_order": 275
+          "reading_order": 275,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 38,
@@ -3503,7 +4001,9 @@
             1018
           ],
           "panel_id": 1,
-          "reading_order": 266
+          "reading_order": 266,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 38,
@@ -3517,7 +4017,9 @@
             1018
           ],
           "panel_id": 1,
-          "reading_order": 267
+          "reading_order": 267,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 38,
@@ -3531,7 +4033,9 @@
             1019
           ],
           "panel_id": 1,
-          "reading_order": 268
+          "reading_order": 268,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 38,
@@ -3545,7 +4049,9 @@
             1019
           ],
           "panel_id": 1,
-          "reading_order": 269
+          "reading_order": 269,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 38,
@@ -3559,7 +4065,9 @@
             1019
           ],
           "panel_id": 1,
-          "reading_order": 270
+          "reading_order": 270,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 38,
@@ -3573,7 +4081,9 @@
             1019
           ],
           "panel_id": 1,
-          "reading_order": 271
+          "reading_order": 271,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 39,
@@ -3587,7 +4097,9 @@
             1058
           ],
           "panel_id": 0,
-          "reading_order": 277
+          "reading_order": 277,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 39,
@@ -3601,7 +4113,9 @@
             1058
           ],
           "panel_id": 3,
-          "reading_order": 284
+          "reading_order": 284,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 39,
@@ -3615,7 +4129,9 @@
             1058
           ],
           "panel_id": 2,
-          "reading_order": 282
+          "reading_order": 282,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 39,
@@ -3629,7 +4145,9 @@
             1057
           ],
           "panel_id": 2,
-          "reading_order": 283
+          "reading_order": 283,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 39,
@@ -3643,7 +4161,9 @@
             1058
           ],
           "panel_id": 1,
-          "reading_order": 278
+          "reading_order": 278,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 39,
@@ -3657,7 +4177,9 @@
             1058
           ],
           "panel_id": 1,
-          "reading_order": 279
+          "reading_order": 279,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 39,
@@ -3671,7 +4193,9 @@
             1057
           ],
           "panel_id": 1,
-          "reading_order": 280
+          "reading_order": 280,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 39,
@@ -3685,7 +4209,9 @@
             1057
           ],
           "panel_id": 1,
-          "reading_order": 281
+          "reading_order": 281,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 40,
@@ -3699,7 +4225,9 @@
             1077
           ],
           "panel_id": 2,
-          "reading_order": 286
+          "reading_order": 286,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 41,
@@ -3713,7 +4241,9 @@
             1098
           ],
           "panel_id": 0,
-          "reading_order": 290
+          "reading_order": 290,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 41,
@@ -3727,7 +4257,9 @@
             1098
           ],
           "panel_id": 3,
-          "reading_order": 303
+          "reading_order": 303,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 41,
@@ -3741,7 +4273,9 @@
             1098
           ],
           "panel_id": 1,
-          "reading_order": 291
+          "reading_order": 291,
+          "is_header": false,
+          "global_col": 2
         },
         {
           "row": 41,
@@ -3755,7 +4289,9 @@
             1098
           ],
           "panel_id": 1,
-          "reading_order": 292
+          "reading_order": 292,
+          "is_header": false,
+          "global_col": 2
         },
         {
           "row": 41,
@@ -3769,7 +4305,9 @@
             1097
           ],
           "panel_id": 2,
-          "reading_order": 299
+          "reading_order": 299,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 41,
@@ -3783,7 +4321,9 @@
             1097
           ],
           "panel_id": 2,
-          "reading_order": 300
+          "reading_order": 300,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 41,
@@ -3797,7 +4337,9 @@
             1097
           ],
           "panel_id": 2,
-          "reading_order": 301
+          "reading_order": 301,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 41,
@@ -3811,7 +4353,9 @@
             1097
           ],
           "panel_id": 2,
-          "reading_order": 302
+          "reading_order": 302,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 41,
@@ -3825,7 +4369,9 @@
             1097
           ],
           "panel_id": 1,
-          "reading_order": 287
+          "reading_order": 287,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3839,7 +4385,9 @@
             1097
           ],
           "panel_id": 1,
-          "reading_order": 288
+          "reading_order": 288,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3853,7 +4401,9 @@
             1098
           ],
           "panel_id": 1,
-          "reading_order": 293
+          "reading_order": 293,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3867,7 +4417,9 @@
             1098
           ],
           "panel_id": 1,
-          "reading_order": 294
+          "reading_order": 294,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3881,7 +4433,9 @@
             1095
           ],
           "panel_id": 1,
-          "reading_order": 295
+          "reading_order": 295,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3895,7 +4449,9 @@
             1098
           ],
           "panel_id": 1,
-          "reading_order": 296
+          "reading_order": 296,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3909,7 +4465,9 @@
             1098
           ],
           "panel_id": 1,
-          "reading_order": 297
+          "reading_order": 297,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3923,7 +4481,9 @@
             1097
           ],
           "panel_id": 1,
-          "reading_order": 298
+          "reading_order": 298,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 41,
@@ -3937,7 +4497,9 @@
             1096
           ],
           "panel_id": 1,
-          "reading_order": 289
+          "reading_order": 289,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 42,
@@ -3951,7 +4513,9 @@
             1117
           ],
           "panel_id": 2,
-          "reading_order": 304
+          "reading_order": 304,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 42,
@@ -3965,7 +4529,9 @@
             1117
           ],
           "panel_id": 2,
-          "reading_order": 305
+          "reading_order": 305,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -3979,7 +4545,9 @@
             1138
           ],
           "panel_id": 0,
-          "reading_order": 317
+          "reading_order": 317,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 43,
@@ -3993,7 +4561,9 @@
             1138
           ],
           "panel_id": 3,
-          "reading_order": 319
+          "reading_order": 319,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 43,
@@ -4007,7 +4577,9 @@
             1136
           ],
           "panel_id": 2,
-          "reading_order": 312
+          "reading_order": 312,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -4021,7 +4593,9 @@
             1136
           ],
           "panel_id": 2,
-          "reading_order": 313
+          "reading_order": 313,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -4035,7 +4609,9 @@
             1136
           ],
           "panel_id": 2,
-          "reading_order": 314
+          "reading_order": 314,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -4049,7 +4625,9 @@
             1137
           ],
           "panel_id": 2,
-          "reading_order": 318
+          "reading_order": 318,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -4063,7 +4641,9 @@
             1137
           ],
           "panel_id": 2,
-          "reading_order": 315
+          "reading_order": 315,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -4077,7 +4657,9 @@
             1135
           ],
           "panel_id": 2,
-          "reading_order": 316
+          "reading_order": 316,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 43,
@@ -4091,7 +4673,9 @@
             1136
           ],
           "panel_id": 1,
-          "reading_order": 306
+          "reading_order": 306,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 43,
@@ -4105,7 +4689,9 @@
             1135
           ],
           "panel_id": 1,
-          "reading_order": 307
+          "reading_order": 307,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 43,
@@ -4119,7 +4705,9 @@
             1136
           ],
           "panel_id": 1,
-          "reading_order": 308
+          "reading_order": 308,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 43,
@@ -4133,7 +4721,9 @@
             1136
           ],
           "panel_id": 1,
-          "reading_order": 309
+          "reading_order": 309,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 43,
@@ -4147,7 +4737,9 @@
             1137
           ],
           "panel_id": 1,
-          "reading_order": 310
+          "reading_order": 310,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 43,
@@ -4161,7 +4753,9 @@
             1137
           ],
           "panel_id": 1,
-          "reading_order": 311
+          "reading_order": 311,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 44,
@@ -4175,7 +4769,9 @@
             1178
           ],
           "panel_id": 0,
-          "reading_order": 323
+          "reading_order": 323,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 44,
@@ -4189,7 +4785,9 @@
             1178
           ],
           "panel_id": 3,
-          "reading_order": 324
+          "reading_order": 324,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 44,
@@ -4203,7 +4801,9 @@
             1177
           ],
           "panel_id": 2,
-          "reading_order": 321
+          "reading_order": 321,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 44,
@@ -4217,7 +4817,9 @@
             1176
           ],
           "panel_id": 2,
-          "reading_order": 322
+          "reading_order": 322,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 44,
@@ -4231,7 +4833,9 @@
             1176
           ],
           "panel_id": 1,
-          "reading_order": 320
+          "reading_order": 320,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 45,
@@ -4245,7 +4849,9 @@
             1197
           ],
           "panel_id": 2,
-          "reading_order": 325
+          "reading_order": 325,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4259,7 +4865,9 @@
             1216
           ],
           "panel_id": 0,
-          "reading_order": 326
+          "reading_order": 326,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 46,
@@ -4273,7 +4881,9 @@
             1217
           ],
           "panel_id": 3,
-          "reading_order": 334
+          "reading_order": 334,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 46,
@@ -4287,7 +4897,9 @@
             1216
           ],
           "panel_id": 2,
-          "reading_order": 327
+          "reading_order": 327,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4301,7 +4913,9 @@
             1215
           ],
           "panel_id": 2,
-          "reading_order": 328
+          "reading_order": 328,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4315,7 +4929,9 @@
             1218
           ],
           "panel_id": 2,
-          "reading_order": 329
+          "reading_order": 329,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4329,7 +4945,9 @@
             1216
           ],
           "panel_id": 2,
-          "reading_order": 330
+          "reading_order": 330,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4343,7 +4961,9 @@
             1216
           ],
           "panel_id": 2,
-          "reading_order": 331
+          "reading_order": 331,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4357,7 +4977,9 @@
             1216
           ],
           "panel_id": 2,
-          "reading_order": 332
+          "reading_order": 332,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4371,7 +4993,9 @@
             1216
           ],
           "panel_id": 2,
-          "reading_order": 333
+          "reading_order": 333,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 46,
@@ -4385,7 +5009,9 @@
             1217
           ],
           "panel_id": 1,
-          "reading_order": 335
+          "reading_order": 335,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 47,
@@ -4399,7 +5025,9 @@
             1256
           ],
           "panel_id": 0,
-          "reading_order": 336
+          "reading_order": 336,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 47,
@@ -4413,7 +5041,9 @@
             1259
           ],
           "panel_id": 3,
-          "reading_order": 341
+          "reading_order": 341,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 47,
@@ -4427,7 +5057,9 @@
             1256
           ],
           "panel_id": 1,
-          "reading_order": 337
+          "reading_order": 337,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 47,
@@ -4441,7 +5073,9 @@
             1255
           ],
           "panel_id": 1,
-          "reading_order": 338
+          "reading_order": 338,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 47,
@@ -4455,7 +5089,9 @@
             1256
           ],
           "panel_id": 1,
-          "reading_order": 339
+          "reading_order": 339,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 47,
@@ -4469,7 +5105,9 @@
             1256
           ],
           "panel_id": 1,
-          "reading_order": 340
+          "reading_order": 340,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 48,
@@ -4483,7 +5121,9 @@
             1297
           ],
           "panel_id": 0,
-          "reading_order": 342
+          "reading_order": 342,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 48,
@@ -4497,7 +5137,9 @@
             1297
           ],
           "panel_id": 3,
-          "reading_order": 347
+          "reading_order": 347,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 48,
@@ -4511,7 +5153,9 @@
             1295
           ],
           "panel_id": 2,
-          "reading_order": 343
+          "reading_order": 343,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 48,
@@ -4525,7 +5169,9 @@
             1295
           ],
           "panel_id": 2,
-          "reading_order": 344
+          "reading_order": 344,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 48,
@@ -4539,7 +5185,9 @@
             1296
           ],
           "panel_id": 2,
-          "reading_order": 345
+          "reading_order": 345,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 48,
@@ -4553,7 +5201,9 @@
             1296
           ],
           "panel_id": 2,
-          "reading_order": 346
+          "reading_order": 346,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 49,
@@ -4567,7 +5217,9 @@
             1336
           ],
           "panel_id": 0,
-          "reading_order": 348
+          "reading_order": 348,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 49,
@@ -4581,7 +5233,9 @@
             1336
           ],
           "panel_id": 3,
-          "reading_order": 352
+          "reading_order": 352,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 49,
@@ -4595,7 +5249,9 @@
             1335
           ],
           "panel_id": 1,
-          "reading_order": 349
+          "reading_order": 349,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 49,
@@ -4609,7 +5265,9 @@
             1333
           ],
           "panel_id": 1,
-          "reading_order": 350
+          "reading_order": 350,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 49,
@@ -4623,7 +5281,9 @@
             1334
           ],
           "panel_id": 1,
-          "reading_order": 351
+          "reading_order": 351,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 50,
@@ -4637,7 +5297,9 @@
             1354
           ],
           "panel_id": 2,
-          "reading_order": 353
+          "reading_order": 353,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 51,
@@ -4651,7 +5313,9 @@
             1376
           ],
           "panel_id": 0,
-          "reading_order": 354
+          "reading_order": 354,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 51,
@@ -4665,7 +5329,9 @@
             1375
           ],
           "panel_id": 3,
-          "reading_order": 359
+          "reading_order": 359,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 51,
@@ -4679,7 +5345,9 @@
             1374
           ],
           "panel_id": 2,
-          "reading_order": 357
+          "reading_order": 357,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 51,
@@ -4693,7 +5361,9 @@
             1374
           ],
           "panel_id": 2,
-          "reading_order": 358
+          "reading_order": 358,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 51,
@@ -4707,7 +5377,9 @@
             1375
           ],
           "panel_id": 1,
-          "reading_order": 355
+          "reading_order": 355,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 51,
@@ -4721,7 +5393,9 @@
             1374
           ],
           "panel_id": 1,
-          "reading_order": 356
+          "reading_order": 356,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 52,
@@ -4735,7 +5409,9 @@
             1415
           ],
           "panel_id": 0,
-          "reading_order": 360
+          "reading_order": 360,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 52,
@@ -4749,7 +5425,9 @@
             1415
           ],
           "panel_id": 3,
-          "reading_order": 361
+          "reading_order": 361,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 53,
@@ -4763,7 +5441,9 @@
             1454
           ],
           "panel_id": 0,
-          "reading_order": 362
+          "reading_order": 362,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 53,
@@ -4777,7 +5457,9 @@
             1454
           ],
           "panel_id": 3,
-          "reading_order": 366
+          "reading_order": 366,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 53,
@@ -4791,7 +5473,9 @@
             1453
           ],
           "panel_id": 2,
-          "reading_order": 364
+          "reading_order": 364,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 53,
@@ -4805,7 +5489,9 @@
             1453
           ],
           "panel_id": 2,
-          "reading_order": 365
+          "reading_order": 365,
+          "is_header": false,
+          "global_col": 5
         },
         {
           "row": 53,
@@ -4819,7 +5505,9 @@
             1453
           ],
           "panel_id": 1,
-          "reading_order": 363
+          "reading_order": 363,
+          "is_header": false,
+          "global_col": 3
         },
         {
           "row": 54,
@@ -4833,7 +5521,9 @@
             1495
           ],
           "panel_id": 0,
-          "reading_order": 367
+          "reading_order": 367,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 55,
@@ -4847,7 +5537,9 @@
             1534
           ],
           "panel_id": 0,
-          "reading_order": 368
+          "reading_order": 368,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 55,
@@ -4861,7 +5553,9 @@
             1534
           ],
           "panel_id": 3,
-          "reading_order": 369
+          "reading_order": 369,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 56,
@@ -4875,7 +5569,9 @@
             1574
           ],
           "panel_id": 0,
-          "reading_order": 370
+          "reading_order": 370,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 56,
@@ -4889,7 +5585,9 @@
             1574
           ],
           "panel_id": 3,
-          "reading_order": 371
+          "reading_order": 371,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 57,
@@ -4903,7 +5601,9 @@
             1612
           ],
           "panel_id": 0,
-          "reading_order": 372
+          "reading_order": 372,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 57,
@@ -4917,7 +5617,9 @@
             1612
           ],
           "panel_id": 3,
-          "reading_order": 373
+          "reading_order": 373,
+          "is_header": true,
+          "global_col": 6
         },
         {
           "row": 58,
@@ -4931,7 +5633,9 @@
             1652
           ],
           "panel_id": 0,
-          "reading_order": 374
+          "reading_order": 374,
+          "is_header": true,
+          "global_col": 0
         },
         {
           "row": 59,
@@ -4945,7 +5649,9 @@
             1691
           ],
           "panel_id": 0,
-          "reading_order": 375
+          "reading_order": 375,
+          "is_header": true,
+          "global_col": 0
         }
       ],
       "row_boundaries": [
@@ -5313,9 +6019,9 @@
           "reading_order": 33,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 69 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "69"
+          "row_header": null
         },
         {
           "row": 4,
@@ -5446,9 +6152,9 @@
           "reading_order": 40,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 68 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "68"
+          "row_header": null
         },
         {
           "row": 6,
@@ -5484,9 +6190,9 @@
           "reading_order": 44,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 67 68 ] 広尾学園ISG2",
+          "enriched_text": "[ 2/4~ | 67 ] 広尾学園ISG2",
           "col_header": "2/4~",
-          "row_header": "67 68"
+          "row_header": "67"
         },
         {
           "row": 6,
@@ -5503,9 +6209,9 @@
           "reading_order": 42,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 67 68 ] 海城",
+          "enriched_text": "[ 2/3 | 67 ] 海城",
           "col_header": "2/3",
-          "row_header": "67 68"
+          "row_header": "67"
         },
         {
           "row": 6,
@@ -5522,9 +6228,9 @@
           "reading_order": 43,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 67 68 ] 2",
+          "enriched_text": "[ 2/3 | 67 ] 2",
           "col_header": "2/3",
-          "row_header": "67 68"
+          "row_header": "67"
         },
         {
           "row": 7,
@@ -5541,9 +6247,9 @@
           "reading_order": 45,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 67 68 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "67 68"
+          "row_header": null
         },
         {
           "row": 8,
@@ -5674,9 +6380,9 @@
           "reading_order": 52,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 66 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "66"
+          "row_header": null
         },
         {
           "row": 10,
@@ -5845,9 +6551,9 @@
           "reading_order": 61,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 65 ] 2/6",
+          "enriched_text": "[ 2/4~ ] 2/6",
           "col_header": "2/4~",
-          "row_header": "65"
+          "row_header": null
         },
         {
           "row": 12,
@@ -5997,9 +6703,9 @@
           "reading_order": 69,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 64 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "64"
+          "row_header": null
         },
         {
           "row": 13,
@@ -6016,9 +6722,9 @@
           "reading_order": 70,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 64 ] 2/6",
+          "enriched_text": "[ 2/4~ ] 2/6",
           "col_header": "2/4~",
-          "row_header": "64"
+          "row_header": null
         },
         {
           "row": 14,
@@ -6548,9 +7254,9 @@
           "reading_order": 99,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 61 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "61"
+          "row_header": null
         },
         {
           "row": 18,
@@ -6795,9 +7501,9 @@
           "reading_order": 112,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 60 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "60"
+          "row_header": null
         },
         {
           "row": 19,
@@ -6814,9 +7520,9 @@
           "reading_order": 113,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 60 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "60"
+          "row_header": null
         },
         {
           "row": 20,
@@ -7460,9 +8166,9 @@
           "reading_order": 147,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 58 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "58"
+          "row_header": null
         },
         {
           "row": 23,
@@ -7878,9 +8584,9 @@
           "reading_order": 169,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 57 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "57"
+          "row_header": null
         },
         {
           "row": 24,
@@ -7897,9 +8603,9 @@
           "reading_order": 170,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 57 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "57"
+          "row_header": null
         },
         {
           "row": 24,
@@ -7916,9 +8622,9 @@
           "reading_order": 171,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 57 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "57"
+          "row_header": null
         },
         {
           "row": 25,
@@ -8201,9 +8907,9 @@
           "reading_order": 186,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 56 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "56"
+          "row_header": null
         },
         {
           "row": 27,
@@ -8239,9 +8945,9 @@
           "reading_order": 194,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 55 56 ] 開智日本橋",
+          "enriched_text": "[ 2/4~ | 55 ] 開智日本橋",
           "col_header": "2/4~",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8258,9 +8964,9 @@
           "reading_order": 195,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 55 56 ] 4",
+          "enriched_text": "[ 2/4~ | 55 ] 4",
           "col_header": "2/4~",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8277,9 +8983,9 @@
           "reading_order": 196,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 55 56 ] 鎌倉学園",
+          "enriched_text": "[ 2/4~ | 55 ] 鎌倉学園",
           "col_header": "2/4~",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8296,9 +9002,9 @@
           "reading_order": 197,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 55 56 ] 3",
+          "enriched_text": "[ 2/4~ | 55 ] 3",
           "col_header": "2/4~",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8315,9 +9021,9 @@
           "reading_order": 198,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 55 56 ] 国学院久我山ST3",
+          "enriched_text": "[ 2/4~ | 55 ] 国学院久我山ST3",
           "col_header": "2/4~",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8334,9 +9040,9 @@
           "reading_order": 188,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 55 56 ] 学習院",
+          "enriched_text": "[ 2/3 | 55 ] 学習院",
           "col_header": "2/3",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8353,9 +9059,9 @@
           "reading_order": 189,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 55 56 ] 2",
+          "enriched_text": "[ 2/3 | 55 ] 2",
           "col_header": "2/3",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8372,9 +9078,9 @@
           "reading_order": 190,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 55 56 ] --",
+          "enriched_text": "[ 2/3 | 55 ] --",
           "col_header": "2/3",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8391,9 +9097,9 @@
           "reading_order": 191,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 55 56 ] 明大付属八王子A2",
+          "enriched_text": "[ 2/3 | 55 ] 明大付属八王子A2",
           "col_header": "2/3",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8410,9 +9116,9 @@
           "reading_order": 192,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 55 56 ] 安田学園",
+          "enriched_text": "[ 2/3 | 55 ] 安田学園",
           "col_header": "2/3",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 27,
@@ -8429,9 +9135,9 @@
           "reading_order": 193,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 55 56 ] 5",
+          "enriched_text": "[ 2/3 | 55 ] 5",
           "col_header": "2/3",
-          "row_header": "55 56"
+          "row_header": "55"
         },
         {
           "row": 28,
@@ -8448,9 +9154,9 @@
           "reading_order": 199,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 55 56 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "55 56"
+          "row_header": null
         },
         {
           "row": 29,
@@ -8562,9 +9268,9 @@
           "reading_order": 205,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 54 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "54"
+          "row_header": null
         },
         {
           "row": 31,
@@ -8600,9 +9306,9 @@
           "reading_order": 207,
           "is_header": false,
           "global_col": 2,
-          "enriched_text": "[ 2/3 | 53 54 ] 山手学院B",
+          "enriched_text": "[ 2/3 | 53 ] 山手学院B",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8619,9 +9325,9 @@
           "reading_order": 220,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 53 54 ] ☆",
+          "enriched_text": "[ 2/4~ | 53 ] ☆",
           "col_header": "2/4~",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8638,9 +9344,9 @@
           "reading_order": 221,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 53 54 ] 明大付属八王子B",
+          "enriched_text": "[ 2/4~ | 53 ] 明大付属八王子B",
           "col_header": "2/4~",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8657,9 +9363,9 @@
           "reading_order": 208,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 成城学園",
+          "enriched_text": "[ 2/3 | 53 ] 成城学園",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8676,9 +9382,9 @@
           "reading_order": 209,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 2",
+          "enriched_text": "[ 2/3 | 53 ] 2",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8695,9 +9401,9 @@
           "reading_order": 210,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 東京大附",
+          "enriched_text": "[ 2/3 | 53 ] 東京大附",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8714,9 +9420,9 @@
           "reading_order": 211,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 明星Inst2特待",
+          "enriched_text": "[ 2/3 | 53 ] 明星Inst2特待",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8733,9 +9439,9 @@
           "reading_order": 212,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 「",
+          "enriched_text": "[ 2/3 | 53 ] 「",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8752,9 +9458,9 @@
           "reading_order": 213,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 芝国際特待",
+          "enriched_text": "[ 2/3 | 53 ] 芝国際特待",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8771,9 +9477,9 @@
           "reading_order": 214,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] ☆",
+          "enriched_text": "[ 2/3 | 53 ] ☆",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8790,9 +9496,9 @@
           "reading_order": 215,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 淑徳",
+          "enriched_text": "[ 2/3 | 53 ] 淑徳",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8809,9 +9515,9 @@
           "reading_order": 216,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 3",
+          "enriched_text": "[ 2/3 | 53 ] 3",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8828,9 +9534,9 @@
           "reading_order": 217,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 東大",
+          "enriched_text": "[ 2/3 | 53 ] 東大",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8847,9 +9553,9 @@
           "reading_order": 218,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 帝京大学",
+          "enriched_text": "[ 2/3 | 53 ] 帝京大学",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 31,
@@ -8866,9 +9572,9 @@
           "reading_order": 219,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 53 54 ] 3",
+          "enriched_text": "[ 2/3 | 53 ] 3",
           "col_header": "2/3",
-          "row_header": "53 54"
+          "row_header": "53"
         },
         {
           "row": 32,
@@ -8885,9 +9591,9 @@
           "reading_order": 222,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 53 54 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "53 54"
+          "row_header": null
         },
         {
           "row": 33,
@@ -8923,9 +9629,9 @@
           "reading_order": 230,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 獨協",
+          "enriched_text": "[ 2/4~ | 52 ] 獨協",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -8942,9 +9648,9 @@
           "reading_order": 231,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 4",
+          "enriched_text": "[ 2/4~ | 52 ] 4",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -8961,9 +9667,9 @@
           "reading_order": 232,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 明星Inst4",
+          "enriched_text": "[ 2/4~ | 52 ] 明星Inst4",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -8980,9 +9686,9 @@
           "reading_order": 224,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 52 54 ] |",
+          "enriched_text": "[ 2/3 | 52 ] |",
           "col_header": "2/3",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -8999,9 +9705,9 @@
           "reading_order": 225,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 52 54 ] 公文国際B",
+          "enriched_text": "[ 2/3 | 52 ] 公文国際B",
           "col_header": "2/3",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -9018,9 +9724,9 @@
           "reading_order": 226,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 52 54 ] 専修大松戸3A",
+          "enriched_text": "[ 2/3 | 52 ] 専修大松戸3A",
           "col_header": "2/3",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -9037,9 +9743,9 @@
           "reading_order": 227,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 52 54 ] かえつ有明特待",
+          "enriched_text": "[ 2/3 | 52 ] かえつ有明特待",
           "col_header": "2/3",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -9056,9 +9762,9 @@
           "reading_order": 228,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 52 54 ] 日大豊山",
+          "enriched_text": "[ 2/3 | 52 ] 日大豊山",
           "col_header": "2/3",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 33,
@@ -9075,9 +9781,9 @@
           "reading_order": 229,
           "is_header": false,
           "global_col": 3,
-          "enriched_text": "[ 2/3 | 52 54 ] 4",
+          "enriched_text": "[ 2/3 | 52 ] 4",
           "col_header": "2/3",
-          "row_header": "52 54"
+          "row_header": "52"
         },
         {
           "row": 34,
@@ -9094,9 +9800,9 @@
           "reading_order": 233,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": null
         },
         {
           "row": 34,
@@ -9113,9 +9819,9 @@
           "reading_order": 234,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": null
         },
         {
           "row": 34,
@@ -9132,9 +9838,9 @@
           "reading_order": 235,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": null
         },
         {
           "row": 34,
@@ -9151,9 +9857,9 @@
           "reading_order": 236,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 52 54 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "52 54"
+          "row_header": null
         },
         {
           "row": 35,
@@ -9474,9 +10180,9 @@
           "reading_order": 253,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 51 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "51"
+          "row_header": null
         },
         {
           "row": 36,
@@ -9493,9 +10199,9 @@
           "reading_order": 254,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 51 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "51"
+          "row_header": null
         },
         {
           "row": 37,
@@ -10082,9 +10788,9 @@
           "reading_order": 286,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 48 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "48"
+          "row_header": null
         },
         {
           "row": 41,
@@ -10424,9 +11130,9 @@
           "reading_order": 304,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 47 ] 2/6",
+          "enriched_text": "[ 2/4~ ] 2/6",
           "col_header": "2/4~",
-          "row_header": "47"
+          "row_header": null
         },
         {
           "row": 42,
@@ -10443,9 +11149,9 @@
           "reading_order": 305,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 47 ] 2/6",
+          "enriched_text": "[ 2/4~ ] 2/6",
           "col_header": "2/4~",
-          "row_header": "47"
+          "row_header": null
         },
         {
           "row": 43,
@@ -10823,9 +11529,9 @@
           "reading_order": 325,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 45 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "45"
+          "row_header": null
         },
         {
           "row": 46,
@@ -11355,9 +12061,9 @@
           "reading_order": 353,
           "is_header": false,
           "global_col": 5,
-          "enriched_text": "[ 2/4~ | 41 ] 2/5",
+          "enriched_text": "[ 2/4~ ] 2/5",
           "col_header": "2/4~",
-          "row_header": "41"
+          "row_header": null
         },
         {
           "row": 51,

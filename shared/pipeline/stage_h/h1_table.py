@@ -1,15 +1,31 @@
 """
 Stage H1: Table Specialist (表処理専門)
 
-【Ver 14.0】Pure Python ピボット構築（LLM不要）
+【Ver 16.0】プロセッサーパターン対応
 
 G8が各データセルに col_header / row_header を付与済み。
-H1はLLMを使わず、Pure Pythonでこれらをピボットテーブル（論理表）に組み立てる。
+H1は cells_enriched からドメインタイプを検出し、
+適するドメイン定義ファイル（domains/definitions/）を読み込み、
+対応するプロセッサー（domains/processors/）を動的にロードして
+ドメイン固有の前処理を実行してからピボットテーブルを構築。
+
+============================================
+アーキテクチャ原則:
+  - H1 = ドメイン非依存のピボットエンジン
+  - ドメイン固有ロジック = プロセッサーが担当
+  - H1はプロセッサーを検出・ロード・実行するのみ
 
 ============================================
 入力:
   - table_inventory: G8出力済みテーブルリスト（cells_enriched + header_map 付き）
   - unified_text: H2用テキスト（テーブルタグ置換用）
+
+処理:
+  1. cells_enriched からドメインタイプを検出
+  2. domains/definitions/{domain_id}.json を読み込む
+  3. domains/processors/{domain_id}_processor.py を動的ロード
+  4. プロセッサー.process() でドメイン固有前処理を実行
+  5. ピボットテーブル構築
 
 出力:
   - processed_tables: ピボット形式の処理済み表
@@ -17,6 +33,8 @@ H1はLLMを使わず、Pure Pythonでこれらをピボットテーブル（論�
 ============================================
 """
 import re
+import json
+import os
 from collections import defaultdict, OrderedDict
 from typing import Dict, Any, List, Optional
 from loguru import logger
@@ -25,7 +43,7 @@ from ..utils.table_parser import extract_table_text_for_removal
 
 
 class StageH1Table:
-    """Stage H1: 表処理専門（Ver 14.0: Pure Python ピボット構築）"""
+    """Stage H1: 表処理専門（Ver 16.0: プロセッサーパターン）"""
 
     def __init__(self, llm_client=None, model=None):
         """
@@ -34,11 +52,136 @@ class StageH1Table:
             model: 互換性維持（使用しない）
         """
         # LLMは使わない（シグネチャのみ互換維持）
-        pass
+        self._domain_definitions = {}  # ドメイン定義キャッシュ
+        self._processors = {}          # プロセッサーキャッシュ
+
+    def _detect_domain_type(self, all_tagged_texts: List[Dict]) -> Optional[str]:
+        """
+        all_tagged_texts からドメインタイプを検出
+
+        表外テキストを優先して検索し、ドメイン定義ファイルの fingerprint と照合
+        """
+        # ドメイン定義ファイルのディレクトリ
+        base_dir = os.path.dirname(__file__)
+        def_dir = os.path.join(base_dir, 'domains', 'definitions')
+
+        # 全ドメイン定義ファイルを取得
+        try:
+            domain_files = [f for f in os.listdir(def_dir) if f.endswith('.json')]
+        except FileNotFoundError:
+            logger.warning(f"[H1] ドメイン定義ディレクトリなし: {def_dir}")
+            return None
+
+        # 表外テキストを優先して結合（type != 'cell'）
+        non_table_texts = [
+            tt.get('text', '')
+            for tt in all_tagged_texts
+            if tt.get('type') != 'cell'
+        ]
+        table_texts = [
+            tt.get('text', '')
+            for tt in all_tagged_texts
+            if tt.get('type') == 'cell'
+        ]
+
+        # 表外テキストを優先
+        full_text = " ".join(non_table_texts + table_texts)
+
+        # 各ドメイン定義の fingerprint と照合
+        for domain_file in domain_files:
+            domain_id = domain_file.replace('.json', '')
+            def_path = os.path.join(def_dir, domain_file)
+
+            try:
+                with open(def_path, encoding='utf-8') as f:
+                    # 最初の数行（fingerprint部分のみ）を読む
+                    content = f.read()
+                    definition = json.loads(content)
+
+                fingerprint = definition.get('fingerprint', {})
+                keywords = fingerprint.get('keywords', [])
+
+                # キーワード照合
+                if keywords and any(kw in full_text for kw in keywords):
+                    logger.info(f"[H1] ドメイン検出: {domain_id} (keywords: {keywords})")
+                    return domain_id
+
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                logger.warning(f"[H1] ドメイン定義読み込み失敗: {domain_file} - {e}")
+                continue
+
+        return None
+
+    def _load_domain_definition(self, domain_id: str) -> Optional[Dict]:
+        """
+        ドメイン定義ファイルを読み込む
+        """
+        if domain_id in self._domain_definitions:
+            return self._domain_definitions[domain_id]
+
+        # パスを構築
+        base_dir = os.path.dirname(__file__)
+        def_path = os.path.join(
+            base_dir, 'domains', 'definitions', f'{domain_id}.json'
+        )
+
+        try:
+            with open(def_path, encoding='utf-8') as f:
+                definition = json.load(f)
+                self._domain_definitions[domain_id] = definition
+                logger.info(f"[H1] ドメイン定義読み込み: {domain_id}")
+                return definition
+        except FileNotFoundError:
+            logger.warning(f"[H1] ドメイン定義ファイルなし: {def_path}")
+            return None
+
+    def _load_processor(self, domain_id: str, domain_def: Dict) -> Optional[Any]:
+        """
+        ドメイン固有プロセッサーを動的ロード
+
+        Args:
+            domain_id: ドメインID（例: "yotsuya_hensachi"）
+            domain_def: ドメイン定義辞書
+
+        Returns:
+            プロセッサーインスタンス、またはNone（プロセッサーなし）
+        """
+        if domain_id in self._processors:
+            return self._processors[domain_id]
+
+        # ドメインID から推定するプロセッサーモジュール名
+        # 例: "yotsuya_hensachi" → "yotsuya"
+        # 最初のアンダースコアまでをプロセッサー名とする
+        processor_name = domain_id.split('_')[0] if '_' in domain_id else domain_id
+
+        # プロセッサーモジュールを動的インポート
+        try:
+            from importlib import import_module
+            module_path = f".domains.processors.{processor_name}_processor"
+            module = import_module(module_path, package=__package__)
+
+            # クラス名: YotsuyaProcessor （先頭を大文字化 + Processor）
+            class_name = f"{processor_name.capitalize()}Processor"
+            processor_class = getattr(module, class_name)
+
+            # インスタンス化
+            processor = processor_class(domain_def)
+            self._processors[domain_id] = processor
+
+            logger.info(f"[H1] プロセッサーロード: {class_name}")
+            return processor
+
+        except (ImportError, AttributeError) as e:
+            logger.error(f"[H1] プロセッサーロード失敗: {domain_id} - {e}")
+            import traceback
+            logger.error(f"[H1] Traceback: {traceback.format_exc()}")
+            self._processors[domain_id] = None
+            return None
 
     def process(
         self,
         table_inventory: List[Dict[str, Any]],
+        all_tagged_texts: List[Dict[str, Any]] = None,
         doc_type: str = "default",
         workspace: str = "default",
         unified_text: str = "",
@@ -46,6 +189,11 @@ class StageH1Table:
     ) -> Dict[str, Any]:
         """
         G8 enriched セルからピボットテーブルを構築
+
+        1. ドメインタイプを検出
+        2. ドメイン定義ファイルを読み込む
+        3. ドメイン定義に基づいて前処理（肩付き日付処理など）
+        4. ピボットテーブル構築
 
         Args:
             table_inventory: G8出力済みテーブルリスト
@@ -71,6 +219,24 @@ class StageH1Table:
                 'h2_hint': '',
                 'statistics': {'total': 0, 'processed': 0, 'skipped': 0}
             }
+
+        # ドメインタイプ検出（G4の読み順済みテキストから）
+        domain_id = None
+        domain_def = None
+        processor = None
+
+        if all_tagged_texts:
+            domain_id = self._detect_domain_type(all_tagged_texts)
+
+            if domain_id:
+                logger.info(f"[H1] ドメイン検出: {domain_id}")
+                domain_def = self._load_domain_definition(domain_id)
+                if domain_def:
+                    processor = self._load_processor(domain_id, domain_def)
+            else:
+                logger.info("[H1] ドメイン検出失敗、デフォルト処理")
+        else:
+            logger.warning("[H1] all_tagged_texts なし、ドメイン検出スキップ")
 
         processed_tables = []
         table_text_fragments = []
@@ -107,6 +273,14 @@ class StageH1Table:
                 stats['skipped'] += 1
                 continue
 
+            # ドメイン固有プロセッサーによる前処理
+            if processor:
+                logger.info(f"[Stage H1] {ref_id}: プロセッサー実行開始")
+                processor.process(cells_enriched)
+                logger.info(f"[Stage H1] {ref_id}: プロセッサー実行完了")
+            else:
+                logger.warning(f"[Stage H1] {ref_id}: プロセッサーなし（ドメイン固有処理スキップ）")
+
             # 入力ログ
             _total = len(cells_enriched)
             _headers = sum(1 for c in cells_enriched if c.get('is_header', False))
@@ -115,8 +289,9 @@ class StageH1Table:
             _with_row = sum(1 for c in cells_enriched if c.get('row_header') is not None and not c.get('is_header', False))
             logger.info(f"[Stage H1] {ref_id} 入力: total={_total}, header={_headers}, data={_data}, col_header付={_with_col}/{_data}, row_header付={_with_row}/{_data}")
 
-            # ピボット構築
-            pivot = self._pivot_enriched_cells(cells_enriched, header_map)
+            # ピボット構築（非表示セルはフィルタリング）
+            visible_cells = [c for c in cells_enriched if not c.get('_hidden', False)]
+            pivot = self._pivot_enriched_cells(visible_cells, header_map)
             columns = pivot['columns']
             rows = pivot['rows']
 

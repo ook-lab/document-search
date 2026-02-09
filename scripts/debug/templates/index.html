@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Debug Pipeline Runner</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+  h1 { font-size: 1.4rem; padding: 16px 0; color: #a0c4ff; border-bottom: 1px solid #333; margin-bottom: 20px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: 0; }
+  .tab { padding: 10px 24px; cursor: pointer; background: #252540; border: 1px solid #333; border-bottom: none;
+         border-radius: 8px 8px 0 0; color: #888; font-size: 0.9rem; transition: all 0.2s; }
+  .tab.active { background: #2a2a4a; color: #a0c4ff; border-color: #4a4a6a; }
+  .tab:hover:not(.active) { color: #ccc; }
+
+  /* Panels */
+  .panel { display: none; background: #2a2a4a; border: 1px solid #4a4a6a; border-radius: 0 8px 8px 8px; padding: 20px; }
+  .panel.active { display: block; }
+
+  /* Form */
+  label { display: block; font-size: 0.85rem; color: #999; margin-bottom: 4px; margin-top: 12px; }
+  label:first-child { margin-top: 0; }
+  select, input[type="file"] { width: 100%; padding: 8px 12px; background: #1a1a2e; border: 1px solid #444;
+    border-radius: 6px; color: #e0e0e0; font-size: 0.9rem; }
+  select:focus, input:focus { outline: none; border-color: #a0c4ff; }
+
+  .row { display: flex; gap: 16px; }
+  .row > * { flex: 1; }
+
+  /* Checkbox */
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+  .checkbox-row input { width: auto; accent-color: #a0c4ff; }
+  .checkbox-row label { margin: 0; color: #ccc; }
+
+  /* Stage badges */
+  .badges { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .badge { padding: 3px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; }
+  .badge.done { background: #1a4a2e; color: #6fdd8b; }
+  .badge.pending { background: #3a2a1a; color: #888; }
+
+  /* Button */
+  .btn-run { display: block; margin: 20px auto 0; padding: 10px 48px; background: #3a6fd8; color: #fff;
+    border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
+  .btn-run:hover { background: #4a7fe8; }
+  .btn-run:disabled { background: #444; cursor: not-allowed; }
+
+  /* Log area */
+  .section { margin-top: 20px; }
+  .section-header { display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid #333; margin-bottom: 8px; }
+  .section-header h2 { font-size: 1rem; color: #a0c4ff; }
+  .btn-clear { padding: 4px 12px; background: transparent; border: 1px solid #555; border-radius: 4px;
+    color: #888; cursor: pointer; font-size: 0.8rem; }
+  .btn-clear:hover { color: #ccc; border-color: #888; }
+
+  #logArea { background: #0d0d1a; border: 1px solid #333; border-radius: 8px; padding: 12px;
+    height: 300px; overflow-y: auto; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.82rem;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+  .log-info { color: #8ec8f0; }
+  .log-warn { color: #f0c060; }
+  .log-error { color: #f07070; }
+  .log-debug { color: #777; }
+
+  /* File list */
+  .file-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .file-btn { padding: 6px 14px; background: #252540; border: 1px solid #444; border-radius: 6px;
+    color: #a0c4ff; cursor: pointer; font-size: 0.82rem; transition: all 0.2s; }
+  .file-btn:hover { background: #3a3a5a; border-color: #a0c4ff; }
+
+  /* JSON viewer modal */
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: #1a1a2e; border: 1px solid #4a4a6a; border-radius: 12px; width: 80%; max-width: 800px;
+    max-height: 80vh; display: flex; flex-direction: column; }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;
+    border-bottom: 1px solid #333; }
+  .modal-header h3 { font-size: 0.95rem; color: #a0c4ff; }
+  .modal-close { background: none; border: none; color: #888; font-size: 1.2rem; cursor: pointer; }
+  .modal-close:hover { color: #fff; }
+  .modal-body { padding: 16px; overflow-y: auto; flex: 1; }
+  .modal-body pre { font-family: 'Consolas', monospace; font-size: 0.82rem; line-height: 1.5;
+    color: #c0d0e0; white-space: pre-wrap; word-break: break-all; }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #444;
+    border-top-color: #a0c4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status-msg { text-align: center; margin-top: 10px; font-size: 0.85rem; }
+  .status-msg.running { color: #a0c4ff; }
+  .status-msg.done { color: #6fdd8b; }
+  .status-msg.error { color: #f07070; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Debug Pipeline Runner</h1>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="new" onclick="switchTab('new')">新規セッション</div>
+    <div class="tab" data-tab="existing" onclick="switchTab('existing')">既存セッション</div>
+  </div>
+
+  <!-- New Session Panel -->
+  <div class="panel active" id="panel-new">
+    <label for="pdfFile">PDF ファイル</label>
+    <input type="file" id="pdfFile" accept=".pdf">
+
+    <div class="row">
+      <div>
+        <label for="startStageNew">開始</label>
+        <select id="startStageNew"></select>
+      </div>
+      <div>
+        <label for="endStageNew">終了</label>
+        <select id="endStageNew"></select>
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="forceNew">
+      <label for="forceNew">強制実行（キャッシュ無視）</label>
+    </div>
+
+    <button class="btn-run" id="btnRunNew" onclick="runNew()">&#9654; 実行</button>
+  </div>
+
+  <!-- Existing Session Panel -->
+  <div class="panel" id="panel-existing">
+    <label for="sessionSelect">セッション</label>
+    <select id="sessionSelect" onchange="onSessionChange()">
+      <option value="">-- 選択してください --</option>
+    </select>
+    <div class="badges" id="stageBadges"></div>
+
+    <div class="row">
+      <div>
+        <label for="startStageEx">開始</label>
+        <select id="startStageEx"></select>
+      </div>
+      <div>
+        <label for="endStageEx">終了</label>
+        <select id="endStageEx"></select>
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="forceEx" checked>
+      <label for="forceEx">強制実行（キャッシュ無視）</label>
+    </div>
+
+    <button class="btn-run" id="btnRunEx" onclick="runExisting()">&#9654; 実行</button>
+  </div>
+
+  <!-- Log Output -->
+  <div class="section">
+    <div class="section-header">
+      <h2>ログ出力</h2>
+      <button class="btn-clear" onclick="clearLog()">消去</button>
+    </div>
+    <div id="statusMsg" class="status-msg"></div>
+    <div id="logArea"></div>
+  </div>
+
+  <!-- Output Files -->
+  <div class="section">
+    <div class="section-header">
+      <h2>出力ファイル</h2>
+    </div>
+    <div class="file-list" id="fileList">
+      <span style="color:#666; font-size:0.85rem;">実行後に表示されます</span>
+    </div>
+  </div>
+</div>
+
+<!-- JSON Viewer Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">file.json</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <pre id="modalContent"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// ────────────────────────────────────────
+// Stage data (from server)
+// ────────────────────────────────────────
+const STAGES = {{ stages | tojson }};
+const SUBSTAGES = {{ substages | tojson }};
+const LABELS = {{ labels | tojson }};
+const STAGE_DEPS = {{ stage_deps | tojson }};
+
+// Build stage options for dropdowns
+function buildStageOptions(selectId, defaultLabel) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '';
+  // Default
+  const defOpt = document.createElement('option');
+  defOpt.value = '';
+  defOpt.textContent = defaultLabel;
+  sel.appendChild(defOpt);
+
+  STAGES.forEach(stage => {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Stage ' + stage;
+    // Stage-level option
+    const stageOpt = document.createElement('option');
+    stageOpt.value = stage;
+    stageOpt.textContent = stage + ' - 全体';
+    grp.appendChild(stageOpt);
+    // Substages
+    (SUBSTAGES[stage] || []).forEach(sub => {
+      const opt = document.createElement('option');
+      opt.value = sub;
+      opt.textContent = sub + ' - ' + (LABELS[sub] || '');
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  });
+}
+
+// ────────────────────────────────────────
+// Tab switching
+// ────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('panel-new').classList.toggle('active', tab === 'new');
+  document.getElementById('panel-existing').classList.toggle('active', tab === 'existing');
+  if (tab === 'existing') loadSessions();
+}
+
+// ────────────────────────────────────────
+// Session loading
+// ────────────────────────────────────────
+function loadSessions() {
+  fetch('/api/sessions')
+    .then(r => r.json())
+    .then(sessions => {
+      const sel = document.getElementById('sessionSelect');
+      sel.innerHTML = '<option value="">-- 選択してください --</option>';
+      sessions.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        const stageInfo = s.completed_stages.join(',') || 'なし';
+        opt.textContent = s.id + ' (' + stageInfo + ')' + (s.pdf ? ' [' + s.pdf + ']' : '');
+        sel.appendChild(opt);
+      });
+    });
+}
+
+function onSessionChange() {
+  const sid = document.getElementById('sessionSelect').value;
+  if (!sid) {
+    document.getElementById('stageBadges').innerHTML = '';
+    return;
+  }
+  fetch('/api/sessions/' + sid + '/check')
+    .then(r => r.json())
+    .then(data => {
+      // Badges
+      const badges = document.getElementById('stageBadges');
+      badges.innerHTML = '';
+      STAGES.forEach(s => {
+        const b = document.createElement('span');
+        b.className = 'badge ' + (data.completed.includes(s) ? 'done' : 'pending');
+        b.textContent = s + (data.completed.includes(s) ? ' ✓' : ' ✗');
+        badges.appendChild(b);
+      });
+      // File list
+      renderFiles(data.files, sid);
+    });
+}
+
+// ────────────────────────────────────────
+// Run pipeline
+// ────────────────────────────────────────
+let currentEventSource = null;
+
+function runNew() {
+  const fileInput = document.getElementById('pdfFile');
+  if (!fileInput.files.length) { alert('PDF ファイルを選択してください'); return; }
+
+  const form = new FormData();
+  form.append('mode', 'new');
+  form.append('pdf', fileInput.files[0]);
+  form.append('start', document.getElementById('startStageNew').value);
+  form.append('end', document.getElementById('endStageNew').value);
+  form.append('force', document.getElementById('forceNew').checked ? 'true' : 'false');
+
+  startRun(form, 'btnRunNew');
+}
+
+function runExisting() {
+  const sid = document.getElementById('sessionSelect').value;
+  if (!sid) { alert('セッションを選択してください'); return; }
+
+  const form = new FormData();
+  form.append('mode', 'existing');
+  form.append('session_id', sid);
+  form.append('start', document.getElementById('startStageEx').value);
+  form.append('end', document.getElementById('endStageEx').value);
+  form.append('force', document.getElementById('forceEx').checked ? 'true' : 'false');
+
+  startRun(form, 'btnRunEx');
+}
+
+function startRun(formData, btnId) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = true;
+  clearLog();
+  setStatus('running', '<span class="spinner"></span>実行中...');
+
+  fetch('/api/run', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        setStatus('error', data.error);
+        btn.disabled = false;
+        return;
+      }
+      connectSSE(data.job_id, data.session_id, btn);
+    })
+    .catch(err => {
+      setStatus('error', 'リクエスト失敗: ' + err);
+      btn.disabled = false;
+    });
+}
+
+function connectSSE(jobId, sessionId, btn) {
+  if (currentEventSource) currentEventSource.close();
+
+  const es = new EventSource('/api/logs/' + jobId);
+  currentEventSource = es;
+
+  es.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+    if (data.type === 'log') {
+      appendLog(data.line);
+    } else if (data.type === 'done') {
+      es.close();
+      currentEventSource = null;
+      btn.disabled = false;
+      if (data.error) {
+        setStatus('error', '完了（エラーあり）: ' + data.error);
+      } else {
+        setStatus('done', '完了');
+      }
+      // Refresh files
+      refreshFiles(sessionId);
+    }
+  };
+
+  es.onerror = function() {
+    es.close();
+    currentEventSource = null;
+    btn.disabled = false;
+    setStatus('error', '接続が切断されました');
+  };
+}
+
+// ────────────────────────────────────────
+// Log display
+// ────────────────────────────────────────
+function appendLog(line) {
+  const area = document.getElementById('logArea');
+  const div = document.createElement('div');
+  // Color by level
+  if (line.includes('| ERROR')) div.className = 'log-error';
+  else if (line.includes('| WARNI') || line.includes('| WARNING')) div.className = 'log-warn';
+  else if (line.includes('| DEBUG')) div.className = 'log-debug';
+  else div.className = 'log-info';
+  div.textContent = line;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('logArea').innerHTML = '';
+  setStatus('', '');
+}
+
+function setStatus(cls, html) {
+  const el = document.getElementById('statusMsg');
+  el.className = 'status-msg ' + cls;
+  el.innerHTML = html;
+}
+
+// ────────────────────────────────────────
+// File list
+// ────────────────────────────────────────
+function refreshFiles(sessionId) {
+  fetch('/api/sessions/' + sessionId + '/check')
+    .then(r => r.json())
+    .then(data => {
+      renderFiles(data.files, sessionId);
+      // Also update badges if on existing tab
+      if (document.getElementById('sessionSelect').value === sessionId) {
+        const badges = document.getElementById('stageBadges');
+        badges.innerHTML = '';
+        STAGES.forEach(s => {
+          const b = document.createElement('span');
+          b.className = 'badge ' + (data.completed.includes(s) ? 'done' : 'pending');
+          b.textContent = s + (data.completed.includes(s) ? ' ✓' : ' ✗');
+          badges.appendChild(b);
+        });
+      }
+    });
+}
+
+function renderFiles(files, sessionId) {
+  const container = document.getElementById('fileList');
+  container.innerHTML = '';
+  if (!files || !files.length) {
+    container.innerHTML = '<span style="color:#666; font-size:0.85rem;">ファイルなし</span>';
+    return;
+  }
+  files.forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'file-btn';
+    btn.textContent = f.name;
+    btn.title = 'Size: ' + (f.size / 1024).toFixed(1) + 'KB  Modified: ' + f.modified;
+    btn.onclick = () => openFile(sessionId, f.name);
+    container.appendChild(btn);
+  });
+}
+
+// ────────────────────────────────────────
+// JSON viewer modal
+// ────────────────────────────────────────
+function openFile(sessionId, filename) {
+  document.getElementById('modalTitle').textContent = filename;
+  document.getElementById('modalContent').textContent = '読み込み中...';
+  document.getElementById('modalOverlay').classList.add('open');
+
+  fetch('/api/files/' + sessionId + '/' + filename)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('modalContent').textContent = JSON.stringify(data, null, 2);
+    })
+    .catch(err => {
+      document.getElementById('modalContent').textContent = 'エラー: ' + err;
+    });
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function closeModalOutside(e) {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+// ────────────────────────────────────────
+// Init
+// ────────────────────────────────────────
+buildStageOptions('startStageNew', '-- 最初から --');
+buildStageOptions('endStageNew', '-- 最後まで --');
+buildStageOptions('startStageEx', '-- 最初から --');
+buildStageOptions('endStageEx', '-- 最後まで --');
+
+// Set default end to G
+['endStageNew', 'endStageEx'].forEach(id => {
+  const sel = document.getElementById(id);
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === 'G') { sel.selectedIndex = i; break; }
+  }
+});
+
+// Keyboard shortcut: Escape to close modal
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>

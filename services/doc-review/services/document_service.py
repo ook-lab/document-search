@@ -153,3 +153,40 @@ def get_emails_with_review_status(
     except Exception as e:
         logger.error(f"Failed to get emails: {e}")
         return []
+
+
+def update_stage_g_result(
+    db_client,
+    document_id: str,
+    ui_data: Dict[str, Any]
+) -> bool:
+    """
+    Stage G の解析結果を DB に保存
+
+    Args:
+        db_client: DatabaseClient インスタンス
+        document_id: ドキュメントID
+        ui_data: Stage G の ui_data（クリーンなUI用データ）
+
+    Returns:
+        成功した場合 True、失敗した場合 False
+    """
+    try:
+        logger.info(f"[DocumentService] Stage G 結果を保存: {document_id}")
+
+        # Supabase クライアントを直接使用
+        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update({
+            'stage_g_structured_data': ui_data,
+            'processing_status': 'completed'  # 構造化完了
+        }).eq('id', document_id).execute()
+
+        if response.data:
+            logger.info(f"[DocumentService] Stage G 結果保存成功: {document_id}")
+            return True
+        else:
+            logger.warning(f"[DocumentService] Stage G 結果保存失敗（レコードなし）: {document_id}")
+            return False
+
+    except Exception as e:
+        logger.error(f"[DocumentService] Stage G 結果保存エラー: {e}", exc_info=True)
+        return False

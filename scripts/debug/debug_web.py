@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+"""
+Debug Pipeline Web UI
+
+ブラウザから PDF アップロード → ステージ選択 → 実行 → ログ確認 を行う。
+SSE でリアルタイムログ配信。
+
+使い方:
+    python debug_web.py
+    # ブラウザで http://localhost:5050 を開く
+"""
+
+import os
+import sys
+import json
+import uuid
+import time
+from pathlib import Path
+from datetime import datetime
+from queue import Queue, Empty
+from threading import Thread
+
+from flask import Flask, request, jsonify, render_template, Response
+
+# プロジェクトルートをパスに追加
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# shared.pipeline.__init__.py の壊れたインポートを回避
+import types
+_pipeline_pkg = types.ModuleType('shared.pipeline')
+_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'shared' / 'pipeline')]
+_pipeline_pkg.__package__ = 'shared.pipeline'
+sys.modules.setdefault('shared', types.ModuleType('shared'))
+sys.modules['shared'].__path__ = [str(PROJECT_ROOT / 'shared')]
+sys.modules['shared.pipeline'] = _pipeline_pkg
+
+from loguru import logger
+from run_debug_pipeline import DebugPipeline
+
+# ────────────────────────────────────────
+# Flask App
+# ────────────────────────────────────────
+
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+
+DEBUG_OUTPUT = SCRIPT_DIR / 'debug_output'
+DEBUG_OUTPUT.mkdir(exist_ok=True)
+
+# ジョブ管理
+_jobs = {}
+
+# ステージ前提条件
+STAGE_DEPS = {
+    "A": [], "B": ["A"], "D": ["A", "B"],
+    "E": ["A", "B", "D"], "F": ["A", "B", "D", "E"],
+    "G": ["A", "B", "D", "E", "F"]
+}
+
+# サブステージ表示名
+SUBSTAGE_LABELS = {
+    "A3": "Entry Point",
+    "B1": "Controller",
+    "D3": "罫線抽出", "D5": "ラスター検出", "D8": "格子解析",
+    "D9": "セル特定", "D10": "画像分割",
+    "E1": "OCR Scouter", "E5": "ブロック認識",
+    "E20": "地の文抽出", "E30": "表抽出",
+    "F1": "データ統合", "F3": "日付正規化", "F5": "表結合",
+    "G1": "表再現", "G3": "ブロック整頓", "G5": "ノイズ除去",
+}
+
+
+# ────────────────────────────────────────
+# Routes
+# ────────────────────────────────────────
+
+@app.route('/')
+def index():
+    return render_template('index.html',
+                           stages=DebugPipeline.STAGES,
+                           substages=DebugPipeline.SUBSTAGES,
+                           labels=SUBSTAGE_LABELS,
+                           stage_deps=STAGE_DEPS)
+
+
+@app.route('/api/sessions')
+def list_sessions():
+    """既存セッション一覧（完了ステージ情報付き）"""
+    sessions = []
+    if not DEBUG_OUTPUT.exists():
+        return jsonify(sessions)
+
+    for d in sorted(DEBUG_OUTPUT.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        sid = d.name
+        completed = _check_completed_stages(sid)
+        pdf_files = list(d.glob('*.pdf'))
+        sessions.append({
+            'id': sid,
+            'completed_stages': completed,
+            'pdf': pdf_files[0].name if pdf_files else None,
+            'created': datetime.fromtimestamp(d.stat().st_ctime).strftime('%Y-%m-%d %H:%M'),
+        })
+    return jsonify(sessions)
+
+
+@app.route('/api/sessions/<session_id>/check')
+def check_session(session_id):
+    """特定セッションの完了ステージ + 実行可能ステージ"""
+    completed = _check_completed_stages(session_id)
+    runnable = _get_runnable_stages(completed)
+    files = _list_output_files(session_id)
+    return jsonify({
+        'completed': completed,
+        'runnable': runnable,
+        'files': files,
+    })
+
+
+@app.route('/api/run', methods=['POST'])
+def run_pipeline():
+    """パイプライン実行開始"""
+    data = request.form
+    pdf_file = request.files.get('pdf')
+
+    mode = data.get('mode', 'new')  # 'new' or 'existing'
+    session_id = data.get('session_id', '')
+    start = data.get('start') or None
+    end = data.get('end') or None
+    force = data.get('force') == 'true'
+
+    # 新規セッション
+    if mode == 'new':
+        if not pdf_file or not pdf_file.filename:
+            return jsonify({'error': 'PDF ファイルが必要です'}), 400
+        session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        session_dir = DEBUG_OUTPUT / session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        pdf_path = session_dir / pdf_file.filename
+        pdf_file.save(str(pdf_path))
+    else:
+        # 既存セッション
+        if not session_id:
+            return jsonify({'error': 'セッション ID が必要です'}), 400
+        session_dir = DEBUG_OUTPUT / session_id
+        if not session_dir.exists():
+            return jsonify({'error': f'セッション {session_id} が見つかりません'}), 404
+        pdf_files = list(session_dir.glob('*.pdf'))
+        pdf_path = pdf_files[0] if pdf_files else None
+
+    # 前提条件チェック
+    if start and not force:
+        stage_key = start[0] if len(start) > 1 else start
+        completed = _check_completed_stages(session_id)
+        for dep in STAGE_DEPS.get(stage_key, []):
+            if dep not in completed:
+                return jsonify({'error': f'前提ステージ {dep} が未完了です'}), 400
+
+    # ジョブ作成
+    job_id = str(uuid.uuid4())[:8]
+    log_queue = Queue()
+    _jobs[job_id] = {
+        'queue': log_queue,
+        'done': False,
+        'error': None,
+        'result': None,
+        'session_id': session_id,
+    }
+
+    # バックグラウンド実行
+    thread = Thread(
+        target=_run_pipeline_job,
+        args=(job_id, session_id, str(pdf_path) if pdf_path else None, start, end, force),
+        daemon=True
+    )
+    thread.start()
+
+    return jsonify({'job_id': job_id, 'session_id': session_id})
+
+
+@app.route('/api/logs/<job_id>')
+def stream_logs(job_id):
+    """SSE でリアルタイムログ配信"""
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    def generate():
+        while True:
+            try:
+                line = job['queue'].get(timeout=1)
+                yield f"data: {json.dumps({'type': 'log', 'line': line}, ensure_ascii=False)}\n\n"
+            except Empty:
+                if job['done']:
+                    payload = {
+                        'type': 'done',
+                        'session_id': job['session_id'],
+                        'error': job.get('error'),
+                    }
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    break
+                # keep-alive
+                yield f": keepalive\n\n"
+
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/files/<session_id>/<filename>')
+def get_file(session_id, filename):
+    """結果 JSON ファイルの内容を返す"""
+    file_path = DEBUG_OUTPUT / session_id / filename
+    if not file_path.exists():
+        return jsonify({'error': 'File not found'}), 404
+    if not file_path.suffix == '.json':
+        return jsonify({'error': 'JSON ファイルのみ対応'}), 400
+    # パストラバーサル防止
+    try:
+        file_path.resolve().relative_to(DEBUG_OUTPUT.resolve())
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = json.load(f)
+    return jsonify(content)
+
+
+# ────────────────────────────────────────
+# Pipeline 実行
+# ────────────────────────────────────────
+
+def _run_pipeline_job(job_id, session_id, pdf_path, start, end, force):
+    """バックグラウンドスレッドでパイプラインを実行"""
+    job = _jobs[job_id]
+    log_queue = job['queue']
+
+    # loguru sink: queue に送る
+    def queue_sink(message):
+        text = str(message).strip()
+        if text:
+            log_queue.put(text)
+
+    sink_id = logger.add(queue_sink, format="{time:HH:mm:ss} | {level:<5} | {message}", level="DEBUG")
+
+    # ログファイルにも保存
+    session_dir = DEBUG_OUTPUT / session_id
+    log_file = session_dir / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    file_sink_id = logger.add(str(log_file), format="{time:HH:mm:ss} | {level:<5} | {message}", level="DEBUG")
+
+    try:
+        pipeline = DebugPipeline(
+            uuid=session_id,
+            base_dir=str(DEBUG_OUTPUT),
+        )
+        result = pipeline.run(
+            pdf_path=pdf_path,
+            start=start,
+            end=end,
+            force=force,
+        )
+        job['result'] = result
+        if result.get('errors'):
+            job['error'] = '; '.join(result['errors'])
+    except Exception as e:
+        logger.error(f"パイプラインエラー: {e}")
+        job['error'] = str(e)
+    finally:
+        job['done'] = True
+        logger.remove(sink_id)
+        logger.remove(file_sink_id)
+
+
+# ────────────────────────────────────────
+# ヘルパー
+# ────────────────────────────────────────
+
+def _check_completed_stages(session_id):
+    """完了済みステージを返す"""
+    session_dir = DEBUG_OUTPUT / session_id
+    completed = []
+    for stage in DebugPipeline.STAGES:
+        fp = session_dir / f"{session_id}_stage_{stage.lower()}.json"
+        if fp.exists():
+            completed.append(stage)
+    return completed
+
+
+def _get_runnable_stages(completed):
+    """実行可能ステージを返す"""
+    runnable = []
+    for stage in DebugPipeline.STAGES:
+        deps = STAGE_DEPS.get(stage, [])
+        if all(d in completed for d in deps):
+            runnable.append(stage)
+    return runnable
+
+
+def _list_output_files(session_id):
+    """セッションの出力ファイル一覧"""
+    session_dir = DEBUG_OUTPUT / session_id
+    if not session_dir.exists():
+        return []
+    files = []
+    for f in sorted(session_dir.iterdir()):
+        if f.suffix == '.json' and not f.name.endswith('.bak'):
+            files.append({
+                'name': f.name,
+                'size': f.stat().st_size,
+                'modified': datetime.fromtimestamp(f.stat().st_mtime).strftime('%H:%M:%S'),
+            })
+    return files
+
+
+# ────────────────────────────────────────
+# Entry Point
+# ────────────────────────────────────────
+
+if __name__ == '__main__':
+    logger.info(f"Debug Pipeline Web UI starting on http://localhost:5050")
+    logger.info(f"Output directory: {DEBUG_OUTPUT}")
+    app.run(host='0.0.0.0', port=5050, debug=True, threaded=True)

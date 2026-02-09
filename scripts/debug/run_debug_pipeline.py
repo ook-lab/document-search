@@ -1,62 +1,116 @@
 #!/usr/bin/env python3
 """
-デバッグパイプライン実行スクリプト
+統合デバッグパイプライン実行スクリプト（サブステージ対応版）
 
-各ステージの結果をローカルに保存し、特定ステージだけの再実行を可能にする。
+全パイプライン（A→B→D→E→F→G）を実行し、各ステージの結果をローカルに保存する。
+特定ステージまたはサブステージだけの再実行も可能。
 
 使用例:
   # 全行程を実行（キャッシュがあればスキップ）
   python run_debug_pipeline.py [UUID] --pdf path/to/file.pdf
 
-  # E7Lだけを再実行（E6のキャッシュを使用）
-  python run_debug_pipeline.py [UUID] --stage E7L --force
+  # Stage Bだけを再実行（Stage Aのキャッシュを使用）
+  python run_debug_pipeline.py [UUID] --stage B --force
 
-  # F1から最後まで再実行
-  python run_debug_pipeline.py [UUID] --stage F1 --mode from --force
+  # Stage DからGまで実行
+  python run_debug_pipeline.py [UUID] --start D --end G --force
+
+  # サブステージ F3（日付正規化）だけを再実行
+  python run_debug_pipeline.py [UUID] --stage F3 --force
+
+  # サブステージ D8からD10まで実行
+  python run_debug_pipeline.py [UUID] --start D8 --end D10 --force
 
   # タグ付きで保存（比較用）
-  python run_debug_pipeline.py [UUID] --stage E7P --tag "v2_patch"
+  python run_debug_pipeline.py [UUID] --stage E --tag "v2_test"
 """
 
 import os
 import sys
 import json
 import argparse
-import asyncio
 import time
 from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 
 # プロジェクトルートをパスに追加
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# shared.pipeline.__init__.py の壊れたインポート（旧pipeline.py）を回避
+# 個別サブパッケージ（stage_a, stage_b, ...）は正常にインポート可能
+import types
+_pipeline_pkg = types.ModuleType('shared.pipeline')
+_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'shared' / 'pipeline')]
+_pipeline_pkg.__package__ = 'shared.pipeline'
+sys.modules.setdefault('shared', types.ModuleType('shared'))
+sys.modules['shared'].__path__ = [str(PROJECT_ROOT / 'shared')]
+sys.modules['shared.pipeline'] = _pipeline_pkg
+
 from loguru import logger
 
-# ステージのインポート
-from shared.ai.llm_client.llm_client import LLMClient
-from shared.pipeline.stage_e import E6VisionOCR, E7LMergeDetector, E7PPatchApplier, E8BboxNormalizer
-from shared.pipeline.stage_f import F1GridDetector, F2StructureAnalyzer, F3CellAssigner
-from shared.pipeline.stage_g import G3Scrub, G4Assemble, G5Audit, G6Packager
-from shared.pipeline.stage_g.g7_header_detector import G7HeaderDetector
-from shared.pipeline.stage_g.g8_header_enricher import G8HeaderEnricher
-from shared.pipeline.stage_h import StageH1Table, StageH2Text
+# ステージ コントローラーのインポート
+from shared.pipeline.stage_a import A3EntryPoint
+from shared.pipeline.stage_b import B1Controller
 
-# PDF→画像変換
-try:
-    from pdf2image import convert_from_path
-    PDF2IMAGE_AVAILABLE = True
-except ImportError:
-    PDF2IMAGE_AVAILABLE = False
-    logger.warning("pdf2image not installed")
+# サブステージ クラスのインポート（Stage D）
+from shared.pipeline.stage_d.d3_vector_line_extractor import D3VectorLineExtractor
+from shared.pipeline.stage_d.d5_raster_line_detector import D5RasterLineDetector
+from shared.pipeline.stage_d.d8_grid_analyzer import D8GridAnalyzer
+from shared.pipeline.stage_d.d9_cell_identifier import D9CellIdentifier
+from shared.pipeline.stage_d.d10_image_slicer import D10ImageSlicer
+
+# サブステージ クラスのインポート（Stage E）
+from shared.pipeline.stage_e.e1_ocr_scouter import E1OcrScouter
+from shared.pipeline.stage_e.e5_text_block_visualizer import E5TextBlockVisualizer
+from shared.pipeline.stage_e.e20_context_extractor import E20ContextExtractor
+from shared.pipeline.stage_e.e30_table_structure_extractor import E30TableStructureExtractor
+
+# サブステージ クラスのインポート（Stage F）
+from shared.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
+from shared.pipeline.stage_f.f3_smart_date_normalizer import F3SmartDateNormalizer
+from shared.pipeline.stage_f.f5_logical_table_joiner import F5LogicalTableJoiner
+
+# サブステージ クラスのインポート（Stage G）
+from shared.pipeline.stage_g.g1_table_reproducer import G1TableReproducer
+from shared.pipeline.stage_g.g3_block_arranger import G3BlockArranger
+from shared.pipeline.stage_g.g5_noise_eliminator import G5NoiseEliminator
 
 
 class DebugPipeline:
-    """デバッグ用パイプライン（ステージ結果をローカル保存）"""
+    """デバッグ用パイプライン（サブステージ対応版）"""
 
     # ステージ定義（実行順序）
-    STAGES = ["E6", "E7L", "E7P", "E8", "F1", "F2", "F3", "G3", "G4", "G5", "G6", "G7", "G8", "H1", "H2"]
+    STAGES = ["A", "B", "D", "E", "F", "G"]
+
+    # 各ステージのサブステージ定義（実行順序）
+    SUBSTAGES = {
+        "A": ["A3"],
+        "B": ["B1"],
+        "D": ["D3", "D5", "D8", "D9", "D10"],
+        "E": ["E1", "E5", "E20", "E30"],
+        "F": ["F1", "F3", "F5"],
+        "G": ["G1", "G3", "G5"],
+    }
+
+    # 全サブステージの実行順序（フラット）
+    ALL_SUBSTAGES = [
+        "A3",
+        "B1",
+        "D3", "D5", "D8", "D9", "D10",
+        "E1", "E5", "E20", "E30",
+        "F1", "F3", "F5",
+        "G1", "G3", "G5",
+    ]
+
+    # サブステージ → 親ステージ
+    SUBSTAGE_TO_STAGE = {}
+    for _stage, _subs in SUBSTAGES.items():
+        for _sub in _subs:
+            SUBSTAGE_TO_STAGE[_sub] = _stage
+
+    # CLI choices 用
+    VALID_TARGETS = STAGES + ALL_SUBSTAGES
 
     def __init__(
         self,
@@ -69,681 +123,217 @@ class DebugPipeline:
         self.output_dir = Path(base_dir) / uuid
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # LLMクライアント
-        self.llm_client = LLMClient()
+        # Stage A/B: コントローラー（モノリシック）
+        self._stage_a = A3EntryPoint()
+        self._stage_b = B1Controller()
 
-        # ステージインスタンス
-        self._e6_ocr = E6VisionOCR()
-        self._e7l = E7LMergeDetector(self.llm_client)
-        self._e7p = E7PPatchApplier()
-        self._e8_normalizer = E8BboxNormalizer()
-        self._f1_detector = F1GridDetector()
-        self._f2_analyzer = F2StructureAnalyzer(self.llm_client)
-        self._f3_assigner = F3CellAssigner()
-        self._g3_scrub = G3Scrub()
-        self._g4_assemble = G4Assemble()
-        self._g5_audit = G5Audit()
-        self._g6_packager = G6Packager()
-        self._g7_header = G7HeaderDetector(self.llm_client)
-        self._g8_enricher = G8HeaderEnricher()
-        self._h1_table = StageH1Table(self.llm_client)
-        self._h2_text = StageH2Text(self.llm_client)
+        # Stage D サブステージ
+        self._d3 = D3VectorLineExtractor()
+        self._d5 = D5RasterLineDetector()
+        self._d8 = D8GridAnalyzer()
+        self._d9 = D9CellIdentifier()
+        self._d10 = D10ImageSlicer()
+
+        # Stage E サブステージ
+        self._e1 = E1OcrScouter()
+        self._e5 = E5TextBlockVisualizer()
+        self._e20 = E20ContextExtractor()
+        self._e30 = E30TableStructureExtractor()
+
+        # Stage F サブステージ
+        self._f1 = F1DataFusionMerger()
+        self._f3 = F3SmartDateNormalizer()
+        self._f5 = F5LogicalTableJoiner()
+
+        # Stage G サブステージ
+        self._g1 = G1TableReproducer()
+        self._g3 = G3BlockArranger()
+        self._g5 = G5NoiseEliminator()
 
         logger.info(f"DebugPipeline initialized: uuid={uuid}, output_dir={self.output_dir}")
 
-    def _get_filename(self, stage_name: str) -> Path:
-        """ステージ結果のファイル名を生成"""
-        if self.tag:
-            return self.output_dir / f"{self.uuid}_{stage_name}_{self.tag}.json"
-        return self.output_dir / f"{self.uuid}_{stage_name}.json"
+    # ════════════════════════════════════════
+    # ファイル I/O
+    # ════════════════════════════════════════
 
     class _NumpyEncoder(json.JSONEncoder):
         """numpy型をPythonネイティブ型に変換するJSONエンコーダー"""
         def default(self, obj):
-            import numpy as np
-            if isinstance(obj, np.bool_):
-                return bool(obj)
-            if isinstance(obj, np.floating):
-                return float(obj)
-            if isinstance(obj, np.integer):
-                return int(obj)
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
+            try:
+                import numpy as np
+                if isinstance(obj, np.bool_):
+                    return bool(obj)
+                if isinstance(obj, np.floating):
+                    return float(obj)
+                if isinstance(obj, np.integer):
+                    return int(obj)
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+            except ImportError:
+                pass
             return super().default(obj)
 
-    def save_stage(self, stage_name: str, data: Any) -> Path:
-        """ステージ結果を保存"""
-        file_path = self._get_filename(stage_name)
-
-        # 既存ファイルがあれば .bak に退避
+    def _save_json(self, file_path: Path, data: Any) -> Path:
         if file_path.exists():
             bak_path = file_path.with_suffix(".json.bak")
             file_path.replace(bak_path)
-            logger.debug(f"Backup created: {bak_path}")
-
-        # 保存（numpy型安全網付き）
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2, cls=self._NumpyEncoder)
-
-        logger.info(f"[{stage_name}] 結果を保存: {file_path}")
         return file_path
 
-    def load_stage(self, stage_name: str) -> Optional[Dict[str, Any]]:
-        """ステージ結果を読み込み"""
-        file_path = self._get_filename(stage_name)
+    def _load_json(self, file_path: Path) -> Optional[Dict[str, Any]]:
         if file_path.exists():
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                logger.info(f"[{stage_name}] キャッシュ読み込み: {file_path}")
-                return data
+                    return json.load(f)
             except json.JSONDecodeError as e:
-                logger.warning(f"[{stage_name}] キャッシュ破損（JSONパース失敗）: {file_path} - {e}")
-                return None
+                logger.warning(f"JSONパース失敗: {file_path} - {e}")
         return None
 
-    def should_run(
+    def _get_filename(self, stage_name: str) -> Path:
+        if self.tag:
+            return self.output_dir / f"{self.uuid}_stage_{stage_name.lower()}_{self.tag}.json"
+        return self.output_dir / f"{self.uuid}_stage_{stage_name.lower()}.json"
+
+    def _get_substage_filename(self, substage_id: str) -> Path:
+        if self.tag:
+            return self.output_dir / f"{self.uuid}_substage_{substage_id.lower()}_{self.tag}.json"
+        return self.output_dir / f"{self.uuid}_substage_{substage_id.lower()}.json"
+
+    def save_stage(self, stage_name: str, data: Any) -> Path:
+        fp = self._get_filename(stage_name)
+        self._save_json(fp, data)
+        logger.info(f"[Stage {stage_name}] 結果を保存: {fp}")
+        return fp
+
+    def load_stage(self, stage_name: str) -> Optional[Dict[str, Any]]:
+        fp = self._get_filename(stage_name)
+        data = self._load_json(fp)
+        if data is not None:
+            logger.info(f"[Stage {stage_name}] キャッシュ読み込み: {fp}")
+        return data
+
+    def save_substage(self, substage_id: str, data: Any) -> Path:
+        fp = self._get_substage_filename(substage_id)
+        self._save_json(fp, data)
+        logger.info(f"[{substage_id}] サブステージ結果を保存: {fp}")
+        return fp
+
+    def load_substage(self, substage_id: str) -> Optional[Dict[str, Any]]:
+        fp = self._get_substage_filename(substage_id)
+        data = self._load_json(fp)
+        if data is not None:
+            logger.info(f"[{substage_id}] サブステージキャッシュ読み込み: {fp}")
+        return data
+
+    def _get_substage_data(self, substage_id: str, ctx: dict) -> Optional[Any]:
+        """サブステージ結果を取得（ctx → サブステージcache → フルステージcacheの順）"""
+        # 1. コンテキストから
+        if ctx.get(substage_id) is not None:
+            return ctx[substage_id]
+        # 2. サブステージキャッシュから
+        data = self.load_substage(substage_id)
+        if data is not None:
+            return data
+        # 3. フルステージキャッシュから抽出（Stage D のみ対応）
+        stage = self.SUBSTAGE_TO_STAGE.get(substage_id)
+        stage_data = self.load_stage(stage) if stage else None
+        if stage_data and stage == "D":
+            debug = stage_data.get('debug', {})
+            extract = {
+                "D3": "vector_lines", "D5": "raster_lines",
+                "D8": "grid_result", "D9": "cell_result",
+            }
+            if substage_id in extract:
+                return debug.get(extract[substage_id])
+            if substage_id == "D10":
+                return {
+                    'tables': stage_data.get('tables', []),
+                    'non_table_image_path': stage_data.get('non_table_image_path', ''),
+                    'metadata': stage_data.get('metadata', {}),
+                }
+        return None
+
+    # ════════════════════════════════════════
+    # 実行制御
+    # ════════════════════════════════════════
+
+    def _resolve_target(self, target: str) -> List[str]:
+        """ターゲットをサブステージリストに展開（"F"→["F1","F3","F5"]）"""
+        if target in self.STAGES:
+            return self.SUBSTAGES[target]
+        if target in self.ALL_SUBSTAGES:
+            return [target]
+        raise ValueError(f"Unknown target: {target}")
+
+    def _determine_active_substages(
         self,
-        current_stage: str,
-        target_stage: Optional[str],
-        mode: str,
-        force: bool,
-        has_cache: bool
-    ) -> bool:
-        """実行すべきか判定"""
-        if mode == "only":
-            # 指定ステージのみ
-            if current_stage != target_stage:
-                return False
-            return force or not has_cache
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        target: Optional[str] = None,
+        mode: str = "all"
+    ) -> List[str]:
+        """実行対象のサブステージリストを決定"""
+        if mode == "only" and target:
+            return self._resolve_target(target)
 
-        if mode == "from":
-            # 指定ステージ以降
-            if target_stage and target_stage in self.STAGES:
-                if self.STAGES.index(current_stage) < self.STAGES.index(target_stage):
-                    return False
-            return force or not has_cache
+        active = list(self.ALL_SUBSTAGES)
 
-        # mode == "all"
+        if start:
+            first = self._resolve_target(start)[0]
+            idx = self.ALL_SUBSTAGES.index(first)
+            active = [s for s in active if self.ALL_SUBSTAGES.index(s) >= idx]
+
+        if end:
+            last = self._resolve_target(end)[-1]
+            idx = self.ALL_SUBSTAGES.index(last)
+            active = [s for s in active if self.ALL_SUBSTAGES.index(s) <= idx]
+
+        return active
+
+    def _should_run(self, substage_id: str, active_set: Set[str], force: bool, has_cache: bool) -> bool:
+        if substage_id not in active_set:
+            return False
         return force or not has_cache
+
+    # ════════════════════════════════════════
+    # メイン実行
+    # ════════════════════════════════════════
 
     def run(
         self,
         pdf_path: Optional[str] = None,
-        image_path: Optional[str] = None,
-        target_stage: Optional[str] = None,
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        target: Optional[str] = None,
         mode: str = "all",
         force: bool = False
     ) -> Dict[str, Any]:
-        """
-        パイプライン実行
-
-        Args:
-            pdf_path: PDFファイルパス
-            image_path: 画像ファイルパス（PDFがない場合）
-            target_stage: 対象ステージ
-            mode: "all" | "only" | "from"
-            force: キャッシュを無視して強制実行
-        """
         start_time = time.time()
+        active_list = self._determine_active_substages(start, end, target, mode)
+        active_set = set(active_list)
+
         logger.info("=" * 60)
         logger.info(f"Debug Pipeline Start: {self.uuid}")
-        logger.info(f"  mode={mode}, target={target_stage}, force={force}")
+        logger.info(f"  active: {active_list}")
+        logger.info(f"  force={force}")
         logger.info("=" * 60)
 
+        ctx: Dict[str, Any] = {}
         results = {}
         errors = []
 
-        # 画像準備
-        pil_img = None
-        img_path_str = None
-        page_size = None
-
-        if pdf_path and Path(pdf_path).exists():
-            if PDF2IMAGE_AVAILABLE:
-                images = convert_from_path(pdf_path, dpi=150)
-                if images:
-                    pil_img = images[0]
-                    # 一時ファイルとして保存
-                    temp_img_path = self.output_dir / f"{self.uuid}_page0.png"
-                    pil_img.save(temp_img_path, format='PNG')
-                    img_path_str = str(temp_img_path)
-                    page_size = {'w': pil_img.width, 'h': pil_img.height}
-                    logger.info(f"PDF→画像変換: {page_size}")
-        elif image_path and Path(image_path).exists():
-            from PIL import Image
-            pil_img = Image.open(image_path)
-            img_path_str = image_path
-            page_size = {'w': pil_img.width, 'h': pil_img.height}
-
-        if not pil_img:
-            logger.error("入力画像がありません")
-            return {"error": "No input image"}
-
         try:
-            # ================================================
-            # E6: Vision OCR
-            # ================================================
-            stage = "E6"
-            e6_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, e6_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                e6_result = self._e6_ocr.extract(Path(img_path_str), page_size['w'], page_size['h'])
-                e6_data = {
-                    "vision_tokens": e6_result.get("vision_tokens", []),
-                    "success": e6_result.get("success", False),
-                    "stats": e6_result.get("stats", {})
-                }
-                self.save_stage(stage, e6_data)
-            results[stage] = e6_data
+            self._exec_stage_a(ctx, active_set, force, pdf_path)
+            self._exec_stage_b(ctx, active_set, force, pdf_path)
+            self._exec_stage_d(ctx, active_set, force)
+            self._exec_stage_e(ctx, active_set, force)
+            self._exec_stage_f(ctx, active_set, force)
+            self._exec_stage_g(ctx, active_set, force)
 
-            if not e6_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # E7L: LLM差分抽出（接着候補の検出のみ）
-            # ================================================
-            stage = "E7L"
-            e7l_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, e7l_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                vision_tokens = e6_data.get("vision_tokens", [])
-                merge_instructions = self._e7l.detect(vision_tokens, image_path=img_path_str)
-                e7l_data = {
-                    "merge_instructions": merge_instructions,
-                    "input_count": len(vision_tokens),
-                    "merge_count": len(merge_instructions)
-                }
-                self.save_stage(stage, e7l_data)
-            results[stage] = e7l_data
-
-            if not e7l_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # E7P: Pythonパッチ適用（物理結合の実行）
-            # ================================================
-            stage = "E7P"
-            e7p_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, e7p_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                vision_tokens = e6_data.get("vision_tokens", [])
-                merge_instructions = e7l_data.get("merge_instructions", [])
-                merged_tokens = self._e7p.apply(vision_tokens, merge_instructions)
-                e7p_data = {
-                    "merged_tokens": merged_tokens,
-                    "input_count": len(vision_tokens),
-                    "output_count": len(merged_tokens)
-                }
-                self.save_stage(stage, e7p_data)
-            results[stage] = e7p_data
-
-            if not e7p_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # E8: BBox Normalizer
-            # ================================================
-            stage = "E8"
-            e8_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, e8_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                merged_tokens = e7p_data.get("merged_tokens", [])
-                normalized_tokens = self._e8_normalizer.normalize(merged_tokens, page_size)
-                e8_data = {
-                    "normalized_tokens": normalized_tokens,
-                    "page_size": page_size
-                }
-                self.save_stage(stage, e8_data)
-            results[stage] = e8_data
-
-            if not e8_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # F1: Grid Detector
-            # ================================================
-            stage = "F1"
-            f1_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, f1_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                f1_result = self._f1_detector.detect(
-                    pdf_path=Path(pdf_path) if pdf_path else None,
-                    page_image=pil_img,
-                    page_num=0,
-                    page_size=page_size
-                )
-                f1_data = f1_result
-                self.save_stage(stage, f1_data)
-            results[stage] = f1_data
-
-            if not f1_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # F2: Structure Analyzer
-            # ================================================
-            stage = "F2"
-            f2_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, f2_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                line_candidates = f1_data.get("line_candidates", {"horizontal": [], "vertical": []})
-                table_bbox_candidate = f1_data.get("table_bbox_candidate")
-                panel_candidates = f1_data.get("panel_candidates", [])
-                separator_candidates_all = f1_data.get("separator_candidates_all", [])
-                separator_candidates_ranked = f1_data.get("separator_candidates_ranked", [])
-                tokens = e8_data.get("normalized_tokens", [])
-
-                # tokensをchunk_blocks形式に変換
-                chunk_blocks = [
-                    {
-                        "block_id": f"b{i}",
-                        "text": t.get("text", ""),
-                        "bbox": t.get("bbox", [0, 0, 0, 0]),
-                        "coords": {"bbox": t.get("bbox", [0, 0, 0, 0])}
-                    }
-                    for i, t in enumerate(tokens)
-                ]
-
-                f2_result = self._f2_analyzer.analyze(
-                    line_candidates=line_candidates,
-                    tokens=chunk_blocks,
-                    page_image=pil_img,
-                    page_size=page_size,
-                    table_bbox_candidate=table_bbox_candidate,
-                    panel_candidates=panel_candidates,
-                    separator_candidates_all=separator_candidates_all,
-                    separator_candidates_ranked=separator_candidates_ranked,
-                    doc_type="debug"
-                )
-                f2_data = f2_result
-                self.save_stage(stage, f2_data)
-            results[stage] = f2_data
-
-            if not f2_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # F3: Cell Assigner（マルチパネル3点座標対応）
-            # ================================================
-            stage = "F3"
-            f3_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, f3_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                grid = f2_data.get("grid", {})
-                tokens = e8_data.get("normalized_tokens", [])
-                structure = f2_data
-                f2_panels = f2_data.get("panels", [])
-
-                # tokensをchunk_blocks形式に変換
-                chunk_blocks = [
-                    {
-                        "block_id": f"b{i}",
-                        "text": t.get("text", ""),
-                        "bbox": t.get("bbox", [0, 0, 0, 0]),
-                        "coords": {"bbox": t.get("bbox", [0, 0, 0, 0])}
-                    }
-                    for i, t in enumerate(tokens)
-                ]
-
-                f3_result, low_confidence = self._f3_assigner.assign(
-                    grid=grid,
-                    tokens=chunk_blocks,
-                    structure=structure,
-                    panels=f2_panels
-                )
-                f3_data = {
-                    "structured_table": f3_result,
-                    "low_confidence": low_confidence
-                }
-                self.save_stage(stage, f3_data)
-            results[stage] = f3_data
-
-            if not f3_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # G3: Scrub
-            # ================================================
-            stage = "G3"
-            g3_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, g3_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                g3_result = self._g3_scrub.scrub(
-                    structured_table=f3_data.get("structured_table", {}),
-                    logical_structure=f2_data,
-                    e_physical_chars=[],
-                    f1_quality=f1_data.get("quality", 1.0)
-                )
-                g3_data = g3_result
-                self.save_stage(stage, g3_data)
-            results[stage] = g3_data
-
-            if not g3_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # G4: Assemble
-            # ================================================
-            stage = "G4"
-            g4_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, g4_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                g4_result = self._g4_assemble.assemble(
-                    scrubbed_core=g3_data,
-                    logical_structure=f2_data,
-                    metadata={"uuid": self.uuid}
-                )
-                g4_data = g4_result
-                self.save_stage(stage, g4_data)
-            results[stage] = g4_data
-
-            if not g4_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # G5: Audit
-            # ================================================
-            stage = "G5"
-            g5_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, g5_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                g5_result = self._g5_audit.audit(
-                    assembled_payload=g4_data,
-                    post_body={},
-                    metadata={"uuid": self.uuid}
-                )
-                g5_data = g5_result
-                self.save_stage(stage, g5_data)
-            results[stage] = g5_data
-
-            if not g5_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # G6: Packager
-            # ================================================
-            stage = "G6"
-            g6_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, g6_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-                g6_result = self._g6_packager.package(
-                    scrubbed_data=g5_data,
-                    targets=["db", "search", "ui"]
-                )
-                g6_data = g6_result
-                self.save_stage(stage, g6_data)
-            results[stage] = g6_data
-
-            if not g6_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # G7: Header Detector（構造ベースのヘッダー検出）
-            # ================================================
-            stage = "G7"
-            g7_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, g7_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-
-                # G4の tables（cells_flat 付き）を入力にする
-                g4_tables = g4_data.get("tables", [])
-                if not g4_tables:
-                    # G4にtablesがない場合、path_a_result経由で構築
-                    path_a = g4_data.get("path_a_result", g5_data.get("path_a_result", {}))
-                    tagged_texts = path_a.get("tagged_texts", [])
-                    cell_tokens = [t for t in tagged_texts if t.get("type") == "cell"]
-                    if cell_tokens:
-                        g4_tables = [{"ref_id": "T0", "cells_flat": cell_tokens}]
-
-                g7_result = self._g7_header.process(g4_tables)
-
-                # 結果ログ
-                logger.info("=" * 60)
-                logger.info(f"[G7 RESULT] === ヘッダー検出結果 ===")
-                for tbl in g7_result:
-                    ref_id = tbl.get("ref_id", "?")
-                    hmap = tbl.get("header_map", {})
-                    panels = hmap.get("panels", {})
-                    logger.info(f"[G7 RESULT] {ref_id}:")
-                    for pk, pv in panels.items():
-                        ch_rows = pv.get("col_header_rows", [])
-                        rh_cols = pv.get("row_header_cols", [])
-                        logger.info(f"[G7 RESULT]   {pk}: col_header_rows={ch_rows}, row_header_cols={rh_cols}")
-
-                        # ヘッダー行/列の実際のテキストをログ出力
-                        cells_flat = tbl.get("cells_flat", [])
-                        pid_str = pk.replace("P", "")
-                        for r in ch_rows:
-                            row_texts = [
-                                c.get("text", "")
-                                for c in cells_flat
-                                if str(c.get("panel_id", 0) or 0) == pid_str and c.get("row") == r
-                            ]
-                            logger.info(f"[G7 RESULT]     col_header R{r} texts: {row_texts}")
-                        # ローカル列番号→グローバル列番号の逆引きマップ構築
-                        panel_cells = [
-                            c for c in cells_flat
-                            if str(c.get("panel_id", 0) or 0) == pid_str
-                        ]
-                        unique_cols = sorted(set(c.get("col", 0) for c in panel_cells))
-                        local_to_global = {lc: gc for lc, gc in enumerate(unique_cols)}
-                        for col_local in rh_cols:
-                            col_global = local_to_global.get(col_local, col_local)
-                            col_texts = [
-                                c.get("text", "")
-                                for c in panel_cells
-                                if c.get("col") == col_global
-                            ]
-                            logger.info(f"[G7 RESULT]     row_header C{col_local}(global={col_global}) texts: {col_texts}")
-                logger.info("=" * 60)
-
-                g7_data = {"tables": g7_result}
-                self.save_stage(stage, g7_data)
-            results[stage] = g7_data
-
-            if not g7_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # G8: Header Enricher（ヘッダー紐付け強化）
-            # ================================================
-            stage = "G8"
-            g8_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, g8_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-
-                # G7の tables（cells_flat + header_map 付き）を入力にする
-                g7_tables = g7_data.get("tables", [])
-                g8_result = self._g8_enricher.process(g7_tables)
-
-                # 結果ログ
-                logger.info("=" * 60)
-                logger.info(f"[G8 RESULT] === ヘッダー紐付け結果 ===")
-                for tbl in g8_result:
-                    ref_id = tbl.get("ref_id", "?")
-                    enriched = tbl.get("cells_enriched", [])
-                    data_cells = [c for c in enriched if not c.get("is_header")]
-                    logger.info(f"[G8 RESULT] {ref_id}: {len(enriched)}セル (データ: {len(data_cells)})")
-                    for c in data_cells:
-                        logger.info(f"[G8 RESULT]   {c.get('enriched_text', '')[:100]}")
-                logger.info("=" * 60)
-
-                g8_data = {"tables": g8_result}
-                self.save_stage(stage, g8_data)
-            results[stage] = g8_data
-
-            if not g8_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # H1: Table Specialist（表処理専門）
-            # ================================================
-            stage = "H1"
-            h1_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, h1_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-
-                # G6のdb出力からtablesとcellsを取得
-                db_payload = g6_data.get("payload_for_db", {})
-                tables_raw = db_payload.get("tables", [])
-                cells_raw = db_payload.get("cells", [])
-
-                # G5のfull_text_orderedを取得
-                full_text_ordered = g5_data.get("path_a_result", {}).get("full_text_ordered", "")
-
-                # G4で付与されたcontext_for情報を活用
-                tagged_texts = g5_data.get("path_a_result", {}).get("tagged_texts", [])
-                table_contexts = [
-                    t for t in tagged_texts
-                    if t.get("context_for") and t.get("type") == "untagged"
-                ]
-                if table_contexts:
-                    logger.info(f"[{stage}] 表コンテキスト検出: {len(table_contexts)}件")
-                    for ctx in table_contexts:
-                        logger.info(f"[{stage}]   '{ctx.get('text')}' -> {ctx.get('context_for')}")
-
-                # table_inventoryを構築（tablesにcellsを紐付け）
-                table_inventory = []
-                for tbl in tables_raw:
-                    anchor_id = tbl.get("anchor_id", "")
-                    # このテーブルに属するセルを抽出（row/col情報があれば使用）
-                    tbl_cells = [c for c in cells_raw if c.get("text")]  # 空でないセル
-
-                    # コンテキスト（タイトル）を取得
-                    tbl_context = [ctx.get("text", "") for ctx in table_contexts
-                                   if ctx.get("context_for") == anchor_id]
-                    table_title = " ".join(tbl_context) if tbl_context else ""
-
-                    # G7のheader_mapを探す
-                    g7_tables = g7_data.get("tables", [])
-                    header_map = {}
-                    for g7t in g7_tables:
-                        if g7t.get("ref_id") == anchor_id:
-                            header_map = g7t.get("header_map", {})
-                            break
-                    # ref_idで見つからなければインデックスで取得
-                    if not header_map and len(g7_tables) > len(table_inventory):
-                        idx = len(table_inventory)
-                        if idx < len(g7_tables):
-                            header_map = g7_tables[idx].get("header_map", {})
-
-                    table_inventory.append({
-                        "ref_id": anchor_id,
-                        "table_title": table_title,
-                        "table_type": "generic",
-                        "row_count": tbl.get("row_count", 0),
-                        "col_count": tbl.get("col_count", 0),
-                        "x_headers": tbl.get("x_headers", []),
-                        "y_headers": tbl.get("y_headers", []),
-                        "cells": tbl_cells,
-                        "is_heavy": tbl.get("is_heavy", False),
-                        "header_map": header_map,
-                    })
-
-                # G8の cells_enriched を table_inventory に追加
-                g8_tables = g8_data.get("tables", [])
-                for i, inv in enumerate(table_inventory):
-                    ref_id = inv.get("ref_id")
-                    matched = False
-                    for g8t in g8_tables:
-                        if g8t.get("ref_id") == ref_id:
-                            inv["cells_enriched"] = g8t.get("cells_enriched", [])
-                            inv["cells_flat"] = g8t.get("cells_flat", [])
-                            matched = True
-                            break
-                    if not matched and i < len(g8_tables):
-                        inv["cells_enriched"] = g8_tables[i].get("cells_enriched", [])
-                        inv["cells_flat"] = g8_tables[i].get("cells_flat", [])
-
-                logger.info(f"[{stage}] table_inventory構築: {len(table_inventory)}表, cells={len(cells_raw)}")
-                for inv in table_inventory:
-                    enriched_count = len(inv.get('cells_enriched', []))
-                    logger.info(f"[{stage}]   {inv.get('ref_id')}: cells_enriched={enriched_count}, header_map={inv.get('header_map', {})}")
-
-                # E8のトークン座標を取得（肩付き注釈の精密判定用）
-                raw_tokens = e8_data.get("normalized_tokens", [])
-                logger.info(f"[{stage}] E8トークン数: {len(raw_tokens)}")
-
-                h1_result = self._h1_table.process(
-                    table_inventory=table_inventory,
-                    doc_type="default",
-                    workspace="debug",
-                    unified_text=full_text_ordered,
-                    raw_tokens=raw_tokens  # E8トークン座標を渡す
-                )
-                # コンテキスト情報を追加
-                h1_result["table_contexts"] = table_contexts
-                h1_data = h1_result
-                self.save_stage(stage, h1_data)
-            results[stage] = h1_data
-
-            if not h1_data:
-                raise FileNotFoundError(f"[{stage}] キャッシュがありません")
-
-            # ================================================
-            # H2: Text Specialist（テキスト処理専門）
-            # ================================================
-            stage = "H2"
-            h2_data = self.load_stage(stage)
-            if self.should_run(stage, target_stage, mode, force, h2_data is not None):
-                logger.info(f"[{stage}] 実行中...")
-
-                # G4でソートされたfull_text_orderedを使用（読み順保証）
-                full_text_ordered = g5_data.get("path_a_result", {}).get("full_text_ordered", "")
-
-                # H1で軽量化されたテキスト（表テキスト削除済み）
-                reduced_text = h1_data.get("reduced_text", full_text_ordered)
-
-                # 表コンテキストをプロンプトに組み込む
-                table_contexts = h1_data.get("table_contexts", [])
-                context_hint = ""
-                if table_contexts:
-                    context_texts = [ctx.get("text", "") for ctx in table_contexts]
-                    context_hint = f"\n\n【表タイトル/見出し】\n" + "\n".join(context_texts)
-
-                # H2用プロンプトテンプレート（$変数はTemplate.substituteで置換される）
-                h2_prompt_template = """以下のドキュメントを解析し、JSON形式で出力してください。
-
-【ファイル名】$file_name
-【ドキュメントタイプ】$doc_type
-【現在日付】$current_date
-
-【ドキュメント本文】
-$combined_text
-
-【出力形式】
-以下のJSON形式で出力してください：
-```json
-{
-  "title": "ドキュメントのタイトル",
-  "document_date": "YYYY-MM-DD形式の日付（不明な場合はnull）",
-  "summary": "ドキュメントの要約（100-200文字）",
-  "tags": ["タグ1", "タグ2"],
-  "calendar_events": [
-    {"event_date": "YYYY-MM-DD", "event_name": "イベント名"}
-  ],
-  "tasks": [
-    {"task_name": "タスク名", "deadline": "YYYY-MM-DD"}
-  ],
-  "metadata": {}
-}
-```"""
-
-                h2_result = self._h2_text.process(
-                    file_name=self.uuid,
-                    doc_type="default",
-                    workspace="debug",
-                    reduced_text=reduced_text + context_hint,
-                    prompt=h2_prompt_template,
-                    model="gemini-2.0-flash",
-                    h1_result=h1_data,
-                    stage_f_structure=f2_data,
-                    stage_g_result=g5_data
-                )
-                h2_data = h2_result
-                self.save_stage(stage, h2_data)
-            results[stage] = h2_data
+            for stage in self.STAGES:
+                if stage in ctx and ctx[stage] is not None:
+                    results[stage] = "saved"
 
         except FileNotFoundError as e:
             logger.error(str(e))
@@ -752,7 +342,6 @@ $combined_text
             logger.error(f"パイプラインエラー: {e}", exc_info=True)
             errors.append(str(e))
 
-        # サマリー出力
         elapsed = time.time() - start_time
         logger.info("=" * 60)
         logger.info(f"Debug Pipeline Completed: {self.uuid}")
@@ -765,47 +354,467 @@ $combined_text
         return {
             "uuid": self.uuid,
             "elapsed": elapsed,
-            "results": {k: "saved" for k in results.keys()},
+            "results": results,
             "errors": errors,
             "output_dir": str(self.output_dir)
         }
 
+    # ════════════════════════════════════════
+    # Stage A（モノリシック）
+    # ════════════════════════════════════════
+
+    def _exec_stage_a(self, ctx, active_set, force, pdf_path):
+        cached = self.load_stage("A")
+        if self._should_run("A3", active_set, force, cached is not None):
+            logger.info("[A3] Entry Point 実行中...")
+            if not pdf_path:
+                raise FileNotFoundError("Stage A にはPDFファイルが必要です")
+            result = self._stage_a.process(pdf_path)
+            self.save_stage("A", result)
+            self.save_substage("A3", result)
+            ctx["A"] = result
+        else:
+            ctx["A"] = cached
+
+        if not ctx.get("A") or not ctx["A"].get('success'):
+            if "A3" in active_set:
+                raise ValueError("Stage A 失敗または無効なデータ")
+
+    # ════════════════════════════════════════
+    # Stage B（モノリシック）
+    # ════════════════════════════════════════
+
+    def _exec_stage_b(self, ctx, active_set, force, pdf_path):
+        cached = self.load_stage("B")
+        if self._should_run("B1", active_set, force, cached is not None):
+            logger.info("[B1] Controller 実行中...")
+            if not pdf_path:
+                raise FileNotFoundError("Stage B にはPDFファイルが必要です")
+            result = self._stage_b.process(
+                file_path=pdf_path,
+                a_result=ctx.get("A")
+            )
+            self.save_stage("B", result)
+            self.save_substage("B1", result)
+            ctx["B"] = result
+        else:
+            ctx["B"] = cached
+
+    # ════════════════════════════════════════
+    # Stage D（サブステージ: D3→D5→D8→D9→D10）
+    # ════════════════════════════════════════
+
+    def _exec_stage_d(self, ctx, active_set, force):
+        d_subs = {"D3", "D5", "D8", "D9", "D10"}
+        if not (d_subs & active_set):
+            ctx["D"] = self.load_stage("D")
+            return
+
+        stage_b = ctx.get("B") or self.load_stage("B")
+        if not stage_b:
+            logger.warning("[Stage D] Stage B データなし。スキップ。")
+            ctx["D"] = {'success': False, 'error': 'No Stage B data'}
+            return
+
+        purged_pdf_path = stage_b.get('purged_pdf_path')
+        purged_image_paths = stage_b.get('purged_image_paths', [])
+        purged_image_path = Path(purged_image_paths[0]) if purged_image_paths else None
+
+        if not purged_pdf_path:
+            logger.warning("[Stage D] purged_pdf_path なし。スキップ。")
+            ctx["D"] = {'success': False, 'error': 'No purged PDF'}
+            return
+
+        page_num = 0
+
+        # D3: ベクトル罫線抽出
+        d3 = self._get_substage_data("D3", ctx)
+        if self._should_run("D3", active_set, force, d3 is not None):
+            logger.info("[D3] ベクトル罫線抽出 実行中...")
+            d3 = self._d3.extract(Path(purged_pdf_path), page_num)
+            self.save_substage("D3", d3)
+        ctx["D3"] = d3
+
+        # D5: ラスター罫線検出
+        d5 = self._get_substage_data("D5", ctx)
+        if self._should_run("D5", active_set, force, d5 is not None):
+            if purged_image_path and purged_image_path.exists():
+                logger.info("[D5] ラスター罫線検出 実行中...")
+                d5 = self._d5.detect(purged_image_path)
+                self.save_substage("D5", d5)
+            else:
+                logger.info("[D5] スキップ: 画像なし")
+                d5 = None
+        ctx["D5"] = d5
+
+        # D8: 格子解析
+        d8 = self._get_substage_data("D8", ctx)
+        if self._should_run("D8", active_set, force, d8 is not None):
+            logger.info("[D8] 格子解析 実行中...")
+            d8 = self._d8.analyze(ctx.get("D3"), ctx.get("D5"))
+            self.save_substage("D8", d8)
+        ctx["D8"] = d8
+
+        # D9: セル特定
+        d9 = self._get_substage_data("D9", ctx)
+        if self._should_run("D9", active_set, force, d9 is not None):
+            logger.info("[D9] セル特定 実行中...")
+            d9 = self._d9.identify(ctx.get("D8"))
+            self.save_substage("D9", d9)
+        ctx["D9"] = d9
+
+        # D10: 画像分割
+        d10 = self._get_substage_data("D10", ctx)
+        if self._should_run("D10", active_set, force, d10 is not None):
+            if purged_image_path and purged_image_path.exists():
+                logger.info("[D10] 画像分割 実行中...")
+                d10 = self._d10.slice(
+                    purged_image_path, ctx.get("D8"), ctx.get("D9"), self.output_dir
+                )
+                self.save_substage("D10", d10)
+            else:
+                logger.info("[D10] スキップ: 画像なし")
+                d10 = {'tables': [], 'non_table_image_path': '', 'metadata': {}}
+        ctx["D10"] = d10
+
+        # Stage D 結果を合成・保存
+        stage_d = {
+            'success': True,
+            'page_index': page_num,
+            'tables': (d10 or {}).get('tables', []),
+            'non_table_image_path': (d10 or {}).get('non_table_image_path', ''),
+            'metadata': (d10 or {}).get('metadata', {}),
+            'debug': {
+                'vector_lines': d3,
+                'raster_lines': d5,
+                'grid_result': d8,
+                'cell_result': d9,
+            }
+        }
+        self.save_stage("D", stage_d)
+        ctx["D"] = stage_d
+
+    # ════════════════════════════════════════
+    # Stage E（サブステージ: E1→E5→E20, E30）
+    # ════════════════════════════════════════
+
+    def _exec_stage_e(self, ctx, active_set, force):
+        e_subs = {"E1", "E5", "E20", "E30"}
+        if not (e_subs & active_set):
+            ctx["E"] = self.load_stage("E")
+            return
+
+        stage_d = ctx.get("D") or self.load_stage("D")
+        if not stage_d:
+            logger.warning("[Stage E] Stage D データなし。スキップ。")
+            ctx["E"] = {'success': False, 'error': 'No Stage D data'}
+            return
+
+        non_table_image = stage_d.get('non_table_image_path')
+        tables = stage_d.get('tables', [])
+        total_tokens = 0
+        models_used = []
+
+        # E1: OCR Scouter（全画像）
+        e1 = self.load_substage("E1")
+        if self._should_run("E1", active_set, force, e1 is not None):
+            logger.info("[E1] OCR Scouter 実行中...")
+            e1 = {'non_table_scout': None, 'table_scouts': []}
+            if non_table_image and Path(non_table_image).exists():
+                e1['non_table_scout'] = self._e1.scout(Path(non_table_image))
+            for tbl in tables:
+                img = Path(tbl.get('image_path', ''))
+                if img.exists():
+                    scout = self._e1.scout(img)
+                    scout['table_id'] = tbl.get('table_id', 'Unknown')
+                    e1['table_scouts'].append(scout)
+            self.save_substage("E1", e1)
+        ctx["E1"] = e1
+
+        # E5: Text Block Visualizer（非表領域）
+        e5 = self.load_substage("E5")
+        if self._should_run("E5", active_set, force, e5 is not None):
+            logger.info("[E5] Text Block Visualizer 実行中...")
+            e5 = {'block_result': None, 'block_hint': ''}
+            if non_table_image and Path(non_table_image).exists():
+                scout = (ctx.get("E1") or {}).get('non_table_scout', {})
+                extracted_text = scout.get('extracted_text') if scout else None
+                block_result = self._e5.detect_blocks(Path(non_table_image), extracted_text)
+                block_hint = self._e5.generate_prompt_hint(block_result.get('blocks', []))
+                e5 = {'block_result': block_result, 'block_hint': block_hint}
+            self.save_substage("E5", e5)
+        ctx["E5"] = e5
+
+        # E20: Context Extractor（非表領域 → Gemini Flash-lite）
+        e20 = self.load_substage("E20")
+        if self._should_run("E20", active_set, force, e20 is not None):
+            logger.info("[E20] Context Extractor 実行中...")
+            e20 = {'success': False}
+            if non_table_image and Path(non_table_image).exists():
+                scout = (ctx.get("E1") or {}).get('non_table_scout', {})
+                if scout and not scout.get('should_skip'):
+                    block_hint = (ctx.get("E5") or {}).get('block_hint', '')
+                    extract = self._e20.extract(Path(non_table_image), block_hint=block_hint)
+                    e20 = {
+                        **extract,
+                        'scout_result': scout,
+                        'block_result': (ctx.get("E5") or {}).get('block_result')
+                    }
+                    total_tokens += extract.get('tokens_used', 0)
+                    model = extract.get('model_used')
+                    if model and model not in models_used:
+                        models_used.append(model)
+            self.save_substage("E20", e20)
+        ctx["E20"] = e20
+
+        # E30: Table Structure Extractor（表領域 → Gemini Flash）
+        e30 = self.load_substage("E30")
+        if self._should_run("E30", active_set, force, e30 is not None):
+            logger.info("[E30] Table Structure Extractor 実行中...")
+            e30 = {'table_results': []}
+            scout_map = {}
+            if ctx.get("E1"):
+                scout_map = {s.get('table_id'): s for s in ctx["E1"].get('table_scouts', [])}
+            for tbl in tables:
+                tid = tbl.get('table_id', 'Unknown')
+                img = Path(tbl.get('image_path', ''))
+                if not img.exists():
+                    continue
+                scout = scout_map.get(tid, {})
+                if scout.get('should_skip'):
+                    continue
+                extract = self._e30.extract(img, cell_map=tbl.get('cell_map', []))
+                e30['table_results'].append({**extract, 'table_id': tid, 'scout_result': scout})
+                total_tokens += extract.get('tokens_used', 0)
+                model = extract.get('model_used')
+                if model and model not in models_used:
+                    models_used.append(model)
+            self.save_substage("E30", e30)
+        ctx["E30"] = e30
+
+        # Stage E 結果を合成・保存
+        stage_e = {
+            'success': True,
+            'non_table_content': ctx.get("E20") or {},
+            'table_contents': (ctx.get("E30") or {}).get('table_results', []),
+            'metadata': {'total_tokens': total_tokens, 'models_used': models_used}
+        }
+        self.save_stage("E", stage_e)
+        ctx["E"] = stage_e
+
+    # ════════════════════════════════════════
+    # Stage F（サブステージ: F1→F3→F5）
+    # ════════════════════════════════════════
+
+    def _exec_stage_f(self, ctx, active_set, force):
+        f_subs = {"F1", "F3", "F5"}
+        if not (f_subs & active_set):
+            ctx["F"] = self.load_stage("F")
+            return
+
+        # F1: Data Fusion Merger
+        f1 = self.load_substage("F1")
+        if self._should_run("F1", active_set, force, f1 is not None):
+            logger.info("[F1] Data Fusion Merger 実行中...")
+            f1 = self._f1.merge(
+                stage_a_result=ctx.get("A") or self.load_stage("A"),
+                stage_b_result=ctx.get("B") or self.load_stage("B"),
+                stage_d_result=ctx.get("D") or self.load_stage("D"),
+                stage_e_result=ctx.get("E") or self.load_stage("E")
+            )
+            self.save_substage("F1", f1)
+        ctx["F1"] = f1
+
+        if not f1 or not f1.get('success'):
+            logger.error("[F1] 統合失敗")
+            ctx["F"] = f1 or {'success': False}
+            self.save_stage("F", ctx["F"])
+            return
+
+        # F3: Smart Date/Time Normalizer
+        f3 = self.load_substage("F3")
+        if self._should_run("F3", active_set, force, f3 is not None):
+            logger.info("[F3] Smart Date/Time Normalizer 実行中...")
+            events = f1.get('events', [])
+            year_ctx = f1.get('document_info', {}).get('year_context')
+            if events:
+                f3 = self._f3.normalize_dates(events=events, year_context=year_ctx)
+            else:
+                f3 = {'success': True, 'normalized_events': [], 'normalization_count': 0}
+            self.save_substage("F3", f3)
+        ctx["F3"] = f3
+
+        normalized_events = (
+            f3.get('normalized_events', [])
+            if f3 and f3.get('success')
+            else f1.get('events', [])
+        )
+
+        # F5: Logical Table Joiner
+        f5 = self.load_substage("F5")
+        if self._should_run("F5", active_set, force, f5 is not None):
+            logger.info("[F5] Logical Table Joiner 実行中...")
+            tables = f1.get('tables', [])
+            if tables:
+                f5 = self._f5.join_tables(tables)
+            else:
+                f5 = {'success': True, 'joined_tables': [], 'join_count': 0}
+            self.save_substage("F5", f5)
+        ctx["F5"] = f5
+
+        consolidated_tables = (
+            f5.get('joined_tables', [])
+            if f5 and f5.get('success')
+            else f1.get('tables', [])
+        )
+
+        # Stage F 結果を合成・保存
+        metadata = f1.get('metadata', {})
+        if f3 and f3.get('success'):
+            metadata['total_tokens'] = metadata.get('total_tokens', 0) + f3.get('tokens_used', 0)
+
+        stage_f = {
+            'success': True,
+            'document_info': f1.get('document_info', {}),
+            'normalized_events': normalized_events,
+            'tasks': f1.get('tasks', []),
+            'notices': f1.get('notices', []),
+            'consolidated_tables': consolidated_tables,
+            'raw_integrated_text': f1.get('raw_text', ''),
+            'metadata': metadata
+        }
+        self.save_stage("F", stage_f)
+        ctx["F"] = stage_f
+
+    # ════════════════════════════════════════
+    # Stage G（サブステージ: G1→G3→G5）
+    # ════════════════════════════════════════
+
+    def _exec_stage_g(self, ctx, active_set, force):
+        g_subs = {"G1", "G3", "G5"}
+        if not (g_subs & active_set):
+            ctx["G"] = self.load_stage("G")
+            return
+
+        stage_f = ctx.get("F") or self.load_stage("F")
+        if not stage_f:
+            logger.warning("[Stage G] Stage F データなし。スキップ。")
+            ctx["G"] = {'success': False, 'error': 'No Stage F data'}
+            return
+
+        # G1: Table Reproducer
+        g1 = self.load_substage("G1")
+        if self._should_run("G1", active_set, force, g1 is not None):
+            logger.info("[G1] Table Reproducer 実行中...")
+            g1 = self._g1.reproduce(stage_f.get('consolidated_tables', []))
+            self.save_substage("G1", g1)
+        ctx["G1"] = g1
+
+        ui_tables = (g1 or {}).get('ui_tables', [])
+
+        # G3: Block Arranger
+        g3 = self.load_substage("G3")
+        if self._should_run("G3", active_set, force, g3 is not None):
+            logger.info("[G3] Block Arranger 実行中...")
+            g3 = self._g3.arrange(
+                raw_text=stage_f.get('raw_integrated_text', ''),
+                events=stage_f.get('normalized_events', []),
+                tasks=stage_f.get('tasks', []),
+                notices=stage_f.get('notices', [])
+            )
+            self.save_substage("G3", g3)
+        ctx["G3"] = g3
+
+        blocks = (g3 or {}).get('blocks', [])
+
+        # G5: Noise Eliminator
+        g5 = self.load_substage("G5")
+        if self._should_run("G5", active_set, force, g5 is not None):
+            logger.info("[G5] Noise Eliminator 実行中...")
+            g5 = self._g5.eliminate(
+                stage_f_result=stage_f,
+                ui_tables=ui_tables,
+                blocks=blocks
+            )
+            self.save_substage("G5", g5)
+        ctx["G5"] = g5
+
+        # Stage G 結果を合成・保存
+        ui_data = (g5 or {}).get('ui_data', {})
+        stage_g = {
+            'success': (g5 or {}).get('success', False),
+            'ui_data': ui_data,
+            'metadata': {
+                'stage': 'G',
+                'conversion_count': (g1 or {}).get('conversion_count', 0),
+                'block_count': (g3 or {}).get('block_count', 0),
+                'total_tokens': stage_f.get('metadata', {}).get('total_tokens', 0)
+            }
+        }
+        self.save_stage("G", stage_g)
+        ctx["G"] = stage_g
+
+        if stage_g.get('success') and ui_data:
+            ui_path = self.output_dir / f"{self.uuid}_ui_data.json"
+            self._save_json(ui_path, ui_data)
+            logger.info(f"[Stage G] UI用データを保存: {ui_path}")
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="デバッグパイプライン - ステージ結果をローカル保存",
+        description="統合デバッグパイプライン - サブステージ単位の実行対応",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用例:
   # 全行程を実行
   python run_debug_pipeline.py abc123 --pdf input.pdf
 
-  # E7Lだけを再実行
-  python run_debug_pipeline.py abc123 --stage E7L --force
+  # Stage Bだけを再実行
+  python run_debug_pipeline.py abc123 --stage B --force
 
-  # E7Pだけを再実行（E7Lのキャッシュを使用）
-  python run_debug_pipeline.py abc123 --stage E7P --force
+  # Stage DからGまで実行
+  python run_debug_pipeline.py abc123 --start D --end G --force
 
-  # F1から最後まで再実行
-  python run_debug_pipeline.py abc123 --stage F1 --mode from --force
+  # サブステージ F3（日付正規化）だけを再実行
+  python run_debug_pipeline.py abc123 --stage F3 --force
+
+  # サブステージ D8（格子解析）だけを再実行
+  python run_debug_pipeline.py abc123 --stage D8 --force
+
+  # サブステージ G1からG5まで実行
+  python run_debug_pipeline.py abc123 --start G1 --end G5 --force
+
+  # サブステージ D8からF3まで実行
+  python run_debug_pipeline.py abc123 --start D8 --end F3 --force
 
   # タグ付きで保存（比較用）
-  python run_debug_pipeline.py abc123 --stage E7P --tag "v2_test" --force
+  python run_debug_pipeline.py abc123 --stage E --tag "v2_test" --force
+
+サブステージ一覧:
+  Stage A: A3(EntryPoint)
+  Stage B: B1(Controller)
+  Stage D: D3(罫線抽出) D5(ラスター検出) D8(格子解析) D9(セル特定) D10(画像分割)
+  Stage E: E1(OCR) E5(ブロック認識) E20(地の文抽出) E30(表抽出)
+  Stage F: F1(データ統合) F3(日付正規化) F5(表結合)
+  Stage G: G1(表再現) G3(ブロック整頓) G5(ノイズ除去)
         """
     )
     parser.add_argument("uuid", help="対象のUUID（任意の識別子）")
     parser.add_argument("--pdf", help="PDFファイルパス")
-    parser.add_argument("--image", help="画像ファイルパス")
     parser.add_argument(
         "--stage",
-        choices=DebugPipeline.STAGES,
-        help="対象ステージ"
+        choices=DebugPipeline.VALID_TARGETS,
+        help="対象ステージ/サブステージ（例: F, F3, D8）"
     )
     parser.add_argument(
-        "--mode",
-        choices=["all", "only", "from"],
-        default="all",
-        help="実行モード: all=全部, only=指定のみ, from=指定以降"
+        "--start",
+        choices=DebugPipeline.VALID_TARGETS,
+        help="開始ステージ/サブステージ（例: D, D8, F3）"
+    )
+    parser.add_argument(
+        "--end",
+        choices=DebugPipeline.VALID_TARGETS,
+        help="終了ステージ/サブステージ（例: G, G5, F5）"
     )
     parser.add_argument(
         "--force",
@@ -825,13 +834,14 @@ def main():
     args = parser.parse_args()
 
     # 入力チェック
-    if not args.pdf and not args.image:
-        # キャッシュがあれば実行可能
+    if not args.pdf:
         cache_dir = Path(args.output_dir) / args.uuid
         if not cache_dir.exists():
-            parser.error("--pdf または --image が必要です（初回実行時）")
+            parser.error("--pdf が必要です（初回実行時）")
 
-    # 実行
+    # 実行モード決定
+    mode = "only" if args.stage else "all"
+
     pipeline = DebugPipeline(
         uuid=args.uuid,
         base_dir=args.output_dir,
@@ -840,13 +850,13 @@ def main():
 
     result = pipeline.run(
         pdf_path=args.pdf,
-        image_path=args.image,
-        target_stage=args.stage,
-        mode=args.mode,
+        start=args.start,
+        end=args.end,
+        target=args.stage,
+        mode=mode,
         force=args.force
     )
 
-    # 結果出力
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
