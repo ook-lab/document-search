@@ -46,7 +46,7 @@ from run_debug_pipeline import DebugPipeline
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 
-DEBUG_OUTPUT = SCRIPT_DIR / 'debug_output'
+DEBUG_OUTPUT = Path(os.environ.get('DEBUG_OUTPUT_DIR', str(SCRIPT_DIR / 'debug_output')))
 DEBUG_OUTPUT.mkdir(exist_ok=True)
 
 # ジョブ管理
@@ -319,6 +319,7 @@ def _list_output_files(session_id):
 # ────────────────────────────────────────
 
 if __name__ == '__main__':
-    logger.info(f"Debug Pipeline Web UI starting on http://localhost:5050")
+    port = int(os.environ.get('PORT', 5050))
+    logger.info(f"Debug Pipeline Web UI starting on http://localhost:{port}")
     logger.info(f"Output directory: {DEBUG_OUTPUT}")
-    app.run(host='0.0.0.0', port=5050, debug=True, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=True, threaded=True)
