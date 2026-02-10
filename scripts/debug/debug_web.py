@@ -348,4 +348,5 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
     logger.info(f"Debug Pipeline Web UI starting on http://localhost:{port}")
     logger.info(f"Output directory: {DEBUG_OUTPUT}")
+    logger.info(f"Google Drive folder: {GDRIVE_DEBUG_FOLDER_ID or '未設定'}")
     app.run(host='0.0.0.0', port=port, debug=True, threaded=True)
