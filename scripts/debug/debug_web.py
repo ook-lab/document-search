@@ -230,6 +230,25 @@ def get_file(session_id, filename):
     return jsonify(content)
 
 
+@app.route('/api/test-drive')
+def test_drive():
+    """Google Drive 接続テスト（パイプライン不要）"""
+    if not GDRIVE_DEBUG_FOLDER_ID:
+        return jsonify({'error': 'GDRIVE_DEBUG_FOLDER_ID 未設定'}), 500
+    try:
+        from shared.common.connectors.google_drive import GoogleDriveConnector
+        drive = GoogleDriveConnector()
+        about = drive.service.about().get(fields='user').execute()
+        email = about['user']['emailAddress']
+        folder_id = drive.create_folder('_test_', parent_folder_id=GDRIVE_DEBUG_FOLDER_ID)
+        if folder_id:
+            drive.trash_file(folder_id)
+            return jsonify({'ok': True, 'account': email, 'folder_id': GDRIVE_DEBUG_FOLDER_ID})
+        return jsonify({'ok': False, 'account': email, 'error': 'フォルダ作成失敗'}), 500
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # ────────────────────────────────────────
 # Pipeline 実行
 # ────────────────────────────────────────
@@ -289,6 +308,9 @@ def _upload_to_drive(session_id: str):
     try:
         from shared.common.connectors.google_drive import GoogleDriveConnector
         drive = GoogleDriveConnector()
+        # 認証アカウント確認
+        about = drive.service.about().get(fields='user').execute()
+        logger.info(f"[Drive] 認証アカウント: {about['user']['emailAddress']}")
         session_dir = DEBUG_OUTPUT / session_id
         if not session_dir.exists():
             return
