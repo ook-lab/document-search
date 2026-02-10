@@ -290,13 +290,33 @@ def _upload_to_drive(session_id: str):
         session_dir = DEBUG_OUTPUT / session_id
         if not session_dir.exists():
             return
+
+        # フォルダ名 = PDFファイル名（拡張子なし）
+        pdf_files = list(session_dir.glob('*.pdf'))
+        folder_name = pdf_files[0].stem if pdf_files else session_id
+        folder_id = drive.create_folder(folder_name, parent_folder_id=GDRIVE_DEBUG_FOLDER_ID)
+        if not folder_id:
+            logger.warning("Google Drive フォルダ作成失敗")
+            return
+
         for f in session_dir.iterdir():
             if f.suffix in ('.json', '.log') and not f.name.endswith('.bak'):
-                drive.upload_file_from_path(str(f), folder_id=GDRIVE_DEBUG_FOLDER_ID)
-                logger.info(f"Drive アップロード: {f.name}")
-        logger.info(f"Google Drive アップロード完了 (folder: {GDRIVE_DEBUG_FOLDER_ID})")
+                # 20260210_203441_stage_g.json → stage_g_20260210_203441.json
+                drive_name = _reorder_filename(f.name, session_id)
+                drive.upload_file_from_path(str(f), folder_id=folder_id, file_name=drive_name)
+                logger.info(f"Drive アップロード: {drive_name}")
+        logger.info(f"Google Drive アップロード完了 (folder: {folder_name})")
     except Exception as e:
         logger.warning(f"Google Drive アップロード失敗: {e}")
+
+
+def _reorder_filename(filename: str, session_id: str) -> str:
+    """20260210_203441_stage_g.json → stage_g_20260210_203441.json"""
+    if not filename.startswith(session_id + '_'):
+        return filename
+    rest = filename[len(session_id) + 1:]  # "stage_g.json"
+    stem, ext = os.path.splitext(rest)      # "stage_g", ".json"
+    return f"{stem}_{session_id}{ext}"
 
 
 # ────────────────────────────────────────

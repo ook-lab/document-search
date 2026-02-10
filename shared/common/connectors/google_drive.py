@@ -84,6 +84,38 @@ class GoogleDriveConnector:
             f"3. Streamlit Secrets が設定されているか"
         )
 
+    def create_folder(self, folder_name: str, parent_folder_id: Optional[str] = None) -> Optional[str]:
+        """
+        Google Drive にフォルダを作成
+
+        Args:
+            folder_name: フォルダ名
+            parent_folder_id: 親フォルダID（Noneの場合はルート）
+
+        Returns:
+            作成されたフォルダのID、失敗時はNone
+        """
+        try:
+            file_metadata = {
+                'name': folder_name,
+                'mimeType': 'application/vnd.google-apps.folder',
+            }
+            if parent_folder_id:
+                file_metadata['parents'] = [parent_folder_id]
+
+            folder = self.service.files().create(
+                body=file_metadata,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+
+            logger.info(f"フォルダ作成成功: {folder_name} (ID: {folder['id']})")
+            return folder['id']
+
+        except Exception as e:
+            logger.error(f"フォルダ作成エラー ({folder_name}): {e}")
+            return None
+
     def list_files_in_folder(self, folder_id: str, mime_type_filter: str = None) -> List[Dict[str, Any]]:
         """
         指定されたフォルダ内のファイルを一覧表示
@@ -415,7 +447,8 @@ class GoogleDriveConnector:
         self,
         file_path: Union[str, Path],
         folder_id: Optional[str] = None,
-        mime_type: Optional[str] = None
+        mime_type: Optional[str] = None,
+        file_name: Optional[str] = None
     ) -> Optional[str]:
         """
         ローカルファイルをGoogle Driveにアップロード（共有ドライブ対応）
@@ -424,6 +457,7 @@ class GoogleDriveConnector:
             file_path: ローカルファイルのパス
             folder_id: 保存先フォルダID（Noneの場合はルート）
             mime_type: MIMEタイプ（Noneの場合は自動判定）
+            file_name: Drive上のファイル名（Noneの場合はローカルファイル名）
 
         Returns:
             アップロードされたファイルのID、失敗時はNone
@@ -435,7 +469,7 @@ class GoogleDriveConnector:
                 return None
 
             # ファイルメタデータ
-            file_metadata = {'name': file_path.name}
+            file_metadata = {'name': file_name or file_path.name}
             if folder_id:
                 file_metadata['parents'] = [folder_id]
 

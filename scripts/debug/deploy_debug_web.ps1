@@ -6,14 +6,6 @@ $PROJECT_ROOT = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyIn
 Push-Location $PROJECT_ROOT
 
 try {
-    # .envファイルから環境変数を読み込み
-    Get-Content .env | Where-Object { $_ -match '^[A-Z_]+=.+' } | ForEach-Object {
-        $parts = $_ -split '=', 2
-        $name = $parts[0]
-        $value = $parts[1]
-        Set-Variable -Name $name -Value $value -Scope Script
-    }
-
     $PROJECT_ID = "consummate-yew-479020-u2"
     $REGION = "asia-northeast1"
     $SERVICE_NAME = "debug-pipeline"
@@ -48,12 +40,7 @@ try {
         --service-account $SERVICE_ACCOUNT `
         --timeout 3600 `
         --memory 8Gi `
-        --cpu 2 `
-        --set-env-vars "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" `
-        --set-env-vars "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" `
-        --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY" `
-        --set-env-vars "DEBUG_OUTPUT_DIR=/tmp/debug_output" `
-        --set-env-vars "GDRIVE_DEBUG_FOLDER_ID=15SOQW_r8W9qBRy8czfLPVLtQVfKutubV"
+        --cpu 2
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "============================================"
