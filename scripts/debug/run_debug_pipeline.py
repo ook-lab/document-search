@@ -135,14 +135,15 @@ class DebugPipeline:
         self._d10 = D10ImageSlicer()
 
         # Stage E サブステージ
+        _gemini_key = os.environ.get('GOOGLE_AI_API_KEY')
         self._e1 = E1OcrScouter()
         self._e5 = E5TextBlockVisualizer()
-        self._e20 = E20ContextExtractor()
-        self._e30 = E30TableStructureExtractor()
+        self._e20 = E20ContextExtractor(api_key=_gemini_key)
+        self._e30 = E30TableStructureExtractor(api_key=_gemini_key)
 
         # Stage F サブステージ
         self._f1 = F1DataFusionMerger()
-        self._f3 = F3SmartDateNormalizer()
+        self._f3 = F3SmartDateNormalizer(api_key=_gemini_key)
         self._f5 = F5LogicalTableJoiner()
 
         # Stage G サブステージ

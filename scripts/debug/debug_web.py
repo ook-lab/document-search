@@ -282,7 +282,9 @@ def _run_pipeline_job(job_id, session_id, pdf_path, start, end, force):
 
 def _upload_to_drive(session_id: str):
     """セッションの JSON/LOG ファイルを Google Drive にアップロード"""
+    logger.info(f"[Drive] GDRIVE_DEBUG_FOLDER_ID={GDRIVE_DEBUG_FOLDER_ID!r}")
     if not GDRIVE_DEBUG_FOLDER_ID:
+        logger.warning("[Drive] GDRIVE_DEBUG_FOLDER_ID が未設定のためスキップ")
         return
     try:
         from shared.common.connectors.google_drive import GoogleDriveConnector
