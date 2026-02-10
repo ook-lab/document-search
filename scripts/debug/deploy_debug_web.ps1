@@ -52,7 +52,8 @@ try {
         --set-env-vars "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" `
         --set-env-vars "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" `
         --set-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY" `
-        --set-env-vars "DEBUG_OUTPUT_DIR=/tmp/debug_output"
+        --set-env-vars "DEBUG_OUTPUT_DIR=/tmp/debug_output" `
+        --set-env-vars "GDRIVE_DEBUG_FOLDER_ID=$GDRIVE_DEBUG_FOLDER_ID"
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "============================================"

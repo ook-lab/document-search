@@ -49,6 +49,8 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
 DEBUG_OUTPUT = Path(os.environ.get('DEBUG_OUTPUT_DIR', str(SCRIPT_DIR / 'debug_output')))
 DEBUG_OUTPUT.mkdir(exist_ok=True)
 
+GDRIVE_DEBUG_FOLDER_ID = os.environ.get('GDRIVE_DEBUG_FOLDER_ID')
+
 # ジョブ管理
 _jobs = {}
 
@@ -268,9 +270,33 @@ def _run_pipeline_job(job_id, session_id, pdf_path, start, end, force):
         logger.error(f"パイプラインエラー: {e}")
         job['error'] = str(e)
     finally:
+        _upload_to_drive(session_id)
         job['done'] = True
         logger.remove(sink_id)
         logger.remove(file_sink_id)
+
+
+# ────────────────────────────────────────
+# Google Drive アップロード
+# ────────────────────────────────────────
+
+def _upload_to_drive(session_id: str):
+    """セッションの JSON/LOG ファイルを Google Drive にアップロード"""
+    if not GDRIVE_DEBUG_FOLDER_ID:
+        return
+    try:
+        from shared.common.connectors.google_drive import GoogleDriveConnector
+        drive = GoogleDriveConnector()
+        session_dir = DEBUG_OUTPUT / session_id
+        if not session_dir.exists():
+            return
+        for f in session_dir.iterdir():
+            if f.suffix in ('.json', '.log') and not f.name.endswith('.bak'):
+                drive.upload_file_from_path(str(f), folder_id=GDRIVE_DEBUG_FOLDER_ID)
+                logger.info(f"Drive アップロード: {f.name}")
+        logger.info(f"Google Drive アップロード完了 (folder: {GDRIVE_DEBUG_FOLDER_ID})")
+    except Exception as e:
+        logger.warning(f"Google Drive アップロード失敗: {e}")
 
 
 # ────────────────────────────────────────
