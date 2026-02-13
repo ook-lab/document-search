@@ -1,8 +1,14 @@
 """
-ドキュメント処理モジュール
+パイプライン管理モジュール
 
-DocumentProcessorクラスを提供
-StateManager（SSOT）とAdaptiveResourceManagerを使用
+PipelineManager クラスを提供
+全ステージ（A→B→D→E→F→G→J→K）の実行管理
+
+役割：
+- パイプライン実行のオーケストレーション
+- DB操作（ステータス、メタデータ、進捗）
+- リース管理（dequeue, ack, nack）
+- リソース管理（並列数、メモリ）
 
 【リース方式キュー】
 - dequeue_document RPC で原子化されたデキュー
@@ -24,10 +30,22 @@ from loguru import logger
 from shared.common.database.client import DatabaseClient
 from shared.common.connectors.google_drive import GoogleDriveConnector
 from shared.logging import TaskLogger  # Per-Task Logging
-# Note: UnifiedDocumentPipeline は循環インポート回避のため __init__ 内で遅延インポート
-from .state_manager import StateManager, get_state_manager
-from .resource_manager import AdaptiveResourceManager, get_cgroup_memory, get_cgroup_cpu
-from .execution_policy import ExecutionPolicy, get_execution_policy
+from shared.ai.llm_client.llm_client import LLMClient
+
+# 新しいステージベースのアーキテクチャ（A→B→D→E→F→G→J→K）
+from shared.pipeline.stage_a import A3EntryPoint
+from shared.pipeline.stage_b import B1Controller
+from shared.pipeline.stage_d import D1Controller
+from shared.pipeline.stage_e import E1Controller
+from shared.pipeline.stage_f import F1Controller
+from shared.pipeline.stage_g import G1Controller
+from shared.pipeline.stage_j_chunking import StageJChunking
+from shared.pipeline.stage_k_embedding import StageKEmbedding
+from shared.pipeline.config_loader import ConfigLoader
+
+from shared.processing.state_manager import StateManager, get_state_manager
+from shared.processing.resource_manager import AdaptiveResourceManager, get_cgroup_memory, get_cgroup_cpu
+from shared.processing.execution_policy import ExecutionPolicy, get_execution_policy
 
 
 def generate_batch_summary(
@@ -118,10 +136,11 @@ def generate_batch_summary(
     return summary_path
 
 
-class DocumentProcessor:
+class PipelineManager:
     """
-    ドキュメント処理クラス
+    パイプライン管理クラス
 
+    全ステージ（A→B→D→E→F→G→J→K）の実行を統括
     StateManagerを通じて状態を一元管理
     AdaptiveResourceManagerで並列数を動的調整
     """
@@ -134,7 +153,7 @@ class DocumentProcessor:
 
     def __init__(self, use_service_role: bool = False, db: DatabaseClient = None):
         """
-        DocumentProcessor の初期化
+        PipelineManager の初期化
 
         Args:
             use_service_role: Trueの場合、Service Role Keyを使用（RLSをバイパス）
@@ -147,9 +166,27 @@ class DocumentProcessor:
         else:
             self.db = DatabaseClient(use_service_role=use_service_role)
 
-        # 循環インポート回避: ここで遅延インポート
-        from shared.pipeline import UnifiedDocumentPipeline
-        self.pipeline = UnifiedDocumentPipeline(db_client=self.db)
+        # パイプライン初期化: A→B→D→E→F→G→H→J→K
+        import os
+        gemini_key = os.environ.get('GOOGLE_AI_API_KEY')
+
+        self.llm_client = LLMClient()
+        self.config = ConfigLoader()
+
+        # Stage A-G: 新しいアーキテクチャ
+        self.stage_a = A3EntryPoint()
+        self.stage_b = B1Controller()
+        self.stage_d = D1Controller()
+        self.stage_e = E1Controller(gemini_api_key=gemini_key)
+        self.stage_f = F1Controller(gemini_api_key=gemini_key)
+        self.stage_g = G1Controller()
+
+        # Stage J-K: チャンキング＆埋め込み
+        self.stage_j = StageJChunking()
+        self.stage_k = StageKEmbedding(self.llm_client, self.db)
+
+        logger.info("✅ パイプライン初期化完了: A→B→D→E→F→G→J→K")
+
         self.drive = GoogleDriveConnector()
         self.temp_dir = Path("./temp")
         self.temp_dir.mkdir(parents=True, exist_ok=True)
@@ -210,6 +247,14 @@ class DocumentProcessor:
 
             if result.data and len(result.data) > 0:
                 doc = result.data[0]
+
+                # source_url補完: dequeue RPCが古いバージョンの場合の対策
+                if 'source_url' not in doc or doc.get('source_url') is None:
+                    補完_result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('source_url').eq('id', doc['id']).execute()
+                    if 補完_result.data and len(補完_result.data) > 0:
+                        doc['source_url'] = 補完_result.data[0].get('source_url')
+                        logger.info(f"[Lease] source_url補完完了: {doc.get('source_url')}")
+
                 logger.info(f"[Lease] Dequeued: id={doc['id']}, owner={self.owner}, lease_until={doc.get('lease_until')}")
                 return doc
             else:
@@ -235,8 +280,14 @@ class DocumentProcessor:
                 'p_owner': self.owner
             }).execute()
 
-            # RPC は更新行数を返す
-            row_count = result.data if isinstance(result.data, int) else 0
+            # RPC は更新行数を返す（Supabaseはリストで返す: [0] or [1]）
+            if isinstance(result.data, list) and len(result.data) > 0:
+                row_count = result.data[0]
+            elif isinstance(result.data, int):
+                row_count = result.data
+            else:
+                row_count = 0
+
             if row_count == 0:
                 logger.warning(f"[Lease] ack_document: rowcount=0 (owner mismatch or already released) id={doc_id}")
                 return False
@@ -268,7 +319,14 @@ class DocumentProcessor:
                 'p_retry': retry
             }).execute()
 
-            row_count = result.data if isinstance(result.data, int) else 0
+            # RPC は更新行数を返す（Supabaseはリストで返す: [0] or [1]）
+            if isinstance(result.data, list) and len(result.data) > 0:
+                row_count = result.data[0]
+            elif isinstance(result.data, int):
+                row_count = result.data
+            else:
+                row_count = 0
+
             if row_count == 0:
                 logger.warning(f"[Lease] nack_document: rowcount=0 (owner mismatch or already released) id={doc_id}")
                 return False
@@ -297,7 +355,14 @@ class DocumentProcessor:
                 'p_lease_seconds': self.DEFAULT_LEASE_SECONDS
             }).execute()
 
-            row_count = result.data if isinstance(result.data, int) else 0
+            # RPC は更新行数を返す（Supabaseはリストで返す: [0] or [1]）
+            if isinstance(result.data, list) and len(result.data) > 0:
+                row_count = result.data[0]
+            elif isinstance(result.data, int):
+                row_count = result.data
+            else:
+                row_count = 0
+
             if row_count == 0:
                 logger.warning(f"[Lease] renew_lease: rowcount=0 (owner mismatch) id={doc_id}")
                 return False
@@ -404,7 +469,14 @@ class DocumentProcessor:
 
     def get_document_by_id(self, doc_id: str) -> Dict[str, Any] | None:
         """IDでドキュメントを取得"""
-        result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('*').eq('id', doc_id).execute()
+        # source_url を含む必要なカラムを明示的に列挙（* は source_url を含まない問題がある）
+        result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, file_name, title, workspace, doc_type, processing_status, '
+            'source_id, source_url, screenshot_url, file_type, '
+            'display_subject, display_post_text, attachment_text, '
+            'display_sender, display_sender_email, display_type, display_sent_at, '
+            'owner_id, lease_owner, lease_until'
+        ).eq('id', doc_id).execute()
         return result.data[0] if result.data else None
 
     async def process_single_document(self, doc_id: str, preserve_workspace: bool = True) -> bool:
@@ -424,7 +496,16 @@ class DocumentProcessor:
             logger.warning(f"実行拒否: {policy_result.deny_code} - {policy_result.deny_reason}")
             return False
 
-        doc = self.get_document_by_id(doc_id)
+        # source_url を確実に取得するため、ここで直接クエリ
+        result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, file_name, title, workspace, doc_type, processing_status, '
+            'source_id, source_url, screenshot_url, file_type, '
+            'display_subject, display_post_text, attachment_text, '
+            'display_sender, display_sender_email, display_type, display_sent_at, '
+            'owner_id, lease_owner, lease_until'
+        ).eq('id', doc_id).execute()
+
+        doc = result.data[0] if result.data else None
         if not doc:
             logger.error(f"ドキュメントが見つかりません: {doc_id}")
             return False
@@ -491,23 +572,24 @@ class DocumentProcessor:
         try:
             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
                 'processing_status': 'processing',
-                'processing_stage': '開始',
                 'processing_progress': 0.0
             }).eq('id', document_id).execute()
         except Exception as e:
             logger.error(f"処理中マークエラー: {e}")
 
-    def _update_document_progress(self, document_id: str, stage: str, progress: float):
+    def _update_document_progress(self, document_id: str, progress: float, log_message: str = None):
         """ドキュメントの進捗を更新"""
         try:
             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_stage': stage,
                 'processing_progress': progress
             }).eq('id', document_id).execute()
-            logger.debug(f"進捗更新: {stage} ({progress*100:.0f}%)")
+
+            if log_message:
+                logger.debug(f"進捗更新: {log_message} ({progress*100:.0f}%)")
 
             # StateManagerの進捗も更新
-            self.state_manager.update_progress(stage=stage, stage_progress=progress)
+            if log_message:
+                self.state_manager.update_progress(stage=log_message, stage_progress=progress)
         except Exception as e:
             logger.error(f"進捗更新エラー: {e}")
 
@@ -523,7 +605,6 @@ class DocumentProcessor:
             try:
                 self.db.client.table('Rawdata_FILE_AND_MAIL').update({
                     'processing_status': 'completed',
-                    'processing_stage': '完了',
                     'processing_progress': 1.0,
                     'lease_owner': None,
                     'lease_until': None
@@ -544,7 +625,6 @@ class DocumentProcessor:
             try:
                 update_data = {
                     'processing_status': 'failed',
-                    'processing_stage': 'エラー',
                     'processing_progress': 0.0,
                     'lease_owner': None,
                     'lease_until': None
@@ -704,8 +784,8 @@ class DocumentProcessor:
         # Stage F相当: post_body構築（v1.1契約）
         # テキストのみドキュメントでもpost_bodyを処理
         # ============================================
-        self._update_document_progress(document_id, 'Stage F: post_body構築', 0.2)
-        logger.info(f"[Stage F] テキストのみモード: post_body構築中...")
+        self._update_document_progress(document_id, 0.2, 'post_body構築')
+        logger.info(f"[テキストのみ] post_body構築中...")
 
         # post_body構築
         post_body = {
@@ -764,38 +844,46 @@ class DocumentProcessor:
 
         logger.info(f"[Stage F完了] post_body: {post_body['char_count']}文字, text_blocks: {len(text_blocks)}個")
 
-        stage_h_config = self.pipeline.config.get_stage_config('stage_h', doc.get('doc_type', 'other'), workspace_to_use)
+        # テキストのみの場合: シンプルな metadata 構築（AI不要）
+        self._update_document_progress(document_id, 0.3, 'メタデータ構築')
 
-        # Stage H（stage_f_structure付きで呼び出し）
-        self._update_document_progress(document_id, 'Stage H: 構造化', 0.3)
-        stageh_result = self.pipeline.stage_h.process(
-            file_name=file_name,
-            doc_type=doc.get('doc_type', 'unknown'),
-            workspace=workspace_to_use,
-            combined_text=combined_text,
-            prompt=stage_h_config['prompt'],
-            model=stage_h_config['model'],
-            stage_f_structure=stage_f_structure  # v1.1契約: post_body含む
-        )
+        # articles 形式で構築
+        articles = []
+        if display_subject:
+            articles.append({
+                'title': '件名',
+                'body': display_subject
+            })
+        if display_post_text:
+            articles.append({
+                'title': '本文',
+                'body': display_post_text
+            })
+        if attachment_text:
+            articles.append({
+                'title': '添付テキスト',
+                'body': attachment_text
+            })
 
-        if not stageh_result or not isinstance(stageh_result, dict):
-            return {'success': False, 'error': 'Stage H失敗: 構造化結果が不正'}
+        # シンプルな metadata 構築
+        simple_metadata = {
+            'articles': articles,
+            'calendar_events': [],
+            'tasks': [],
+            'notices': [],
+            'structured_tables': []
+        }
 
-        stageh_metadata = stageh_result.get('metadata', {})
-        if stageh_metadata.get('extraction_failed'):
-            return {'success': False, 'error': 'Stage H失敗: JSON抽出失敗'}
+        document_date = None
+        tags = []
 
-        document_date = stageh_result.get('document_date')
-        tags = stageh_result.get('tags', [])
+        logger.info(f"[テキストのみ] シンプルなmetadata構築完了: articles={len(articles)}件")
 
         # Stage J
-        self._update_document_progress(document_id, 'Stage J: チャンク化', 0.6)
+        self._update_document_progress(document_id, 0.6, 'チャンク化')
         metadata_chunker = MetadataChunker()
         document_data = {
             'file_name': file_name,
-            'summary': '',
-            'document_date': document_date,
-            'tags': tags,
             'doc_type': doc.get('doc_type'),
             'display_subject': display_subject,
             'display_post_text': display_post_text,
@@ -803,14 +891,6 @@ class DocumentProcessor:
             'display_type': doc.get('display_type'),
             'display_sent_at': doc.get('display_sent_at'),
             'classroom_sender_email': doc.get('classroom_sender_email'),
-            'attachment_text': attachment_text,
-            'persons': stageh_metadata.get('persons', []) if isinstance(stageh_metadata, dict) else [],
-            'organizations': stageh_metadata.get('organizations', []) if isinstance(stageh_metadata, dict) else [],
-            'people': stageh_metadata.get('people', []) if isinstance(stageh_metadata, dict) else [],
-            'text_blocks': stageh_metadata.get('text_blocks', []) if isinstance(stageh_metadata, dict) else [],
-            'structured_tables': stageh_metadata.get('structured_tables', []) if isinstance(stageh_metadata, dict) else [],
-            'weekly_schedule': stageh_metadata.get('weekly_schedule', []) if isinstance(stageh_metadata, dict) else [],
-            'other_text': stageh_metadata.get('other_text', []) if isinstance(stageh_metadata, dict) else []
         }
 
         chunks = metadata_chunker.create_metadata_chunks(document_data)
@@ -821,8 +901,8 @@ class DocumentProcessor:
             logger.warning(f"既存チャンク削除エラー（継続）: {e}")
 
         # Stage K
-        self._update_document_progress(document_id, 'Stage K: Embedding', 0.8)
-        stage_k_result = self.pipeline.stage_k.embed_and_save(document_id, chunks)
+        self._update_document_progress(document_id, 0.8, 'Embedding')
+        stage_k_result = self.stage_k.embed_and_save(document_id, chunks)
 
         if not stage_k_result.get('success'):
             return {'success': False, 'error': f"Stage K失敗: {stage_k_result.get('failed_count', 0)}/{len(chunks)}チャンク保存失敗"}
@@ -833,10 +913,11 @@ class DocumentProcessor:
 
         try:
             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'tags': tags,
-                'document_date': document_date,
-                'metadata': stageh_metadata
+                'metadata': simple_metadata,
+                'processing_status': 'completed',
+                'processing_progress': 1.0
             }).eq('id', document_id).execute()
+            logger.info(f"[テキストのみ] metadata を DB に保存: articles={len(articles)}件")
         except Exception as e:
             return {'success': False, 'error': f"ドキュメント更新エラー: {e}"}
 
@@ -855,16 +936,29 @@ class DocumentProcessor:
         # source_urlからファイルIDを抽出（優先）、なければsource_idを使用
         drive_file_id = None
         source_url = doc.get('source_url')
+        source_id = doc.get('source_id')
+        logger.debug(f"[DEBUG] doc keys: {list(doc.keys())}")
+        logger.debug(f"[DEBUG] source_url: {source_url}")
+        logger.debug(f"[DEBUG] source_id: {source_id}")
         if source_url:
             # URLからファイルIDを抽出: https://drive.google.com/file/d/{FILE_ID}/view?...
             match = re.search(r'/d/([a-zA-Z0-9_-]+)', source_url)
             if match:
                 drive_file_id = match.group(1)
                 logger.info(f"[source_url] ファイルID抽出: {drive_file_id}")
+            else:
+                logger.warning(f"[source_url] 正規表現マッチ失敗: {source_url}")
 
         # source_urlからIDが取れなければsource_idにフォールバック
         if not drive_file_id:
-            drive_file_id = doc.get('source_id')
+            source_id = doc.get('source_id')
+            if source_id:
+                # source_id が "{数字}:drive:{file_id}" フォーマットの場合、file_id を抽出
+                if ':drive:' in source_id:
+                    drive_file_id = source_id.split(':drive:')[-1]
+                    logger.info(f"[source_id] ファイルID抽出: {drive_file_id}")
+                else:
+                    drive_file_id = source_id
 
         if not drive_file_id:
             return {'success': False, 'error': 'source_urlまたはsource_idがありません'}
@@ -894,7 +988,7 @@ class DocumentProcessor:
         logger.info(f"[P0] doc固有temp作成: {doc_temp_dir}")
 
         # ダウンロード
-        self._update_document_progress(document_id, 'ダウンロード中', 0.1)
+        self._update_document_progress(document_id, 0.1, 'ダウンロード')
         try:
             self.drive.download_file(download_file_id, download_file_name, str(doc_temp_dir))
             local_path = doc_temp_dir / download_file_name
@@ -911,33 +1005,149 @@ class DocumentProcessor:
         if not mime_type:
             mime_type = 'application/octet-stream'
 
-        # パイプライン実行
-        self._update_document_progress(document_id, 'Stage E-K: 処理中', 0.3)
+        # 新しいパイプライン実行: A→B→D→E→F→G→J→K
+        workspace_to_use = doc.get('workspace', 'unknown') if preserve_workspace else 'unknown'
+
         try:
-            workspace_to_use = doc.get('workspace', 'unknown') if preserve_workspace else 'unknown'
+            # Stage A: 書類種別判定
+            self._update_document_progress(document_id, 0.35, '書類種別判定')
+            logger.info("[Stage A] 書類種別判定開始")
+            stage_a_result = self.stage_a.process(str(local_path))
+            if not stage_a_result or not stage_a_result.get('success'):
+                return {'success': False, 'error': 'Stage A失敗'}
 
-            result = await self.pipeline.process_document(
-                file_path=Path(local_path),
-                file_name=file_name,
-                doc_type=doc.get('doc_type', 'other'),
-                workspace=workspace_to_use,
-                mime_type=mime_type,
-                source_id=drive_file_id,
-                existing_document_id=document_id,
-                extra_metadata={
-                    'display_subject': doc.get('display_subject'),
-                    'display_post_text': doc.get('display_post_text'),
-                    'attachment_text': doc.get('attachment_text'),
-                    'display_sender': doc.get('display_sender'),
-                    'display_sender_email': doc.get('display_sender_email'),
-                    'display_type': doc.get('display_type'),
-                    'display_sent_at': doc.get('display_sent_at'),
-                    'classroom_sender_email': doc.get('classroom_sender_email')
-                },
-                progress_callback=progress_callback
+            # Stage B: Format-Specific Physical Structuring
+            self._update_document_progress(document_id, 0.40, '物理構造抽出')
+            logger.info("[Stage B] 物理構造抽出開始")
+            stage_b_result = self.stage_b.process(
+                file_path=str(local_path),
+                a_result=stage_a_result
             )
+            if not stage_b_result or not stage_b_result.get('success'):
+                return {'success': False, 'error': 'Stage B失敗'}
 
-            return result
+            purged_pdf_path = stage_b_result.get('purged_pdf_path')
+            if not purged_pdf_path:
+                return {'success': False, 'error': 'Stage B: purged_pdf_path が生成されませんでした'}
+
+            # Stage D: Visual Structure Analysis
+            self._update_document_progress(document_id, 0.45, '視覚構造解析')
+            logger.info("[Stage D] 視覚構造解析開始")
+
+            # D1Controller は単一ページ処理のため、purged_image_path を取得
+            purged_image_paths = stage_b_result.get('purged_image_paths', [])
+            purged_image_path = purged_image_paths[0] if purged_image_paths else None
+
+            stage_d_result = self.stage_d.process(
+                pdf_path=Path(purged_pdf_path),
+                purged_image_path=Path(purged_image_path) if purged_image_path else None,
+                page_num=0,
+                output_dir=Path(doc_temp_dir)
+            )
+            if not stage_d_result or not stage_d_result.get('success'):
+                return {'success': False, 'error': 'Stage D失敗'}
+
+            # Stage E: Vision Extraction & AI Structuring
+            self._update_document_progress(document_id, 0.50, 'AI抽出')
+            logger.info("[Stage E] AI抽出開始")
+            stage_e_result = self.stage_e.process(
+                purged_pdf_path=purged_pdf_path,
+                stage_d_result=stage_d_result,
+                output_dir=doc_temp_dir
+            )
+            if not stage_e_result or not stage_e_result.get('success'):
+                return {'success': False, 'error': 'Stage E失敗'}
+
+            # Stage F: Data Fusion & Normalization
+            self._update_document_progress(document_id, 0.55, 'データ統合')
+            logger.info("[Stage F] データ統合開始")
+            stage_f_result = self.stage_f.process(
+                stage_a_result=stage_a_result,
+                stage_b_result=stage_b_result,
+                stage_d_result=stage_d_result,
+                stage_e_result=stage_e_result
+            )
+            if not stage_f_result or not stage_f_result.get('success'):
+                return {'success': False, 'error': 'Stage F失敗'}
+
+            # Stage G: UI Optimized Structuring
+            self._update_document_progress(document_id, 0.60, 'UI最適化')
+            logger.info("[Stage G] UI最適化開始")
+            stage_g_result = self.stage_g.process(
+                stage_f_result=stage_f_result
+            )
+            if not stage_g_result or not stage_g_result.get('success'):
+                return {'success': False, 'error': 'Stage G失敗'}
+
+            # Stage G の結果を DB に保存
+            try:
+                ui_data = stage_g_result.get('ui_data', {})
+                import json
+                self.db.client.table('Rawdata_FILE_AND_MAIL').update({
+                    'stage_g_structured_data': json.dumps(ui_data, ensure_ascii=False)
+                }).eq('id', document_id).execute()
+                logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
+            except Exception as e:
+                logger.warning(f"Stage G 結果の DB 保存エラー: {e}")
+
+            # Stage H: 削除（G11/G21 で構造化済み）
+            # Stage G の final_metadata をそのまま使用
+            final_metadata = stage_g_result.get('final_metadata', {})
+
+            if not final_metadata:
+                logger.warning("[Stage G] final_metadata が空です")
+                return {'success': False, 'error': 'Stage G: final_metadata が生成されませんでした'}
+
+            logger.info(f"[Stage G] final_metadata を取得: articles={len(final_metadata.get('articles', []))}件")
+
+            # Stage J: Chunking
+            self._update_document_progress(document_id, 0.70, 'チャンク化')
+            logger.info("[Stage J] チャンク化開始")
+
+            from shared.common.processing.metadata_chunker import MetadataChunker
+            metadata_chunker = MetadataChunker()
+
+            document_data = {
+                'file_name': file_name,
+                'doc_type': doc.get('doc_type'),
+                'display_subject': doc.get('display_subject'),
+                'display_post_text': doc.get('display_post_text'),
+                'display_sender': doc.get('display_sender'),
+                'display_type': doc.get('display_type'),
+                'display_sent_at': doc.get('display_sent_at'),
+                'classroom_sender_email': doc.get('classroom_sender_email'),
+            }
+
+            chunks = metadata_chunker.create_metadata_chunks(document_data)
+
+            # 既存チャンク削除
+            try:
+                self.db.client.table('10_ix_search_index').delete().eq('document_id', document_id).execute()
+            except Exception as e:
+                logger.warning(f"既存チャンク削除エラー（継続）: {e}")
+
+            # Stage K: Embedding
+            self._update_document_progress(document_id, 0.80, 'Embedding')
+            logger.info("[Stage K] Embedding開始")
+            stage_k_result = self.stage_k.embed_and_save(document_id, chunks)
+
+            if not stage_k_result.get('success'):
+                return {'success': False, 'error': f"Stage K失敗: {stage_k_result.get('failed_count', 0)}/{len(chunks)}チャンク保存失敗"}
+
+            # Stage G の final_metadata を DB に保存
+            try:
+                self.db.client.table('Rawdata_FILE_AND_MAIL').update({
+                    'metadata': final_metadata,
+                    'processing_status': 'completed',
+                    'processing_progress': 1.0
+                }).eq('id', document_id).execute()
+                logger.info(f"[Stage G] metadata を DB に保存: articles={len(final_metadata.get('articles', []))}件, calendar_events={len(final_metadata.get('calendar_events', []))}件, tasks={len(final_metadata.get('tasks', []))}件")
+            except Exception as e:
+                logger.warning(f"metadata 保存エラー: {e}")
+                return {'success': False, 'error': f'metadata 保存失敗: {e}'}
+
+            logger.info(f"[パイプライン完了] A→B→D→E→F→G→J→K すべて成功")
+            return {'success': True}
 
         finally:
             # ============================================

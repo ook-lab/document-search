@@ -79,6 +79,13 @@ class F1DataFusionMerger:
             logger.info(f"  ├─ 注意事項: {len(notices)}件")
             logger.info(f"  └─ 表: {len(tables)}個")
 
+            # 統合テキスト全文をログ出力
+            logger.info("=" * 80)
+            logger.info("[F-1] 統合テキスト全文:")
+            logger.info("=" * 80)
+            logger.info(raw_text if raw_text else "（テキストなし）")
+            logger.info("=" * 80)
+
             return {
                 'success': True,
                 'document_info': document_info,
@@ -144,6 +151,10 @@ class F1DataFusionMerger:
 
         # Stage B のテキスト（優先）
         if stage_b_result:
+            logger.debug(f"[F-1 DEBUG] stage_b_result keys: {list(stage_b_result.keys())}")
+            if 'logical_blocks' in stage_b_result:
+                logger.debug(f"[F-1 DEBUG] logical_blocks count: {len(stage_b_result['logical_blocks'])}")
+
             # paragraphs（Native Word）
             if 'paragraphs' in stage_b_result:
                 for para in stage_b_result['paragraphs']:

@@ -200,6 +200,20 @@ class E1Controller:
             logger.info(f"  └─ 使用モデル: {', '.join(models_used)}")
             logger.info("=" * 60)
 
+            # Stage E 抽出テキスト全文を出力
+            logger.info("=" * 80)
+            logger.info("[E-1] 抽出テキスト全文:")
+            logger.info("=" * 80)
+            if non_table_content:
+                logger.info("[E-1] 非表領域テキスト:")
+                logger.info(str(non_table_content))
+                logger.info("-" * 80)
+            for idx, table in enumerate(table_contents):
+                logger.info(f"[E-1] 表 #{idx + 1}:")
+                logger.info(str(table))
+                logger.info("-" * 80)
+            logger.info("=" * 80)
+
             return {
                 'success': True,
                 'non_table_content': non_table_content,

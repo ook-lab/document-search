@@ -20,6 +20,8 @@ from loguru import logger
 from .g1_table_reproducer import G1TableReproducer
 from .g3_block_arranger import G3BlockArranger
 from .g5_noise_eliminator import G5NoiseEliminator
+from .g11_table_structurer import G11TableStructurer
+from .g21_text_structurer import G21TextStructurer
 
 
 class G1Controller:
@@ -30,6 +32,8 @@ class G1Controller:
         self.table_reproducer = G1TableReproducer()
         self.block_arranger = G3BlockArranger()
         self.noise_eliminator = G5NoiseEliminator()
+        self.table_structurer = G11TableStructurer()
+        self.text_structurer = G21TextStructurer()
 
     def process(
         self,
@@ -103,6 +107,35 @@ class G1Controller:
 
             ui_data = elimination_result['ui_data']
 
+            # Step 4: Table Structuring (G-11)
+            logger.info("\n[G-1] ステップ4: 表の構造化（G-11）")
+
+            table_struct_result = self.table_structurer.structure(ui_tables)
+            if not table_struct_result.get('success'):
+                logger.warning(f"[G-1] 表の構造化失敗: {table_struct_result.get('error')}")
+                structured_tables = []
+            else:
+                structured_tables = table_struct_result['structured_tables']
+                logger.info(f"[G-1] 表の構造化: {len(structured_tables)}個")
+
+            # Step 5: Text Structuring (G-21)
+            logger.info("\n[G-1] ステップ5: テキストの構造化（G-21）")
+
+            text_struct_result = self.text_structurer.structure(
+                sections=blocks,
+                timeline=ui_data.get('timeline', []),
+                actions=ui_data.get('actions', []),
+                notices=ui_data.get('notices', [])
+            )
+            if not text_struct_result.get('success'):
+                logger.warning(f"[G-1] テキストの構造化失敗: {text_struct_result.get('error')}")
+                final_metadata = {}
+            else:
+                final_metadata = text_struct_result['metadata']
+                # 表データも追加
+                if structured_tables:
+                    final_metadata['structured_tables'] = structured_tables
+
             # メタデータを構築
             metadata = {
                 'stage': 'G',
@@ -115,6 +148,7 @@ class G1Controller:
             logger.info("[G-1] Stage G 完了")
             logger.info(f"  ├─ 表: {len(ui_tables)}個")
             logger.info(f"  ├─ ブロック: {len(blocks)}個")
+            logger.info(f"  ├─ articles: {len(final_metadata.get('articles', []))}件")
             logger.info(f"  ├─ イベント: {len(ui_data.get('timeline', []))}件")
             logger.info(f"  ├─ タスク: {len(ui_data.get('actions', []))}件")
             logger.info(f"  └─ 注意事項: {len(ui_data.get('notices', []))}件")
@@ -123,6 +157,7 @@ class G1Controller:
             return {
                 'success': True,
                 'ui_data': ui_data,
+                'final_metadata': final_metadata,  # G11/G21 で構造化されたメタデータ
                 'metadata': metadata
             }
 

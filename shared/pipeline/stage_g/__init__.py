@@ -20,10 +20,14 @@ from .g1_controller import G1Controller
 from .g1_table_reproducer import G1TableReproducer
 from .g3_block_arranger import G3BlockArranger
 from .g5_noise_eliminator import G5NoiseEliminator
+from .g11_table_structurer import G11TableStructurer
+from .g21_text_structurer import G21TextStructurer
 
 __all__ = [
     'G1Controller',
     'G1TableReproducer',
     'G3BlockArranger',
     'G5NoiseEliminator',
+    'G11TableStructurer',
+    'G21TextStructurer',
 ]

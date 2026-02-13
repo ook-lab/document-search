@@ -98,6 +98,7 @@ class B11GoogleDocsProcessor:
                 logger.info(f"[B-11] テキスト削除完了: {purged_pdf_path}")
 
                 return {
+                    'success': True,
                     'is_structured': True,
                     'text_with_tags': text_with_tags,
                     'logical_blocks': logical_blocks,

@@ -42,12 +42,12 @@ if str(_root_dir) not in sys.path:
 from loguru import logger
 
 # shared モジュールからインポート
-from shared.processing import DocumentProcessor
+from shared.pipeline.pipeline_manager import PipelineManager
 from shared.common.database.client import DatabaseClient
 from shared.logging import setup_master_logging
 
 
-def print_stats(processor: DocumentProcessor, workspace: str):
+def print_stats(processor: PipelineManager, workspace: str):
     """統計情報を表示"""
     stats = processor.get_queue_stats(workspace)
 
@@ -72,7 +72,7 @@ def print_stats(processor: DocumentProcessor, workspace: str):
     logger.info("="*80 + "\n")
 
 
-def print_dry_run_targets(processor: DocumentProcessor, workspace: str, limit: int, doc_id: str = None):
+def print_dry_run_targets(processor: PipelineManager, workspace: str, limit: int, doc_id: str = None):
     """dry-run: 処理対象を表示（実行しない）"""
     logger.info("\n" + "="*80)
     logger.info("【DRY-RUN MODE】処理対象の確認（実行されません）")
@@ -125,7 +125,7 @@ def print_dry_run_targets(processor: DocumentProcessor, workspace: str, limit: i
     logger.info("="*80 + "\n")
 
 
-async def process_single_document(processor: DocumentProcessor, doc_id: str):
+async def process_single_document(processor: PipelineManager, doc_id: str):
     """単一ドキュメントを処理"""
     logger.info("="*80)
     logger.info(f"単一ドキュメント処理: {doc_id}")
@@ -143,7 +143,7 @@ async def process_single_document(processor: DocumentProcessor, doc_id: str):
         return False
 
 
-async def process_run_request(processor: DocumentProcessor, run_request_id: str):
+async def process_run_request(processor: PipelineManager, run_request_id: str):
     """
     RUN 要求を処理（Web UI からの要求）
 
@@ -414,7 +414,7 @@ async def main():
     # Worker実行時は service_role を使用（RLSバイパス）
     # この時点で SUPABASE_SERVICE_ROLE_KEY が無ければ例外で停止（fail-fast）
     logger.info("Worker起動: service_role で Supabase に接続します")
-    processor = DocumentProcessor(use_service_role=True)
+    processor = PipelineManager(use_service_role=True)
 
     # --once は --limit 1 のエイリアス
     if args.once:

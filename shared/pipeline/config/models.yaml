@@ -26,8 +26,9 @@ models:
     flyer: "gemini-2.5-flash-lite"
     gmail: "gemini-2.5-flash-lite"
 
-  # Stage H: Structuring (構造化) - 家計簿専用
+  # Stage H: Structuring (構造化)
   stage_h:
+    default: "gemini-2.5-flash-lite"  # デフォルト
     flash_lite: "gemini-2.5-flash-lite"  # 家計簿用（Pythonロジック中心）
 
   # Stage H+I: Combined Structuring & Synthesis (構造化 + 統合・要約)

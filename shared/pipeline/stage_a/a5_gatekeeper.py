@@ -39,13 +39,13 @@ class A5Gatekeeper:
 
     POLICY_VERSION = "A5.v1"
 
-    # ---- v1: 安全側の初期閾値（運用で調整する前提）----
-    MIN_AVG_WORDS_PER_PAGE = 80
-    MIN_AVG_CHARS_PER_PAGE = 300
-    MAX_AVG_IMAGES_PER_PAGE = 5
-    MAX_AVG_X_STD = 80
-    MIN_AVG_WORDS_PER_LINE = 5.0
-    MAX_AVG_VECTORS_PER_PAGE = 300  # lines+rects+curves の概算
+    # ---- v1: 緩和した閾値（画像多め・テキスト少なめのドキュメント対応）----
+    MIN_AVG_WORDS_PER_PAGE = 20  # 80→20 緩和
+    MIN_AVG_CHARS_PER_PAGE = 100  # 300→100 緩和
+    MAX_AVG_IMAGES_PER_PAGE = 10  # 5→10 緩和
+    MAX_AVG_X_STD = 200  # 80→200 緩和
+    MIN_AVG_WORDS_PER_LINE = 1.0  # 5.0→1.0 緩和
+    MAX_AVG_VECTORS_PER_PAGE = 500  # 300→500 緩和
 
     def evaluate(self, file_path: str | Path, a_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -108,8 +108,14 @@ class A5Gatekeeper:
             logger.warning(f"[A-5] BLOCK: {d.block_reason}")
             return asdict(d)
 
-        # v1 allowlist：WORD+FLOW のみ通す
-        if not (origin_app == "WORD" and layout_profile == "FLOW"):
+        # v1 allowlist：WORD（FLOW/FIXED）、GOOGLE_DOCS（FLOW/FIXED）を通す
+        allowed_combinations = [
+            ("WORD", "FLOW"),
+            ("WORD", "FIXED"),
+            ("GOOGLE_DOCS", "FLOW"),
+            ("GOOGLE_DOCS", "FIXED"),
+        ]
+        if (origin_app, layout_profile) not in allowed_combinations:
             d = GatekeeperDecision(
                 decision="BLOCK",
                 allowed_processors=[],
@@ -141,20 +147,21 @@ class A5Gatekeeper:
             **probe,
         }
 
-        # ---- 閾値チェック（全部満たす必要あり）----
+        # ---- 閾値チェック（GOOGLE_DOCS はスキップ、WORD のみ）----
         failures: List[str] = []
-        if avg_words < self.MIN_AVG_WORDS_PER_PAGE:
-            failures.append(f"avg_words_per_page<{self.MIN_AVG_WORDS_PER_PAGE} (actual={avg_words:.1f})")
-        if probe["avg_chars_per_page"] < self.MIN_AVG_CHARS_PER_PAGE:
-            failures.append(f"avg_chars_per_page<{self.MIN_AVG_CHARS_PER_PAGE} (actual={probe['avg_chars_per_page']:.1f})")
-        if avg_images > self.MAX_AVG_IMAGES_PER_PAGE:
-            failures.append(f"avg_images_per_page>{self.MAX_AVG_IMAGES_PER_PAGE} (actual={avg_images:.1f})")
-        if avg_x_std > self.MAX_AVG_X_STD:
-            failures.append(f"avg_x_std>{self.MAX_AVG_X_STD} (actual={avg_x_std:.1f})")
-        if avg_wpl < self.MIN_AVG_WORDS_PER_LINE:
-            failures.append(f"avg_words_per_line<{self.MIN_AVG_WORDS_PER_LINE} (actual={avg_wpl:.2f})")
-        if probe["avg_vectors_per_page"] > self.MAX_AVG_VECTORS_PER_PAGE:
-            failures.append(f"avg_vectors_per_page>{self.MAX_AVG_VECTORS_PER_PAGE} (actual={probe['avg_vectors_per_page']:.1f})")
+        if origin_app == "WORD":
+            if avg_words < self.MIN_AVG_WORDS_PER_PAGE:
+                failures.append(f"avg_words_per_page<{self.MIN_AVG_WORDS_PER_PAGE} (actual={avg_words:.1f})")
+            if probe["avg_chars_per_page"] < self.MIN_AVG_CHARS_PER_PAGE:
+                failures.append(f"avg_chars_per_page<{self.MIN_AVG_CHARS_PER_PAGE} (actual={probe['avg_chars_per_page']:.1f})")
+            if avg_images > self.MAX_AVG_IMAGES_PER_PAGE:
+                failures.append(f"avg_images_per_page>{self.MAX_AVG_IMAGES_PER_PAGE} (actual={avg_images:.1f})")
+            if avg_x_std > self.MAX_AVG_X_STD:
+                failures.append(f"avg_x_std>{self.MAX_AVG_X_STD} (actual={avg_x_std:.1f})")
+            if avg_wpl < self.MIN_AVG_WORDS_PER_LINE:
+                failures.append(f"avg_words_per_line<{self.MIN_AVG_WORDS_PER_LINE} (actual={avg_wpl:.2f})")
+            if probe["avg_vectors_per_page"] > self.MAX_AVG_VECTORS_PER_PAGE:
+                failures.append(f"avg_vectors_per_page>{self.MAX_AVG_VECTORS_PER_PAGE} (actual={probe['avg_vectors_per_page']:.1f})")
 
         if failures:
             d = GatekeeperDecision(
@@ -168,16 +175,27 @@ class A5Gatekeeper:
             logger.warning(f"[A-5] BLOCK: {d.block_reason}")
             return asdict(d)
 
-        # ---- ALLOW（v1 は B3_PDF_WORD のみ）----
+        # ---- ALLOW（プロセッサ選択）----
+        if origin_app == "GOOGLE_DOCS":
+            allowed_procs = ["B11_GOOGLE_DOCS"]
+            reason_suffix = f"GOOGLE_DOCS+{layout_profile}"
+        else:  # WORD
+            if layout_profile == "FIXED":
+                allowed_procs = ["B30_DTP"]
+                reason_suffix = "WORD+FIXED"
+            else:
+                allowed_procs = ["B3_PDF_WORD"]
+                reason_suffix = "WORD+FLOW"
+
         d = GatekeeperDecision(
             decision="ALLOW",
-            allowed_processors=["B3_PDF_WORD"],
+            allowed_processors=allowed_procs,
             block_code=None,
-            block_reason="allowlist条件を満たしたため許可（WORD+FLOW+HIGH + 安全閾値クリア）",
+            block_reason=f"allowlist条件を満たしたため許可（{reason_suffix} + 安全閾値クリア）",
             evidence=evidence,
             policy_version=self.POLICY_VERSION,
         )
-        logger.info(f"[A-5] ALLOW: B3_PDF_WORD (chars={probe['avg_chars_per_page']:.0f}/page, vectors={probe['avg_vectors_per_page']:.0f}/page)")
+        logger.info(f"[A-5] ALLOW: {allowed_procs} (chars={probe['avg_chars_per_page']:.0f}/page, vectors={probe['avg_vectors_per_page']:.0f}/page)")
         return asdict(d)
 
     def _probe_pdf(self, file_path: Path) -> Dict[str, Any]:

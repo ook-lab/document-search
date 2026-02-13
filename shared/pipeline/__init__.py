@@ -1,23 +1,20 @@
 """
-G_unified_pipeline: 統合ドキュメント処理パイプライン
+新しいパイプラインアーキテクチャ: A→B→D→E→F→G→H→J→K
 
-Stage E-K を統合した、堅牢かつ高精度なドキュメント処理フロー
+各ステージは独立したコントローラーとして実装されています。
 
 使用方法:
-    from shared.pipeline import UnifiedDocumentPipeline
+    from shared.pipeline.stage_a import A3EntryPoint
+    from shared.pipeline.stage_b import B1Controller
+    from shared.pipeline.stage_d import D1Controller
+    from shared.pipeline.stage_e import E1Controller
+    from shared.pipeline.stage_f import F1Controller
+    from shared.pipeline.stage_g import G1Controller
 
-    pipeline = UnifiedDocumentPipeline()
-    result = await pipeline.process_document(
-        file_path=Path("document.pdf"),
-        file_name="document.pdf",
-        doc_type="invoice",
-        workspace="personal",
-        mime_type="application/pdf",
-        source_id="drive_file_id"
-    )
+    stage_a = A3EntryPoint()
+    stage_b = B1Controller()
+    # ...
 """
 
-from .pipeline import UnifiedDocumentPipeline
-
-__all__ = ['UnifiedDocumentPipeline']
-__version__ = '1.0.0'
+__all__ = []
+__version__ = '2.0.0'

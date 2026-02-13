@@ -87,10 +87,24 @@ class B30DtpProcessor:
 
                 logger.info(f"[B-30] 抽出完了: テキストボックス={len(logical_blocks)}, 表={len(all_tables)}, 単語（削除対象）={len(all_words)}")
 
+                # 全テキストボックスを1文字残らずログ出力（位置情報付き）
+                logger.info("=" * 80)
+                logger.info("[B-30] 抽出テキスト全文（位置情報付き）:")
+                logger.info("=" * 80)
+                for idx, block in enumerate(logical_blocks):
+                    bbox = block.get('bbox', (0, 0, 0, 0))
+                    text = block.get('text', '')
+                    page = block.get('page', 0)
+                    logger.info(f"[B-30] Block #{idx + 1} | Page:{page} | Bbox:{bbox}")
+                    logger.info(f"[B-30] Text: {text}")
+                    logger.info("-" * 80)
+                logger.info("=" * 80)
+
                 purged_pdf_path = self._purge_extracted_text(file_path, all_words, all_tables)
                 logger.info(f"[B-30] テキスト削除完了: {purged_pdf_path}")
 
                 return {
+                    'success': True,
                     'is_structured': True,
                     'text_with_tags': text_with_tags,
                     'logical_blocks': logical_blocks,
@@ -407,6 +421,7 @@ class B30DtpProcessor:
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """エラー結果を返す"""
         return {
+            'success': False,
             'is_structured': False,
             'error': error_message,
             'text_with_tags': '',
