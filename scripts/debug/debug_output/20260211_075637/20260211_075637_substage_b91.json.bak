@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "purged_pdf_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\purged\\学年通信 (36)__purged.pdf",
+  "purged_image_paths": [
+    "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\purged\\学年通信 (36)_purged_images\\page_1.png",
+    "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\purged\\学年通信 (36)_purged_images\\page_2.png"
+  ],
+  "remaining_items": [],
+  "remain_images": {
+    "p0": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\audit\\remain_B91_p0.png",
+    "p1": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\audit\\remain_B91_p1.png"
+  },
+  "remain_json_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\audit\\remain_B91.json",
+  "mask_stats": {
+    "total_pages": 2,
+    "masked_area_percentage": 12.0,
+    "bbox_count": 130,
+    "graphics_deleted": 100
+  }
+}

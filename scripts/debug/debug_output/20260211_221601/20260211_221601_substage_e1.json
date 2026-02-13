@@ -1,0 +1,20 @@
+{
+  "non_table_scout": {
+    "char_count": 0,
+    "density_level": "none",
+    "should_skip": true,
+    "extracted_text": "",
+    "confidence": 0.0
+  },
+  "table_scouts": [
+    {
+      "char_count": 31,
+      "density_level": "low",
+      "should_skip": false,
+      "extracted_text": "2026                                                     emer.      os\n\n36\n\n1/30 発行           ーー\nペンヘン - - ヘンーー\n\n",
+      "confidence": 0.062,
+      "table_id": "T1"
+    }
+  ],
+  "page_scout": {}
+}

@@ -61,13 +61,17 @@ class F5LogicalTableJoiner:
                 if len(table_list) == 1:
                     # 単一の表はそのまま
                     joined_tables.append(table_list[0])
-                else:
-                    # 複数の表を結合
+                elif source in ('stage_b', 'stage_b_excel', 'stage_e'):
+                    # 既知ソース: 複数の表を結合
                     logger.info(f"[F-5] {source}: {len(table_list)}個の表を結合")
                     joined = self._join_table_group(table_list)
                     if joined:
                         joined_tables.append(joined)
                         join_count += len(table_list) - 1
+                else:
+                    # 未知ソース: 結合せず個別にそのまま通過
+                    logger.info(f"[F-5] {source}: 未知ソース {len(table_list)}個 → そのまま通過")
+                    joined_tables.extend(table_list)
 
             logger.info(f"[F-5] 結合完了:")
             logger.info(f"  ├─ 結合前: {len(tables)}個")

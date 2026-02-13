@@ -21,11 +21,15 @@ from queue import Queue, Empty
 from threading import Thread
 
 from flask import Flask, request, jsonify, render_template, Response
+from dotenv import load_dotenv
 
 # プロジェクトルートをパスに追加
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+# .env を読み込み
+load_dotenv(PROJECT_ROOT / '.env')
 
 # shared.pipeline.__init__.py の壊れたインポートを回避
 import types
@@ -300,7 +304,7 @@ def _run_pipeline_job(job_id, session_id, pdf_path, start, end, force):
 # ────────────────────────────────────────
 
 def _upload_to_drive(session_id: str):
-    """セッションの JSON/LOG ファイルを Google Drive にアップロード"""
+    """セッションの JSON/LOG/画像ファイルを Google Drive にアップロード"""
     logger.info(f"[Drive] GDRIVE_DEBUG_FOLDER_ID={GDRIVE_DEBUG_FOLDER_ID!r}")
     if not GDRIVE_DEBUG_FOLDER_ID:
         logger.warning("[Drive] GDRIVE_DEBUG_FOLDER_ID が未設定のためスキップ")
@@ -323,13 +327,35 @@ def _upload_to_drive(session_id: str):
             logger.warning("Google Drive フォルダ作成失敗")
             return
 
-        for f in session_dir.iterdir():
-            if f.suffix in ('.json', '.log') and not f.name.endswith('.bak'):
-                # 20260210_203441_stage_g.json → stage_g_20260210_203441.json
+        # 中間画像用サブフォルダを Drive 上に作成
+        images_folder_id = drive.create_folder('images', parent_folder_id=folder_id)
+
+        upload_count = 0
+        for f in session_dir.rglob('*'):
+            if not f.is_file() or f.name.endswith('.bak'):
+                continue
+
+            if f.suffix in ('.json', '.log'):
+                # JSON/LOG → ルートフォルダ
                 drive_name = _reorder_filename(f.name, session_id)
                 drive.upload_file_from_path(str(f), folder_id=folder_id, file_name=drive_name)
-                logger.info(f"Drive アップロード: {drive_name}")
-        logger.info(f"Google Drive アップロード完了 (folder: {folder_name})")
+            elif f.suffix in ('.png', '.pdf'):
+                # 画像/PDF → images サブフォルダ
+                # サブディレクトリ内のファイルはプレフィックスを付与
+                rel = f.relative_to(session_dir)
+                if len(rel.parts) > 1:
+                    drive_name = '_'.join(rel.parts)
+                else:
+                    drive_name = f.name
+                target_folder = images_folder_id or folder_id
+                drive.upload_file_from_path(str(f), folder_id=target_folder, file_name=drive_name)
+            else:
+                continue
+
+            upload_count += 1
+            logger.info(f"[Drive] アップロード: {f.name}")
+
+        logger.info(f"Google Drive アップロード完了 (folder: {folder_name}, {upload_count}ファイル)")
     except Exception as e:
         logger.warning(f"Google Drive アップロード失敗: {e}")
 

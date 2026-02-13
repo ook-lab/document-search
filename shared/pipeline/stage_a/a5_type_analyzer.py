@@ -3,6 +3,8 @@ A-5: Document Type Analyzer（書類種類判断）
 
 PDFのメタデータ（Creator, Producer）を解析し、以下のタイプを判定:
 - GOODNOTES: Goodnotes 由来
+- GOOGLE_DOCS: Google Docs 由来
+- GOOGLE_SHEETS: Google Spreadsheet 由来
 - WORD: Microsoft Word 由来
 - INDESIGN: Adobe InDesign 由来
 - EXCEL: Microsoft Excel 由来
@@ -22,6 +24,15 @@ class A5TypeAnalyzer:
     GOODNOTES_KEYWORDS = [
         r'goodnotes',
         r'good.*notes',
+    ]
+
+    GOOGLE_DOCS_KEYWORDS = [
+        r'google.*docs',
+        r'google docs renderer',
+    ]
+
+    GOOGLE_SHEETS_KEYWORDS = [
+        r'google.*sheets',
     ]
 
     WORD_KEYWORDS = [
@@ -158,6 +169,16 @@ class A5TypeAnalyzer:
         for pattern in self.GOODNOTES_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
                 return 'GOODNOTES', 'HIGH', f'キーワード一致: {pattern}'
+
+        # GOOGLE_DOCS判定
+        for pattern in self.GOOGLE_DOCS_KEYWORDS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return 'GOOGLE_DOCS', 'HIGH', f'キーワード一致: {pattern}'
+
+        # GOOGLE_SHEETS判定
+        for pattern in self.GOOGLE_SHEETS_KEYWORDS:
+            if re.search(pattern, combined, re.IGNORECASE):
+                return 'GOOGLE_SHEETS', 'HIGH', f'キーワード一致: {pattern}'
 
         # WORD判定
         for pattern in self.WORD_KEYWORDS:

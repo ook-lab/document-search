@@ -82,7 +82,7 @@ class F1DataFusionMerger:
             return {
                 'success': True,
                 'document_info': document_info,
-                'raw_text': raw_text,
+                'raw_integrated_text': raw_text,
                 'events': events,
                 'tasks': tasks,
                 'notices': notices,
@@ -252,10 +252,11 @@ class F1DataFusionMerger:
         # Stage E の表（補完）
         if stage_e_result:
             table_contents = stage_e_result.get('table_contents', [])
-            for table in table_contents:
+            for idx, table in enumerate(table_contents):
                 if table.get('success'):
+                    tid = table.get('table_id') or f"E_p000_t{idx:02d}"
                     tables.append({
-                        'table_id': table.get('table_id', 'E_Unknown'),
+                        'table_id': tid,
                         'source': 'stage_e',
                         'markdown': table.get('table_markdown', ''),
                         'json': table.get('table_json', {})
@@ -311,7 +312,7 @@ class F1DataFusionMerger:
             'success': False,
             'error': error_message,
             'document_info': {},
-            'raw_text': '',
+            'raw_integrated_text': '',
             'events': [],
             'tasks': [],
             'notices': [],

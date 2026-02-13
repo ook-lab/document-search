@@ -1,0 +1,49 @@
+{
+  "success": true,
+  "verification_passed": false,
+  "purged_pdf_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\purged\\学年通信 (36)__purged.pdf",
+  "purged_image_paths": [
+    "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\purged\\学年通信 (36)_purged_images\\page_1.png",
+    "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\purged\\学年通信 (36)_purged_images\\page_2.png"
+  ],
+  "pages": [
+    {
+      "page": 0,
+      "remaining_word_count": 0,
+      "text_leaked_count": 0,
+      "status": "pass"
+    },
+    {
+      "page": 1,
+      "remaining_word_count": 0,
+      "text_leaked_count": 0,
+      "status": "pass"
+    }
+  ],
+  "leaked_items": [
+    {
+      "item_id": "TR_0001",
+      "page": 0,
+      "bbox": [
+        72.5000000175,
+        308.50002055749997,
+        555.5000175,
+        538.5000175
+      ],
+      "leak_type": "graphics",
+      "leaked_drawings_count": 200
+    }
+  ],
+  "remaining_items": [],
+  "remain_images": {
+    "p0": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\audit\\remain_B92_p0.png",
+    "p1": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\audit\\remain_B92_p1.png"
+  },
+  "remain_json_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260211_075637\\audit\\remain_B92.json",
+  "mask_stats": {
+    "total_pages": 2,
+    "masked_area_percentage": 12.0,
+    "bbox_count": 130,
+    "graphics_deleted": 100
+  }
+}

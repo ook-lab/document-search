@@ -52,6 +52,7 @@ from loguru import logger
 # ステージ コントローラーのインポート
 from shared.pipeline.stage_a import A3EntryPoint
 from shared.pipeline.stage_b import B1Controller
+# B90 Layer Purge 削除: 各ステージで抽出＋削除を統合
 
 # サブステージ クラスのインポート（Stage D）
 from shared.pipeline.stage_d.d3_vector_line_extractor import D3VectorLineExtractor
@@ -86,7 +87,7 @@ class DebugPipeline:
     # 各ステージのサブステージ定義（実行順序）
     SUBSTAGES = {
         "A": ["A3"],
-        "B": ["B1"],
+        "B": ["B1"],  # B90削除: B1で抽出＋削除を統合
         "D": ["D3", "D5", "D8", "D9", "D10"],
         "E": ["E1", "E5", "E20", "E30"],
         "F": ["F1", "F3", "F5"],
@@ -96,7 +97,7 @@ class DebugPipeline:
     # 全サブステージの実行順序（フラット）
     ALL_SUBSTAGES = [
         "A3",
-        "B1",
+        "B1",  # B90削除
         "D3", "D5", "D8", "D9", "D10",
         "E1", "E5", "E20", "E30",
         "F1", "F3", "F5",
@@ -123,8 +124,10 @@ class DebugPipeline:
         self.output_dir = Path(base_dir) / uuid
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Stage A/B: コントローラー（モノリシック）
+        # Stage A: コントローラー（モノリシック）
         self._stage_a = A3EntryPoint()
+
+        # Stage B: コントローラー（抽出＋削除統合）
         self._stage_b = B1Controller()
 
         # Stage D サブステージ
@@ -382,24 +385,36 @@ class DebugPipeline:
                 raise ValueError("Stage A 失敗または無効なデータ")
 
     # ════════════════════════════════════════
-    # Stage B（モノリシック）
+    # Stage B（抽出＋削除統合）
     # ════════════════════════════════════════
 
     def _exec_stage_b(self, ctx, active_set, force, pdf_path):
-        cached = self.load_stage("B")
-        if self._should_run("B1", active_set, force, cached is not None):
-            logger.info("[B1] Controller 実行中...")
+        b_subs = {"B1"}  # B90削除: B1で抽出＋削除を統合
+        if not (b_subs & active_set):
+            ctx["B"] = self.load_stage("B")
+            return
+
+        # B1: Controller（抽出＋削除統合）
+        b1 = self.load_substage("B1")
+        if self._should_run("B1", active_set, force, b1 is not None):
+            logger.info("[B1] Controller 実行中（抽出＋削除統合）...")
             if not pdf_path:
                 raise FileNotFoundError("Stage B にはPDFファイルが必要です")
-            result = self._stage_b.process(
+            b1 = self._stage_b.process(
                 file_path=pdf_path,
                 a_result=ctx.get("A")
             )
-            self.save_stage("B", result)
-            self.save_substage("B1", result)
-            ctx["B"] = result
-        else:
-            ctx["B"] = cached
+            self.save_substage("B1", b1)
+        ctx["B1"] = b1
+
+        if not b1:
+            ctx["B"] = b1 or {"is_structured": False}
+            self.save_stage("B", ctx["B"])
+            return
+
+        # Stage B 最終結果 = B1（抽出＋削除済み）
+        ctx["B"] = b1
+        self.save_stage("B", ctx["B"])
 
     # ════════════════════════════════════════
     # Stage D（サブステージ: D3→D5→D8→D9→D10）
@@ -420,6 +435,7 @@ class DebugPipeline:
         purged_pdf_path = stage_b.get('purged_pdf_path')
         purged_image_paths = stage_b.get('purged_image_paths', [])
         purged_image_path = Path(purged_image_paths[0]) if purged_image_paths else None
+        b_tables = stage_b.get('structured_tables', [])  # B抽出済み表（D3フィルタ用）
 
         if not purged_pdf_path:
             logger.warning("[Stage D] purged_pdf_path なし。スキップ。")
@@ -428,11 +444,11 @@ class DebugPipeline:
 
         page_num = 0
 
-        # D3: ベクトル罫線抽出
+        # D3: ベクトル罫線抽出（B抽出済み表領域はスキップ）
         d3 = self._get_substage_data("D3", ctx)
         if self._should_run("D3", active_set, force, d3 is not None):
             logger.info("[D3] ベクトル罫線抽出 実行中...")
-            d3 = self._d3.extract(Path(purged_pdf_path), page_num)
+            d3 = self._d3.extract(Path(purged_pdf_path), page_num, known_table_regions=b_tables)
             self.save_substage("D3", d3)
         ctx["D3"] = d3
 
@@ -448,11 +464,16 @@ class DebugPipeline:
                 d5 = None
         ctx["D5"] = d5
 
-        # D8: 格子解析
+        # D8: 格子解析（不可視線フィルタ有効）
         d8 = self._get_substage_data("D8", ctx)
         if self._should_run("D8", active_set, force, d8 is not None):
-            logger.info("[D8] 格子解析 実行中...")
-            d8 = self._d8.analyze(ctx.get("D3"), ctx.get("D5"))
+            logger.info("[D8] 格子解析 実行中（外枠除外 + 不可視線フィルタ）...")
+            d8 = self._d8.analyze(
+                ctx.get("D3"),
+                ctx.get("D5"),
+                pdf_path=purged_pdf_path,
+                page_index=page_num
+            )
             self.save_substage("D8", d8)
         ctx["D8"] = d8
 
@@ -505,22 +526,63 @@ class DebugPipeline:
             ctx["E"] = self.load_stage("E")
             return
 
+        stage_b = ctx.get("B") or self.load_stage("B")
         stage_d = ctx.get("D") or self.load_stage("D")
+
         if not stage_d:
             logger.warning("[Stage E] Stage D データなし。スキップ。")
             ctx["E"] = {'success': False, 'error': 'No Stage D data'}
             return
+
+        if not stage_b:
+            logger.warning("[Stage E] Stage B データなし。ページスカウトをスキップ。")
+            stage_b = {}  # 空の辞書を渡す
 
         non_table_image = stage_d.get('non_table_image_path')
         tables = stage_d.get('tables', [])
         total_tokens = 0
         models_used = []
 
-        # E1: OCR Scouter（全画像）
+        # E1: OCR Scouter（全画像 + ページ単位スカウト）
         e1 = self.load_substage("E1")
         if self._should_run("E1", active_set, force, e1 is not None):
             logger.info("[E1] OCR Scouter 実行中...")
-            e1 = {'non_table_scout': None, 'table_scouts': []}
+            e1 = {'non_table_scout': None, 'table_scouts': [], 'page_scout': {}}
+
+            # ページ単位スカウト（白紙ページ含む）- purged_pdf から自力で確定
+            purged_pdf_path = stage_b.get('purged_pdf_path', '')
+            if purged_pdf_path and Path(purged_pdf_path).exists():
+                logger.info("[E1] ページ単位スカウト実行（purged_pdf から自力確定）...")
+                try:
+                    import fitz
+                    # page_count を確定
+                    doc = fitz.open(purged_pdf_path)
+                    page_count = len(doc)
+                    doc.close()
+
+                    # purged_images_dir を確定
+                    purged_images_dir = self.output_dir / "purged_images"
+                    purged_images_dir.mkdir(parents=True, exist_ok=True)
+
+                    # ページをレンダリング
+                    doc = fitz.open(purged_pdf_path)
+                    for page_idx in range(page_count):
+                        page_img_path = purged_images_dir / f"e1_page_{page_idx}.png"
+                        if not page_img_path.exists():
+                            page = doc.load_page(page_idx)
+                            pix = page.get_pixmap(dpi=150)
+                            pix.save(str(page_img_path))
+                            logger.info(f"[E1] e1_page_{page_idx}.png 生成完了")
+                    doc.close()
+
+                    # scout_all_pages 実行
+                    e1['page_scout'] = self._e1.scout_all_pages(purged_images_dir, page_count)
+                except Exception as e:
+                    logger.error(f"[E1] ページスカウトエラー: {e}", exc_info=True)
+            else:
+                logger.warning(f"[E1] purged_pdf_path が無効: {purged_pdf_path}")
+
+            # 既存の table/non-table スカウト（互換性維持）
             if non_table_image and Path(non_table_image).exists():
                 e1['non_table_scout'] = self._e1.scout(Path(non_table_image))
             for tbl in tables:
@@ -594,10 +656,14 @@ class DebugPipeline:
         ctx["E30"] = e30
 
         # Stage E 結果を合成・保存
+        e1_data = ctx.get("E1") or {}
+        page_scout = e1_data.get('page_scout', {})
+
         stage_e = {
             'success': True,
             'non_table_content': ctx.get("E20") or {},
             'table_contents': (ctx.get("E30") or {}).get('table_results', []),
+            'page_scout': page_scout,
             'metadata': {'total_tokens': total_tokens, 'models_used': models_used}
         }
         self.save_stage("E", stage_e)
@@ -793,7 +859,7 @@ def main():
 
 サブステージ一覧:
   Stage A: A3(EntryPoint)
-  Stage B: B1(Controller)
+  Stage B: B1(Controller: 抽出＋削除統合)
   Stage D: D3(罫線抽出) D5(ラスター検出) D8(格子解析) D9(セル特定) D10(画像分割)
   Stage E: E1(OCR) E5(ブロック認識) E20(地の文抽出) E30(表抽出)
   Stage F: F1(データ統合) F3(日付正規化) F5(表結合)

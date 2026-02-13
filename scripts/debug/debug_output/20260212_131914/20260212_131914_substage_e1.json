@@ -1,0 +1,41 @@
+{
+  "non_table_scout": {
+    "char_count": 78,
+    "density_level": "low",
+    "should_skip": false,
+    "extracted_text": "ら\n\nお1\nLet\nていく\nようカ\nhad\n~BE\n\niS\n\n<\nっ\n\n2\n)\n\nことですうoこ4しは、/にて!ー CURL DER ON)\n\nです。\n\n<\n\nPPTPPLPLLLLLLLLLLP TTPP Lu\n\n",
+    "confidence": 0.156
+  },
+  "table_scouts": [
+    {
+      "char_count": 359,
+      "density_level": "medium",
+      "should_skip": false,
+      "extracted_text": "_座年もどうぞよろしくお願いいたします\n\nか。 私も毎年応援に行くのですが、 自の前を一鱗で通り過ぎ\nほどの夢さに驚きます。どこからあのパワーが生まれるのでし\n\\。 ニュースの特集では、 特別な>   でなく、 毎日の生活の\nねが、その罰を生み出していると結介さ\n\nome 合は毎日くられる  Ray\n\nE月に箱棋駅伝や長距離マラソンを見た人も多いのではないで  & =\n\n.*\nnigvettess 全書を聞く     PLLHLLLTTT PF\n 導入Wみうちで、 できるごとは?\n\nebeUodcoc. Holts,\n\nBe ib SIM CeE MBL THELESS.\n崩ごはんをしっかり食べ、夜ふかしをしないこ\nと。 「いつもとちがう」と敬じたら、がまんせす\n曲めに相談しましょう。がんばれる強い体0\nUsois, BH. 條を大切にしながら続けるこ\n\n+ |                                      人くだけ4こう Ce\n\nPPPLLLLLLLLLFTLLL rs\n*\n\n",
+      "confidence": 0.718,
+      "table_id": "T1"
+    }
+  ],
+  "page_scout": {
+    "pages_total": 2,
+    "pages_processed": 2,
+    "per_page": [
+      {
+        "page": 0,
+        "words_count": 298,
+        "chars_count": 473,
+        "status": "ok",
+        "skip_reason": ""
+      },
+      {
+        "page": 1,
+        "words_count": 21,
+        "chars_count": 35,
+        "status": "ok",
+        "skip_reason": ""
+      }
+    ],
+    "total_words": 319,
+    "total_chars": 508
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "non_table_scout": {
+    "char_count": 0,
+    "density_level": "none",
+    "should_skip": true,
+    "extracted_text": "",
+    "confidence": 0.0
+  },
+  "table_scouts": [],
+  "page_scout": {
+    "pages_total": 2,
+    "pages_processed": 2,
+    "per_page": [
+      {
+        "page": 0,
+        "words_count": 13,
+        "chars_count": 31,
+        "status": "ok",
+        "skip_reason": ""
+      },
+      {
+        "page": 1,
+        "words_count": 0,
+        "chars_count": 0,
+        "status": "blank_skip",
+        "skip_reason": "blank_page"
+      }
+    ],
+    "total_words": 13,
+    "total_chars": 31
+  }
+}

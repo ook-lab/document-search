@@ -4,6 +4,7 @@ Google Drive コネクタ (サービスアカウント認証)
 設計書: COMPLETE_IMPLEMENTATION_GUIDE_v3.md の 1.4節に基づき、Google Driveと通信する。
 """
 import os
+import time
 from typing import List, Dict, Any, Optional, Union
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -448,58 +449,73 @@ class GoogleDriveConnector:
         file_path: Union[str, Path],
         folder_id: Optional[str] = None,
         mime_type: Optional[str] = None,
-        file_name: Optional[str] = None
+        file_name: Optional[str] = None,
+        max_retries: int = 3
     ) -> Optional[str]:
         """
-        ローカルファイルをGoogle Driveにアップロード（共有ドライブ対応）
+        ローカルファイルをGoogle Driveにアップロード（共有ドライブ対応、リトライ機能付き）
 
         Args:
             file_path: ローカルファイルのパス
             folder_id: 保存先フォルダID（Noneの場合はルート）
             mime_type: MIMEタイプ（Noneの場合は自動判定）
             file_name: Drive上のファイル名（Noneの場合はローカルファイル名）
+            max_retries: 最大リトライ回数（デフォルト3回）
 
         Returns:
             アップロードされたファイルのID、失敗時はNone
         """
-        try:
-            file_path = Path(file_path)
-            if not file_path.exists():
-                logger.error(f"ファイルが見つかりません: {file_path}")
-                return None
-
-            # ファイルメタデータ
-            file_metadata = {'name': file_name or file_path.name}
-            if folder_id:
-                file_metadata['parents'] = [folder_id]
-
-            # MIMEタイプの自動判定
-            if mime_type is None:
-                import mimetypes
-                mime_type, _ = mimetypes.guess_type(str(file_path))
-                mime_type = mime_type or 'application/octet-stream'
-
-            # ファイルからアップロード
-            media = MediaFileUpload(
-                str(file_path),
-                mimetype=mime_type,
-                resumable=True
-            )
-
-            # 共有ドライブ対応: supportsAllDrives=True を追加
-            file = self.service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id, name, webViewLink',
-                supportsAllDrives=True
-            ).execute()
-
-            logger.info(f"ファイルアップロード成功: {file_path.name} (ID: {file['id']})")
-            return file['id']
-
-        except Exception as e:
-            logger.error(f"ファイルアップロードエラー ({file_path}): {e}")
+        file_path = Path(file_path)
+        if not file_path.exists():
+            logger.error(f"ファイルが見つかりません: {file_path}")
             return None
+
+        # ファイルメタデータ
+        file_metadata = {'name': file_name or file_path.name}
+        if folder_id:
+            file_metadata['parents'] = [folder_id]
+
+        # MIMEタイプの自動判定
+        if mime_type is None:
+            import mimetypes
+            mime_type, _ = mimetypes.guess_type(str(file_path))
+            mime_type = mime_type or 'application/octet-stream'
+
+        # リトライループ
+        for attempt in range(max_retries):
+            try:
+                # ファイルからアップロード
+                media = MediaFileUpload(
+                    str(file_path),
+                    mimetype=mime_type,
+                    resumable=True
+                )
+
+                # 共有ドライブ対応: supportsAllDrives=True を追加
+                file = self.service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id, name, webViewLink',
+                    supportsAllDrives=True
+                ).execute()
+
+                logger.info(f"ファイルアップロード成功: {file_path.name} (ID: {file['id']})")
+                return file['id']
+
+            except Exception as e:
+                error_message = str(e)
+                is_timeout = 'timeout' in error_message.lower() or 'timed out' in error_message.lower()
+
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # 2秒、4秒、6秒...
+                    logger.warning(
+                        f"ファイルアップロードエラー ({file_path.name}): {error_message} "
+                        f"- リトライ {attempt + 1}/{max_retries} ({wait_time}秒待機)"
+                    )
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"ファイルアップロード失敗（最終試行） ({file_path.name}): {error_message}")
+                    return None
 
     def trash_file(self, file_id: str) -> bool:
         """

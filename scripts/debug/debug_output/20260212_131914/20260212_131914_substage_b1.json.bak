@@ -1,0 +1,15 @@
+{
+  "is_structured": true,
+  "text_with_tags": "",
+  "logical_blocks": [],
+  "structured_tables": [],
+  "tags": {
+    "has_slices": false,
+    "block_count": 0,
+    "table_count": 0,
+    "has_red_text": false,
+    "has_bold_text": false
+  },
+  "purged_image_path": "",
+  "processor_name": "B3_PDF_WORD"
+}

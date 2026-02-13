@@ -98,6 +98,7 @@ class F1Controller:
                     year_context = doc_year
 
             events = merge_result.get('events', [])
+            date_result = None
             if events:
                 date_result = self.date_normalizer.normalize_dates(
                     events=events,
@@ -139,7 +140,7 @@ class F1Controller:
                 'tasks': merge_result.get('tasks', []),
                 'notices': merge_result.get('notices', []),
                 'consolidated_tables': consolidated_tables,
-                'raw_integrated_text': merge_result.get('raw_text', ''),
+                'raw_integrated_text': merge_result.get('raw_integrated_text', ''),
                 'metadata': merge_result.get('metadata', {})
             }
 
@@ -148,7 +149,7 @@ class F1Controller:
                 result['metadata'] = {}
 
             # 日付正規化のトークン数を加算
-            if events and 'date_result' in locals() and date_result.get('success'):
+            if date_result and date_result.get('success'):
                 current_tokens = result['metadata'].get('total_tokens', 0)
                 result['metadata']['total_tokens'] = current_tokens + date_result.get('tokens_used', 0)
 

@@ -61,11 +61,11 @@ class D1Controller:
                     {
                         'table_id': 'T1',
                         'bbox': [x0, y0, x1, y1],
-                        'image_path': 'path/to/table_T1.png',
+                        'image_path': 'path/to/d10_table_T1.png',
                         'cell_map': [...]
                     }
                 ],
-                'non_table_image_path': 'path/to/background_only.png',
+                'non_table_image_path': 'path/to/d10_background.png',
                 'metadata': {},
                 'debug': {
                     'vector_lines': {},

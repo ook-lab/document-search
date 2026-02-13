@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "document_type": "GOOGLE_DOCS",
+  "page_count": 2,
+  "dimensions": {
+    "width": 612.0,
+    "height": 792.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 215.89999999999998,
+    "height": 279.4,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "raw_metadata": {
+    "Title": "学年通信",
+    "Producer": "Skia/PDF m146 Google Docs Renderer"
+  },
+  "confidence": "HIGH",
+  "reason": "キーワード一致: google.*docs"
+}

@@ -227,7 +227,7 @@ class E5TextBlockVisualizer:
                 draw.text((bbox[0] + 5, bbox[1] + 5), text, fill='red', font=font)
 
             # 保存
-            overlay_path = image_path.parent / f"{image_path.stem}_blocks.png"
+            overlay_path = image_path.parent / f"e5_{image_path.stem}_blocks.png"
             image.save(str(overlay_path))
             logger.info(f"[E-5] オーバーレイ保存: {overlay_path.name}")
 

@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "document_type": "WORD",
+  "page_count": 2,
+  "dimensions": {
+    "width": 515.8,
+    "height": 728.6,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 181.96277777777775,
+    "height": 257.0338888888889,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "raw_metadata": {
+    "Author": "山元 直子",
+    "Creator": "Microsoft® Word LTSC",
+    "CreationDate": "D:20260113121415+09'00'",
+    "ModDate": "D:20260113121415+09'00'",
+    "Producer": "Microsoft® Word LTSC"
+  },
+  "confidence": "HIGH",
+  "reason": "キーワード一致: microsoft.*word"
+}

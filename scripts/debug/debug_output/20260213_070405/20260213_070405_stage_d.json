@@ -1,0 +1,36 @@
+{
+  "success": true,
+  "page_index": 0,
+  "tables": [],
+  "non_table_image_path": "",
+  "metadata": {},
+  "debug": {
+    "vector_lines": {
+      "horizontal_lines": [],
+      "vertical_lines": [],
+      "all_lines": [],
+      "page_size": [
+        612,
+        792
+      ]
+    },
+    "raster_lines": null,
+    "grid_result": {
+      "intersections": [],
+      "table_regions": [],
+      "unified_lines": {
+        "horizontal": [],
+        "vertical": []
+      }
+    },
+    "cell_result": {
+      "cells": [],
+      "grid_info": {
+        "rows": 0,
+        "cols": 0,
+        "x_coords": [],
+        "y_coords": []
+      }
+    }
+  }
+}

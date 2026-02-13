@@ -37,7 +37,8 @@ class D3VectorLineExtractor:
     def extract(
         self,
         file_path: Path,
-        page_num: int = 0
+        page_num: int = 0,
+        known_table_regions: List[Dict] = None
     ) -> Dict[str, Any]:
         """
         PDFページからベクトル罫線を抽出
@@ -72,6 +73,16 @@ class D3VectorLineExtractor:
 
                 # 統合してクレンジング
                 all_lines = self._merge_and_clean(lines + rect_lines)
+
+                # B 抽出済み表領域の線をフィルタリング（二重検出防止）
+                if known_table_regions:
+                    before = len(all_lines)
+                    all_lines = self._filter_known_tables(
+                        all_lines, known_table_regions, page_width, page_height, page_num
+                    )
+                    skipped = before - len(all_lines)
+                    if skipped > 0:
+                        logger.info(f"[D-3] B抽出済み表領域フィルタ: {skipped}本をスキップ")
 
                 # 水平・垂直に分類
                 horizontal_lines = [
@@ -125,6 +136,25 @@ class D3VectorLineExtractor:
             x1, y1 = line['x1'], line['bottom']
             length = max(abs(x1 - x0), abs(y1 - y0))
 
+            # --- ページ外枠（紙と同サイズ）の4辺lineをノイズとして除去 ---
+            EDGE_TOL = 2.0          # pt
+            SPAN_RATIO = 0.95       # 95%以上の長さなら「外枠候補」
+            is_horizontal = abs(y1 - y0) < 1.0
+            is_vertical   = abs(x1 - x0) < 1.0
+
+            if is_horizontal and abs(y0 - 0) < EDGE_TOL and length >= page_width * SPAN_RATIO:
+                logger.info("[D-3] ページ外枠上辺(line)をスキップ")
+                continue
+            if is_horizontal and abs(y0 - page_height) < EDGE_TOL and length >= page_width * SPAN_RATIO:
+                logger.info("[D-3] ページ外枠下辺(line)をスキップ")
+                continue
+            if is_vertical and abs(x0 - 0) < EDGE_TOL and length >= page_height * SPAN_RATIO:
+                logger.info("[D-3] ページ外枠左辺(line)をスキップ")
+                continue
+            if is_vertical and abs(x0 - page_width) < EDGE_TOL and length >= page_height * SPAN_RATIO:
+                logger.info("[D-3] ページ外枠右辺(line)をスキップ")
+                continue
+
             # フィルタリング
             if length < self.min_line_length:
                 continue
@@ -151,6 +181,7 @@ class D3VectorLineExtractor:
     ) -> List[Dict[str, Any]]:
         """
         page.rects から矩形の辺を線として抽出
+        （ページ同サイズのフレーム rect はスキップ）
 
         Args:
             page: pdfplumber page object
@@ -163,9 +194,32 @@ class D3VectorLineExtractor:
         lines = []
         raw_rects = page.rects if hasattr(page, 'rects') else []
 
+        # ページ同サイズフレーム判定の閾値
+        EDGE_THRESHOLD = 2.0      # ページ端からの距離（pt）
+        AREA_RATIO_DROP = 0.90    # 面積比の閾値
+
         for rect in raw_rects:
             x0, y0 = rect['x0'], rect['top']
             x1, y1 = rect['x1'], rect['bottom']
+
+            # ページ同サイズのフレーム rect をスキップ（ノイズ除去）
+            rect_width = x1 - x0
+            rect_height = y1 - y0
+            area_ratio = (rect_width * rect_height) / (page_width * page_height + 1e-9)
+
+            # 4辺すべてがページ端に接近 AND 面積比が大きい → スキップ
+            near_left = abs(x0 - 0) < EDGE_THRESHOLD
+            near_right = abs(x1 - page_width) < EDGE_THRESHOLD
+            near_top = abs(y0 - 0) < EDGE_THRESHOLD
+            near_bottom = abs(y1 - page_height) < EDGE_THRESHOLD
+
+            if (area_ratio >= AREA_RATIO_DROP and
+                near_left and near_right and near_top and near_bottom):
+                logger.info(
+                    f"[D-3] ページ同サイズフレーム rect をスキップ: "
+                    f"area_ratio={area_ratio:.3f}"
+                )
+                continue  # この rect は処理しない
 
             # 矩形の4辺を線として抽出
             edges = [
@@ -288,6 +342,66 @@ class D3VectorLineExtractor:
             垂直ならTrue
         """
         return abs(line['x1'] - line['x0']) < angle_tolerance
+
+    def _filter_known_tables(
+        self,
+        lines: List[Dict[str, Any]],
+        known_table_regions: List[Dict],
+        page_width: float,
+        page_height: float,
+        page_num: int
+    ) -> List[Dict[str, Any]]:
+        """
+        B ステージで抽出済みの表領域に含まれる線をスキップ
+
+        pdfplumber の table.bbox は (x0, top, x1, bottom) の絶対pt座標。
+        D3 の lines は正規化座標（0.0-1.0）。
+        同一ページの表領域のみ対象。
+
+        Args:
+            lines: 正規化座標の線リスト
+            known_table_regions: B の structured_tables（page, bbox を含む）
+            page_width: ページ幅（pt）
+            page_height: ページ高さ（pt）
+            page_num: 現在のページ番号
+
+        Returns:
+            フィルタリング済み線リスト
+        """
+        TOL = 0.005  # 正規化座標での境界許容誤差
+
+        # 同一ページの表 bbox を正規化座標に変換
+        norm_regions = []
+        for table in known_table_regions:
+            if table.get('page', 0) != page_num:
+                continue
+            bbox = table.get('bbox')
+            if not bbox:
+                continue
+            x0, top, x1, bottom = bbox
+            norm_regions.append((
+                x0 / page_width - TOL,
+                top / page_height - TOL,
+                x1 / page_width + TOL,
+                bottom / page_height + TOL
+            ))
+
+        if not norm_regions:
+            return lines
+
+        filtered = []
+        for line in lines:
+            in_known = False
+            for (rx0, ry0, rx1, ry1) in norm_regions:
+                # 線の両端点が領域内に収まっていればスキップ
+                if (rx0 <= line['x0'] <= rx1 and rx0 <= line['x1'] <= rx1 and
+                        ry0 <= line['y0'] <= ry1 and ry0 <= line['y1'] <= ry1):
+                    in_known = True
+                    break
+            if not in_known:
+                filtered.append(line)
+
+        return filtered
 
     def _empty_result(self) -> Dict[str, Any]:
         """空の結果を返す"""

@@ -155,6 +155,55 @@ def get_emails_with_review_status(
         return []
 
 
+def update_stage_a_result(
+    db_client,
+    document_id: str,
+    a_result: Dict[str, Any]
+) -> bool:
+    """
+    Stage A の解析結果を DB に保存
+
+    Args:
+        db_client: DatabaseClient インスタンス
+        document_id: ドキュメントID
+        a_result: Stage A の結果（origin_app, layout_profile, pdf_creator, pdf_producer など）
+
+    Returns:
+        成功した場合 True、失敗した場合 False
+    """
+    try:
+        logger.info(f"[DocumentService] Stage A 結果を保存: {document_id}")
+
+        # PDF メタデータから Creator/Producer を取得
+        raw_metadata = a_result.get('raw_metadata', {})
+        pdf_creator = raw_metadata.get('Creator', '')
+        pdf_producer = raw_metadata.get('Producer', '')
+
+        # Supabase クライアントを直接使用
+        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update({
+            'pdf_creator': pdf_creator,
+            'pdf_producer': pdf_producer,
+            'origin_app': a_result.get('origin_app'),
+            'layout_profile': a_result.get('layout_profile'),
+            'doc_type': a_result.get('document_type')  # 後方互換性
+        }).eq('id', document_id).execute()
+
+        if response.data:
+            logger.info(f"[DocumentService] Stage A 結果保存成功: {document_id}")
+            logger.info(f"  ├─ origin_app: {a_result.get('origin_app')}")
+            logger.info(f"  ├─ layout_profile: {a_result.get('layout_profile')}")
+            logger.info(f"  ├─ pdf_creator: {pdf_creator[:50]}..." if len(pdf_creator) > 50 else f"  ├─ pdf_creator: {pdf_creator}")
+            logger.info(f"  └─ pdf_producer: {pdf_producer[:50]}..." if len(pdf_producer) > 50 else f"  └─ pdf_producer: {pdf_producer}")
+            return True
+        else:
+            logger.warning(f"[DocumentService] Stage A 結果保存失敗（レコードなし）: {document_id}")
+            return False
+
+    except Exception as e:
+        logger.error(f"[DocumentService] Stage A 結果保存エラー: {e}", exc_info=True)
+        return False
+
+
 def update_stage_g_result(
     db_client,
     document_id: str,

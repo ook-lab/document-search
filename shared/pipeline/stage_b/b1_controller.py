@@ -19,10 +19,11 @@ from .b5_pdf_ppt import B5PDFPPTProcessor
 from .b6_native_word import B6NativeWordProcessor
 from .b7_native_excel import B7NativeExcelProcessor
 from .b8_native_ppt import B8NativePPTProcessor
-from .b10_dtp import B10DtpProcessor
+from .b11_google_docs import B11GoogleDocsProcessor
+from .b12_google_sheets import B12GoogleSheetsProcessor
 from .b14_goodnotes_processor import B14GoodnotesProcessor
+from .b30_dtp import B30DtpProcessor
 from .b42_multicolumn_report import B42MultiColumnReportProcessor
-from .b90_layer_purge import B90LayerPurgeProcessor
 
 
 class B1Controller:
@@ -37,10 +38,11 @@ class B1Controller:
         self.b6_native_word = B6NativeWordProcessor()
         self.b7_native_excel = B7NativeExcelProcessor()
         self.b8_native_ppt = B8NativePPTProcessor()
-        self.b10_dtp = B10DtpProcessor()
+        self.b11_google_docs = B11GoogleDocsProcessor()
+        self.b12_google_sheets = B12GoogleSheetsProcessor()
         self.b14_goodnotes = B14GoodnotesProcessor()
+        self.b30_dtp = B30DtpProcessor()
         self.b42_multicolumn = B42MultiColumnReportProcessor()
-        self.b90_layer_purge = B90LayerPurgeProcessor()
 
     def process(
         self,
@@ -67,19 +69,77 @@ class B1Controller:
         logger.info(f"  ├─ ファイル: {file_path.name}")
         logger.info(f"  └─ 拡張子: {file_ext}")
 
-        # 強制指定がある場合
+        # =========================================
+        # A-5 Gatekeeper 強制（最後の門）
+        # - a5_gatekeeper が無い / ALLOW でない → 全遮断
+        # - allowlist 外のプロセッサは実行しない
+        # - force_processor も allowlist 外は遮断（抜け道封鎖）
+        # =========================================
+        gate = None
+        if a_result:
+            # 正本は a5_gatekeeper。移行期の互換として gatekeeper も許容
+            gate = a_result.get("a5_gatekeeper") or a_result.get("gatekeeper")
+
+        if not isinstance(gate, dict):
+            logger.error("[B-1] Gate missing: a_result['a5_gatekeeper'] が存在しません（Gate未通過は遮断）")
+            return {
+                "is_structured": False,
+                "error": "GATE_MISSING: a_result['a5_gatekeeper'] not found",
+                "processor_name": "B1_CONTROLLER"
+            }
+
+        decision = gate.get("decision")
+        allowed = gate.get("allowed_processors") or []
+
+        if decision != "ALLOW":
+            logger.warning(f"[B-1] Gate BLOCK: code={gate.get('block_code')} reason={gate.get('block_reason')}")
+            return {
+                "is_structured": False,
+                "error": f"GATE_BLOCKED: {gate.get('block_code')} {gate.get('block_reason')}",
+                "processor_name": "B1_CONTROLLER"
+            }
+
+        if not isinstance(allowed, list) or not allowed:
+            logger.error("[B-1] Gate ALLOW だが allowlist が空（ポリシー不整合なので遮断）")
+            return {
+                "is_structured": False,
+                "error": "GATE_POLICY_ERROR: allowed_processors is empty",
+                "processor_name": "B1_CONTROLLER"
+            }
+
+        # 強制指定がある場合（Gate の allowlist 内に限り許可）
         if force_processor:
             logger.info(f"  └─ 強制指定: {force_processor}")
+            if force_processor not in allowed:
+                logger.warning(f"[B-1] Gate ALLOW だが強制指定がallowlist外: {force_processor} not in {allowed}")
+                return {
+                    "is_structured": False,
+                    "error": f"GATE_ROUTE_BLOCKED: forced processor {force_processor} not allowed (allowed={allowed})",
+                    "processor_name": force_processor
+                }
             return self._execute_processor(force_processor, file_path)
 
-        # Stage A の結果から document_type を取得
-        document_type = None
+        # Stage A の結果から origin_app と layout_profile を取得
+        origin_app = None
+        layout_profile = 'FLOW'  # デフォルト
         if a_result:
-            document_type = a_result.get('document_type')
-            logger.info(f"  └─ Stage A判定: {document_type}")
+            # 2軸取得（新形式）
+            origin_app = a_result.get('origin_app') or a_result.get('document_type')
+            layout_profile = a_result.get('layout_profile', 'FLOW')
+            logger.info(f"  ├─ Stage A判定（作成ソフト）: {origin_app}")
+            logger.info(f"  └─ Stage A判定（レイアウト）: {layout_profile}")
 
-        # プロセッサを選択
-        processor_name = self._select_processor(file_ext, document_type)
+        # プロセッサを選択（2軸ルーティング）
+        processor_name = self._select_processor(file_ext, origin_app, layout_profile)
+
+        # Gate の allowlist にないプロセッサは実行しない（最後の門）
+        if processor_name not in allowed:
+            logger.warning(f"[B-1] Gate ALLOW だが選択プロセッサがallowlist外: {processor_name} not in {allowed}")
+            return {
+                "is_structured": False,
+                "error": f"GATE_ROUTE_BLOCKED: selected processor {processor_name} not allowed (allowed={allowed})",
+                "processor_name": processor_name
+            }
 
         logger.info(f"[B-1] 選択されたプロセッサ: {processor_name}")
         logger.info("=" * 60)
@@ -87,24 +147,30 @@ class B1Controller:
         # プロセッサを実行
         return self._execute_processor(processor_name, file_path)
 
-    def _select_processor(self, file_ext: str, document_type: Optional[str]) -> str:
+    def _select_processor(
+        self,
+        file_ext: str,
+        origin_app: Optional[str],
+        layout_profile: str = 'FLOW'
+    ) -> str:
         """
-        ファイル拡張子とdocument_typeからプロセッサを選択
+        ファイル拡張子、作成ソフト、レイアウト特性からプロセッサを選択（2軸ルーティング）
 
         Args:
             file_ext: ファイル拡張子
-            document_type: Stage Aの判定結果
+            origin_app: 作成ソフト（WORD, INDESIGN, GOODNOTES, ...）
+            layout_profile: レイアウト特性（FLOW, FIXED, HYBRID）
 
         Returns:
             プロセッサ名
         """
         # ========================================
-        # 特化型プロセッサ（B-10番台、B-40番台）の判定
+        # 特化型プロセッサ（B-14、B-40番台）の判定
         # ========================================
-        if document_type == 'GOODNOTES':
+        if origin_app == 'GOODNOTES':
             return 'B14_GOODNOTES'
 
-        if document_type == 'REPORT':
+        if origin_app == 'REPORT':
             return 'B42_MULTICOLUMN'
 
         # ========================================
@@ -118,24 +184,42 @@ class B1Controller:
             return 'B8_NATIVE_PPT'
 
         # ========================================
-        # PDF処理（B-3, B-4, B-5, B-10）
+        # PDF処理（B-3, B-4, B-5, B-11, B-12, B-30）
         # ========================================
         elif file_ext == '.pdf':
-            if document_type == 'WORD':
-                return 'B3_PDF_WORD'
-            elif document_type == 'EXCEL':
+            # ────────────────────────────────────
+            # Word由来PDF: layout_profile で振り分け
+            # ────────────────────────────────────
+            if origin_app == 'WORD':
+                if layout_profile == 'FLOW':
+                    # 文章流し込み型 → Word専用プロセッサ
+                    logger.info("[B-1] WORD + FLOW → B3_PDF_WORD")
+                    return 'B3_PDF_WORD'
+                else:  # FIXED or HYBRID
+                    # 固定レイアウト型 → DTP/OCR併用
+                    logger.info(f"[B-1] WORD + {layout_profile} → B30_DTP")
+                    return 'B30_DTP'
+
+            # ────────────────────────────────────
+            # その他のPDF
+            # ────────────────────────────────────
+            elif origin_app == 'EXCEL':
                 return 'B4_PDF_EXCEL'
-            elif document_type == 'POWERPOINT' or document_type == 'PPT':
+            elif origin_app == 'POWERPOINT' or origin_app == 'PPT':
                 return 'B5_PDF_PPT'
-            elif document_type == 'INDESIGN':
-                return 'B10_DTP'
-            elif document_type == 'SCAN':
+            elif origin_app == 'GOOGLE_DOCS':
+                return 'B11_GOOGLE_DOCS'
+            elif origin_app == 'GOOGLE_SHEETS':
+                return 'B12_GOOGLE_SHEETS'
+            elif origin_app == 'INDESIGN':
+                return 'B30_DTP'
+            elif origin_app == 'SCAN':
                 # スキャンPDFは汎用DTP処理
-                return 'B10_DTP'
+                return 'B30_DTP'
             else:
-                # 判定不能の場合は汎用DTP処理
-                logger.warning(f"[B-1] 未知の document_type: {document_type}, B10_DTPで処理")
-                return 'B10_DTP'
+                # 判定不能の場合は処理を停止（自動でスキャン扱いしない）
+                logger.error(f"[B-1] 未知の origin_app: {origin_app} → 処理停止")
+                return 'UNKNOWN'
 
         # ========================================
         # 未対応の拡張子
@@ -162,8 +246,10 @@ class B1Controller:
             'B6_NATIVE_WORD': self.b6_native_word,
             'B7_NATIVE_EXCEL': self.b7_native_excel,
             'B8_NATIVE_PPT': self.b8_native_ppt,
-            'B10_DTP': self.b10_dtp,
+            'B11_GOOGLE_DOCS': self.b11_google_docs,
+            'B12_GOOGLE_SHEETS': self.b12_google_sheets,
             'B14_GOODNOTES': self.b14_goodnotes,
+            'B30_DTP': self.b30_dtp,
             'B42_MULTICOLUMN': self.b42_multicolumn,
         }
 
@@ -180,21 +266,6 @@ class B1Controller:
         try:
             result = processor.process(file_path)
             result['processor_name'] = processor_name
-
-            # B-90: Layer Purge (PDFファイルかつ構造化成功の場合のみ)
-            file_ext = file_path.suffix.lower()
-            if file_ext == '.pdf' and result.get('is_structured'):
-                logger.info("[B-1] B-90 Layer Purge を実行")
-                purge_result = self.b90_layer_purge.purge(file_path, result)
-
-                if purge_result.get('success'):
-                    result['purged_pdf_path'] = purge_result['purged_pdf_path']
-                    result['purged_image_paths'] = purge_result['purged_image_paths']
-                    result['mask_stats'] = purge_result['mask_stats']
-                    logger.info(f"[B-1] B-90 完了: {len(purge_result['purged_image_paths'])}枚の画像を生成")
-                else:
-                    logger.warning(f"[B-1] B-90 失敗: {purge_result.get('error')}")
-
             return result
         except Exception as e:
             logger.error(f"[B-1] プロセッサ実行エラー: {e}", exc_info=True)

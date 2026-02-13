@@ -15,6 +15,12 @@ from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 import pdfplumber
 
+try:
+    import fitz
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
 
 class B14GoodnotesProcessor:
     """B-14: Goodnotes Processor（Goodnotes PDF専用）"""
@@ -50,6 +56,7 @@ class B14GoodnotesProcessor:
                 digital_texts = []
                 handwritten_zones = []
                 logical_blocks = []
+                all_words = []  # 削除対象の全単語
 
                 for page_num, page in enumerate(pdf.pages):
                     logger.info(f"[B-14] ページ {page_num + 1} を処理中")
@@ -71,10 +78,27 @@ class B14GoodnotesProcessor:
                     )
                     logical_blocks.extend(page_blocks)
 
+                    # 削除用：ページ全体の単語を収集
+                    page_words = page.extract_words(
+                        x_tolerance=3,
+                        y_tolerance=3,
+                        keep_blank_chars=False
+                    )
+                    for word in page_words:
+                        all_words.append({
+                            'page': page_num,
+                            'text': word['text'],
+                            'bbox': (word['x0'], word['top'], word['x1'], word['bottom'])
+                        })
+
                 logger.info(f"[B-14] 処理完了:")
                 logger.info(f"  ├─ デジタルテキスト: {len(digital_texts)}個")
                 logger.info(f"  ├─ 手書き領域: {len(handwritten_zones)}個")
-                logger.info(f"  └─ 論理ブロック: {len(logical_blocks)}個")
+                logger.info(f"  ├─ 論理ブロック: {len(logical_blocks)}個")
+                logger.info(f"  └─ 単語（削除対象）: {len(all_words)}個")
+
+                purged_pdf_path = self._purge_extracted_text(file_path, all_words)
+                logger.info(f"[B-14] テキスト削除完了: {purged_pdf_path}")
 
                 return {
                     'is_structured': True,
@@ -82,6 +106,8 @@ class B14GoodnotesProcessor:
                     'digital_texts': digital_texts,
                     'handwritten_zones': handwritten_zones,
                     'logical_blocks': logical_blocks,
+                    'all_words': all_words,
+                    'purged_pdf_path': str(purged_pdf_path),
                     'tags': {
                         'source': 'goodnotes',
                         'has_handwriting': len(handwritten_zones) > 0,
@@ -94,7 +120,9 @@ class B14GoodnotesProcessor:
             return {
                 'is_structured': False,
                 'error': str(e),
-                'data_type': 'goodnotes'
+                'data_type': 'goodnotes',
+                'all_words': [],
+                'purged_pdf_path': ''
             }
 
     def _extract_digital_text(
@@ -246,3 +274,86 @@ class B14GoodnotesProcessor:
             'bbox_normalized': bbox_normalized,
             'type': 'digital_text'
         }]
+
+    def _purge_extracted_text(
+        self,
+        file_path: Path,
+        all_words: List[Dict[str, Any]],
+        structured_tables: List[Dict[str, Any]] = None
+    ) -> Path:
+        """
+        抽出したテキストを PDF から直接削除
+
+        フェーズ1: テキスト（words）を常に削除
+        フェーズ2: 表の罫線（graphics）を条件付きで削除
+          - structured_tables が抽出済み -> 削除（Stage D の二重検出を防ぐ）
+          - structured_tables が空 -> 保持（Stage D が検出できるよう残す）
+        """
+        try:
+            import fitz
+        except ImportError:
+            logger.error("[B-14] PyMuPDF がインストールされていません")
+            return file_path
+
+        try:
+            doc = fitz.open(str(file_path))
+
+            words_by_page: Dict[int, List[Dict]] = {}
+            for word in all_words:
+                words_by_page.setdefault(word['page'], []).append(word)
+
+            tables_by_page: Dict[int, List[Dict]] = {}
+            if structured_tables:
+                for table in structured_tables:
+                    pn = table.get('page', 0)
+                    tables_by_page.setdefault(pn, []).append(table)
+
+            deleted_words = 0
+            deleted_table_graphics = 0
+
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                page_words = words_by_page.get(page_num, [])
+
+                # フェーズ1: テキスト削除（常時）
+                if page_words:
+                    for word in page_words:
+                        page.add_redact_annot(fitz.Rect(word['bbox']))
+                        deleted_words += 1
+                    page.apply_redactions(
+                        images=fitz.PDF_REDACT_IMAGE_NONE,
+                        graphics=False
+                    )
+
+                # フェーズ2: 表罫線削除（表構造抽出済みの場合のみ）
+                page_tables = tables_by_page.get(page_num, [])
+                if page_tables:
+                    for table in page_tables:
+                        bbox = table.get('bbox')
+                        if bbox:
+                            page.add_redact_annot(fitz.Rect(bbox))
+                            deleted_table_graphics += 1
+                    page.apply_redactions(
+                        images=fitz.PDF_REDACT_IMAGE_NONE,
+                        graphics=True
+                    )
+
+            purged_dir = file_path.parent / "purged"
+            purged_dir.mkdir(parents=True, exist_ok=True)
+            purged_pdf_path = purged_dir / f"b14_{file_path.stem}_purged.pdf"
+
+            doc.save(str(purged_pdf_path))
+            doc.close()
+
+            logger.info(f"[B-14] テキスト削除: {deleted_words}語")
+            if deleted_table_graphics > 0:
+                logger.info(f"[B-14] 表罫線削除: {deleted_table_graphics}表（抽出済みのため）")
+            else:
+                logger.info(f"[B-14] 表罫線: 保持（Stage D 検出用）")
+            logger.info(f"[B-14] purged PDF 保存: {purged_pdf_path.name}")
+
+            return purged_pdf_path
+
+        except Exception as e:
+            logger.error(f"[B-14] テキスト削除エラー: {e}", exc_info=True)
+            return file_path

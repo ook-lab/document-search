@@ -1,0 +1,53 @@
+{
+  "success": true,
+  "origin_app": "WORD",
+  "document_type": "WORD",
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 1.5,
+    "avg_words_per_page": 68.5,
+    "avg_x_std": 123.06911646105893,
+    "avg_words_per_line": 1.477104532839963,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 3,
+        "words": 85,
+        "chars": 1032,
+        "x_std": 124.8046675758658,
+        "lines": 46,
+        "words_per_line": 1.8478260869565217
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 52,
+        "chars": 1087,
+        "x_std": 121.33356534625204,
+        "lines": 47,
+        "words_per_line": 1.1063829787234043
+      }
+    ]
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 515.88,
+    "height": 728.52,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 181.99099999999999,
+    "height": 257.0056666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "raw_metadata": {
+    "Author": "洗足学園小学校",
+    "Creator": "Microsoft® Word 2019",
+    "CreationDate": "D:20260105134030+09'00'",
+    "ModDate": "D:20260105134030+09'00'",
+    "Producer": "Microsoft® Word 2019"
+  },
+  "confidence": "HIGH",
+  "reason": "キーワード一致: microsoft.*word"
+}

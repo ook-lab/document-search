@@ -1,0 +1,50 @@
+{
+  "success": true,
+  "origin_app": "GOOGLE_DOCS",
+  "document_type": "GOOGLE_DOCS",
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 2.5,
+    "avg_words_per_page": 66.5,
+    "avg_x_std": 138.0644442259726,
+    "avg_words_per_line": 1.2931345980126467,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 5,
+        "words": 112,
+        "chars": 411,
+        "x_std": 143.78616938624563,
+        "lines": 54,
+        "words_per_line": 2.074074074074074
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 21,
+        "chars": 697,
+        "x_std": 132.34271906569958,
+        "lines": 41,
+        "words_per_line": 0.5121951219512195
+      }
+    ]
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 612.0,
+    "height": 792.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 215.89999999999998,
+    "height": 279.4,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "raw_metadata": {
+    "Title": "学年通信",
+    "Producer": "Skia/PDF m146 Google Docs Renderer"
+  },
+  "confidence": "HIGH",
+  "reason": "キーワード一致: google.*docs"
+}

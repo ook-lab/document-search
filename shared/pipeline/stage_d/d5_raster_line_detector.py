@@ -72,8 +72,12 @@ class D5RasterLineDetector:
         logger.info(f"[D-5] ラスター罫線検出開始: {image_path.name}")
 
         try:
-            # 画像を読み込み
-            image = cv2.imread(str(image_path))
+            # 画像を読み込み（日本語パス対応）
+            import numpy as np
+            with open(image_path, 'rb') as f:
+                image_bytes = np.frombuffer(f.read(), np.uint8)
+                image = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
+
             if image is None:
                 logger.error(f"[D-5] 画像読み込み失敗: {image_path}")
                 return self._empty_result()

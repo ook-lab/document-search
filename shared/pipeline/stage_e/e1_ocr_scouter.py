@@ -51,7 +51,8 @@ class E1OcrScouter:
     def scout(
         self,
         image_path: Path,
-        lang: str = 'jpn+eng'
+        lang: str = 'jpn+eng',
+        include_words: bool = False
     ) -> Dict[str, Any]:
         """
         画像内の文字数を測定
@@ -59,6 +60,7 @@ class E1OcrScouter:
         Args:
             image_path: 画像ファイルパス
             lang: OCR言語設定
+            include_words: True の場合、単語ごとの座標も返す
 
         Returns:
             {
@@ -66,7 +68,8 @@ class E1OcrScouter:
                 'density_level': str,        # 'none', 'low', 'medium', 'high'
                 'should_skip': bool,         # 処理スキップすべきか
                 'extracted_text': str,       # 抽出されたテキスト
-                'confidence': float          # OCR信頼度（0.0-1.0）
+                'confidence': float,         # OCR信頼度（0.0-1.0）
+                'words': [dict]              # 単語ごとの座標（include_words=True時）
             }
         """
         if not TESSERACT_AVAILABLE:
@@ -79,8 +82,33 @@ class E1OcrScouter:
             # 画像を読み込み
             image = Image.open(str(image_path))
 
-            # Tesseract で OCR
-            text = pytesseract.image_to_string(image, lang=lang)
+            # include_words=True の場合は image_to_data を使用
+            if include_words:
+                data = pytesseract.image_to_data(image, lang=lang, output_type=pytesseract.Output.DICT)
+
+                # 単語データを抽出（空文字を除外）
+                words = []
+                for i in range(len(data['text'])):
+                    text = data['text'][i].strip()
+                    if text:  # 空文字を除外
+                        words.append({
+                            'text': text,
+                            'bbox': [
+                                data['left'][i],
+                                data['top'][i],
+                                data['left'][i] + data['width'][i],
+                                data['top'][i] + data['height'][i]
+                            ],
+                            'conf': data['conf'][i]
+                        })
+
+                # 全テキストを結合
+                text = ' '.join([w['text'] for w in words])
+
+            else:
+                # 従来の image_to_string を使用（高速）
+                text = pytesseract.image_to_string(image, lang=lang)
+                words = []
 
             # 文字数をカウント（空白・改行を除く）
             char_count = len(text.replace(' ', '').replace('\n', '').replace('\t', ''))
@@ -97,15 +125,22 @@ class E1OcrScouter:
             logger.info(f"[E-1] 測定完了:")
             logger.info(f"  ├─ 文字数: {char_count}")
             logger.info(f"  ├─ 密度: {density_level}")
+            if include_words:
+                logger.info(f"  ├─ 単語数: {len(words)}")
             logger.info(f"  └─ スキップ: {should_skip}")
 
-            return {
+            result = {
                 'char_count': char_count,
                 'density_level': density_level,
                 'should_skip': should_skip,
                 'extracted_text': text,
                 'confidence': confidence
             }
+
+            if include_words:
+                result['words'] = words
+
+            return result
 
         except Exception as e:
             logger.error(f"[E-1] 測定エラー: {e}", exc_info=True)
@@ -138,4 +173,136 @@ class E1OcrScouter:
             'should_skip': True,
             'extracted_text': '',
             'confidence': 0.0
+        }
+
+    def scout_all_pages(
+        self,
+        purged_images_dir: Path,
+        page_count: int,
+        lang: str = 'jpn+eng'
+    ) -> Dict[str, Any]:
+        """
+        全ページの文字数を測定（白紙ページも記録）
+
+        Args:
+            purged_images_dir: B3 等の purged_images ディレクトリ
+            page_count: 総ページ数
+            lang: OCR言語設定
+
+        Returns:
+            {
+                'pages_total': int,
+                'pages_processed': int,
+                'per_page': [
+                    {
+                        'page': int,
+                        'words_count': int,
+                        'chars_count': int,
+                        'status': str,  # 'ok', 'blank_skip', 'error'
+                        'skip_reason': str
+                    }
+                ],
+                'total_words': int,
+                'total_chars': int
+            }
+        """
+        if not TESSERACT_AVAILABLE:
+            logger.error("[E-1] pytesseract/PIL が利用できません")
+            return {
+                'pages_total': page_count,
+                'pages_processed': 0,
+                'per_page': [],
+                'total_words': 0,
+                'total_chars': 0
+            }
+
+        logger.info(f"[E-1] 全ページスカウト開始: {page_count}ページ")
+
+        per_page = []
+        total_words = 0
+        total_chars = 0
+
+        for page_idx in range(page_count):
+            page_img_path = purged_images_dir / f"e1_page_{page_idx}.png"
+
+            if not page_img_path.exists():
+                logger.warning(f"[E-1] page={page_idx} 画像なし")
+                per_page.append({
+                    'page': page_idx,
+                    'words_count': 0,
+                    'chars_count': 0,
+                    'status': 'error',
+                    'skip_reason': 'image_not_found'
+                })
+                continue
+
+            try:
+                # 画像を読み込み
+                image = Image.open(str(page_img_path))
+
+                # 白紙判定（画素の平均と分散）
+                img_array = np.array(image.convert('L'))  # グレースケール化
+                mean_val = np.mean(img_array)
+                std_val = np.std(img_array)
+
+                # 閾値: 平均が240以上 かつ 標準偏差が10以下 → 白紙
+                is_blank = (mean_val > 240) and (std_val < 10)
+
+                if is_blank:
+                    logger.info(f"[E-1] page={page_idx} status=blank_skip words=0 chars=0 reason=blank_page")
+                    per_page.append({
+                        'page': page_idx,
+                        'words_count': 0,
+                        'chars_count': 0,
+                        'status': 'blank_skip',
+                        'skip_reason': 'blank_page'
+                    })
+                    continue
+
+                # OCR で単語・文字数を測定
+                data = pytesseract.image_to_data(image, lang=lang, output_type=pytesseract.Output.DICT)
+
+                # 空文字を除外してカウント
+                words = [w for w in data.get('text', []) if w.strip()]
+                words_count = len(words)
+
+                # 文字数（空白・改行を除く）
+                chars_count = sum(len(w.replace(' ', '').replace('\n', '')) for w in words)
+
+                # 抽出テキスト（ログ確認用）
+                extracted_text = ' '.join(words)
+                preview = extracted_text[:120] + ('...' if len(extracted_text) > 120 else '')
+                logger.info(f"[E-1] page={page_idx} status=ok words={words_count} chars={chars_count}")
+                logger.info(f"[E-1] page={page_idx} text=『{preview}』")
+
+                per_page.append({
+                    'page': page_idx,
+                    'words_count': words_count,
+                    'chars_count': chars_count,
+                    'extracted_text': extracted_text,
+                    'status': 'ok',
+                    'skip_reason': ''
+                })
+
+                total_words += words_count
+                total_chars += chars_count
+
+            except Exception as e:
+                logger.error(f"[E-1] page={page_idx} エラー: {e}", exc_info=True)
+                per_page.append({
+                    'page': page_idx,
+                    'words_count': 0,
+                    'chars_count': 0,
+                    'status': 'error',
+                    'skip_reason': str(e)
+                })
+
+        logger.info(f"[E-1] 全ページスカウト完了: pages_total={page_count} pages_processed={len(per_page)} total_chars={total_chars}")
+
+        return {
+            'pages_total': page_count,
+            'pages_processed': len(per_page),
+            'per_page': per_page,
+            'total_words': total_words,
+            'total_chars': total_chars
         }

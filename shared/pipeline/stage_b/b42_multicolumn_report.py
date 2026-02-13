@@ -59,6 +59,7 @@ class B42MultiColumnReportProcessor:
             with pdfplumber.open(str(file_path)) as pdf:
                 all_records = []
                 all_columns = []
+                all_words = []  # 削除対象の全単語
 
                 for page_num, page in enumerate(pdf.pages):
                     logger.info(f"[B-42] ページ {page_num + 1} 処理中...")
@@ -77,6 +78,19 @@ class B42MultiColumnReportProcessor:
 
                     all_columns.extend(columns)
 
+                    # 削除用：ページ全体の単語を収集
+                    page_words = page.extract_words(
+                        x_tolerance=3,
+                        y_tolerance=3,
+                        keep_blank_chars=False
+                    )
+                    for word in page_words:
+                        all_words.append({
+                            'page': page_num,
+                            'text': word['text'],
+                            'bbox': (word['x0'], word['top'], word['x1'], word['bottom'])
+                        })
+
                 # メタ情報
                 tags = {
                     'page_count': len(pdf.pages),
@@ -84,7 +98,10 @@ class B42MultiColumnReportProcessor:
                     'record_count': len(all_records)
                 }
 
-                logger.info(f"[B-42] 抽出完了: {len(all_records)}レコード")
+                logger.info(f"[B-42] 抽出完了: {len(all_records)}レコード, 単語（削除対象）={len(all_words)}")
+
+                purged_pdf_path = self._purge_extracted_text(file_path, all_words)
+                logger.info(f"[B-42] テキスト削除完了: {purged_pdf_path}")
 
                 return {
                     'is_structured': True,
@@ -92,7 +109,8 @@ class B42MultiColumnReportProcessor:
                     'records': all_records,
                     'columns': all_columns,
                     'tags': tags,
-                    'purged_image_path': ''  # TODO: Layer Purge
+                    'all_words': all_words,
+                    'purged_pdf_path': str(purged_pdf_path)
                 }
 
         except Exception as e:
@@ -383,6 +401,88 @@ class B42MultiColumnReportProcessor:
             'column_index': col_idx
         }
 
+    def _purge_extracted_text(
+        self,
+        file_path: Path,
+        all_words: List[Dict[str, Any]],
+        structured_tables: List[Dict[str, Any]] = None
+    ) -> Path:
+        """
+        抽出したテキストを PDF から直接削除
+
+        フェーズ1: テキスト（words）を常に削除
+        フェーズ2: 表の罫線（graphics）を条件付きで削除
+          - structured_tables が抽出済み -> 削除（Stage D の二重検出を防ぐ）
+          - structured_tables が空 -> 保持（Stage D が検出できるよう残す）
+        """
+        try:
+            import fitz
+        except ImportError:
+            logger.error("[B-42] PyMuPDF がインストールされていません")
+            return file_path
+
+        try:
+            doc = fitz.open(str(file_path))
+
+            words_by_page: Dict[int, List[Dict]] = {}
+            for word in all_words:
+                words_by_page.setdefault(word['page'], []).append(word)
+
+            tables_by_page: Dict[int, List[Dict]] = {}
+            if structured_tables:
+                for table in structured_tables:
+                    pn = table.get('page', 0)
+                    tables_by_page.setdefault(pn, []).append(table)
+
+            deleted_words = 0
+            deleted_table_graphics = 0
+
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                page_words = words_by_page.get(page_num, [])
+
+                # フェーズ1: テキスト削除（常時）
+                if page_words:
+                    for word in page_words:
+                        page.add_redact_annot(fitz.Rect(word['bbox']))
+                        deleted_words += 1
+                    page.apply_redactions(
+                        images=fitz.PDF_REDACT_IMAGE_NONE,
+                        graphics=False
+                    )
+
+                # フェーズ2: 表罫線削除（表構造抽出済みの場合のみ）
+                page_tables = tables_by_page.get(page_num, [])
+                if page_tables:
+                    for table in page_tables:
+                        bbox = table.get('bbox')
+                        if bbox:
+                            page.add_redact_annot(fitz.Rect(bbox))
+                            deleted_table_graphics += 1
+                    page.apply_redactions(
+                        images=fitz.PDF_REDACT_IMAGE_NONE,
+                        graphics=True
+                    )
+
+            purged_dir = file_path.parent / "purged"
+            purged_dir.mkdir(parents=True, exist_ok=True)
+            purged_pdf_path = purged_dir / f"b42_{file_path.stem}_purged.pdf"
+
+            doc.save(str(purged_pdf_path))
+            doc.close()
+
+            logger.info(f"[B-42] テキスト削除: {deleted_words}語")
+            if deleted_table_graphics > 0:
+                logger.info(f"[B-42] 表罫線削除: {deleted_table_graphics}表（抽出済みのため）")
+            else:
+                logger.info(f"[B-42] 表罫線: 保持（Stage D 検出用）")
+            logger.info(f"[B-42] purged PDF 保存: {purged_pdf_path.name}")
+
+            return purged_pdf_path
+
+        except Exception as e:
+            logger.error(f"[B-42] テキスト削除エラー: {e}", exc_info=True)
+            return file_path
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """エラー結果を返す"""
         return {
@@ -392,5 +492,6 @@ class B42MultiColumnReportProcessor:
             'records': [],
             'columns': [],
             'tags': {},
-            'purged_image_path': ''
+            'all_words': [],
+            'purged_pdf_path': ''
         }

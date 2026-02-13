@@ -1,0 +1,32 @@
+{
+  "non_table_scout": {
+    "char_count": 21,
+    "density_level": "low",
+    "should_skip": false,
+    "extracted_text": "2026年\n\n36\n\n1/30 発行                                                   pS\nRf PTT”\n\n",
+    "confidence": 0.042
+  },
+  "table_scouts": [],
+  "page_scout": {
+    "pages_total": 2,
+    "pages_processed": 2,
+    "per_page": [
+      {
+        "page": 0,
+        "words_count": 8,
+        "chars_count": 21,
+        "status": "ok",
+        "skip_reason": ""
+      },
+      {
+        "page": 1,
+        "words_count": 0,
+        "chars_count": 0,
+        "status": "blank_skip",
+        "skip_reason": "blank_page"
+      }
+    ],
+    "total_words": 8,
+    "total_chars": 21
+  }
+}

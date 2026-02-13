@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "ui_data": {
+    "document_info": {
+      "document_type": "GOOGLE_DOCS",
+      "year_context": null
+    },
+    "sections": [],
+    "tables": [],
+    "timeline": [],
+    "actions": [],
+    "notices": [],
+    "metadata": {
+      "section_count": 0,
+      "table_count": 0,
+      "event_count": 0,
+      "task_count": 0,
+      "notice_count": 0
+    }
+  },
+  "size_reduction": "N/A"
+}

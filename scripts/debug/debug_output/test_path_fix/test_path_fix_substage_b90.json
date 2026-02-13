@@ -1,0 +1,10 @@
+{
+  "success": false,
+  "error": "no such file: 'C:\\Users\\ookub\\Desktop\\学年通信 (36).pdf'",
+  "extracted_words": [],
+  "table_regions": [],
+  "purged_pdf_path": "",
+  "purged_image_paths": [],
+  "verification_passed": false,
+  "audit_images": {}
+}

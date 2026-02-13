@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": false
+  },
+  "table_contents": [],
+  "metadata": {
+    "total_tokens": 0,
+    "models_used": []
+  }
+}

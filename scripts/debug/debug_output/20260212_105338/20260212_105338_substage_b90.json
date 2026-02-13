@@ -1,0 +1,10 @@
+{
+  "success": false,
+  "error": "name 'page_words' is not defined",
+  "extracted_words": [],
+  "table_regions": [],
+  "purged_pdf_path": "",
+  "purged_image_paths": [],
+  "verification_passed": false,
+  "audit_images": {}
+}

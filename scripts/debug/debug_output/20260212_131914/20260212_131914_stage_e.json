@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "non_table_content": {},
+  "table_contents": [],
+  "page_scout": {
+    "pages_total": 2,
+    "pages_processed": 2,
+    "per_page": [
+      {
+        "page": 0,
+        "words_count": 298,
+        "chars_count": 473,
+        "status": "ok",
+        "skip_reason": ""
+      },
+      {
+        "page": 1,
+        "words_count": 21,
+        "chars_count": 35,
+        "status": "ok",
+        "skip_reason": ""
+      }
+    ],
+    "total_words": 319,
+    "total_chars": 508
+  },
+  "metadata": {
+    "total_tokens": 0,
+    "models_used": []
+  }
+}

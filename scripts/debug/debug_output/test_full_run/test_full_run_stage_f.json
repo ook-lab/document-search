@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "document_info": {
+    "document_type": "GOOGLE_DOCS",
+    "year_context": null,
+    "title": "",
+    "source_file": "",
+    "processor_name": "",
+    "data_type": ""
+  },
+  "normalized_events": [],
+  "tasks": [],
+  "notices": [],
+  "consolidated_tables": [],
+  "raw_integrated_text": "",
+  "metadata": {
+    "stages_processed": [
+      "A",
+      "B",
+      "D",
+      "E"
+    ],
+    "total_tokens": 0,
+    "models_used": []
+  }
+}
