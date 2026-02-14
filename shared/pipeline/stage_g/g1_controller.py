@@ -21,19 +21,28 @@ from .g1_table_reproducer import G1TableReproducer
 from .g3_block_arranger import G3BlockArranger
 from .g5_noise_eliminator import G5NoiseEliminator
 from .g11_table_structurer import G11TableStructurer
+from .g12_table_ai_processor import G12TableAIProcessor
 from .g21_text_structurer import G21TextStructurer
+from .g22_text_ai_processor import G22TextAIProcessor
 
 
 class G1Controller:
     """G-1: Stage G Controller（Orchestrator）"""
 
-    def __init__(self):
-        """G-1 コントローラー初期化"""
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        G-1 コントローラー初期化
+
+        Args:
+            api_key: Google AI API Key（G-12/G-22で使用）
+        """
         self.table_reproducer = G1TableReproducer()
         self.block_arranger = G3BlockArranger()
         self.noise_eliminator = G5NoiseEliminator()
         self.table_structurer = G11TableStructurer()
+        self.table_ai_processor = G12TableAIProcessor(api_key=api_key)
         self.text_structurer = G21TextStructurer()
+        self.text_ai_processor = G22TextAIProcessor(api_key=api_key)
 
     def process(
         self,
@@ -118,6 +127,17 @@ class G1Controller:
                 structured_tables = table_struct_result['structured_tables']
                 logger.info(f"[G-1] 表の構造化: {len(structured_tables)}個")
 
+            # Step 4.5: Table AI Processing (G-12)
+            logger.info("\n[G-1] ステップ4.5: 表のAI処理（G-12）")
+
+            table_ai_result = self.table_ai_processor.process(structured_tables)
+            if not table_ai_result.get('success'):
+                logger.warning(f"[G-1] 表のAI処理失敗: {table_ai_result.get('error')}")
+                table_analyses = []
+            else:
+                table_analyses = table_ai_result['table_analyses']
+                logger.info(f"[G-1] 表のAI処理: {len(table_analyses)}個")
+
             # Step 5: Text Structuring (G-21)
             logger.info("\n[G-1] ステップ5: テキストの構造化（G-21）")
 
@@ -132,9 +152,56 @@ class G1Controller:
                 final_metadata = {}
             else:
                 final_metadata = text_struct_result['metadata']
-                # 表データも追加
-                if structured_tables:
-                    final_metadata['structured_tables'] = structured_tables
+
+            # Step 5.5: Text AI Processing (G-22)
+            logger.info("\n[G-1] ステップ5.5: テキストのAI処理（G-22）")
+
+            # G-21で生成された articles を使用
+            articles = final_metadata.get('articles', [])
+            text_ai_result = self.text_ai_processor.process(articles)
+            if not text_ai_result.get('success'):
+                logger.warning(f"[G-1] テキストのAI処理失敗: {text_ai_result.get('error')}")
+                calendar_events = []
+                tasks = []
+                notices = []
+            else:
+                calendar_events = text_ai_result.get('calendar_events', [])
+                tasks = text_ai_result.get('tasks', [])
+                notices = text_ai_result.get('notices', [])
+                logger.info(f"[G-1] テキストのAI処理完了: イベント{len(calendar_events)}件, タスク{len(tasks)}件, 注意事項{len(notices)}件")
+
+            # final_metadata を G11/G12/G21/G22 で明確に分離
+            final_metadata = {
+                # UI表示用（各ステージを明確に区別）
+                'g11_output': structured_tables,  # G-11: 表をそのまま出す（加工なし）
+                'g12_output': table_analyses,     # G-12: 表の構造化・理解
+                'g21_output': articles,           # G-21: テキストをそのまま出す（加工なし）
+                'g22_output': {                   # G-22: テキストから情報抽出
+                    'calendar_events': calendar_events,
+                    'tasks': tasks,
+                    'notices': notices
+                },
+
+                # グループ化（AI前/AI後）
+                'ai_input': {
+                    'tables': structured_tables,  # G-11の出力
+                    'articles': articles          # G-21の出力
+                },
+                'ai_output': {
+                    'table_analyses': table_analyses,  # G-12の出力
+                    'calendar_events': calendar_events,
+                    'tasks': tasks,
+                    'notices': notices
+                },
+
+                # 互換性のために従来のキーも保持
+                'structured_tables': ui_tables,  # JavaScriptが期待するキー
+                'articles': articles,
+                'calendar_events': calendar_events,
+                'tasks': tasks,
+                'notices': notices,
+                'table_analyses': table_analyses
+            }
 
             # メタデータを構築
             metadata = {
@@ -147,11 +214,31 @@ class G1Controller:
             logger.info("=" * 60)
             logger.info("[G-1] Stage G 完了")
             logger.info(f"  ├─ 表: {len(ui_tables)}個")
+            logger.info(f"  ├─ 表のAI解析: {len(table_analyses)}個")
             logger.info(f"  ├─ ブロック: {len(blocks)}個")
             logger.info(f"  ├─ articles: {len(final_metadata.get('articles', []))}件")
-            logger.info(f"  ├─ イベント: {len(ui_data.get('timeline', []))}件")
-            logger.info(f"  ├─ タスク: {len(ui_data.get('actions', []))}件")
-            logger.info(f"  └─ 注意事項: {len(ui_data.get('notices', []))}件")
+            logger.info(f"  ├─ イベント（G-22抽出）: {len(final_metadata.get('calendar_events', []))}件")
+            logger.info(f"  ├─ タスク（G-22抽出）: {len(final_metadata.get('tasks', []))}件")
+            logger.info(f"  └─ 注意事項（G-22抽出）: {len(final_metadata.get('notices', []))}件")
+            logger.info("=" * 60)
+
+            # ログ（最終的な metadata の内容）を出力
+            logger.info("")
+            logger.info("[G-1] ========== final_metadata 構造（ステージ別） ==========")
+            logger.info("【G-11】表をそのまま出す（加工なし）")
+            logger.info(f"  └─ tables: {len(final_metadata['g11_output'])}個")
+            logger.info("【G-12】表の構造化・理解（AI処理）")
+            logger.info(f"  └─ table_analyses: {len(final_metadata['g12_output'])}個")
+            logger.info("【G-21】テキストをそのまま出す（加工なし）")
+            logger.info(f"  └─ articles: {len(final_metadata['g21_output'])}件")
+            logger.info("【G-22】テキストから情報抽出（AI処理）")
+            logger.info(f"  ├─ calendar_events: {len(final_metadata['g22_output']['calendar_events'])}件")
+            logger.info(f"  ├─ tasks: {len(final_metadata['g22_output']['tasks'])}件")
+            logger.info(f"  └─ notices: {len(final_metadata['g22_output']['notices'])}件")
+            logger.info("")
+            import json
+            logger.info("[G-1] ========== final_metadata 完全版 ==========")
+            logger.info(json.dumps(final_metadata, ensure_ascii=False, indent=2))
             logger.info("=" * 60)
 
             return {

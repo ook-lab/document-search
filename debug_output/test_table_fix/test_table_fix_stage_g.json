@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "ui_data": {
+    "document_info": {
+      "document_type": "unknown",
+      "year_context": null
+    },
+    "sections": [],
+    "tables": [],
+    "timeline": [],
+    "actions": [],
+    "notices": [],
+    "metadata": {
+      "section_count": 0,
+      "table_count": 0,
+      "event_count": 0,
+      "task_count": 0,
+      "notice_count": 0
+    }
+  },
+  "metadata": {
+    "stage": "G",
+    "conversion_count": 0,
+    "block_count": 0,
+    "total_tokens": 0
+  }
+}

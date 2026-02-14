@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "document_info": {
+    "document_type": "unknown",
+    "year_context": null,
+    "title": "",
+    "source_file": "",
+    "processor_name": "B1_CONTROLLER",
+    "data_type": ""
+  },
+  "raw_integrated_text": "",
+  "events": [],
+  "tasks": [],
+  "notices": [],
+  "tables": [],
+  "metadata": {
+    "stages_processed": [
+      "B",
+      "D",
+      "E"
+    ],
+    "total_tokens": 0,
+    "models_used": []
+  }
+}

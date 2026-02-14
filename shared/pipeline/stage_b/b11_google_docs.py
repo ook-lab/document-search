@@ -129,6 +129,17 @@ class B11GoogleDocsProcessor:
             if not data:
                 continue
 
+            # データの健全性チェック（2行目以降が null だらけの場合は壊れている）
+            if len(data) > 1:
+                second_row = data[1]
+                if isinstance(second_row, list):
+                    non_null_count = sum(1 for cell in second_row if cell is not None and cell != '')
+                    # 2行目の80%以上が null または空の場合は壊れていると判断
+                    if non_null_count < len(second_row) * 0.2:
+                        logger.warning(f"[B-11] Table {idx}: データが壊れています（null多数）、bbox内テキストで再構築")
+                        # bbox 内のテキストを抽出して表を再構築
+                        data = self._rebuild_table_from_text(page, table.bbox)
+
             tables.append({
                 'page': page_num,
                 'index': idx,
@@ -139,6 +150,50 @@ class B11GoogleDocsProcessor:
             })
 
         return tables
+
+    def _rebuild_table_from_text(self, page, bbox: tuple) -> List[List[str]]:
+        """
+        bbox 内のテキストから表を再構築
+
+        Args:
+            page: pdfplumber Page オブジェクト
+            bbox: 表の境界ボックス (x0, y0, x1, y1)
+
+        Returns:
+            表データ（行×列の配列）
+        """
+        try:
+            # bbox 内の単語を取得
+            x0, y0, x1, y1 = bbox
+            cropped = page.crop((x0, y0, x1, y1))
+            words = cropped.extract_words(x_tolerance=3, y_tolerance=3)
+
+            if not words:
+                return [[]]
+
+            # Y座標でグループ化して行を検出
+            rows_dict = {}
+            for word in words:
+                y = round(word['top'], 1)
+                if y not in rows_dict:
+                    rows_dict[y] = []
+                rows_dict[y].append(word)
+
+            # Y座標順にソート
+            sorted_rows = sorted(rows_dict.items())
+
+            # 各行内を X座標順にソート
+            table_data = []
+            for y, row_words in sorted_rows:
+                sorted_words = sorted(row_words, key=lambda w: w['x0'])
+                row_text = [w['text'] for w in sorted_words]
+                table_data.append(row_text)
+
+            return table_data if table_data else [[]]
+
+        except Exception as e:
+            logger.error(f"[B-11] Table rebuild error: {e}")
+            return [[]]
 
     def _build_text(self, logical_blocks: List[Dict[str, Any]]) -> str:
         """

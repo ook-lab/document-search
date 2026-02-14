@@ -38,16 +38,29 @@ class G11TableStructurer:
             structured_tables = []
 
             for table in ui_tables:
-                # UI用表データをそのまま metadata に含める
-                # （既に headers/rows 形式になっている）
+                # UI用表データ（columns/data形式）を metadata 形式（headers/rows形式）に変換
                 structured_tables.append({
-                    'headers': table.get('headers', []),
-                    'rows': table.get('rows', []),
+                    'headers': table.get('columns', []),
+                    'rows': table.get('data', []),
                     'table_id': table.get('table_id'),
                     'source_page': table.get('source_page')
                 })
 
             logger.info(f"[G-11] 構造化完了: {len(structured_tables)}表")
+
+            # ログ（生成結果）を出力
+            if structured_tables:
+                logger.info("")
+                logger.info("[G-11] ========== 生成された表 ==========")
+                for i, table in enumerate(structured_tables, 1):
+                    table_id = table.get('table_id', 'Unknown')
+                    headers = table.get('headers', [])
+                    rows = table.get('rows', [])
+                    logger.info(f"Table {i} ({table_id}):")
+                    logger.info(f"  headers: {headers}")
+                    logger.info(f"  rows: {len(rows)}行")
+                    logger.info(f"  source_page: {table.get('source_page', 'N/A')}")
+                logger.info("=" * 50)
 
             return {
                 'success': True,

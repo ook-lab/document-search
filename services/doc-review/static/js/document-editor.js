@@ -19,6 +19,11 @@ const DocState = {
 // =============================================================================
 
 const FIELD_NAME_MAP = {
+    // Stage G 出力（G-11/G-12/G-21/G-22）
+    "g11_output": "📊 G-11（表・生データ）",
+    "g12_output": "🤖 G-12（表・AI構造化）",
+    "g21_output": "📝 G-21（テキスト・生データ）",
+    "g22_output": "🤖 G-22（テキスト・AI抽出）",
     // 新しい構造化フィールド
     "monthly_schedule_list": "📅 月間予定",
     "learning_content_list": "📚 学習予定",
@@ -70,10 +75,23 @@ function detectStructuredFields(metadata) {
             key === "extracted_tables" ||
             key === "calendar_events" ||
             key === "tasks" ||
-            key === "special_events"
+            key === "special_events" ||
+            // Stage G 出力
+            key === "g11_output" ||
+            key === "g12_output" ||
+            key === "g21_output" ||
+            key === "g22_output"
         );
 
-        if (isStructuredKey && Array.isArray(value) && value.length > 0) {
+        // g22_output は特別処理（オブジェクト形式）
+        if (key === "g22_output" && typeof value === 'object' && value !== null) {
+            structuredFields.push({
+                key: key,
+                label: formatFieldName(key),
+                data: value
+            });
+        }
+        else if (isStructuredKey && Array.isArray(value) && value.length > 0) {
             // 最初の要素が辞書であることを確認
             if (typeof value[0] === 'object' && value[0] !== null) {
                 structuredFields.push({
@@ -223,6 +241,56 @@ function isTableCollection(data) {
 }
 
 function renderStructuredTable(key, data, label) {
+    // g22_output の特別処理（オブジェクト形式）
+    if (key === 'g22_output' && typeof data === 'object' && !Array.isArray(data)) {
+        let html = '<div class="g22-output-container">';
+
+        // calendar_events
+        if (data.calendar_events && data.calendar_events.length > 0) {
+            html += '<h4>📅 イベント・予定</h4>';
+            html += '<table class="data-table"><thead><tr><th>日付</th><th>時間</th><th>イベント</th><th>場所</th></tr></thead><tbody>';
+            data.calendar_events.forEach(event => {
+                html += `<tr>
+                    <td>${event.date || ''}</td>
+                    <td>${event.time || ''}</td>
+                    <td>${event.event || ''}</td>
+                    <td>${event.location || ''}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+        }
+
+        // tasks
+        if (data.tasks && data.tasks.length > 0) {
+            html += '<h4>✅ タスク・提出物</h4>';
+            html += '<table class="data-table"><thead><tr><th>期限</th><th>項目</th><th>詳細</th></tr></thead><tbody>';
+            data.tasks.forEach(task => {
+                html += `<tr>
+                    <td>${task.deadline || ''}</td>
+                    <td>${task.item || ''}</td>
+                    <td>${task.description || ''}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+        }
+
+        // notices
+        if (data.notices && data.notices.length > 0) {
+            html += '<h4>⚠️ 注意事項</h4>';
+            html += '<table class="data-table"><thead><tr><th>カテゴリ</th><th>内容</th></tr></thead><tbody>';
+            data.notices.forEach(notice => {
+                html += `<tr>
+                    <td>${notice.category || ''}</td>
+                    <td>${notice.content || ''}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+        }
+
+        html += '</div>';
+        return html || `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
+    }
+
     if (!Array.isArray(data) || data.length === 0) {
         return `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
     }

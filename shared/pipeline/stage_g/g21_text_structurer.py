@@ -70,6 +70,18 @@ class G21TextStructurer:
             logger.info(f"  ├─ tasks: {len(actions)}件")
             logger.info(f"  └─ notices: {len(notices)}件")
 
+            # ログ（生成結果）を出力
+            if articles:
+                logger.info("")
+                logger.info("[G-21] ========== 生成された articles ==========")
+                for i, article in enumerate(articles, 1):
+                    title = article.get('title', '(タイトルなし)')
+                    body = article.get('body', '')
+                    logger.info(f"Article {i}:")
+                    logger.info(f"  title: {title}")
+                    logger.info(f"  body: {body}")
+                logger.info("=" * 50)
+
             return {
                 'success': True,
                 'metadata': metadata

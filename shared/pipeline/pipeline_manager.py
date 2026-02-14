@@ -179,7 +179,7 @@ class PipelineManager:
         self.stage_d = D1Controller()
         self.stage_e = E1Controller(gemini_api_key=gemini_key)
         self.stage_f = F1Controller(gemini_api_key=gemini_key)
-        self.stage_g = G1Controller()
+        self.stage_g = G1Controller(api_key=gemini_key)
 
         # Stage J-K: チャンキング＆埋め込み
         self.stage_j = StageJChunking()
@@ -1082,17 +1082,19 @@ class PipelineManager:
             # Stage G の結果を DB に保存
             try:
                 ui_data = stage_g_result.get('ui_data', {})
+                final_metadata = stage_g_result.get('final_metadata', {})
                 import json
                 self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                    'stage_g_structured_data': json.dumps(ui_data, ensure_ascii=False)
+                    'stage_g_structured_data': json.dumps(ui_data, ensure_ascii=False),
+                    'metadata': json.dumps(final_metadata, ensure_ascii=False)
                 }).eq('id', document_id).execute()
                 logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
+                logger.info(f"[Stage G] metadata を DB に保存: articles={len(final_metadata.get('articles', []))}件, structured_tables={len(final_metadata.get('structured_tables', []))}個")
             except Exception as e:
                 logger.warning(f"Stage G 結果の DB 保存エラー: {e}")
 
             # Stage H: 削除（G11/G21 で構造化済み）
-            # Stage G の final_metadata をそのまま使用
-            final_metadata = stage_g_result.get('final_metadata', {})
+            # Stage G の final_metadata をそのまま使用（すでに取得済み）
 
             if not final_metadata:
                 logger.warning("[Stage G] final_metadata が空です")

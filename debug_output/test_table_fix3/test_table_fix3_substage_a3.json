@@ -1,0 +1,144 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "GOOGLE_DOCS",
+    "confidence": "HIGH",
+    "reason": "キーワード一致: google.*docs",
+    "raw_metadata": {
+      "Title": "学年通信",
+      "Producer": "Skia/PDF m145 Google Docs Renderer"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 612.0,
+      "height": 792.0,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 215.89999999999998,
+      "height": 279.4,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 3.0,
+      "avg_words_per_page": 53.0,
+      "avg_x_std": 130.1600379936611,
+      "avg_words_per_line": 0.872960372960373,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 6,
+          "words": 100,
+          "chars": 560,
+          "x_std": 134.27743935734367,
+          "lines": 66,
+          "words_per_line": 1.5151515151515151
+        },
+        {
+          "page": 1,
+          "images": 0,
+          "words": 6,
+          "chars": 184,
+          "x_std": 126.04263662997852,
+          "lines": 26,
+          "words_per_line": 0.23076923076923078
+        }
+      ]
+    }
+  },
+  "origin_app": "GOOGLE_DOCS",
+  "document_type": "GOOGLE_DOCS",
+  "confidence": "HIGH",
+  "reason": "キーワード一致: google.*docs",
+  "raw_metadata": {
+    "Title": "学年通信",
+    "Producer": "Skia/PDF m145 Google Docs Renderer"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 612.0,
+    "height": 792.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 215.89999999999998,
+    "height": 279.4,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 3.0,
+    "avg_words_per_page": 53.0,
+    "avg_x_std": 130.1600379936611,
+    "avg_words_per_line": 0.872960372960373,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 6,
+        "words": 100,
+        "chars": 560,
+        "x_std": 134.27743935734367,
+        "lines": 66,
+        "words_per_line": 1.5151515151515151
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 6,
+        "chars": 184,
+        "x_std": 126.04263662997852,
+        "lines": 26,
+        "words_per_line": 0.23076923076923078
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 3.0,
+      "avg_words_per_page": 53.0,
+      "avg_x_std": 130.1600379936611,
+      "avg_words_per_line": 0.872960372960373,
+      "probe_ok": true,
+      "avg_chars_per_page": 372.0,
+      "avg_vectors_per_page": 19.5
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 3.0,
+      "avg_words_per_page": 53.0,
+      "avg_x_std": 130.1600379936611,
+      "avg_words_per_line": 0.872960372960373,
+      "probe_ok": true,
+      "avg_chars_per_page": 372.0,
+      "avg_vectors_per_page": 19.5
+    },
+    "policy_version": "A5.v1"
+  }
+}

@@ -140,6 +140,75 @@ class G1TableReproducer:
             logger.warning(f"[G-1] Markdown変換エラー: {e}")
             return None
 
+    def _extract_column_spans(self, columns: List) -> List[Dict[str, Any]]:
+        """
+        結合セル情報を抽出
+
+        Args:
+            columns: 元のカラムリスト（Noneは結合セルを表す）
+
+        Returns:
+            結合セル情報のリスト [{'text': '5A', 'start': 1, 'span': 7}, ...]
+        """
+        spans = []
+        i = 0
+        while i < len(columns):
+            col = columns[i]
+            if col is not None and col != '':
+                # このセルから始まる結合セルの範囲を計算
+                start = i
+                span = 1
+                # 次のセルがNoneの間はspanを拡大
+                j = i + 1
+                while j < len(columns) and (columns[j] is None or columns[j] == ''):
+                    span += 1
+                    j += 1
+
+                if span > 1:
+                    # 結合セル情報を保存
+                    spans.append({
+                        'text': str(col),
+                        'start': start,
+                        'span': span
+                    })
+                i = j
+            else:
+                i += 1
+
+        return spans
+
+    def _normalize_columns(self, columns: List) -> List[str]:
+        """
+        カラムヘッダーを正規化（null/空文字列/重複を一意の値に置き換え）
+
+        Args:
+            columns: 元のカラムリスト（Noneや重複を含む可能性がある）
+
+        Returns:
+            正規化されたカラムリスト（すべて一意の文字列）
+        """
+        normalized = []
+        used_names = set()
+
+        for i, col in enumerate(columns):
+            # nullまたは空文字列の場合、列番号を使用
+            if col is None or col == '':
+                base_name = f'列{i + 1}'
+            else:
+                base_name = str(col)
+
+            # 重複がある場合、サフィックスを追加
+            name = base_name
+            counter = 1
+            while name in used_names:
+                name = f'{base_name}_{counter}'
+                counter += 1
+
+            normalized.append(name)
+            used_names.add(name)
+
+        return normalized
+
     def _parse_markdown_row(self, line: str) -> List[str]:
         """
         Markdown の行をパース
@@ -177,9 +246,25 @@ class G1TableReproducer:
         """
         data = table.get('data', [])
         if not data:
+            logger.warning(f"[G-1] data が空です")
             return None
 
         try:
+            # data が dict の場合、Stage F が table 全体を 'data' に格納している
+            # その中の 'data' キーに実際の配列の配列がある
+            if isinstance(data, dict):
+                if 'data' in data:
+                    logger.debug(f"[G-1] data は dict → 内部の 'data' キーを取得")
+                    data = data['data']
+                else:
+                    logger.warning(f"[G-1] data は dict だが 'data' キーがない: keys={list(data.keys())}")
+                    return None
+
+            # data が None または空の場合
+            if data is None or (isinstance(data, list) and len(data) == 0):
+                logger.warning(f"[G-1] data が None または空")
+                return None
+
             # data が辞書のリストの場合
             if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
                 # カラム名を抽出
@@ -203,20 +288,45 @@ class G1TableReproducer:
 
             # data が配列の配列の場合（そのまま）
             elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                # 元のカラムから結合セル情報を抽出
+                original_columns = data[0] if len(data) > 0 else []
+                column_spans = self._extract_column_spans(original_columns)
+
+                # カラムヘッダーを正規化（nullや重複を一意の値に置き換え）
+                columns = self._normalize_columns(original_columns)
+
                 return {
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
                     'source': table.get('source', 'unknown'),
-                    'columns': data[0] if len(data) > 0 else [],
+                    'columns': columns,
+                    'column_spans': column_spans,  # 結合セル情報
                     'data': data[1:] if len(data) > 1 else [],
                     'row_count': len(data) - 1,
-                    'col_count': len(data[0]) if len(data) > 0 else 0
+                    'col_count': len(columns)
+                }
+
+            # data が配列だが、中身が dict でも list でもない場合
+            elif isinstance(data, list) and len(data) > 0:
+                # 文字列や数値の配列を1行の表として扱う
+                logger.warning(f"[G-1] data[0] の型が想定外: {type(data[0])}, 1行として処理")
+                return {
+                    'table_id': table.get('table_id', 'Unknown'),
+                    'type': 'ui_table',
+                    'source': table.get('source', 'unknown'),
+                    'columns': [f"Col{i+1}" for i in range(len(data))],
+                    'data': [[str(item) for item in data]],
+                    'row_count': 1,
+                    'col_count': len(data)
                 }
 
             else:
-                logger.warning(f"[G-1] 未知のdata形式")
+                # それでも処理できない場合、詳細をログに出力
+                logger.warning(f"[G-1] 未知のdata形式: type={type(data)}, len={len(data) if isinstance(data, (list, dict)) else 'N/A'}")
+                if isinstance(data, list) and len(data) > 0:
+                    logger.warning(f"[G-1] data[0] type: {type(data[0])}, value: {data[0]}")
                 return None
 
         except Exception as e:
-            logger.warning(f"[G-1] Stage B変換エラー: {e}")
+            logger.error(f"[G-1] Stage B変換エラー: {e}", exc_info=True)
             return None
