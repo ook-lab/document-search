@@ -98,24 +98,47 @@ class D5RasterLineDetector:
                 2
             )
 
+            # ダイレーション（膨張処理）: 線を太らせて微妙なズレを吸収
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+            binary = cv2.dilate(binary, kernel, iterations=1)
+            logger.info("[D-5] ダイレーション処理完了（±3px相当の隙間を吸収）")
+
             # 水平線検出
             horizontal_lines = self._detect_horizontal_lines(binary, width, height)
-            logger.info(f"[D-5] 水平線: {len(horizontal_lines)}本")
+            logger.info(f"[D-5] モルフォロジー水平線検出: {len(horizontal_lines)}本")
+            if horizontal_lines:
+                sample = horizontal_lines[:3]
+                logger.debug(f"[D-5] 水平線サンプル（最初3本）:")
+                for i, line in enumerate(sample, 1):
+                    logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
 
             # 垂直線検出
             vertical_lines = self._detect_vertical_lines(binary, width, height)
-            logger.info(f"[D-5] 垂直線: {len(vertical_lines)}本")
+            logger.info(f"[D-5] モルフォロジー垂直線検出: {len(vertical_lines)}本")
+            if vertical_lines:
+                sample = vertical_lines[:3]
+                logger.debug(f"[D-5] 垂直線サンプル（最初3本）:")
+                for i, line in enumerate(sample, 1):
+                    logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
 
             # HoughLinesP で補完的に検出
             hough_lines = self._detect_hough_lines(binary, width, height)
-            logger.info(f"[D-5] Hough検出: {len(hough_lines)}本")
+            logger.info(f"[D-5] Hough Lines検出: {len(hough_lines)}本")
+            if hough_lines:
+                sample = hough_lines[:3]
+                logger.debug(f"[D-5] Hough線サンプル（最初3本）:")
+                for i, line in enumerate(sample, 1):
+                    logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
+
+            # 波線フィルタ（装飾線を除外）
+            all_detected = horizontal_lines + vertical_lines + hough_lines
+            before_filter = len(all_detected)
+            filtered_lines = self._filter_wavy_lines(all_detected, width, height)
+            logger.info(f"[D-5] 波線フィルタ: {before_filter}本 → {len(filtered_lines)}本（波線除外）")
 
             # 全線を統合
-            all_lines = self._merge_lines(
-                horizontal_lines + vertical_lines + hough_lines,
-                width,
-                height
-            )
+            all_lines = self._merge_lines(filtered_lines, width, height)
+            logger.info(f"[D-5] 線マージ: {len(filtered_lines)}本 → {len(all_lines)}本（重複除去）")
 
             # 水平・垂直に再分類
             horizontal_final = [
@@ -304,6 +327,74 @@ class D5RasterLineDetector:
             })
 
         return lines
+
+    def _filter_wavy_lines(
+        self,
+        lines: List[Dict[str, Any]],
+        width: int,
+        height: int,
+        y_tolerance: float = 0.005  # Y座標の許容誤差（正規化座標）
+    ) -> List[Dict[str, Any]]:
+        """
+        波線（装飾線）を除外する
+
+        波線は複数の短い直線が同じY座標に並んでいる特徴がある。
+        同じY座標に5本以上の線がある場合、それらを波線と判定して除外する。
+
+        Args:
+            lines: 線リスト
+            width: 画像幅
+            height: 画像高さ
+            y_tolerance: Y座標の許容誤差
+
+        Returns:
+            波線を除外した線リスト
+        """
+        if not lines:
+            return []
+
+        # Y座標でグループ化（水平線のみ）
+        horizontal_groups = {}
+        vertical_and_others = []
+
+        for line in lines:
+            # 水平線かチェック
+            y_diff = abs(line['y0'] - line['y1'])
+            if y_diff < 0.01:  # ほぼ水平
+                # Y座標の平均
+                y_avg = (line['y0'] + line['y1']) / 2
+
+                # 既存のグループに追加
+                found_group = False
+                for group_y, group_lines in horizontal_groups.items():
+                    if abs(y_avg - group_y) < y_tolerance:
+                        group_lines.append(line)
+                        found_group = True
+                        break
+
+                if not found_group:
+                    horizontal_groups[y_avg] = [line]
+            else:
+                # 垂直線またはその他
+                vertical_and_others.append(line)
+
+        # 波線判定（同じY座標に5本以上の線 → 波線）
+        WAVY_LINE_THRESHOLD = 5
+        filtered_horizontal = []
+        wavy_count = 0
+
+        for group_y, group_lines in horizontal_groups.items():
+            if len(group_lines) >= WAVY_LINE_THRESHOLD:
+                # 波線と判定して除外
+                logger.debug(f"[D-5] 波線検出: y={group_y:.3f}, {len(group_lines)}本の線 → 除外")
+                wavy_count += len(group_lines)
+            else:
+                # 通常の罫線として保持
+                filtered_horizontal.extend(group_lines)
+
+        logger.info(f"[D-5] 波線除外詳細: {wavy_count}本除外, {len(filtered_horizontal)}本保持")
+
+        return filtered_horizontal + vertical_and_others
 
     def _merge_lines(
         self,

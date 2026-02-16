@@ -1,5 +1,5 @@
 """
-E-20: Context Extractor（地の文用 - Gemini 2.5 Flash-lite）
+E-21: Context Extractor（地の文用 - Gemini 2.5 Flash-lite）
 
 地の文画像（非表領域）から、Stage Bで抽出できなかった
 テキストを忠実に抽出する。
@@ -27,11 +27,11 @@ try:
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
-    logger.warning("[E-20] google-generativeai がインストールされていません")
+    logger.warning("[E-21] google-generativeai がインストールされていません")
 
 
-class E20ContextExtractor:
-    """E-20: Context Extractor（地の文用）"""
+class E21ContextExtractor:
+    """E-21: Context Extractor（地の文用）"""
 
     def __init__(
         self,
@@ -50,15 +50,15 @@ class E20ContextExtractor:
         self.matcher = CoordinateMatcher()
 
         if not GENAI_AVAILABLE:
-            logger.error("[E-20] google-generativeai が必要です")
+            logger.error("[E-21] google-generativeai が必要です")
             return
 
         if api_key:
             genai.configure(api_key=api_key)
             self.model = genai.GenerativeModel(model_name)
-            logger.info(f"[E-20] モデル初期化: {model_name}")
+            logger.info(f"[E-21] モデル初期化: {model_name}")
         else:
-            logger.warning("[E-20] API key が設定されていません")
+            logger.warning("[E-21] API key が設定されていません")
             self.model = None
 
     def extract(
@@ -89,6 +89,7 @@ class E20ContextExtractor:
             {
                 'success': bool,
                 'extracted_content': dict,  # {'text': str} - 抽出されたテキスト
+                'blocks': list,             # 座標付きブロック [{'text': str, 'bbox': [...], 'type': 'paragraph'}]
                 'raw_response': str,        # Geminiの生レスポンス
                 'model_used': str,          # 使用したモデル名（gemini-2.5-flash-lite）
                 'tokens_used': int,         # 使用トークン数（概算）
@@ -97,26 +98,42 @@ class E20ContextExtractor:
             }
         """
         if not GENAI_AVAILABLE or not self.model:
-            logger.error("[E-20] Gemini API が利用できません")
+            logger.error("[E-21] Gemini API が利用できません")
             return self._error_result("Gemini API not available")
 
         vision_text_used = bool(vision_text and vision_text.strip())
         route = "E21_VISION+E22" if vision_text_used else "E22_IMAGE_ONLY"
 
-        logger.info(f"[E-20] 文脈抽出開始: {image_path.name} route={route}")
+        logger.info("=" * 80)
+        logger.info(f"[E-21] 文脈抽出開始: {image_path.name}")
+        logger.info(f"[E-21] route={route}, page={page}")
+        logger.info("=" * 80)
 
         try:
             # 画像を読み込み
             with open(image_path, 'rb') as f:
                 image_data = f.read()
 
+            logger.info(f"[E-21] 画像サイズ: {len(image_data)} bytes")
+
             # プロンプトを構築
             prompt = self._build_prompt(block_hint, custom_prompt, vision_text, anchor_text)
 
-            logger.info(f"[E-20] モデル: {self.model_name}")
-            logger.info(f"[E-20] プロンプト長: {len(prompt)}文字")
+            logger.info(f"[E-21] モデル: {self.model_name}")
+            logger.info(f"[E-21] プロンプト長: {len(prompt)}文字")
+            logger.info("[E-21] ===== AI プロンプト全文 =====")
+            logger.info(prompt)
+            logger.info("[E-21] ===== プロンプト終了 =====")
+
+            # 入力情報のサマリー
+            logger.info("[E-21] 入力情報サマリー:")
+            logger.info(f"  ├─ block_hint: {'あり' if block_hint else 'なし'} ({len(block_hint or '')}文字)")
+            logger.info(f"  ├─ vision_text: {'あり' if vision_text else 'なし'} ({len(vision_text or '')}文字)")
+            logger.info(f"  ├─ anchor_text: {'あり' if anchor_text else 'なし'} ({len(anchor_text or '')}文字)")
+            logger.info(f"  └─ words: {len(words) if words else 0}個")
 
             # Gemini に送信
+            logger.info("[E-21] Gemini API 呼び出し開始...")
             response = self.model.generate_content([
                 prompt,
                 {
@@ -124,39 +141,65 @@ class E20ContextExtractor:
                     'data': image_data
                 }
             ])
+            logger.info("[E-21] Gemini API 呼び出し完了")
 
             # レスポンスをパース
             raw_text = response.text
-            logger.info(f"[E-20] レスポンス長: {len(raw_text)}文字")
+            logger.info(f"[E-21] レスポンス長: {len(raw_text)}文字")
+            logger.info("[E-21] ===== AI レスポンス全文 =====")
+            logger.info(raw_text)
+            logger.info("[E-21] ===== レスポンス終了 =====")
 
             # JSON部分を抽出（```json ... ``` で囲まれている場合）
-            extracted_content = self._parse_response(raw_text)
+            parsed_result = self._parse_response(raw_text)
+            extracted_content = {'text': parsed_result.get('text', '')}
+            blocks = parsed_result.get('blocks', [])
 
-            # 座標付与は現在スキップ（純粋なテキスト抽出のみ）
-            # 将来的に必要であれば、テキスト全体への座標付与を実装
-            if words:
-                logger.info(f"[E-20] 座標マッチングはスキップ（テキスト抽出のみ）")
+            logger.info("[E-21] パース結果:")
+            import json
+            logger.info(json.dumps(parsed_result, ensure_ascii=False, indent=2))
+
+            # 座標付きブロックの統計
+            logger.info(f"[E-21] 座標付きブロック数: {len(blocks)}")
+            if blocks:
+                logger.info("[E-21] ブロックサンプル（先頭3個）:")
+                for idx, block in enumerate(blocks[:3], 1):
+                    text_preview = block.get('text', '')[:50]
+                    bbox = block.get('bbox', [])
+                    logger.info(f"  Block {idx}: bbox={bbox}, text='{text_preview}...'")
 
             # トークン数を概算（文字数 / 4）
             tokens_used = (len(prompt) + len(raw_text)) // 4
 
-            logger.info(f"[E-20] 抽出完了")
+            logger.info("=" * 80)
+            logger.info(f"[E-21] 抽出完了")
             logger.info(f"  ├─ モデル: {self.model_name}")
             logger.info(f"  ├─ route: {route}")
-            logger.info(f"  └─ トークン: 約{tokens_used}")
+            logger.info(f"  ├─ トークン: 約{tokens_used}")
+            logger.info(f"  ├─ 抽出テキスト長: {len(extracted_content.get('text', ''))}文字")
+            logger.info(f"  └─ 座標付きブロック: {len(blocks)}個")
+            logger.info("=" * 80)
+
+            # ページ番号を各ブロックに追加
+            for block in blocks:
+                block['page'] = page
 
             return {
                 'success': True,
                 'extracted_content': extracted_content,
+                'blocks': blocks,  # 座標付きブロック
                 'raw_response': raw_text,
                 'model_used': self.model_name,
                 'tokens_used': tokens_used,
                 'route': route,
-                'vision_text_used': vision_text_used
+                'vision_text_used': vision_text_used,
+                'role': 'NON_TABLE_FINAL_TEXT',
+                'priority': 100,
+                'is_final_non_table': True
             }
 
         except Exception as e:
-            logger.error(f"[E-20] 抽出エラー: {e}", exc_info=True)
+            logger.error(f"[E-21] 抽出エラー: {e}", exc_info=True)
             return self._error_result(str(e))
 
     def _build_prompt(
@@ -183,19 +226,36 @@ class E20ContextExtractor:
 
         prompt_parts = []
 
-        # ベースプロンプト（純粋なテキスト抽出）
+        # ベースプロンプト（座標付きテキスト抽出）
         prompt_parts.append("""
-添付された画像のテキストをすべて抽出してください。
+添付された画像のテキストをすべて抽出し、各テキストブロックの座標を含めて返してください。
 
 **重要な指示:**
 - 読み順（上から下、左から右）を忠実に再現
 - レイアウトや構造をそのまま保持
-- 分類や解釈は一切行わない（テキストをそのまま抽出）
 - 画像に記載されていない情報は絶対に作らないこと（捏造禁止）
 - 読めない箇所は [[判読不能]] と明記すること
 - 参考OCRは文字の補助として使い、画像の内容・順序・見出し階層を優先すること
+- **各テキストブロックの座標を正確に指定すること**
 
-**出力形式:** プレーンテキスト（JSON不要）
+**座標について:**
+- 画像の左上を(0, 0)とするピクセル座標
+- bbox形式: [x, y, width, height]
+- x: 左端からの距離、y: 上端からの距離
+- width: ブロックの幅、height: ブロックの高さ
+
+**出力形式（JSON）:**
+```json
+{
+  "blocks": [
+    {
+      "text": "抽出されたテキスト",
+      "bbox": [x, y, width, height],
+      "type": "paragraph"
+    }
+  ]
+}
+```
 """)
 
         # Vision OCR テキストを注入（あれば）
@@ -222,18 +282,59 @@ class E20ContextExtractor:
 
     def _parse_response(self, raw_text: str) -> Dict[str, Any]:
         """
-        レスポンスをパースしてテキストを抽出
+        レスポンスをパースして座標付きブロックを抽出
 
         Args:
             raw_text: Geminiの生レスポンス
 
         Returns:
-            抽出されたテキスト（dict形式で返す: {'text': str}）
+            {
+                'text': str,  # 全テキスト（後方互換性）
+                'blocks': [{'text': str, 'bbox': [x, y, w, h], 'type': 'paragraph'}]
+            }
         """
-        # プレーンテキストをそのまま返す（分類なし）
-        return {
-            'text': raw_text.strip()
-        }
+        import json
+
+        try:
+            # ```json ... ``` で囲まれている場合
+            if '```json' in raw_text:
+                start = raw_text.find('```json') + 7
+                end = raw_text.find('```', start)
+                json_str = raw_text[start:end].strip()
+                parsed = json.loads(json_str)
+            # ``` ... ``` で囲まれている場合
+            elif '```' in raw_text:
+                start = raw_text.find('```') + 3
+                end = raw_text.find('```', start)
+                json_str = raw_text[start:end].strip()
+                parsed = json.loads(json_str)
+            # JSON部分のみの場合
+            else:
+                parsed = json.loads(raw_text)
+
+            blocks = parsed.get('blocks', [])
+
+            # bboxを [x, y, w, h] から [x0, y0, x1, y1] に変換
+            for block in blocks:
+                if 'bbox' in block and len(block['bbox']) == 4:
+                    x, y, w, h = block['bbox']
+                    block['bbox'] = [x, y, x + w, y + h]  # [x0, y0, x1, y1]
+
+            # 全テキストを生成（後方互換性）
+            full_text = '\n\n'.join([block.get('text', '') for block in blocks])
+
+            return {
+                'text': full_text,
+                'blocks': blocks
+            }
+
+        except Exception as e:
+            logger.warning(f"[E-21] JSONパースエラー: {e}")
+            # パース失敗時はプレーンテキストとして扱う
+            return {
+                'text': raw_text.strip(),
+                'blocks': []
+            }
 
     def _enrich_with_coordinates(
         self,
@@ -293,9 +394,13 @@ class E20ContextExtractor:
             'success': False,
             'error': error_message,
             'extracted_content': {},
+            'blocks': [],  # 座標付きブロック（空）
             'raw_response': '',
             'model_used': self.model_name,
             'tokens_used': 0,
             'route': 'E22_IMAGE_ONLY',
-            'vision_text_used': False
+            'vision_text_used': False,
+            'role': 'NON_TABLE_FINAL_TEXT',
+            'priority': 100,
+            'is_final_non_table': True
         }

@@ -31,14 +31,13 @@ class E32TableCellMerger:
         ocr_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        E-30 の構造と E-31 の OCR テキストを合成する。
+        E-30 の構造とテキストを使用（E-31のOCRは不要）
 
         Args:
-            struct_result: E-30 の結果
-                {cells: [{row,col,x0,y0,x1,y1,rowspan,colspan}],
+            struct_result: E-30 の結果（既にtextを含む）
+                {cells: [{row,col,x0,y0,x1,y1,rowspan,colspan,text}],
                  n_rows, n_cols, table_id, tokens_used, ...}
-            ocr_result: E-31 の結果
-                {cell_texts: [{row, col, text, confidence}]}
+            ocr_result: E-31 の結果（スキップされるため空）
 
         Returns:
             {
@@ -46,12 +45,12 @@ class E32TableCellMerger:
                 'table_id': str,
                 'n_rows': int,
                 'n_cols': int,
-                'cells': list,                # text 埋め済みセルリスト
+                'cells': list,                # text含むセルリスト
                 'grid': list[list[str]],      # 2次元グリッド
                 'table_markdown': str,        # Markdown 形式
-                'route': 'E30→E31→E32',
-                'model_used': str,            # E-30 の model_used
-                'tokens_used': int            # E-30 のトークン数（E-31はAPI課金なので0）
+                'route': 'E30→E32_DIRECT',
+                'model_used': str,
+                'tokens_used': int
             }
         """
         table_id = struct_result.get('table_id', 'E30_Unknown')
@@ -68,20 +67,40 @@ class E32TableCellMerger:
             logger.warning("[E-32] 構造情報が空 → 空テーブルを返す")
             return self._empty_result(table_id, struct_result)
 
-        # OCR テキストを (row, col) → text の辞書に変換
-        text_map: Dict[tuple, str] = {}
-        for ct in ocr_result.get('cell_texts', []):
-            key = (ct.get('row', -1), ct.get('col', -1))
-            text_map[key] = ct.get('text', '')
+        # ★E-30で既にtextが含まれているため、そのまま使用
+        logger.info("[E-32] ★E-30で取得済みのテキストを使用（E-31スキップ）")
 
-        # セルに text を埋める
-        cells_with_text = []
-        for cell in cells:
+        cells_with_text = cells  # E-30の結果をそのまま使用
+        text_count = sum(1 for c in cells if c.get('text'))
+
+        logger.info(f"[E-32] テキスト含むセル: {text_count}/{len(cells)}")
+
+        # 統合詳細をログ出力
+        logger.info("=" * 80)
+        logger.info("[E-32] E-30データの確認:")
+        logger.info("=" * 80)
+        logger.info(f"  ├─ E-30 セル数: {len(cells)}")
+        logger.info(f"  ├─ テキスト含むセル: {text_count}")
+        logger.info(f"  ├─ テキストなしセル: {len(cells) - text_count}")
+        logger.info(f"  └─ カバー率: {text_count / len(cells) * 100:.1f}%")
+
+        # サンプルをログ出力（最初の5セル）
+        logger.info("-" * 80)
+        logger.info("[E-32] セルサンプル（最初の5セル）:")
+        logger.info("-" * 80)
+        for idx, cell in enumerate(cells_with_text[:5], 1):
             row = cell.get('row', 0)
             col = cell.get('col', 0)
-            text = text_map.get((row, col), '')
-            merged_cell = {**cell, 'text': text}
-            cells_with_text.append(merged_cell)
+            text = cell.get('text', '')
+            bbox = (cell.get('x0'), cell.get('y0'), cell.get('x1'), cell.get('y1'))
+
+            logger.info(f"  Cell #{idx}:")
+            logger.info(f"    ├─ 座標: R{row}C{col}")
+            logger.info(f"    ├─ bbox: {bbox}")
+            logger.info(f"    ├─ rowspan: {cell.get('rowspan', 1)}")
+            logger.info(f"    ├─ colspan: {cell.get('colspan', 1)}")
+            logger.info(f"    └─ text: 「{text[:50]}{'...' if len(text) > 50 else ''}」")
+        logger.info("=" * 80)
 
         # 2次元グリッドを構築
         grid = self._build_grid(cells_with_text, n_rows, n_cols)

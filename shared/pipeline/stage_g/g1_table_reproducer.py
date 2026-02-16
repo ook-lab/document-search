@@ -280,29 +280,45 @@ class G1TableReproducer:
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
                     'source': table.get('source', 'unknown'),
-                    'columns': headers,
-                    'data': rows,
+                    'headers': headers,  # ★ columns → headers
+                    'rows': rows,        # ★ data → rows
                     'row_count': len(rows),
                     'col_count': len(headers)
                 }
 
             # data が配列の配列の場合（そのまま）
             elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                # 元のカラムから結合セル情報を抽出
-                original_columns = data[0] if len(data) > 0 else []
-                column_spans = self._extract_column_spans(original_columns)
+                # ★重要: columns/headers が提供されていない場合、
+                # data[0]をヘッダーと推測するのは危険（AIなしでは判定不可能）
+                # → 仮のヘッダー（Col1, Col2, ...）を生成し、全てのdataをデータ行として渡す
+                # → G-12のAIが正しくヘッダーを判定する
 
-                # カラムヘッダーを正規化（nullや重複を一意の値に置き換え）
-                columns = self._normalize_columns(original_columns)
+                existing_columns = table.get('columns') or table.get('headers')
+
+                if existing_columns:
+                    # columns/headers が明示的に提供されている場合
+                    logger.info(f"[G-1] columns が提供されています（{len(existing_columns)}列）→ data 全体をデータ行として扱う")
+                    columns = existing_columns
+                    column_spans = []
+                    rows = data  # 全ての data をデータ行として使用
+                    row_count = len(data)
+                else:
+                    # columns/headers がない場合
+                    # → 仮ヘッダーを生成しない（Row0汚染を起こすため）
+                    logger.info("[G-1] columns が未提供 → headersは空で渡し、rowsにdata全体を渡す（Row0はPDF由来の先頭行を維持）")
+                    columns = []          # 空ヘッダー（重要）
+                    column_spans = []
+                    rows = data           # 全ての data をデータ行として使用
+                    row_count = len(data)
 
                 return {
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
                     'source': table.get('source', 'unknown'),
-                    'columns': columns,
+                    'headers': columns,  # ★ columns → headers
                     'column_spans': column_spans,  # 結合セル情報
-                    'data': data[1:] if len(data) > 1 else [],
-                    'row_count': len(data) - 1,
+                    'rows': rows,  # ★ data → rows
+                    'row_count': row_count,
                     'col_count': len(columns)
                 }
 
@@ -314,8 +330,8 @@ class G1TableReproducer:
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
                     'source': table.get('source', 'unknown'),
-                    'columns': [f"Col{i+1}" for i in range(len(data))],
-                    'data': [[str(item) for item in data]],
+                    'headers': [],  # 空ヘッダー（仮ヘッダー生成しない）
+                    'rows': [[str(item) for item in data]],  # ★ data → rows
                     'row_count': 1,
                     'col_count': len(data)
                 }

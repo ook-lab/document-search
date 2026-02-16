@@ -80,7 +80,9 @@ class E5TextBlockVisualizer:
             logger.error("[E-5] OpenCV/PIL が利用できません")
             return self._empty_result()
 
+        logger.info("=" * 80)
         logger.info(f"[E-5] ブロック検出開始: {image_path.name}")
+        logger.info("=" * 80)
 
         try:
             # 画像を読み込み
@@ -90,32 +92,41 @@ class E5TextBlockVisualizer:
                 return self._empty_result()
 
             height, width = image.shape[:2]
-            logger.info(f"[E-5] 画像サイズ: {width}x{height}")
+            logger.info(f"[E-5] 画像サイズ: {width}x{height} pixels")
 
             # グレースケール変換
+            logger.info("[E-5] グレースケール変換実行")
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
             # 二値化
+            logger.info("[E-5] 二値化実行（Otsu法）")
             _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
             # モルフォロジー変換（テキストを繋げる）
+            logger.info(f"[E-5] モルフォロジー変換実行（kernel=15x15, iterations=2）")
             kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
             dilated = cv2.dilate(binary, kernel, iterations=2)
 
             # 輪郭抽出
+            logger.info("[E-5] 輪郭抽出実行")
             contours, _ = cv2.findContours(
                 dilated,
                 cv2.RETR_EXTERNAL,
                 cv2.CHAIN_APPROX_SIMPLE
             )
+            logger.info(f"[E-5] 輪郭数: {len(contours)}")
 
             # ブロックを抽出
             blocks = []
+            filtered_out = 0
+
             for idx, contour in enumerate(contours):
                 x, y, w, h = cv2.boundingRect(contour)
 
                 # 最小サイズフィルタ
                 if w < self.min_block_size or h < self.min_block_size:
+                    filtered_out += 1
+                    logger.debug(f"[E-5] 輪郭#{idx}: サイズ不足でスキップ (w={w}, h={h})")
                     continue
 
                 # 正規化座標
@@ -137,8 +148,13 @@ class E5TextBlockVisualizer:
                     'text_hint': ''  # TODO: OCRテキストを割り当て
                 })
 
+                logger.debug(f"[E-5] ブロック追加: type={block_type}, bbox=({x},{y})-({x+w},{y+h})")
+
+            logger.info(f"[E-5] フィルタ結果: {len(blocks)}個採用, {filtered_out}個除外")
+
             # Y座標（上から下）でソート
             blocks.sort(key=lambda b: b['bbox'][1])
+            logger.info("[E-5] ブロックをY座標順にソート")
 
             # ブロックIDを振り直し
             for idx, block in enumerate(blocks):
@@ -146,10 +162,24 @@ class E5TextBlockVisualizer:
 
             logger.info(f"[E-5] 検出完了: {len(blocks)}ブロック")
 
+            # ブロックの詳細出力
+            logger.info("[E-5] ===== 検出ブロック詳細 =====")
+            for block in blocks:
+                logger.info(f"Block {block['block_id']}: type={block['type']}, "
+                          f"bbox={block['bbox']}, bbox_norm={block['bbox_normalized']}")
+            logger.info("[E-5] ===== ブロック詳細終了 =====")
+
             # デバッグ用オーバーレイ
             overlay_path = None
             if self.draw_overlay and blocks:
+                logger.info("[E-5] デバッグオーバーレイ描画開始")
                 overlay_path = self._draw_overlay(image_path, blocks)
+
+            logger.info("=" * 80)
+            logger.info(f"[E-5] ブロック検出完了: {len(blocks)}個")
+            if overlay_path:
+                logger.info(f"  └─ オーバーレイ: {overlay_path}")
+            logger.info("=" * 80)
 
             return {
                 'blocks': blocks,
@@ -251,6 +281,7 @@ class E5TextBlockVisualizer:
             プロンプトヒント文字列
         """
         if not blocks:
+            logger.info("[E-5] ブロックなし → プロンプトヒント空")
             return ""
 
         hint_lines = ["画像内のテキストブロック構造:"]
@@ -267,7 +298,14 @@ class E5TextBlockVisualizer:
 
         hint_lines.append("\nこのブロック順序に従って情報を抽出してください。")
 
-        return "\n".join(hint_lines)
+        hint = "\n".join(hint_lines)
+
+        logger.info(f"[E-5] プロンプトヒント生成完了: {len(blocks)}ブロック, {len(hint)}文字")
+        logger.info("[E-5] ===== プロンプトヒント =====")
+        logger.info(hint)
+        logger.info("[E-5] ===== ヒント終了 =====")
+
+        return hint
 
     def _empty_result(self) -> Dict[str, Any]:
         """空の結果を返す"""

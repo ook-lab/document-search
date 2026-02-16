@@ -266,6 +266,33 @@ class B1Controller:
         try:
             result = processor.process(file_path)
             result['processor_name'] = processor_name
+
+            # 完全なログ出力
+            logger.info(f"[B-1] {processor_name} 処理完了")
+            logger.info(f"[B-1] is_structured: {result.get('is_structured', False)}")
+
+            structured_tables = result.get('structured_tables', [])
+            logger.info(f"[B-1] structured_tables: {len(structured_tables)}個")
+
+            # 各表の詳細をログ出力
+            for idx, table in enumerate(structured_tables):
+                rows = table.get('rows', len(table.get('data', [])))
+                cols = table.get('cols', len(table.get('data', [[]])[0]) if table.get('data') else 0)
+                has_source = 'source' in table
+                source = table.get('source', 'MISSING')
+                logger.info(f"[B-1]   Table {idx}: {rows}行×{cols}列, source={source}, has_source_key={has_source}")
+
+                # dataの存在確認
+                data = table.get('data')
+                if data is None:
+                    logger.warning(f"[B-1]   Table {idx}: data キーがありません！")
+                elif not isinstance(data, list):
+                    logger.warning(f"[B-1]   Table {idx}: data が list ではありません: {type(data)}")
+                elif len(data) == 0:
+                    logger.warning(f"[B-1]   Table {idx}: data が空です")
+                elif data == [[]]:
+                    logger.warning(f"[B-1]   Table {idx}: data = [[]]（空リスト）")
+
             return result
         except Exception as e:
             logger.error(f"[B-1] プロセッサ実行エラー: {e}", exc_info=True)

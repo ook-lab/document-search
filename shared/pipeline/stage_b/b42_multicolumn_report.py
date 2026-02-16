@@ -46,7 +46,8 @@ class B42MultiColumnReportProcessor:
                 'purged_image_path': str         # テキスト消去後の画像
             }
         """
-        logger.info(f"[B-42] Multi-Column Report処理開始: {file_path.name}")
+        logger.info(f"[B-42] ========== Multi-Column Report処理開始 ==========")
+        logger.info(f"[B-42] 入力ファイル: {file_path.name}")
 
         try:
             import pdfplumber
@@ -57,26 +58,49 @@ class B42MultiColumnReportProcessor:
 
         try:
             with pdfplumber.open(str(file_path)) as pdf:
+                logger.info(f"[B-42] PDF情報:")
+                logger.info(f"[B-42]   ├─ ページ数: {len(pdf.pages)}")
+                logger.info(f"[B-42]   ├─ メタデータ: {pdf.metadata}")
+
                 all_records = []
                 all_columns = []
                 all_words = []  # 削除対象の全単語
 
                 for page_num, page in enumerate(pdf.pages):
-                    logger.info(f"[B-42] ページ {page_num + 1} 処理中...")
+                    logger.info(f"[B-42] ========== ページ {page_num + 1}/{len(pdf.pages)} 処理中 ==========")
+                    logger.info(f"[B-42]   ├─ ページサイズ: {page.width:.1f} x {page.height:.1f} pt")
 
                     # 1. カラム・セグメンテーション
                     columns = self._detect_columns(page)
-                    logger.info(f"[B-42]   カラム検出: {len(columns)}個")
+                    logger.info(f"[B-42]   ├─ カラム検出: {len(columns)}個")
+
+                    # カラムの詳細ログ
+                    for col_idx, col_bbox in enumerate(columns):
+                        x0, y0, x1, y1 = col_bbox
+                        width = x1 - x0
+                        logger.info(f"[B-42]   │   ├─ カラム {col_idx + 1}: "
+                                  f"x={x0:.1f}-{x1:.1f} (幅={width:.1f}pt)")
 
                     # 2. 各カラムからレコードを抽出
+                    page_records = 0
                     for col_idx, column_bbox in enumerate(columns):
                         records = self._extract_records_from_column(
                             page, column_bbox, page_num, col_idx
                         )
                         all_records.extend(records)
-                        logger.info(f"[B-42]   カラム {col_idx}: {len(records)}レコード")
+                        page_records += len(records)
+                        logger.info(f"[B-42]   │   ├─ カラム {col_idx + 1}: {len(records)}レコード抽出")
+
+                        # レコードサンプル
+                        if records and col_idx == 0:  # 最初のカラムの最初のレコードのみ
+                            sample = records[0]
+                            logger.info(f"[B-42]   │   │   └─ サンプル: rank={sample.get('rank')}, "
+                                      f"name={sample.get('name')}, "
+                                      f"org={sample.get('organization')}, "
+                                      f"score={sample.get('score')}")
 
                     all_columns.extend(columns)
+                    logger.info(f"[B-42]   ├─ ページ総レコード: {page_records}個")
 
                     # 削除用：ページ全体の単語を収集
                     page_words = page.extract_words(
@@ -90,18 +114,38 @@ class B42MultiColumnReportProcessor:
                             'text': word['text'],
                             'bbox': (word['x0'], word['top'], word['x1'], word['bottom'])
                         })
+                    logger.info(f"[B-42]   └─ 単語（削除対象）: {len(page_words)}個")
 
                 # メタ情報
                 tags = {
+                    'source': 'stage_b',
+                    'processor': 'b42_multicolumn_report',
                     'page_count': len(pdf.pages),
                     'column_count': len(all_columns),
                     'record_count': len(all_records)
                 }
 
-                logger.info(f"[B-42] 抽出完了: {len(all_records)}レコード, 単語（削除対象）={len(all_words)}")
+                # 全ページの集計ログ
+                logger.info(f"[B-42] ========== 抽出結果サマリー ==========")
+                logger.info(f"[B-42] 総カラム数: {len(all_columns)}個")
+                logger.info(f"[B-42] 総レコード数: {len(all_records)}個")
+                logger.info(f"[B-42] 削除対象単語総数: {len(all_words)}個")
 
+                # レコードサンプル（先頭5件）
+                if all_records:
+                    logger.info(f"[B-42] レコードサンプル（先頭5件）:")
+                    for idx, rec in enumerate(all_records[:5]):
+                        logger.info(f"[B-42]   {idx + 1}. rank={rec.get('rank')}, "
+                                  f"name={rec.get('name')}, "
+                                  f"org={rec.get('organization')}, "
+                                  f"score={rec.get('score')}")
+                else:
+                    logger.warning(f"[B-42] レコードが抽出されませんでした")
+
+                # purged PDF 生成
+                logger.info(f"[B-42] ========== テキスト削除処理開始 ==========")
                 purged_pdf_path = self._purge_extracted_text(file_path, all_words)
-                logger.info(f"[B-42] テキスト削除完了: {purged_pdf_path}")
+                logger.info(f"[B-42] purged PDF 生成完了: {purged_pdf_path.name}")
 
                 return {
                     'is_structured': True,
@@ -114,7 +158,8 @@ class B42MultiColumnReportProcessor:
                 }
 
         except Exception as e:
-            logger.error(f"[B-42] 処理エラー: {e}", exc_info=True)
+            logger.error(f"[B-42] ========== 処理エラー ==========", exc_info=True)
+            logger.error(f"[B-42] エラー詳細: {e}")
             return self._error_result(str(e))
 
     def _detect_columns(self, page) -> List[Tuple[float, float, float, float]]:
@@ -127,6 +172,8 @@ class B42MultiColumnReportProcessor:
         Returns:
             [(x0, y0, x1, y1), ...] カラムのbboxリスト
         """
+        logger.info(f"[B-42] カラム検出開始")
+
         # ページ全体のサイズ
         page_width = float(page.width)
         page_height = float(page.height)
@@ -134,7 +181,10 @@ class B42MultiColumnReportProcessor:
         # 全文字のX座標を収集
         chars = page.chars
         if not chars:
+            logger.warning(f"[B-42] 文字が見つかりません。ページ全体を1カラムとして扱います")
             return [(0, 0, page_width, page_height)]
+
+        logger.info(f"[B-42]   ├─ 文字数: {len(chars)}個")
 
         x_coords = [c['x0'] for c in chars] + [c['x1'] for c in chars]
         x_coords = sorted(set(x_coords))
@@ -165,9 +215,14 @@ class B42MultiColumnReportProcessor:
                         gutters.append((gutter_start, x))
                     in_gutter = False
 
+        logger.info(f"[B-42]   ├─ ガター検出: {len(gutters)}個 (閾値={self.GUTTER_THRESHOLD}pt)")
+        for idx, (start, end) in enumerate(gutters):
+            logger.info(f"[B-42]   │   ├─ ガター {idx + 1}: x={start}-{end} (幅={end - start}pt)")
+
         # ガターでページを分割
         if not gutters:
             # ガターがない場合は全体を1カラムとする
+            logger.info(f"[B-42]   └─ ガターなし。ページ全体を1カラムとして扱います")
             return [(0, 0, page_width, page_height)]
 
         columns = []
@@ -183,6 +238,8 @@ class B42MultiColumnReportProcessor:
 
         # 最後のカラム（最後のガター〜右端）
         columns.append((gutters[-1][1], 0, page_width, page_height))
+
+        logger.info(f"[B-42]   └─ カラム分割完了: {len(columns)}カラム")
 
         return columns
 
@@ -214,6 +271,8 @@ class B42MultiColumnReportProcessor:
         """
         import re
 
+        logger.info(f"[B-42] カラム {col_idx + 1} のレコード抽出開始")
+
         x0, y0, x1, y1 = column_bbox
 
         # カラム内の文字を抽出
@@ -221,10 +280,14 @@ class B42MultiColumnReportProcessor:
         chars = cropped.chars
 
         if not chars:
+            logger.warning(f"[B-42]   カラム {col_idx + 1}: 文字が見つかりません")
             return []
+
+        logger.info(f"[B-42]   ├─ 文字数: {len(chars)}個")
 
         # 文字をY座標でグループ化（行を作成）
         lines = self._group_chars_by_y(chars)
+        logger.info(f"[B-42]   ├─ 行数: {len(lines)}行")
 
         # アンカー（順位）を検出
         anchors = []
@@ -238,8 +301,13 @@ class B42MultiColumnReportProcessor:
                     'line_index': line['index']
                 })
 
+        logger.info(f"[B-42]   ├─ アンカー（順位）: {len(anchors)}個")
+        if anchors:
+            sample_ranks = [a['rank'] for a in anchors[:5]]
+            logger.info(f"[B-42]   │   └─ サンプル: {', '.join(sample_ranks)}")
+
         if not anchors:
-            logger.warning(f"[B-42] カラム {col_idx}: アンカー（順位）が見つかりません")
+            logger.warning(f"[B-42]   └─ カラム {col_idx + 1}: アンカー（順位）が見つかりません")
             return []
 
         # 各アンカーからレコードを構築
@@ -259,6 +327,8 @@ class B42MultiColumnReportProcessor:
 
             if record:
                 records.append(record)
+
+        logger.info(f"[B-42]   └─ レコード構築完了: {len(records)}個")
 
         return records
 
@@ -415,6 +485,10 @@ class B42MultiColumnReportProcessor:
           - structured_tables が抽出済み -> 削除（Stage D の二重検出を防ぐ）
           - structured_tables が空 -> 保持（Stage D が検出できるよう残す）
         """
+        logger.info(f"[B-42] テキスト削除処理開始")
+        logger.info(f"[B-42]   ├─ 削除対象単語: {len(all_words)}個")
+        logger.info(f"[B-42]   └─ 表構造データ: {len(structured_tables) if structured_tables else 0}個")
+
         try:
             import fitz
         except ImportError:
@@ -423,6 +497,7 @@ class B42MultiColumnReportProcessor:
 
         try:
             doc = fitz.open(str(file_path))
+            logger.info(f"[B-42] PDF読み込み完了: {len(doc)}ページ")
 
             words_by_page: Dict[int, List[Dict]] = {}
             for word in all_words:
@@ -443,6 +518,7 @@ class B42MultiColumnReportProcessor:
 
                 # フェーズ1: テキスト削除（常時）
                 if page_words:
+                    logger.info(f"[B-42] ページ {page_num + 1}: {len(page_words)}単語を削除")
                     for word in page_words:
                         page.add_redact_annot(fitz.Rect(word['bbox']))
                         deleted_words += 1
@@ -454,6 +530,7 @@ class B42MultiColumnReportProcessor:
                 # フェーズ2: 表罫線削除（表構造抽出済みの場合のみ）
                 page_tables = tables_by_page.get(page_num, [])
                 if page_tables:
+                    logger.info(f"[B-42] ページ {page_num + 1}: {len(page_tables)}表の罫線を削除")
                     for table in page_tables:
                         bbox = table.get('bbox')
                         if bbox:
@@ -471,17 +548,19 @@ class B42MultiColumnReportProcessor:
             doc.save(str(purged_pdf_path))
             doc.close()
 
-            logger.info(f"[B-42] テキスト削除: {deleted_words}語")
+            logger.info(f"[B-42] ========== テキスト削除完了 ==========")
+            logger.info(f"[B-42] 削除した単語: {deleted_words}個")
             if deleted_table_graphics > 0:
-                logger.info(f"[B-42] 表罫線削除: {deleted_table_graphics}表（抽出済みのため）")
+                logger.info(f"[B-42] 削除した表罫線: {deleted_table_graphics}個（抽出済みのため）")
             else:
                 logger.info(f"[B-42] 表罫線: 保持（Stage D 検出用）")
-            logger.info(f"[B-42] purged PDF 保存: {purged_pdf_path.name}")
+            logger.info(f"[B-42] purged PDF 保存先: {purged_pdf_path}")
 
             return purged_pdf_path
 
         except Exception as e:
-            logger.error(f"[B-42] テキスト削除エラー: {e}", exc_info=True)
+            logger.error(f"[B-42] テキスト削除エラー", exc_info=True)
+            logger.error(f"[B-42] エラー詳細: {e}")
             return file_path
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """エラー結果を返す"""

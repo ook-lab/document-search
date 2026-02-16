@@ -77,13 +77,13 @@ class A5TypeAnalyzer:
                 'reason': str          # 判定理由
             }
         """
-        logger.info(f"[A-5] 書類種類判断開始: {file_path.name}")
+        logger.info(f"[A-2 TypeAnalyzer] 書類種類判断開始: {file_path.name}")
 
         # メタデータを取得
         metadata = self._extract_metadata(file_path)
 
         if not metadata:
-            logger.warning("[A-5] メタデータが取得できませんでした → SCAN判定")
+            logger.warning("[A-2 TypeAnalyzer] メタデータが取得できませんでした → SCAN判定")
             return {
                 'document_type': 'SCAN',
                 'raw_metadata': {},
@@ -91,17 +91,25 @@ class A5TypeAnalyzer:
                 'reason': 'メタデータなし'
             }
 
+        # 完全なメタデータをログ出力
+        logger.info("[A-2 TypeAnalyzer] 取得したメタデータ（全項目）:")
+        import json
+        for key, value in metadata.items():
+            logger.info(f"  ├─ {key}: {json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value}")
+
         # Creator と Producer を取得
         creator = metadata.get('Creator', '').strip()
         producer = metadata.get('Producer', '').strip()
 
-        logger.info(f"[A-5] Creator: '{creator}'")
-        logger.info(f"[A-5] Producer: '{producer}'")
+        logger.info("[A-2 TypeAnalyzer] 判定用キーフィールド:")
+        logger.info(f"  ├─ Creator: '{creator}'")
+        logger.info(f"  └─ Producer: '{producer}'")
 
         # 判定を実行
         doc_type, confidence, reason = self._classify_document(creator, producer)
 
-        logger.info(f"[A-5] 判定結果: {doc_type} (信頼度: {confidence}, 理由: {reason})")
+        logger.info(f"[A-2 TypeAnalyzer] 最終判定結果: {doc_type} (信頼度: {confidence})")
+        logger.info(f"[A-2 TypeAnalyzer] 判定理由: {reason}")
 
         return {
             'document_type': doc_type,
@@ -125,24 +133,27 @@ class A5TypeAnalyzer:
         # pdfplumberで取得を試行
         try:
             import pdfplumber
+            logger.info(f"[A-2 TypeAnalyzer] pdfplumberでメタデータ取得を試行...")
             with pdfplumber.open(str(file_path)) as pdf:
                 metadata = pdf.metadata or {}
-                logger.debug(f"[A-5] pdfplumberでメタデータ取得: {len(metadata)}項目")
+                logger.info(f"[A-2 TypeAnalyzer] pdfplumberでメタデータ取得成功: {len(metadata)}項目")
                 return metadata
         except Exception as e:
-            logger.warning(f"[A-5] pdfplumber取得失敗: {e}")
+            logger.warning(f"[A-2 TypeAnalyzer] pdfplumber取得失敗: {e}")
 
         # PyMuPDFで取得を試行
         try:
             import fitz
+            logger.info(f"[A-2 TypeAnalyzer] PyMuPDFでメタデータ取得を試行...")
             doc = fitz.open(str(file_path))
             metadata = doc.metadata or {}
             doc.close()
-            logger.debug(f"[A-5] PyMuPDFでメタデータ取得: {len(metadata)}項目")
+            logger.info(f"[A-2 TypeAnalyzer] PyMuPDFでメタデータ取得成功: {len(metadata)}項目")
             return metadata
         except Exception as e:
-            logger.warning(f"[A-5] PyMuPDF取得失敗: {e}")
+            logger.warning(f"[A-2 TypeAnalyzer] PyMuPDF取得失敗: {e}", exc_info=True)
 
+        logger.error("[A-2 TypeAnalyzer] すべてのメタデータ取得方法が失敗しました")
         return {}
 
     def _classify_document(
@@ -165,44 +176,63 @@ class A5TypeAnalyzer:
         producer_lower = producer.lower()
         combined = f"{creator_lower} {producer_lower}"
 
+        logger.info("[A-2 TypeAnalyzer] パターンマッチング開始:")
+        logger.info(f"  ├─ 検索対象: '{combined}'")
+
         # GOODNOTES判定（最優先：特化型のため）
+        logger.debug("  ├─ GOODNOTES パターンチェック...")
         for pattern in self.GOODNOTES_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ GOODNOTES 一致: パターン '{pattern}'")
                 return 'GOODNOTES', 'HIGH', f'キーワード一致: {pattern}'
 
         # GOOGLE_DOCS判定
+        logger.debug("  ├─ GOOGLE_DOCS パターンチェック...")
         for pattern in self.GOOGLE_DOCS_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ GOOGLE_DOCS 一致: パターン '{pattern}'")
                 return 'GOOGLE_DOCS', 'HIGH', f'キーワード一致: {pattern}'
 
         # GOOGLE_SHEETS判定
+        logger.debug("  ├─ GOOGLE_SHEETS パターンチェック...")
         for pattern in self.GOOGLE_SHEETS_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ GOOGLE_SHEETS 一致: パターン '{pattern}'")
                 return 'GOOGLE_SHEETS', 'HIGH', f'キーワード一致: {pattern}'
 
         # WORD判定
+        logger.debug("  ├─ WORD パターンチェック...")
         for pattern in self.WORD_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ WORD 一致: パターン '{pattern}'")
                 return 'WORD', 'HIGH', f'キーワード一致: {pattern}'
 
         # INDESIGN判定
+        logger.debug("  ├─ INDESIGN パターンチェック...")
         for pattern in self.INDESIGN_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ INDESIGN 一致: パターン '{pattern}'")
                 return 'INDESIGN', 'HIGH', f'キーワード一致: {pattern}'
 
         # EXCEL判定
+        logger.debug("  ├─ EXCEL パターンチェック...")
         for pattern in self.EXCEL_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ EXCEL 一致: パターン '{pattern}'")
                 return 'EXCEL', 'HIGH', f'キーワード一致: {pattern}'
 
         # SCAN判定
+        logger.debug("  ├─ SCAN パターンチェック...")
         for pattern in self.SCAN_KEYWORDS:
             if re.search(pattern, combined, re.IGNORECASE):
+                logger.info(f"  ✓ SCAN 一致: パターン '{pattern}'")
                 return 'SCAN', 'HIGH', f'スキャナキーワード一致: {pattern}'
 
         # メタデータが空の場合はSCAN
         if not creator and not producer:
+            logger.warning("  ✗ すべてのパターン不一致: Creator/Producer が空 → SCAN（HIGH）")
             return 'SCAN', 'HIGH', 'Creator/Producer が空'
 
         # 判定不能の場合はSCANとして扱う（安全側に倒す）
+        logger.warning(f"  ✗ すべてのパターン不一致: Creator='{creator}', Producer='{producer}' → SCAN（LOW）")
         return 'SCAN', 'LOW', f'判定不能 (Creator: {creator}, Producer: {producer})'

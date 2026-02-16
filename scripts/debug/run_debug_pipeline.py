@@ -64,7 +64,7 @@ from shared.pipeline.stage_d.d10_image_slicer import D10ImageSlicer
 # サブステージ クラスのインポート（Stage E）
 from shared.pipeline.stage_e.e1_ocr_scouter import E1OcrScouter
 from shared.pipeline.stage_e.e5_text_block_visualizer import E5TextBlockVisualizer
-from shared.pipeline.stage_e.e20_context_extractor import E20ContextExtractor
+from shared.pipeline.stage_e.e21_context_extractor import E21ContextExtractor
 from shared.pipeline.stage_e.e30_table_structure_extractor import E30TableStructureExtractor
 
 # サブステージ クラスのインポート（Stage F）
@@ -72,10 +72,8 @@ from shared.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
 from shared.pipeline.stage_f.f3_smart_date_normalizer import F3SmartDateNormalizer
 from shared.pipeline.stage_f.f5_logical_table_joiner import F5LogicalTableJoiner
 
-# サブステージ クラスのインポート（Stage G）
-from shared.pipeline.stage_g.g1_table_reproducer import G1TableReproducer
-from shared.pipeline.stage_g.g3_block_arranger import G3BlockArranger
-from shared.pipeline.stage_g.g5_noise_eliminator import G5NoiseEliminator
+# Stage G コントローラー（G11/G12/G21/G22 含む全処理）
+from shared.pipeline.stage_g import G1Controller as G1ControllerFull
 
 
 class DebugPipeline:
@@ -91,7 +89,7 @@ class DebugPipeline:
         "D": ["D3", "D5", "D8", "D9", "D10"],
         "E": ["E1", "E5", "E20", "E30"],
         "F": ["F1", "F3", "F5"],
-        "G": ["G1", "G3", "G5"],
+        "G": ["G1", "G3", "G5", "G11", "G12", "G21", "G22"],
     }
 
     # 全サブステージの実行順序（フラット）
@@ -101,7 +99,7 @@ class DebugPipeline:
         "D3", "D5", "D8", "D9", "D10",
         "E1", "E5", "E20", "E30",
         "F1", "F3", "F5",
-        "G1", "G3", "G5",
+        "G1", "G3", "G5", "G11", "G12", "G21", "G22",
     ]
 
     # サブステージ → 親ステージ
@@ -141,7 +139,7 @@ class DebugPipeline:
         _gemini_key = os.environ.get('GOOGLE_AI_API_KEY')
         self._e1 = E1OcrScouter()
         self._e5 = E5TextBlockVisualizer()
-        self._e20 = E20ContextExtractor(api_key=_gemini_key)
+        self._e20 = E21ContextExtractor(api_key=_gemini_key)
         self._e30 = E30TableStructureExtractor(api_key=_gemini_key)
 
         # Stage F サブステージ
@@ -149,10 +147,8 @@ class DebugPipeline:
         self._f3 = F3SmartDateNormalizer(api_key=_gemini_key)
         self._f5 = F5LogicalTableJoiner()
 
-        # Stage G サブステージ
-        self._g1 = G1TableReproducer()
-        self._g3 = G3BlockArranger()
-        self._g5 = G5NoiseEliminator()
+        # Stage G: G1Controller（G11/G12/G21/G22 含む全処理）
+        self._g_controller = G1ControllerFull(api_key=_gemini_key)
 
         logger.info(f"DebugPipeline initialized: uuid={uuid}, output_dir={self.output_dir}")
 
@@ -433,8 +429,6 @@ class DebugPipeline:
             return
 
         purged_pdf_path = stage_b.get('purged_pdf_path')
-        purged_image_paths = stage_b.get('purged_image_paths', [])
-        purged_image_path = Path(purged_image_paths[0]) if purged_image_paths else None
         b_tables = stage_b.get('structured_tables', [])  # B抽出済み表（D3フィルタ用）
 
         if not purged_pdf_path:
@@ -444,6 +438,47 @@ class DebugPipeline:
 
         page_num = 0
 
+        # ════════════════════════════════════════════════════════════════
+        # 【統一 PNG 生成】全ページを一度だけ生成（D と E で共有）
+        # output_dir 直下に保存（他のファイルと同じ階層）
+        # ════════════════════════════════════════════════════════════════
+        logger.info("[Stage D] PNG 生成開始")
+
+        import fitz
+        doc = fitz.open(purged_pdf_path)
+        page_count = len(doc)
+        logger.info(f"[Stage D] ページ数: {page_count}")
+
+        for page_idx in range(page_count):
+            page_img_path = self.output_dir / f"purged_page_{page_idx}.png"
+            if not page_img_path.exists():
+                page = doc.load_page(page_idx)
+                pix = page.get_pixmap(dpi=150)
+                pix.save(str(page_img_path))
+                logger.info(f"[PNG生成] purged_page_{page_idx}.png 完了")
+        doc.close()
+
+        purged_image_path = self.output_dir / f"purged_page_{page_num}.png"
+        logger.info(f"[Stage D] 使用画像: {purged_image_path.name}")
+        # ════════════════════════════════════════════════════════════════
+
+        # D1 Controller を使用して統合処理
+        if "D3" not in active_set and "D5" not in active_set and "D8" not in active_set and "D9" not in active_set and "D10" not in active_set:
+            # サブステージ指定がない場合は D1 Controller を直接使用
+            logger.info("[Stage D] D1 Controller で統合実行...")
+            from shared.pipeline.stage_d import D1Controller
+            d1 = D1Controller()
+            stage_d = d1.process(
+                pdf_path=Path(purged_pdf_path),
+                purged_image_path=purged_image_path,  # 既存の画像を渡す
+                page_num=page_num,
+                output_dir=self.output_dir
+            )
+            self.save_stage("D", stage_d)
+            ctx["D"] = stage_d
+            return
+
+        # サブステージ個別実行の場合（デバッグ用）
         # D3: ベクトル罫線抽出（B抽出済み表領域はスキップ）
         d3 = self._get_substage_data("D3", ctx)
         if self._should_run("D3", active_set, force, d3 is not None):
@@ -455,13 +490,9 @@ class DebugPipeline:
         # D5: ラスター罫線検出
         d5 = self._get_substage_data("D5", ctx)
         if self._should_run("D5", active_set, force, d5 is not None):
-            if purged_image_path and purged_image_path.exists():
-                logger.info("[D5] ラスター罫線検出 実行中...")
-                d5 = self._d5.detect(purged_image_path)
-                self.save_substage("D5", d5)
-            else:
-                logger.info("[D5] スキップ: 画像なし")
-                d5 = None
+            logger.info("[D5] ラスター罫線検出 実行中...")
+            d5 = self._d5.detect(purged_image_path)
+            self.save_substage("D5", d5)
         ctx["D5"] = d5
 
         # D8: 格子解析（不可視線フィルタ有効）
@@ -488,15 +519,11 @@ class DebugPipeline:
         # D10: 画像分割
         d10 = self._get_substage_data("D10", ctx)
         if self._should_run("D10", active_set, force, d10 is not None):
-            if purged_image_path and purged_image_path.exists():
-                logger.info("[D10] 画像分割 実行中...")
-                d10 = self._d10.slice(
-                    purged_image_path, ctx.get("D8"), ctx.get("D9"), self.output_dir
-                )
-                self.save_substage("D10", d10)
-            else:
-                logger.info("[D10] スキップ: 画像なし")
-                d10 = {'tables': [], 'non_table_image_path': '', 'metadata': {}}
+            logger.info("[D10] 画像分割 実行中...")
+            d10 = self._d10.slice(
+                purged_image_path, ctx.get("D8"), ctx.get("D9"), self.output_dir
+            )
+            self.save_substage("D10", d10)
         ctx["D10"] = d10
 
         # Stage D 結果を合成・保存
@@ -549,38 +576,21 @@ class DebugPipeline:
             logger.info("[E1] OCR Scouter 実行中...")
             e1 = {'non_table_scout': None, 'table_scouts': [], 'page_scout': {}}
 
-            # ページ単位スカウト（白紙ページ含む）- purged_pdf から自力で確定
-            purged_pdf_path = stage_b.get('purged_pdf_path', '')
-            if purged_pdf_path and Path(purged_pdf_path).exists():
-                logger.info("[E1] ページ単位スカウト実行（purged_pdf から自力確定）...")
+            # ページ単位スカウト（Stage D で生成済みの画像を使用）
+            # output_dir 直下の purged_page_*.png を検索
+            page_images = list(self.output_dir.glob("purged_page_*.png"))
+            if page_images:
+                logger.info(f"[E1] ページ単位スカウト実行（Stage D 生成画像を使用）...")
                 try:
-                    import fitz
-                    # page_count を確定
-                    doc = fitz.open(purged_pdf_path)
-                    page_count = len(doc)
-                    doc.close()
+                    page_count = len(page_images)
+                    logger.info(f"[E1] 検出画像: {page_count}ページ")
 
-                    # purged_images_dir を確定
-                    purged_images_dir = self.output_dir / "purged_images"
-                    purged_images_dir.mkdir(parents=True, exist_ok=True)
-
-                    # ページをレンダリング
-                    doc = fitz.open(purged_pdf_path)
-                    for page_idx in range(page_count):
-                        page_img_path = purged_images_dir / f"e1_page_{page_idx}.png"
-                        if not page_img_path.exists():
-                            page = doc.load_page(page_idx)
-                            pix = page.get_pixmap(dpi=150)
-                            pix.save(str(page_img_path))
-                            logger.info(f"[E1] e1_page_{page_idx}.png 生成完了")
-                    doc.close()
-
-                    # scout_all_pages 実行
-                    e1['page_scout'] = self._e1.scout_all_pages(purged_images_dir, page_count)
+                    # scout_all_pages 実行（output_dir を渡す）
+                    e1['page_scout'] = self._e1.scout_all_pages(self.output_dir, page_count)
                 except Exception as e:
                     logger.error(f"[E1] ページスカウトエラー: {e}", exc_info=True)
             else:
-                logger.warning(f"[E1] purged_pdf_path が無効: {purged_pdf_path}")
+                logger.warning(f"[E1] purged_page_*.png が見つかりません: {self.output_dir}")
 
             # 既存の table/non-table スカウト（互換性維持）
             if non_table_image and Path(non_table_image).exists():
@@ -747,18 +757,19 @@ class DebugPipeline:
             'tasks': f1.get('tasks', []),
             'notices': f1.get('notices', []),
             'consolidated_tables': consolidated_tables,
-            'raw_integrated_text': f1.get('raw_text', ''),
+            'raw_integrated_text': f1.get('raw_integrated_text', ''),
+            'non_table_text': f1.get('non_table_text', ''),
             'metadata': metadata
         }
         self.save_stage("F", stage_f)
         ctx["F"] = stage_f
 
     # ════════════════════════════════════════
-    # Stage G（サブステージ: G1→G3→G5）
+    # Stage G（G1Controller: G1→G3→G5→G11→G12→G21→G22）
     # ════════════════════════════════════════
 
     def _exec_stage_g(self, ctx, active_set, force):
-        g_subs = {"G1", "G3", "G5"}
+        g_subs = {"G1", "G3", "G5", "G11", "G12", "G21", "G22", "G"}
         if not (g_subs & active_set):
             ctx["G"] = self.load_stage("G")
             return
@@ -769,62 +780,24 @@ class DebugPipeline:
             ctx["G"] = {'success': False, 'error': 'No Stage F data'}
             return
 
-        # G1: Table Reproducer
-        g1 = self.load_substage("G1")
-        if self._should_run("G1", active_set, force, g1 is not None):
-            logger.info("[G1] Table Reproducer 実行中...")
-            g1 = self._g1.reproduce(stage_f.get('consolidated_tables', []))
-            self.save_substage("G1", g1)
-        ctx["G1"] = g1
-
-        ui_tables = (g1 or {}).get('ui_tables', [])
-
-        # G3: Block Arranger
-        g3 = self.load_substage("G3")
-        if self._should_run("G3", active_set, force, g3 is not None):
-            logger.info("[G3] Block Arranger 実行中...")
-            g3 = self._g3.arrange(
-                raw_text=stage_f.get('raw_integrated_text', ''),
-                events=stage_f.get('normalized_events', []),
-                tasks=stage_f.get('tasks', []),
-                notices=stage_f.get('notices', [])
-            )
-            self.save_substage("G3", g3)
-        ctx["G3"] = g3
-
-        blocks = (g3 or {}).get('blocks', [])
-
-        # G5: Noise Eliminator
-        g5 = self.load_substage("G5")
-        if self._should_run("G5", active_set, force, g5 is not None):
-            logger.info("[G5] Noise Eliminator 実行中...")
-            g5 = self._g5.eliminate(
-                stage_f_result=stage_f,
-                ui_tables=ui_tables,
-                blocks=blocks
-            )
-            self.save_substage("G5", g5)
-        ctx["G5"] = g5
-
-        # Stage G 結果を合成・保存
-        ui_data = (g5 or {}).get('ui_data', {})
-        stage_g = {
-            'success': (g5 or {}).get('success', False),
-            'ui_data': ui_data,
-            'metadata': {
-                'stage': 'G',
-                'conversion_count': (g1 or {}).get('conversion_count', 0),
-                'block_count': (g3 or {}).get('block_count', 0),
-                'total_tokens': stage_f.get('metadata', {}).get('total_tokens', 0)
-            }
-        }
+        logger.info("[Stage G] G1Controller 実行中（G1→G3→G5→G11→G12→G21→G22）...")
+        # ★G-1はF-5の結果のみを受け取る（直前ステージのみ）
+        stage_g = self._g_controller.process(f5_result=stage_f)
         self.save_stage("G", stage_g)
         ctx["G"] = stage_g
+
+        ui_data = stage_g.get('ui_data', {})
+        final_metadata = stage_g.get('final_metadata', {})
 
         if stage_g.get('success') and ui_data:
             ui_path = self.output_dir / f"{self.uuid}_ui_data.json"
             self._save_json(ui_path, ui_data)
             logger.info(f"[Stage G] UI用データを保存: {ui_path}")
+
+        if stage_g.get('success') and final_metadata:
+            meta_path = self.output_dir / f"{self.uuid}_final_metadata.json"
+            self._save_json(meta_path, final_metadata)
+            logger.info(f"[Stage G] final_metadata（G11/G12/G21/G22）を保存: {meta_path}")
 
 
 def main():

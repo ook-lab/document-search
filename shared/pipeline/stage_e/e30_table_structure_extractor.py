@@ -1,5 +1,5 @@
 """
-E-30: Table Structure Extractor（表構造専用 - Gemini 2.5 Flash）
+E-30: Table Structure Extractor（表構造専用 - Gemini 2.5 Flash-lite）
 
 表画像からセル/行/列/bboxを抽出する「構造専用」コンポーネント。
 セルの値・テキストは取得しない（E-31 が担当）。
@@ -27,10 +27,20 @@ class E30TableStructureExtractor:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-flash"
+        model_name: str = "gemini-2.5-flash-lite",
+        next_stage=None
     ):
+        """
+        E-30 初期化（チェーンパターン）
+
+        Args:
+            api_key: Google AI API Key
+            model_name: モデル名
+            next_stage: 次のステージ（E-31）のインスタンス
+        """
         self.model_name = model_name
         self.api_key = api_key
+        self.next_stage = next_stage
 
         if not GENAI_AVAILABLE:
             logger.error("[E-30] google-generativeai が必要です")
@@ -93,17 +103,35 @@ class E30TableStructureExtractor:
         else:
             table_id = "E30_Unknown"
 
+        logger.info("=" * 80)
         logger.info(f"[E-30] 構造抽出開始: {image_path.name} table_id={table_id}")
+        logger.info(f"[E-30] page_index={page_index}, table_index={table_index}")
+        logger.info("=" * 80)
 
         try:
             with open(image_path, 'rb') as f:
                 image_data = f.read()
+
+            logger.info(f"[E-30] 表画像サイズ: {len(image_data)} bytes")
 
             prompt = self._build_structure_prompt(cell_map)
 
             logger.info(f"[E-30] モデル: {self.model_name}")
             logger.info(f"[E-30] プロンプト長: {len(prompt)}文字")
 
+            # Stage D cell_map のヒント情報
+            if cell_map:
+                rows_hint = max((c.get('row', 0) for c in cell_map), default=0) + 1
+                cols_hint = max((c.get('col', 0) for c in cell_map), default=0) + 1
+                logger.info(f"[E-30] Stage D ヒント: {rows_hint}行 × {cols_hint}列, {len(cell_map)}セル")
+            else:
+                logger.info(f"[E-30] Stage D ヒント: なし")
+
+            logger.info("[E-30] ===== AI プロンプト全文 =====")
+            logger.info(prompt)
+            logger.info("[E-30] ===== プロンプト終了 =====")
+
+            logger.info("[E-30] Gemini API 呼び出し開始...")
             response = self.model.generate_content([
                 prompt,
                 {
@@ -111,17 +139,36 @@ class E30TableStructureExtractor:
                     'data': image_data
                 }
             ])
+            logger.info("[E-30] Gemini API 呼び出し完了")
 
             raw_text = response.text
             logger.info(f"[E-30] レスポンス長: {len(raw_text)}文字")
+            logger.info("[E-30] ===== AI レスポンス全文 =====")
+            logger.info(raw_text)
+            logger.info("[E-30] ===== レスポンス終了 =====")
 
             cells, n_rows, n_cols = self._parse_structure_response(raw_text, cell_map)
 
+            logger.info(f"[E-30] パース結果: {n_rows}行 × {n_cols}列, {len(cells)}セル")
+
+            # セル構造のサンプル出力
+            if cells:
+                logger.info("[E-30] セル構造サンプル（最初の5セル）:")
+                for idx, cell in enumerate(cells[:5]):
+                    logger.info(f"  ├─ R{cell.get('row')}C{cell.get('col')}: "
+                              f"bbox=({cell.get('x0'):.3f},{cell.get('y0'):.3f})-({cell.get('x1'):.3f},{cell.get('y1'):.3f}), "
+                              f"span={cell.get('rowspan')}x{cell.get('colspan')}")
+
             tokens_used = (len(prompt) + len(raw_text)) // 4
 
+            logger.info("=" * 80)
             logger.info(f"[E-30] 構造抽出完了: {n_rows}行 × {n_cols}列, {len(cells)}セル")
+            logger.info(f"  ├─ モデル: {self.model_name}")
+            logger.info(f"  ├─ トークン: 約{tokens_used}")
+            logger.info(f"  └─ route: E30_STRUCTURE_ONLY")
+            logger.info("=" * 80)
 
-            return {
+            struct_result = {
                 'success': True,
                 'table_id': table_id,
                 'cells': cells,
@@ -132,26 +179,48 @@ class E30TableStructureExtractor:
                 'tokens_used': tokens_used
             }
 
+            # ★チェーン: 次のステージ（E-31）を呼び出す
+            if self.next_stage:
+                logger.info("[E-30] → 次のステージ（E-31）を呼び出します")
+                return self.next_stage.extract_cells(
+                    image_path=image_path,
+                    cells=cells,
+                    struct_result=struct_result
+                )
+
+            return struct_result
+
         except Exception as e:
             logger.error(f"[E-30] 構造抽出エラー: {e}", exc_info=True)
-            return self._error_result(str(e), page_index, table_index)
+            error_result = self._error_result(str(e), page_index, table_index)
+
+            # ★チェーン: エラー時もE-31を呼ぶ
+            if self.next_stage:
+                logger.info("[E-30] → エラー後もE-31を呼び出します")
+                return self.next_stage.extract_cells(
+                    image_path=image_path,
+                    cells=[],
+                    struct_result=error_result
+                )
+
+            return error_result
 
     def _build_structure_prompt(self, cell_map: Optional[List[Dict]]) -> str:
-        """構造専用プロンプトを構築（セル値は要求しない）"""
+        """構造とテキストを同時に取得するプロンプト"""
         hint = ""
         if cell_map:
             rows = max((c.get('row', 0) for c in cell_map), default=0) + 1
             cols = max((c.get('col', 0) for c in cell_map), default=0) + 1
             hint = f"\n参考情報（Stage D 線分解析）：推定 {rows}行 × {cols}列\n"
 
-        return f"""あなたは表画像の構造を解析する専門家です。
-添付された表画像を分析し、セル構造のみをJSON形式で出力してください。
+        return f"""あなたは表画像を解析する専門家です。
+添付された表画像から、構造とテキストの両方をJSON形式で出力してください。
 {hint}
 【重要な指示】
-- セルの「値・内容・テキスト」は一切出力しないでください
-- セルの「位置（bbox）」「行番号」「列番号」「結合情報」のみを出力します
+- セルの「位置（bbox）」「行番号」「列番号」「結合情報」「テキスト内容」を出力
 - 座標は表画像全体を [0.0, 1.0] に正規化してください（左上が(0,0)、右下が(1,1)）
 - セル結合（rowspan/colspan）は必ず記録してください
+- 各セルのテキスト内容を正確に読み取ってください
 
 【出力形式（JSON のみ）】
 ```json
@@ -159,8 +228,8 @@ class E30TableStructureExtractor:
   "n_rows": 行数,
   "n_cols": 列数,
   "cells": [
-    {{"row": 0, "col": 0, "x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 0.25, "rowspan": 1, "colspan": 1}},
-    {{"row": 0, "col": 1, "x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 0.25, "rowspan": 1, "colspan": 2}},
+    {{"row": 0, "col": 0, "x0": 0.0, "y0": 0.0, "x1": 0.5, "y1": 0.25, "rowspan": 1, "colspan": 1, "text": "セルのテキスト"}},
+    {{"row": 0, "col": 1, "x0": 0.5, "y0": 0.0, "x1": 1.0, "y1": 0.25, "rowspan": 1, "colspan": 2, "text": "別のセル"}},
     ...
   ]
 }}

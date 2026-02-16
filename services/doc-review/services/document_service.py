@@ -166,7 +166,7 @@ def update_stage_a_result(
     Args:
         db_client: DatabaseClient インスタンス
         document_id: ドキュメントID
-        a_result: Stage A の結果（origin_app, layout_profile, pdf_creator, pdf_producer など）
+        a_result: Stage A の結果（origin_app, layout_profile, pdf_creator, pdf_producer, gatekeeper など）
 
     Returns:
         成功した場合 True、失敗した場合 False
@@ -179,19 +179,39 @@ def update_stage_a_result(
         pdf_creator = raw_metadata.get('Creator', '')
         pdf_producer = raw_metadata.get('Producer', '')
 
-        # Supabase クライアントを直接使用
-        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update({
+        # Gatekeeper 結果を取得（a5_gatekeeper または gatekeeper）
+        gatekeeper_result = a_result.get('a5_gatekeeper') or a_result.get('gatekeeper') or {}
+
+        # 更新データを構築
+        update_data = {
             'pdf_creator': pdf_creator,
             'pdf_producer': pdf_producer,
             'origin_app': a_result.get('origin_app'),
             'layout_profile': a_result.get('layout_profile'),
-            'doc_type': a_result.get('document_type')  # 後方互換性
-        }).eq('id', document_id).execute()
+            'doc_type': a_result.get('document_type'),  # 後方互換性
+            # Gatekeeper フィールド
+            'gate_decision': gatekeeper_result.get('decision'),
+            'gate_block_code': gatekeeper_result.get('block_code'),
+            'gate_block_reason': gatekeeper_result.get('block_reason'),
+            'origin_confidence': a_result.get('confidence'),
+            'gate_policy_version': gatekeeper_result.get('policy_version'),
+        }
+
+        # Supabase クライアントを直接使用
+        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update(
+            update_data
+        ).eq('id', document_id).execute()
 
         if response.data:
             logger.info(f"[DocumentService] Stage A 結果保存成功: {document_id}")
             logger.info(f"  ├─ origin_app: {a_result.get('origin_app')}")
+            logger.info(f"  ├─ origin_confidence: {a_result.get('confidence')}")
             logger.info(f"  ├─ layout_profile: {a_result.get('layout_profile')}")
+            logger.info(f"  ├─ gate_decision: {gatekeeper_result.get('decision')}")
+            if gatekeeper_result.get('decision') == 'BLOCK':
+                logger.info(f"  ├─ gate_block_code: {gatekeeper_result.get('block_code')}")
+                logger.info(f"  ├─ gate_block_reason: {gatekeeper_result.get('block_reason')}")
+            logger.info(f"  ├─ gate_policy_version: {gatekeeper_result.get('policy_version')}")
             logger.info(f"  ├─ pdf_creator: {pdf_creator[:50]}..." if len(pdf_creator) > 50 else f"  ├─ pdf_creator: {pdf_creator}")
             logger.info(f"  └─ pdf_producer: {pdf_producer[:50]}..." if len(pdf_producer) > 50 else f"  └─ pdf_producer: {pdf_producer}")
             return True
@@ -207,7 +227,8 @@ def update_stage_a_result(
 def update_stage_g_result(
     db_client,
     document_id: str,
-    ui_data: Dict[str, Any]
+    ui_data: Dict[str, Any],
+    final_metadata: Optional[Dict[str, Any]] = None
 ) -> bool:
     """
     Stage G の解析結果を DB に保存
@@ -216,6 +237,7 @@ def update_stage_g_result(
         db_client: DatabaseClient インスタンス
         document_id: ドキュメントID
         ui_data: Stage G の ui_data（クリーンなUI用データ）
+        final_metadata: G11/G12/G21/G22 の出力
 
     Returns:
         成功した場合 True、失敗した場合 False
@@ -223,11 +245,32 @@ def update_stage_g_result(
     try:
         logger.info(f"[DocumentService] Stage G 結果を保存: {document_id}")
 
-        # Supabase クライアントを直接使用
-        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update({
+        update_data = {
             'stage_g_structured_data': ui_data,
             'processing_status': 'completed'  # 構造化完了
-        }).eq('id', document_id).execute()
+        }
+
+        # ★それぞれの結果を個別のカラムに保存
+        if final_metadata:
+            g11_output = final_metadata.get('g11_output', [])
+            g12_output = final_metadata.get('g12_output', [])
+            g21_output = final_metadata.get('g21_output', [])
+            g22_output = final_metadata.get('g22_output', {})
+
+            update_data['g11_structured_tables'] = g11_output if g11_output else None
+            update_data['g12_table_analyses'] = g12_output if g12_output else None
+            update_data['g21_articles'] = g21_output if g21_output else None
+            update_data['g22_ai_extracted'] = g22_output if g22_output else None
+
+            logger.info(f"[DocumentService] G-11: {len(g11_output)}表")
+            logger.info(f"[DocumentService] G-12: {len(g12_output)}表")
+            logger.info(f"[DocumentService] G-21: {len(g21_output)}記事")
+            logger.info(f"[DocumentService] G-22: イベント{len(g22_output.get('calendar_events', []))}件")
+
+        # Supabase クライアントを直接使用
+        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update(
+            update_data
+        ).eq('id', document_id).execute()
 
         if response.data:
             logger.info(f"[DocumentService] Stage G 結果保存成功: {document_id}")

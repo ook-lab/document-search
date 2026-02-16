@@ -119,6 +119,27 @@ class E1OcrScouter:
             # スキップ判定
             should_skip = char_count < self.min_char_threshold
 
+            # 判定根拠をログ出力
+            logger.info(f"[E-1] 文字数測定詳細:")
+            logger.info(f"  ├─ 文字数: {char_count} 文字")
+            logger.info(f"  ├─ 閾値設定: 最小={self.min_char_threshold}, 低密度={self.low_density_threshold}, 高密度={self.high_density_threshold}")
+
+            # 密度判定の根拠
+            if char_count < self.min_char_threshold:
+                logger.info(f"  ├─ 密度判定: 'none' (文字数 {char_count} < 最小閾値 {self.min_char_threshold})")
+            elif char_count < self.low_density_threshold:
+                logger.info(f"  ├─ 密度判定: 'low' (文字数 {char_count} < 低密度閾値 {self.low_density_threshold})")
+            elif char_count < self.high_density_threshold:
+                logger.info(f"  ├─ 密度判定: 'medium' (文字数 {char_count} < 高密度閾値 {self.high_density_threshold})")
+            else:
+                logger.info(f"  ├─ 密度判定: 'high' (文字数 {char_count} >= 高密度閾値 {self.high_density_threshold})")
+
+            # should_skip の判定根拠
+            if should_skip:
+                logger.info(f"  └─ スキップ判定: YES (文字数 {char_count} < 最小閾値 {self.min_char_threshold} → 処理スキップ)")
+            else:
+                logger.info(f"  └─ スキップ判定: NO (文字数 {char_count} >= 最小閾値 {self.min_char_threshold} → 処理継続)")
+
             # 信頼度を簡易的に計算（文字数ベース）
             confidence = min(1.0, char_count / self.high_density_threshold)
 
@@ -223,7 +244,7 @@ class E1OcrScouter:
         total_chars = 0
 
         for page_idx in range(page_count):
-            page_img_path = purged_images_dir / f"e1_page_{page_idx}.png"
+            page_img_path = purged_images_dir / f"purged_page_{page_idx}.png"
 
             if not page_img_path.exists():
                 logger.warning(f"[E-1] page={page_idx} 画像なし")
@@ -296,6 +317,24 @@ class E1OcrScouter:
                     'status': 'error',
                     'skip_reason': str(e)
                 })
+
+        # 全ページ集計の詳細をログ出力
+        ok_pages = sum(1 for p in per_page if p.get('status') == 'ok')
+        blank_pages = sum(1 for p in per_page if p.get('status') == 'blank_skip')
+        error_pages = sum(1 for p in per_page if p.get('status') == 'error')
+
+        logger.info("=" * 80)
+        logger.info("[E-1] 全ページスカウト集計:")
+        logger.info("=" * 80)
+        logger.info(f"  ├─ 総ページ数: {page_count}")
+        logger.info(f"  ├─ 処理済み: {len(per_page)}")
+        logger.info(f"  ├─ 正常: {ok_pages} ページ")
+        logger.info(f"  ├─ 白紙スキップ: {blank_pages} ページ")
+        logger.info(f"  ├─ エラー: {error_pages} ページ")
+        logger.info(f"  ├─ 総単語数: {total_words}")
+        logger.info(f"  ├─ 総文字数: {total_chars}")
+        logger.info(f"  └─ 平均文字数/ページ: {total_chars // ok_pages if ok_pages > 0 else 0}")
+        logger.info("=" * 80)
 
         logger.info(f"[E-1] 全ページスカウト完了: pages_total={page_count} pages_processed={len(per_page)} total_chars={total_chars}")
 

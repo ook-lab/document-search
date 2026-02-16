@@ -461,9 +461,10 @@ def get_queue_status_api():
                 'failed': data.get('failed_count', 0)
             }
 
-        # queuedドキュメント一覧を取得
+        # queuedドキュメント一覧を取得（Gatekeeper情報を含む）
         query = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, title, file_name, workspace, doc_type, attempt_count, created_at'
+            'id, title, file_name, workspace, doc_type, attempt_count, created_at, '
+            'gate_decision, gate_block_code, gate_block_reason, origin_app, origin_confidence'
         ).eq('processing_status', 'queued')
 
         if workspace and workspace != 'all':
@@ -730,6 +731,106 @@ def remove_from_queue(doc_id):
 
     except Exception as e:
         logger.error(f"キューから削除エラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/blocked-documents', methods=['GET'])
+def get_blocked_documents():
+    """Gatekeeperによってブロックされたドキュメント一覧を取得
+
+    【責務】
+    - gate_decision='BLOCK' のドキュメント一覧を取得
+    - ブロック理由と詳細情報を含む
+
+    【パラメータ】
+    - workspace: 対象ワークスペース（省略時は全体）
+    - limit: 取得件数上限（デフォルト100、最大500）
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        workspace = request.args.get('workspace', 'all')
+        limit = min(int(request.args.get('limit', 100)), 500)
+
+        # ブロックされたドキュメントを取得
+        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, title, file_name, workspace, doc_type, created_at, updated_at, '
+            'gate_decision, gate_block_code, gate_block_reason, '
+            'origin_app, origin_confidence, layout_profile, gate_policy_version'
+        ).eq('gate_decision', 'BLOCK')
+
+        if workspace and workspace != 'all':
+            query = query.eq('workspace', workspace)
+
+        result = query.order('updated_at', desc=True).limit(limit).execute()
+        blocked_docs = result.data or []
+
+        # ブロック理由別に集計
+        block_stats = {}
+        for doc in blocked_docs:
+            code = doc.get('gate_block_code', 'UNKNOWN')
+            block_stats[code] = block_stats.get(code, 0) + 1
+
+        return jsonify({
+            'success': True,
+            'blocked_docs': blocked_docs,
+            'count': len(blocked_docs),
+            'block_stats': block_stats,
+            'workspace': workspace
+        })
+
+    except Exception as e:
+        logger.error(f"ブロックドキュメント取得エラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/failed-documents', methods=['GET'])
+def get_failed_documents():
+    """処理失敗したドキュメント一覧を取得
+
+    【責務】
+    - processing_status='failed' のドキュメント一覧を取得
+    - エラーメッセージと詳細情報を含む
+
+    【パラメータ】
+    - workspace: 対象ワークスペース（省略時は全体）
+    - limit: 取得件数上限（デフォルト100、最大500）
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        workspace = request.args.get('workspace', 'all')
+        limit = min(int(request.args.get('limit', 100)), 500)
+
+        # 失敗したドキュメントを取得
+        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, title, file_name, workspace, doc_type, created_at, updated_at, '
+            'error_message, attempt_count, metadata, '
+            'origin_app, origin_confidence, layout_profile'
+        ).eq('processing_status', 'failed')
+
+        if workspace and workspace != 'all':
+            query = query.eq('workspace', workspace)
+
+        result = query.order('updated_at', desc=True).limit(limit).execute()
+        failed_docs = result.data or []
+
+        # エラーメッセージから簡易的にエラー種別を集計
+        error_stats = {}
+        for doc in failed_docs:
+            error_msg = doc.get('error_message', 'Unknown error')
+            # エラーメッセージの最初の50文字をキーとして集計
+            error_key = error_msg[:50] if error_msg else 'Unknown'
+            error_stats[error_key] = error_stats.get(error_key, 0) + 1
+
+        return jsonify({
+            'success': True,
+            'failed_docs': failed_docs,
+            'count': len(failed_docs),
+            'error_stats': error_stats,
+            'workspace': workspace
+        })
+
+    except Exception as e:
+        logger.error(f"失敗ドキュメント取得エラー: {e}")
         return safe_error_response(e)
 
 

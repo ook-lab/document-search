@@ -121,6 +121,11 @@ class B12GoogleSheetsProcessor:
             row_count = len(data)
             col_count = len(data[0]) if data else 0
 
+            logger.info(f"[B-12] Table {idx} (Page {page_num}): {row_count}行×{col_count}列")
+            if data and len(data) > 0:
+                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
+                logger.debug(f"[B-12] Table {idx} 1行目サンプル: {first_row_sample}")
+
             tables.append({
                 'page': page_num,
                 'index': idx,
@@ -128,9 +133,8 @@ class B12GoogleSheetsProcessor:
                 'cols': col_count,
                 'data': data,
                 'bbox': table.bbox,
+                'source': 'stage_b'
             })
-
-            logger.debug(f"[B-12] 表{idx}: {row_count}行 x {col_count}列")
 
         return tables
 

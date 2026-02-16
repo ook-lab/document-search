@@ -49,17 +49,20 @@ class B30DtpProcessor:
                 all_words = []  # 削除対象の全単語
 
                 for page_num, page in enumerate(pdf.pages):
-                    # テキストボックス単位で抽出
-                    textboxes = self._extract_textboxes(page, page_num)
+                    # ★修正: 先に表を検出（表領域を特定するため）
+                    tables = self._extract_tables(page, page_num)
+                    all_tables.extend(tables)
+
+                    # 表のbboxリストを作成
+                    table_bboxes = [table['bbox'] for table in tables]
+
+                    # ★修正: テキストボックス単位で抽出（表領域を除外）
+                    textboxes = self._extract_textboxes(page, page_num, table_bboxes)
 
                     # 近接ボックスをマージ
                     merged_boxes = self._merge_nearby_boxes(textboxes)
 
                     logical_blocks.extend(merged_boxes)
-
-                    # 表を抽出
-                    tables = self._extract_tables(page, page_num)
-                    all_tables.extend(tables)
 
                     # 削除用：ページ全体の単語を収集
                     page_words = page.extract_words(
@@ -118,13 +121,14 @@ class B30DtpProcessor:
             logger.error(f"[B-30] 処理エラー: {e}", exc_info=True)
             return self._error_result(str(e))
 
-    def _extract_textboxes(self, page, page_num: int) -> List[Dict[str, Any]]:
+    def _extract_textboxes(self, page, page_num: int, table_bboxes: List[Tuple[float, float, float, float]] = None) -> List[Dict[str, Any]]:
         """
         テキストボックス単位で抽出（Object単位）
 
         Args:
             page: pdfplumberのPageオブジェクト
             page_num: ページ番号
+            table_bboxes: 表のbboxリスト（除外用）
 
         Returns:
             [{
@@ -140,8 +144,18 @@ class B30DtpProcessor:
         if not chars:
             return []
 
+        if table_bboxes is None:
+            table_bboxes = []
+
+        # ★修正: 表領域外の文字のみを抽出
+        non_table_chars = []
+        for char in chars:
+            char_bbox = (char['x0'], char['top'], char['x1'], char['bottom'])
+            if not self._is_inside_any_table(char_bbox, table_bboxes):
+                non_table_chars.append(char)
+
         # X座標でソート
-        chars_sorted = sorted(chars, key=lambda c: (c['top'], c['x0']))
+        chars_sorted = sorted(non_table_chars, key=lambda c: (c['top'], c['x0']))
 
         # グループ化（Y座標が10pt以内、X座標が20pt以内なら同じボックス）
         textboxes = []
@@ -291,6 +305,31 @@ class B30DtpProcessor:
             'merged_count': len(boxes)
         }
 
+    def _is_inside_any_table(self, char_bbox: Tuple[float, float, float, float], table_bboxes: List[Tuple[float, float, float, float]]) -> bool:
+        """
+        文字が表領域内にあるかチェック
+
+        Args:
+            char_bbox: 文字のbbox (x0, y0, x1, y1)
+            table_bboxes: 表のbboxリスト [(x0, y0, x1, y1), ...]
+
+        Returns:
+            表領域内にある場合 True
+        """
+        if not table_bboxes:
+            return False
+
+        cx0, cy0, cx1, cy1 = char_bbox
+
+        for table_bbox in table_bboxes:
+            tx0, ty0, tx1, ty1 = table_bbox
+
+            # 文字が表領域内にあるかチェック（完全に内側）
+            if cx0 >= tx0 and cx1 <= tx1 and cy0 >= ty0 and cy1 <= ty1:
+                return True
+
+        return False
+
     def _extract_tables(self, page, page_num: int) -> List[Dict[str, Any]]:
         """
         ページ内の表を抽出
@@ -309,11 +348,20 @@ class B30DtpProcessor:
         """
         tables = []
         for idx, table in enumerate(page.find_tables()):
+            data = table.extract()
+            logger.info(f"[B-30] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
+            if data and len(data) > 0:
+                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
+                logger.debug(f"[B-30] Table {idx} 1行目サンプル: {first_row_sample}")
+
             tables.append({
                 'page': page_num,
                 'index': idx,
                 'bbox': table.bbox,
-                'data': table.extract()
+                'data': data,
+                'rows': len(data) if data else 0,
+                'cols': len(data[0]) if data and len(data) > 0 else 0,
+                'source': 'stage_b'
             })
         return tables
 

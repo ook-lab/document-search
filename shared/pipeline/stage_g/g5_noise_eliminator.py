@@ -18,23 +18,26 @@ from loguru import logger
 class G5NoiseEliminator:
     """G-5: Noise Elimination（ノイズ除去）"""
 
-    def __init__(self):
-        """Noise Eliminator 初期化"""
-        pass
+    def __init__(self, table_chain=None, text_chain=None):
+        """
+        Noise Eliminator 初期化
+
+        Args:
+            table_chain: 表処理チェーン（G-11）のインスタンス
+            text_chain: テキスト処理チェーン（G-21）のインスタンス
+        """
+        self.table_chain = table_chain
+        self.text_chain = text_chain
 
     def eliminate(
         self,
-        stage_f_result: Dict[str, Any],
-        ui_tables: List[Dict[str, Any]],
-        blocks: List[Dict[str, Any]]
+        g3_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         ノイズを除去してクリーンなUI用データを生成
 
         Args:
-            stage_f_result: Stage F の結果
-            ui_tables: G-1 の UI用表データ
-            blocks: G-3 のブロックデータ
+            g3_result: G-3の結果（直前ステージのみ）
 
         Returns:
             {
@@ -46,30 +49,35 @@ class G5NoiseEliminator:
         logger.info("[G-5] ノイズ除去開始")
 
         try:
+            # ★G-3の結果から必要なデータを取得（直前ステージのみ）
+            blocks = g3_result.get('blocks', [])
+            events = g3_result.get('events', [])
+            tasks = g3_result.get('tasks', [])
+            notices = g3_result.get('notices', [])
+            document_info = g3_result.get('document_info', {})
+            ui_tables = g3_result.get('ui_tables', [])
+
             # ドキュメント情報（必要最小限）
-            doc_info = stage_f_result.get('document_info', {})
             clean_doc_info = {
-                'document_type': doc_info.get('document_type', 'unknown'),
-                'year_context': doc_info.get('year_context')
+                'document_type': document_info.get('document_type', 'unknown'),
+                'year_context': document_info.get('year_context')
             }
 
             # イベント（正規化済み）
-            events = stage_f_result.get('normalized_events', [])
             clean_events = self._clean_events(events)
 
             # タスク
-            tasks = stage_f_result.get('tasks', [])
             clean_tasks = self._clean_tasks(tasks)
 
             # 注意事項
-            notices = stage_f_result.get('notices', [])
             clean_notices = self._clean_notices(notices)
 
             # UI用データを構築
+            # ★sectionsはG-3のblocksをそのまま渡す（地の文用）
             ui_data = {
                 'document_info': clean_doc_info,
-                'sections': blocks,
-                'tables': ui_tables,
+                'sections': blocks,  # G-21用：地の文ブロック
+                'tables': ui_tables,  # G-11用：表データ
                 'timeline': clean_events,
                 'actions': clean_tasks,
                 'notices': clean_notices,
@@ -82,6 +90,9 @@ class G5NoiseEliminator:
                 }
             }
 
+            logger.info(f"[G-5] ✓ G-21用sections: {len(blocks)}件")
+            logger.info(f"[G-5] ✓ G-11用tables: {len(ui_tables)}件")
+
             logger.info("[G-5] ノイズ除去完了:")
             logger.info(f"  ├─ セクション: {len(blocks)}")
             logger.info(f"  ├─ 表: {len(ui_tables)}")
@@ -89,11 +100,57 @@ class G5NoiseEliminator:
             logger.info(f"  ├─ タスク: {len(clean_tasks)}")
             logger.info(f"  └─ 注意事項: {len(clean_notices)}")
 
-            return {
+            result = {
                 'success': True,
                 'ui_data': ui_data,
                 'size_reduction': 'N/A'
             }
+
+            # ★チェーン: 次のステージを呼び出す（分岐）
+            if self.table_chain or self.text_chain:
+                logger.info("[G-5] → 次のステージを呼び出します（分岐）")
+
+                # 表処理チェーン（G-11 → G-12）
+                if self.table_chain:
+                    logger.info("[G-5]   ├─ 表処理チェーン（G-11）")
+                    table_result = self.table_chain.structure(ui_tables, year_context=document_info.get('year_context'))
+                    result['table_result'] = table_result
+
+                    # ★G-11の結果をui_dataに反映
+                    if table_result.get('success'):
+                        structured_tables = table_result.get('structured_tables', [])
+                        logger.info(f"[G-5] ✓ G-11構造化表をui_dataに追加: {len(structured_tables)}表")
+                        ui_data['g11_structured_tables'] = structured_tables
+
+                # テキスト処理チェーン（G-21 → G-22）
+                # ★G-6廃止: B プロセッサで表領域を除外済みのため、フィルター不要
+                if self.text_chain:
+                    logger.info("[G-5]   └─ テキスト処理チェーン（G-21）")
+                    text_result = self.text_chain.structure(
+                        sections=blocks,  # ★フィルター不要（B プロセッサで表領域除外済み）
+                        timeline=ui_data.get('timeline', []),
+                        actions=ui_data.get('actions', []),
+                        notices=ui_data.get('notices', []),
+                        year_context=document_info.get('year_context')  # ★年情報を渡す
+                    )
+                    result['text_result'] = text_result
+
+                    # ★G-21の結果をui_dataに反映
+                    if text_result.get('success'):
+                        metadata = text_result.get('metadata', {})
+                        articles = metadata.get('articles', [])
+                        logger.info(f"[G-5] ✓ G-21 articlesをui_dataに追加: {len(articles)}件")
+                        ui_data['g21_articles'] = articles
+
+                        # G-22の結果も反映（text_resultはG-22の結果を含む）
+                        if 'calendar_events' in text_result:
+                            ui_data['timeline'] = text_result.get('calendar_events', ui_data['timeline'])
+                        if 'tasks' in text_result:
+                            ui_data['actions'] = text_result.get('tasks', ui_data['actions'])
+                        if 'notices' in text_result:
+                            ui_data['notices'] = text_result.get('notices', ui_data['notices'])
+
+            return result
 
         except Exception as e:
             logger.error(f"[G-5] ノイズ除去エラー: {e}", exc_info=True)

@@ -1,0 +1,112 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "extracted_content": {
+      "text": "2026年\n34\n1/16 発行\n\n[[判読不能]]"
+    },
+    "raw_response": "2026年\n34\n1/16 発行\n\n[[判読不能]]",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 111,
+    "route": "E22_IMAGE_ONLY",
+    "vision_text_used": false,
+    "scout_result": {
+      "char_count": 13,
+      "density_level": "low",
+      "should_skip": false,
+      "extracted_text": "2026年\n\n34\n\n1/16 発行\n\n",
+      "confidence": 0.026
+    },
+    "block_result": {
+      "blocks": [
+        {
+          "block_id": 1,
+          "type": "paragraph",
+          "bbox": [
+            136,
+            106,
+            1139,
+            388
+          ],
+          "bbox_normalized": [
+            0.10666666666666667,
+            0.06424242424242424,
+            0.8933333333333333,
+            0.23515151515151514
+          ],
+          "text_hint": ""
+        },
+        {
+          "block_id": 2,
+          "type": "list",
+          "bbox": [
+            160,
+            136,
+            304,
+            323
+          ],
+          "bbox_normalized": [
+            0.12549019607843137,
+            0.08242424242424243,
+            0.2384313725490196,
+            0.19575757575757577
+          ],
+          "text_hint": ""
+        },
+        {
+          "block_id": 3,
+          "type": "paragraph",
+          "bbox": [
+            136,
+            627,
+            1173,
+            1164
+          ],
+          "bbox_normalized": [
+            0.10666666666666667,
+            0.38,
+            0.92,
+            0.7054545454545454
+          ],
+          "text_hint": ""
+        }
+      ],
+      "image_size": [
+        1275,
+        1650
+      ],
+      "overlay_image_path": ""
+    }
+  },
+  "table_contents": [],
+  "page_scout": {
+    "pages_total": 2,
+    "pages_processed": 2,
+    "per_page": [
+      {
+        "page": 0,
+        "words_count": 9,
+        "chars_count": 17,
+        "extracted_text": "2026 年 34 1/16 発行 t f | 上",
+        "status": "ok",
+        "skip_reason": ""
+      },
+      {
+        "page": 1,
+        "words_count": 0,
+        "chars_count": 0,
+        "extracted_text": "",
+        "status": "ok",
+        "skip_reason": ""
+      }
+    ],
+    "total_words": 9,
+    "total_chars": 17
+  },
+  "metadata": {
+    "total_tokens": 111,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

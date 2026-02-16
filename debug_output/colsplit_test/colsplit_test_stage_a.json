@@ -1,0 +1,162 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "GOOGLE_DOCS",
+    "confidence": "HIGH",
+    "reason": "キーワード一致: google.*docs",
+    "raw_metadata": {
+      "Title": "学年通信",
+      "Producer": "Skia/PDF m145 Google Docs Renderer"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 3,
+    "dimensions": {
+      "width": 612.0,
+      "height": 792.0,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 215.89999999999998,
+      "height": 279.4,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 1.6666666666666667,
+      "avg_words_per_page": 65.66666666666667,
+      "avg_x_std": 135.6086370922571,
+      "avg_words_per_line": 1.3364341085271318,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 5,
+          "words": 108,
+          "chars": 473,
+          "x_std": 138.2754429624432,
+          "lines": 60,
+          "words_per_line": 1.8
+        },
+        {
+          "page": 1,
+          "images": 0,
+          "words": 52,
+          "chars": 743,
+          "x_std": 134.88113026167878,
+          "lines": 43,
+          "words_per_line": 1.2093023255813953
+        },
+        {
+          "page": 2,
+          "images": 0,
+          "words": 37,
+          "chars": 767,
+          "x_std": 133.66933805264935,
+          "lines": 37,
+          "words_per_line": 1.0
+        }
+      ]
+    }
+  },
+  "origin_app": "GOOGLE_DOCS",
+  "document_type": "GOOGLE_DOCS",
+  "confidence": "HIGH",
+  "reason": "キーワード一致: google.*docs",
+  "raw_metadata": {
+    "Title": "学年通信",
+    "Producer": "Skia/PDF m145 Google Docs Renderer"
+  },
+  "page_count": 3,
+  "dimensions": {
+    "width": 612.0,
+    "height": 792.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 215.89999999999998,
+    "height": 279.4,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 1.6666666666666667,
+    "avg_words_per_page": 65.66666666666667,
+    "avg_x_std": 135.6086370922571,
+    "avg_words_per_line": 1.3364341085271318,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 5,
+        "words": 108,
+        "chars": 473,
+        "x_std": 138.2754429624432,
+        "lines": 60,
+        "words_per_line": 1.8
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 52,
+        "chars": 743,
+        "x_std": 134.88113026167878,
+        "lines": 43,
+        "words_per_line": 1.2093023255813953
+      },
+      {
+        "page": 2,
+        "images": 0,
+        "words": 37,
+        "chars": 767,
+        "x_std": 133.66933805264935,
+        "lines": 37,
+        "words_per_line": 1.0
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.6666666666666667,
+      "avg_words_per_page": 65.66666666666667,
+      "avg_x_std": 135.6086370922571,
+      "avg_words_per_line": 1.3364341085271318,
+      "probe_ok": true,
+      "avg_chars_per_page": 661.0,
+      "avg_vectors_per_page": 14.0
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.6666666666666667,
+      "avg_words_per_page": 65.66666666666667,
+      "avg_x_std": 135.6086370922571,
+      "avg_words_per_line": 1.3364341085271318,
+      "probe_ok": true,
+      "avg_chars_per_page": 661.0,
+      "avg_vectors_per_page": 14.0
+    },
+    "policy_version": "A5.v1"
+  }
+}

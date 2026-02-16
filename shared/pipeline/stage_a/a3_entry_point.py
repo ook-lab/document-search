@@ -69,16 +69,45 @@ class A3EntryPoint:
 
         try:
             # A-2: 作成ソフト判定（TypeAnalyzer）
-            logger.info("[Stage A] A-2: 作成ソフト判定（TypeAnalyzer）")
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-2] 作成ソフト判定（TypeAnalyzer）開始")
+            logger.info("=" * 60)
             type_result = self.type_analyzer.analyze(file_path)
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-2] 作成ソフト判定完了")
+            logger.info(f"  ├─ 判定: {type_result['document_type']}")
+            logger.info(f"  ├─ 信頼度: {type_result['confidence']}")
+            logger.info(f"  └─ 理由: {type_result['reason']}")
+            logger.info("=" * 60)
 
             # A-3: サイズ・ページ測定（DimensionMeasurer）
-            logger.info("[Stage A] A-3: サイズ・ページ測定（DimensionMeasurer）")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-3] サイズ・ページ測定（DimensionMeasurer）開始")
+            logger.info("=" * 60)
             dimension_result = self.dimension_measurer.measure(file_path)
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-3] サイズ・ページ測定完了")
+            logger.info(f"  ├─ ページ数: {dimension_result['page_count']}")
+            logger.info(f"  ├─ サイズ: {dimension_result['dimensions']['width']:.2f} x {dimension_result['dimensions']['height']:.2f} pt")
+            logger.info(f"  ├─ サイズ: {dimension_result['dimensions_mm']['width']:.2f} x {dimension_result['dimensions_mm']['height']:.2f} mm")
+            logger.info(f"  └─ マルチサイズ: {'はい' if dimension_result['is_multi_size'] else 'いいえ'}")
+            logger.info("=" * 60)
 
             # A-4: レイアウト特性判定（LayoutProfiler）
-            logger.info("[Stage A] A-4: レイアウト特性判定（LayoutProfiler）")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-4] レイアウト特性判定（LayoutProfiler）開始")
+            logger.info("=" * 60)
             layout_result = self._analyze_layout_profile(file_path)
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-4] レイアウト特性判定完了")
+            logger.info(f"  ├─ レイアウト: {layout_result['layout_profile']}")
+            logger.info(f"  ├─ 平均画像数: {layout_result['metrics'].get('avg_images_per_page', 0):.1f}/page")
+            logger.info(f"  ├─ 平均単語数: {layout_result['metrics'].get('avg_words_per_page', 0):.1f}/page")
+            logger.info(f"  ├─ X座標分散: {layout_result['metrics'].get('avg_x_std', 0):.1f}")
+            logger.info(f"  └─ 行あたり単語数: {layout_result['metrics'].get('avg_words_per_line', 0):.2f}/line")
+            logger.info("=" * 60)
 
             # 結果を統合（A番号順に格納 + 互換キー維持）
             result = {
@@ -123,8 +152,21 @@ class A3EntryPoint:
             }
 
             # A-5: Gatekeeper（通行許可）
-            logger.info("[Stage A] A-5: Gatekeeper（通行許可）")
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-5] Gatekeeper（通行許可）開始")
+            logger.info("=" * 60)
             a5_gatekeeper = self.gatekeeper.evaluate(file_path, result)
+            logger.info("=" * 60)
+            logger.info("[Stage A → A-5] Gatekeeper判定完了")
+            logger.info(f"  ├─ 判定: {a5_gatekeeper.get('decision')}")
+            if a5_gatekeeper.get("decision") == "ALLOW":
+                logger.info(f"  ├─ 許可プロセッサ: {a5_gatekeeper.get('allowed_processors')}")
+                logger.info(f"  └─ 理由: {a5_gatekeeper.get('block_reason')}")
+            else:
+                logger.info(f"  ├─ ブロックコード: {a5_gatekeeper.get('block_code')}")
+                logger.info(f"  └─ ブロック理由: {a5_gatekeeper.get('block_reason')}")
+            logger.info("=" * 60)
 
             # 正本として積む（B1 はこれを強制）
             result["a5_gatekeeper"] = a5_gatekeeper
@@ -225,30 +267,55 @@ class A3EntryPoint:
                 avg_x_std = sum(m['x_std'] for m in page_metrics) / len(page_metrics) if page_metrics else 0
                 avg_words_per_line = sum(m['words_per_line'] for m in page_metrics) / len(page_metrics) if page_metrics else 0
 
+                # ページ単位の詳細ログ（最初の3ページまたは全ページ）
+                logger.info("[A-4] ページ別計測値:")
+                sample_pages = page_metrics[:3] if len(page_metrics) > 3 else page_metrics
+                for m in sample_pages:
+                    logger.info(
+                        f"  ├─ Page {m['page']}: "
+                        f"images={m['images']}, words={m['words']}, chars={m['chars']}, "
+                        f"x_std={m['x_std']:.1f}, lines={m['lines']}, words/line={m['words_per_line']:.2f}"
+                    )
+                if len(page_metrics) > 3:
+                    logger.info(f"  └─ ... ({len(page_metrics) - 3} ページ省略)")
+
+                logger.info("[A-4] 平均計測値:")
+                logger.info(f"  ├─ avg_images_per_page: {avg_images:.1f}")
+                logger.info(f"  ├─ avg_words_per_page: {avg_words:.1f}")
+                logger.info(f"  ├─ avg_x_std: {avg_x_std:.1f}")
+                logger.info(f"  └─ avg_words_per_line: {avg_words_per_line:.2f}")
+
                 # 判定ルール
                 layout_profile = 'FLOW'  # デフォルト
                 reason = []
+
+                logger.info("[A-4] 判定ルール適用:")
 
                 # ルール1: 画像が多い → FIXED
                 if avg_images >= 50:
                     layout_profile = 'FIXED'
                     reason.append(f"images/page={avg_images:.0f}>=50")
+                    logger.info(f"  ✓ ルール1適用: 画像が多い ({avg_images:.0f}>=50) → FIXED")
 
                 # ルール2: X座標の分散が大きい（文字が左右に散る）→ FIXED
                 elif avg_x_std >= 100:
                     layout_profile = 'FIXED'
                     reason.append(f"x_std={avg_x_std:.0f}>=100")
+                    logger.info(f"  ✓ ルール2適用: X座標分散が大きい ({avg_x_std:.0f}>=100) → FIXED")
 
                 # ルール3: 行あたりの単語数が少ない（文章として流れていない）→ FIXED
                 elif 0 < avg_words_per_line < 5:
                     layout_profile = 'FIXED'
                     reason.append(f"words/line={avg_words_per_line:.1f}<5")
+                    logger.info(f"  ✓ ルール3適用: 行あたり単語数が少ない ({avg_words_per_line:.1f}<5) → FIXED")
 
                 # それ以外は FLOW
                 else:
                     reason.append("文章流し込み型と判定")
+                    logger.info(f"  ✓ デフォルト: 文章流し込み型 → FLOW")
+                    logger.info(f"      (images/page={avg_images:.0f}<50, x_std={avg_x_std:.0f}<100, words/line={avg_words_per_line:.2f}>=5)")
 
-                logger.info(f"[A-4] layout_profile={layout_profile} ({', '.join(reason)})")
+                logger.info(f"[A-4] 最終判定: layout_profile={layout_profile} ({', '.join(reason)})")
 
                 return {
                     'layout_profile': layout_profile,

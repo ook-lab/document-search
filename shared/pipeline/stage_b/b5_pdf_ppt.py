@@ -185,11 +185,20 @@ class B5PDFPPTProcessor:
         """
         tables = []
         for idx, table in enumerate(page.find_tables()):
+            data = table.extract()
+            logger.info(f"[B-5] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
+            if data and len(data) > 0:
+                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
+                logger.debug(f"[B-5] Table {idx} 1行目サンプル: {first_row_sample}")
+
             tables.append({
                 'page': page_num,
                 'index': idx,
                 'bbox': table.bbox,
-                'data': table.extract()
+                'data': data,
+                'rows': len(data) if data else 0,
+                'cols': len(data[0]) if data and len(data) > 0 else 0,
+                'source': 'stage_b'
             })
         return tables
 

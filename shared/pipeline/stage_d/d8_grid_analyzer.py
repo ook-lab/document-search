@@ -29,7 +29,7 @@ class D8GridAnalyzer:
 
     def __init__(
         self,
-        intersection_tolerance: float = 0.01,  # 交点判定の許容誤差（正規化座標）
+        intersection_tolerance: float = 0.003,  # 交点判定の許容誤差（±3px相当）
         min_table_size: float = 0.05,  # 表として認識する最小サイズ（正規化座標）
         exclude_page_edges: bool = True,  # ページ四辺の枠線を除外
         page_edge_tolerance: float = 0.02,  # ページ端からの許容誤差
@@ -41,7 +41,7 @@ class D8GridAnalyzer:
         Grid Analyzer 初期化
 
         Args:
-            intersection_tolerance: 交点判定の許容誤差（正規化座標）
+            intersection_tolerance: 交点判定の許容誤差（正規化座標、±3px相当）
             min_table_size: 表として認識する最小サイズ（正規化座標）
             exclude_page_edges: ページ四辺の枠線を除外するか
             page_edge_tolerance: ページ端からの許容誤差（正規化座標）
@@ -89,8 +89,13 @@ class D8GridAnalyzer:
         h_lines, v_lines = self._unify_lines(vector_result, raster_result)
 
         logger.info(f"[D-8] 統合線（before フィルタ）:")
-        logger.info(f"  ├─ 水平線: {len(h_lines)}本")
-        logger.info(f"  └─ 垂直線: {len(v_lines)}本")
+        logger.info(f"  ├─ ベクトル水平線: {len(vector_result.get('horizontal_lines', []))}本")
+        logger.info(f"  ├─ ベクトル垂直線: {len(vector_result.get('vertical_lines', []))}本")
+        if raster_result:
+            logger.info(f"  ├─ ラスター水平線: {len(raster_result.get('horizontal_lines', []))}本")
+            logger.info(f"  ├─ ラスター垂直線: {len(raster_result.get('vertical_lines', []))}本")
+        logger.info(f"  ├─ 統合後水平線: {len(h_lines)}本")
+        logger.info(f"  └─ 統合後垂直線: {len(v_lines)}本")
 
         # ページ四辺の枠線を除外（表判定入力のクリーン化）
         if self.exclude_page_edges:
@@ -120,7 +125,12 @@ class D8GridAnalyzer:
 
         # 交点を計算
         intersections = self._find_intersections(h_lines, v_lines)
-        logger.info(f"[D-8] 交点: {len(intersections)}個")
+        logger.info(f"[D-8] 交点計算完了: {len(intersections)}個")
+        if intersections:
+            sample = intersections[:5]
+            logger.debug(f"[D-8] 交点サンプル（最初5個）:")
+            for i, point in enumerate(sample, 1):
+                logger.debug(f"  {i}. x={point['x']:.3f}, y={point['y']:.3f}")
 
         # 表領域を特定
         table_regions = self._identify_table_regions(
@@ -128,7 +138,15 @@ class D8GridAnalyzer:
             v_lines,
             intersections
         )
-        logger.info(f"[D-8] 表領域: {len(table_regions)}個")
+        logger.info(f"[D-8] 表領域特定完了: {len(table_regions)}個")
+        for region in table_regions:
+            bbox = region.get('bbox', [])
+            logger.info(f"[D-8] 表領域 {region.get('table_id')}:")
+            logger.info(f"  ├─ Bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]")
+            logger.info(f"  ├─ サイズ: {bbox[2]-bbox[0]:.3f} x {bbox[3]-bbox[1]:.3f}")
+            logger.info(f"  ├─ 交点数: {region.get('intersection_count')}")
+            logger.info(f"  ├─ 水平線数: {region.get('h_line_count')}")
+            logger.info(f"  └─ 垂直線数: {region.get('v_line_count')}")
 
         return {
             'intersections': intersections,
@@ -336,7 +354,6 @@ class D8GridAnalyzer:
             表領域リスト
         """
         if len(intersections) < 4:
-            # 最低4つの交点がないと矩形を作れない
             return []
 
         # 交点の外郭を計算
@@ -347,6 +364,39 @@ class D8GridAnalyzer:
         x_max = max(x_coords)
         y_min = min(y_coords)
         y_max = max(y_coords)
+
+        # 唯一の条件: 外周の各辺に4点以上の交点
+        EDGE_TOLERANCE = 0.003  # 外周判定の許容誤差（±3px相当）
+        MIN_EDGE_INTERSECTIONS = 4  # 各辺の最小交点数
+
+        # 各辺の交点をカウント
+        top_intersections = [p for p in intersections if abs(p['y'] - y_min) < EDGE_TOLERANCE]
+        bottom_intersections = [p for p in intersections if abs(p['y'] - y_max) < EDGE_TOLERANCE]
+        left_intersections = [p for p in intersections if abs(p['x'] - x_min) < EDGE_TOLERANCE]
+        right_intersections = [p for p in intersections if abs(p['x'] - x_max) < EDGE_TOLERANCE]
+
+        top_count = len(top_intersections)
+        bottom_count = len(bottom_intersections)
+        left_count = len(left_intersections)
+        right_count = len(right_intersections)
+
+        logger.info(f"[D-8] 外周交点数: 上={top_count}, 下={bottom_count}, 左={left_count}, 右={right_count}")
+
+        # 各辺に4点以上の交点が必要
+        if top_count < MIN_EDGE_INTERSECTIONS:
+            logger.warning(f"[D-8] 上辺の交点不足: {top_count} < {MIN_EDGE_INTERSECTIONS}")
+            return []
+        if bottom_count < MIN_EDGE_INTERSECTIONS:
+            logger.warning(f"[D-8] 下辺の交点不足: {bottom_count} < {MIN_EDGE_INTERSECTIONS}")
+            return []
+        if left_count < MIN_EDGE_INTERSECTIONS:
+            logger.warning(f"[D-8] 左辺の交点不足: {left_count} < {MIN_EDGE_INTERSECTIONS}")
+            return []
+        if right_count < MIN_EDGE_INTERSECTIONS:
+            logger.warning(f"[D-8] 右辺の交点不足: {right_count} < {MIN_EDGE_INTERSECTIONS}")
+            return []
+
+        logger.info(f"[D-8] ✓ 外周交点チェック合格: 上下左右すべて{MIN_EDGE_INTERSECTIONS}点以上")
 
         # サイズチェック
         width = x_max - x_min
@@ -391,21 +441,31 @@ class D8GridAnalyzer:
 
         # 水平線をフィルタ: y==0 or y==1 の線を除外
         filtered_h_lines = []
+        excluded_h_count = 0
         for line in h_lines:
             y = (line['y0'] + line['y1']) / 2
             if tol < y < (1.0 - tol):  # ページ上端・下端から一定距離以上離れている
                 filtered_h_lines.append(line)
             else:
                 logger.debug(f"[D-8] 除外（ページ上下端）: y={y:.3f}")
+                excluded_h_count += 1
+
+        if excluded_h_count > 0:
+            logger.info(f"[D-8] ページ外枠水平線除外: {excluded_h_count}本")
 
         # 垂直線をフィルタ: x==0 or x==1 の線を除外
         filtered_v_lines = []
+        excluded_v_count = 0
         for line in v_lines:
             x = (line['x0'] + line['x1']) / 2
             if tol < x < (1.0 - tol):  # ページ左端・右端から一定距離以上離れている
                 filtered_v_lines.append(line)
             else:
                 logger.debug(f"[D-8] 除外（ページ左右端）: x={x:.3f}")
+                excluded_v_count += 1
+
+        if excluded_v_count > 0:
+            logger.info(f"[D-8] ページ外枠垂直線除外: {excluded_v_count}本")
 
         return filtered_h_lines, filtered_v_lines
 
@@ -444,21 +504,31 @@ class D8GridAnalyzer:
 
             # 水平線をフィルタ
             filtered_h_lines = []
+            invisible_h_count = 0
             for line in h_lines:
                 if self._is_line_visible(line, img_array, page_width, page_height, is_horizontal=True):
                     filtered_h_lines.append(line)
                 else:
                     y = (line['y0'] + line['y1']) / 2
                     logger.debug(f"[D-8] 除外（不可視水平線）: y={y:.3f}")
+                    invisible_h_count += 1
+
+            if invisible_h_count > 0:
+                logger.info(f"[D-8] 不可視水平線除外: {invisible_h_count}本")
 
             # 垂直線をフィルタ
             filtered_v_lines = []
+            invisible_v_count = 0
             for line in v_lines:
                 if self._is_line_visible(line, img_array, page_width, page_height, is_horizontal=False):
                     filtered_v_lines.append(line)
                 else:
                     x = (line['x0'] + line['x1']) / 2
                     logger.debug(f"[D-8] 除外（不可視垂直線）: x={x:.3f}")
+                    invisible_v_count += 1
+
+            if invisible_v_count > 0:
+                logger.info(f"[D-8] 不可視垂直線除外: {invisible_v_count}本")
 
             return filtered_h_lines, filtered_v_lines
 

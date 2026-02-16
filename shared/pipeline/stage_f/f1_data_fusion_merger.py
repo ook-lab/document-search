@@ -18,9 +18,14 @@ from loguru import logger
 class F1DataFusionMerger:
     """F-1: Data Fusion Merger（ハイブリッド統合）"""
 
-    def __init__(self):
-        """Data Fusion Merger 初期化"""
-        pass
+    def __init__(self, next_stage=None):
+        """
+        Data Fusion Merger 初期化
+
+        Args:
+            next_stage: 次のステージ（F-3）のインスタンス
+        """
+        self.next_stage = next_stage
 
     def merge(
         self,
@@ -56,8 +61,12 @@ class F1DataFusionMerger:
             # ドキュメント情報を構築
             document_info = self._build_document_info(stage_a_result, stage_b_result)
 
-            # テキストを統合
+            # テキストを座標順に統合
             raw_text = self._merge_text(stage_b_result, stage_e_result)
+
+            # 表を除いたテキスト（G-21用）
+            # 座標順統合されたテキストを使用（B+Eの統合）
+            non_table_text = raw_text
 
             # イベント・タスク・注意事項を抽出
             events, tasks, notices = self._extract_structured_content(stage_e_result)
@@ -86,16 +95,28 @@ class F1DataFusionMerger:
             logger.info(raw_text if raw_text else "（テキストなし）")
             logger.info("=" * 80)
 
-            return {
+            result = {
                 'success': True,
                 'document_info': document_info,
                 'raw_integrated_text': raw_text,
+                'non_table_text': non_table_text,
                 'events': events,
                 'tasks': tasks,
                 'notices': notices,
                 'tables': tables,
                 'metadata': metadata
             }
+
+            # ★チェーン: 次のステージ（F-3）を呼び出す
+            if self.next_stage:
+                logger.info("[F-1] → 次のステージ（F-3）を呼び出します")
+                return self.next_stage.normalize(
+                    events=events,
+                    year_context=document_info.get('year_context'),
+                    merge_result=result
+                )
+
+            return result
 
         except Exception as e:
             logger.error(f"[F-1] 統合エラー: {e}", exc_info=True)
@@ -132,55 +153,139 @@ class F1DataFusionMerger:
 
         return info
 
+    def _get_non_table_text(self, stage_e_result) -> str:
+        """
+        表セルを含まないテキストを取得（G-21用）。
+        Stage E の non_table_content を使用する。
+        B-90 purged PDF（表テキスト除去済み）から視覚抽出されたテキストなので
+        G-11が処理済みの表セルテキストは含まれない。
+        """
+        if not stage_e_result:
+            return ''
+        non_table = stage_e_result.get('non_table_content', {})
+        if not non_table.get('success'):
+            return ''
+        raw_response = non_table.get('raw_response', '')
+        return raw_response.strip()
+
     def _merge_text(
         self,
         stage_b_result: Optional[Dict[str, Any]],
         stage_e_result: Optional[Dict[str, Any]]
     ) -> str:
         """
-        テキストを統合
+        テキストを座標順に統合
 
         Args:
             stage_b_result: Stage B の結果
             stage_e_result: Stage E の結果
 
         Returns:
-            統合されたテキスト
+            座標順に統合されたテキスト
         """
-        text_parts = []
+        blocks = []  # [{page, y0, x0, text, source}]
+        stage_b_count = 0
+        stage_e_count = 0
 
-        # Stage B のテキスト（優先）
+        # Stage B のブロックを収集
         if stage_b_result:
             logger.debug(f"[F-1 DEBUG] stage_b_result keys: {list(stage_b_result.keys())}")
+
+            # logical_blocks（PDF処理）- 座標あり
             if 'logical_blocks' in stage_b_result:
-                logger.debug(f"[F-1 DEBUG] logical_blocks count: {len(stage_b_result['logical_blocks'])}")
-
-            # paragraphs（Native Word）
-            if 'paragraphs' in stage_b_result:
-                for para in stage_b_result['paragraphs']:
-                    text_parts.append(para.get('text', ''))
-
-            # logical_blocks（PDF処理）
-            elif 'logical_blocks' in stage_b_result:
+                logger.info(f"[F-1] Stage B データソース: logical_blocks（PDF処理）")
                 for block in stage_b_result['logical_blocks']:
-                    text_parts.append(block.get('text', ''))
+                    page = block.get('page', 0)
+                    bbox = block.get('bbox', [])
+                    text = block.get('text', '').strip()
+                    if not text:
+                        continue
 
-            # records（B-42）
+                    # bbox から y0, x0 を取得
+                    y0 = bbox[1] if len(bbox) >= 4 else 0
+                    x0 = bbox[0] if len(bbox) >= 4 else 0
+
+                    blocks.append({
+                        'page': page,
+                        'y0': y0,
+                        'x0': x0,
+                        'text': text,
+                        'source': 'stage_b'
+                    })
+                    stage_b_count += 1
+
+            # paragraphs（Native Word）- 座標なし、順番のみ
+            elif 'paragraphs' in stage_b_result:
+                logger.info(f"[F-1] Stage B データソース: paragraphs（Native Word）")
+                for idx, para in enumerate(stage_b_result['paragraphs']):
+                    text = para.get('text', '').strip()
+                    if not text:
+                        continue
+                    blocks.append({
+                        'page': 0,
+                        'y0': idx,  # 順番をy座標として使用
+                        'x0': 0,
+                        'text': text,
+                        'source': 'stage_b'
+                    })
+                    stage_b_count += 1
+
+            # records（B-42）- 座標なし
             elif 'records' in stage_b_result:
-                for record in stage_b_result['records']:
-                    # レコードを文字列化
+                logger.info(f"[F-1] Stage B データソース: records（B-42 多段組み）")
+                for idx, record in enumerate(stage_b_result['records']):
                     record_str = ' | '.join([f"{k}: {v}" for k, v in record.items()])
-                    text_parts.append(record_str)
+                    blocks.append({
+                        'page': 0,
+                        'y0': idx,
+                        'x0': 0,
+                        'text': record_str,
+                        'source': 'stage_b'
+                    })
+                    stage_b_count += 1
 
-        # Stage E のテキスト（補完）
+        # Stage E のブロックを収集
         if stage_e_result:
             non_table = stage_e_result.get('non_table_content', {})
             if non_table.get('success'):
-                raw_response = non_table.get('raw_response', '')
-                if raw_response and raw_response not in '\n'.join(text_parts):
-                    text_parts.append('\n--- 視覚抽出 ---\n')
-                    text_parts.append(raw_response)
+                page = non_table.get('page', 0)
+                raw_response = non_table.get('raw_response', '').strip()
 
+                if raw_response:
+                    # E-20の結果は1つのブロックとして扱う
+                    # 座標は non_table_content に含まれる可能性がある
+                    blocks.append({
+                        'page': page,
+                        'y0': 0,  # 非表領域は通常ページ上部
+                        'x0': 0,
+                        'text': raw_response,
+                        'source': 'stage_e'
+                    })
+                    stage_e_count += 1
+
+        # 座標順にソート（page → y0 → x0）
+        blocks.sort(key=lambda b: (b['page'], b['y0'], b['x0']))
+
+        # 統合詳細をログ出力
+        logger.info("=" * 80)
+        logger.info("[F-1] Stage B と Stage E の座標順統合:")
+        logger.info("=" * 80)
+        logger.info(f"  ├─ Stage B（デジタル抽出）: {stage_b_count} ブロック")
+        logger.info(f"  ├─ Stage E（視覚抽出）: {stage_e_count} ブロック")
+        logger.info(f"  └─ 合計: {len(blocks)} ブロック")
+
+        # ソート後のブロックサンプルをログ出力
+        logger.info("-" * 80)
+        logger.info("[F-1] 座標順ソート結果（最初の5ブロック）:")
+        logger.info("-" * 80)
+        for idx, block in enumerate(blocks[:5], 1):
+            preview = block['text'][:100].replace('\n', ' ') + ('...' if len(block['text']) > 100 else '')
+            logger.info(f"  Block #{idx} [page={block['page']}, y={block['y0']:.3f}, x={block['x0']:.3f}]")
+            logger.info(f"    source={block['source']}: 「{preview}」")
+        logger.info("=" * 80)
+
+        # テキストを結合
+        text_parts = [b['text'] for b in blocks]
         return '\n\n'.join(text_parts)
 
     def _extract_structured_content(
@@ -245,10 +350,11 @@ class F1DataFusionMerger:
             # structured_tables（PDF/Native Word）
             if 'structured_tables' in stage_b_result:
                 for idx, table in enumerate(stage_b_result['structured_tables']):
+                    # ★修正: table オブジェクト全体ではなく、data フィールドを抽出
                     tables.append({
                         'table_id': f'B_T{idx + 1}',
                         'source': 'stage_b',
-                        'data': table
+                        'data': table.get('data', [])  # table['data'] を取り出す
                     })
 
             # sheets（Native Excel）

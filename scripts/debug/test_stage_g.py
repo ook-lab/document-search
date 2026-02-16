@@ -57,8 +57,9 @@ def main():
     logger.info("=" * 60)
 
     # Stage G 実行
+    # ★G-1はF-5の結果のみを受け取る（直前ステージのみ）
     controller = G1Controller()
-    result = controller.process(stage_f_result)
+    result = controller.process(f5_result=stage_f_result)
 
     # 結果を表示
     logger.info("\n[Stage G] 実行結果:")

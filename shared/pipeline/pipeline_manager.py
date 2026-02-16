@@ -473,7 +473,7 @@ class PipelineManager:
         result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
             'id, file_name, title, workspace, doc_type, processing_status, '
             'source_id, source_url, screenshot_url, file_type, '
-            'display_subject, display_post_text, attachment_text, '
+            'display_subject, display_post_text, '
             'display_sender, display_sender_email, display_type, display_sent_at, '
             'owner_id, lease_owner, lease_until'
         ).eq('id', doc_id).execute()
@@ -500,7 +500,7 @@ class PipelineManager:
         result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
             'id, file_name, title, workspace, doc_type, processing_status, '
             'source_id, source_url, screenshot_url, file_type, '
-            'display_subject, display_post_text, attachment_text, '
+            'display_subject, display_post_text, '
             'display_sender, display_sender_email, display_type, display_sent_at, '
             'owner_id, lease_owner, lease_until'
         ).eq('id', doc_id).execute()
@@ -765,7 +765,7 @@ class PipelineManager:
 
         display_subject = doc.get('display_subject', '')
         display_post_text = doc.get('display_post_text', '')
-        attachment_text = doc.get('attachment_text', '')
+        attachment_text = doc.get('attachment_text', '')  # カラムなし、常に空文字列
 
         text_parts = []
         if display_subject:
@@ -1016,6 +1016,46 @@ class PipelineManager:
             if not stage_a_result or not stage_a_result.get('success'):
                 return {'success': False, 'error': 'Stage A失敗'}
 
+            # Stage A の結果を DB に保存
+            try:
+                raw_metadata = stage_a_result.get('raw_metadata', {})
+                pdf_creator = raw_metadata.get('Creator', '')
+                pdf_producer = raw_metadata.get('Producer', '')
+
+                # Gatekeeper 結果を取得
+                gatekeeper_result = stage_a_result.get('a5_gatekeeper') or stage_a_result.get('gatekeeper') or {}
+
+                update_data = {
+                    'pdf_creator': pdf_creator,
+                    'pdf_producer': pdf_producer,
+                    'origin_app': stage_a_result.get('origin_app'),
+                    'layout_profile': stage_a_result.get('layout_profile'),
+                    'doc_type': stage_a_result.get('document_type'),
+                    # Gatekeeper フィールド
+                    'gate_decision': gatekeeper_result.get('decision'),
+                    'gate_block_code': gatekeeper_result.get('block_code'),
+                    'gate_block_reason': gatekeeper_result.get('block_reason'),
+                    'origin_confidence': stage_a_result.get('confidence'),
+                    'gate_policy_version': gatekeeper_result.get('policy_version'),
+                }
+
+                self.db.client.table('Rawdata_FILE_AND_MAIL').update(
+                    update_data
+                ).eq('id', document_id).execute()
+
+                logger.info(f"[Stage A] 結果をDBに保存:")
+                logger.info(f"  ├─ origin_app: {stage_a_result.get('origin_app')}")
+                logger.info(f"  ├─ origin_confidence: {stage_a_result.get('confidence')}")
+                logger.info(f"  ├─ layout_profile: {stage_a_result.get('layout_profile')}")
+                logger.info(f"  ├─ gate_decision: {gatekeeper_result.get('decision')}")
+                if gatekeeper_result.get('decision') == 'BLOCK':
+                    logger.info(f"  ├─ gate_block_code: {gatekeeper_result.get('block_code')}")
+                    logger.info(f"  └─ gate_block_reason: {gatekeeper_result.get('block_reason')}")
+                else:
+                    logger.info(f"  └─ gate_policy_version: {gatekeeper_result.get('policy_version')}")
+            except Exception as e:
+                logger.warning(f"[Stage A] 結果のDB保存エラー（処理は継続）: {e}")
+
             # Stage B: Format-Specific Physical Structuring
             self._update_document_progress(document_id, 0.40, '物理構造抽出')
             logger.info("[Stage B] 物理構造抽出開始")
@@ -1073,8 +1113,9 @@ class PipelineManager:
             # Stage G: UI Optimized Structuring
             self._update_document_progress(document_id, 0.60, 'UI最適化')
             logger.info("[Stage G] UI最適化開始")
+            # ★G-1はF-5の結果のみを受け取る（直前ステージのみ）
             stage_g_result = self.stage_g.process(
-                stage_f_result=stage_f_result
+                f5_result=stage_f_result
             )
             if not stage_g_result or not stage_g_result.get('success'):
                 return {'success': False, 'error': 'Stage G失敗'}
@@ -1084,12 +1125,30 @@ class PipelineManager:
                 ui_data = stage_g_result.get('ui_data', {})
                 final_metadata = stage_g_result.get('final_metadata', {})
                 import json
+
+                # デバッグ：保存前の final_metadata を確認
+                logger.info("")
+                logger.info("[Pipeline Manager] ========== DB保存前の final_metadata ==========")
+                logger.info(f"  g11_output: {len(final_metadata.get('g11_output', []))}個")
+                logger.info(f"  g12_output: {len(final_metadata.get('g12_output', []))}個")
+                logger.info(f"  g21_output: {len(final_metadata.get('g21_output', []))}件")
+                logger.info(f"  g22_output: {type(final_metadata.get('g22_output', {}))}")
+                logger.info("=" * 70)
+
                 self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                    'stage_g_structured_data': json.dumps(ui_data, ensure_ascii=False),
-                    'metadata': json.dumps(final_metadata, ensure_ascii=False)
+                    'stage_g_structured_data': ui_data,  # JSONB - dict をそのまま渡す
+                    'metadata': final_metadata,  # JSONB - dict をそのまま渡す
+                    'g11_structured_tables': json.dumps(final_metadata.get('g11_output', []), ensure_ascii=False) if final_metadata.get('g11_output') else None,
+                    'g12_table_analyses': json.dumps(final_metadata.get('g12_output', []), ensure_ascii=False) if final_metadata.get('g12_output') else None,
+                    'g21_articles': json.dumps(final_metadata.get('g21_output', []), ensure_ascii=False) if final_metadata.get('g21_output') else None,
+                    'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None
                 }).eq('id', document_id).execute()
                 logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
-                logger.info(f"[Stage G] metadata を DB に保存: articles={len(final_metadata.get('articles', []))}件, structured_tables={len(final_metadata.get('structured_tables', []))}個")
+                logger.info(f"[Stage G] G-11/G-12/G-21/G-22 を個別カラムに保存")
+                logger.info(f"  ├─ G-11: {len(final_metadata.get('g11_output', []))}表")
+                logger.info(f"  ├─ G-12: {len(final_metadata.get('g12_output', []))}表")
+                logger.info(f"  ├─ G-21: {len(final_metadata.get('g21_output', []))}記事")
+                logger.info(f"  └─ G-22: {len(final_metadata.get('g22_output', {}).get('calendar_events', []))}イベント")
             except Exception as e:
                 logger.warning(f"Stage G 結果の DB 保存エラー: {e}")
 

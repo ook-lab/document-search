@@ -1868,6 +1868,48 @@ body {
     padding: 10px 0;
 }
 
+/* G22 2タブコンテナ */
+.g22-tabs-container {
+    margin: 0;
+}
+
+.g22-text-blocks,
+.g22-extraction-container {
+    max-height: 600px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+/* G12 クラスカード */
+.g12-card {
+    border: 1px solid #dde3f0;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+.g12-card-title {
+    background: #667eea;
+    color: white;
+    font-weight: 600;
+    padding: 6px 12px;
+    font-size: 0.95em;
+}
+.g12-card-section {
+    padding: 8px 12px;
+    border-top: 1px solid #eee;
+}
+.g12-card-key {
+    font-size: 0.8em;
+    color: #888;
+    margin-bottom: 4px;
+}
+.g12-card-content {
+    font-size: 0.9em;
+}
+.g12-card-content .table-wrapper {
+    margin: 0;
+}
+
 /* フラット表スタイル */
 .flat-table {
     font-size: 13px;

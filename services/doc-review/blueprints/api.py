@@ -249,6 +249,54 @@ def get_document(doc_id: str):
                 stage_g_data = {}
         document['stage_g_structured_data'] = stage_g_data
 
+        # ★G-11/G-12/G-21/G-22 の個別結果をパース
+        for key in ['g11_structured_tables', 'g12_table_analyses', 'g21_articles', 'g22_ai_extracted']:
+            value = document.get(key)
+            if isinstance(value, str):
+                try:
+                    document[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    document[key] = [] if key != 'g22_ai_extracted' else {}
+
+        # ★UIが期待する形式で metadata に統合
+        # UIは metadata.g11_output, metadata.g12_output, metadata.g21_output, metadata.g22_output を探す
+        # metadata が辞書であることを保証
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        if document.get('g11_structured_tables'):
+            metadata['g11_output'] = document['g11_structured_tables']
+
+        # ★G-12: 古い形式（sections形式）を新しい形式（headers/rows形式）に変換
+        if document.get('g12_table_analyses'):
+            g12_data = document['g12_table_analyses']
+            converted_tables = []
+            for analysis in g12_data:
+                # 古い形式（sections[0].data）の場合は変換
+                if 'sections' in analysis and analysis['sections']:
+                    section_data = analysis['sections'][0].get('data', [])
+                    converted_table = {
+                        'table_id': analysis.get('table_id', ''),
+                        'table_type': analysis.get('table_type', 'structured'),
+                        'description': analysis.get('description', ''),
+                        'headers': [],  # UI側で自動生成
+                        'rows': section_data,
+                        'sections': analysis.get('sections', []),
+                        'metadata': analysis.get('metadata', {})
+                    }
+                    converted_tables.append(converted_table)
+                else:
+                    # すでに新しい形式の場合はそのまま
+                    converted_tables.append(analysis)
+            metadata['g12_output'] = converted_tables
+        if document.get('g21_articles'):
+            metadata['g21_output'] = document['g21_articles']
+        if document.get('g22_ai_extracted'):
+            metadata['g22_output'] = document['g22_ai_extracted']
+
+        # 統合後の metadata を document に反映
+        document['metadata'] = metadata
+
         return jsonify(document)
 
     except Exception as e:

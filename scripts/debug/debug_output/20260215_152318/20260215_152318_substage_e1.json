@@ -1,0 +1,43 @@
+{
+  "non_table_scout": {
+    "char_count": 13,
+    "density_level": "low",
+    "should_skip": false,
+    "extracted_text": "2026年\n\n34\n\n1/16 発行\n\n",
+    "confidence": 0.026
+  },
+  "table_scouts": [
+    {
+      "char_count": 0,
+      "density_level": "none",
+      "should_skip": true,
+      "extracted_text": "",
+      "confidence": 0.0,
+      "table_id": "T1"
+    }
+  ],
+  "page_scout": {
+    "pages_total": 2,
+    "pages_processed": 2,
+    "per_page": [
+      {
+        "page": 0,
+        "words_count": 9,
+        "chars_count": 17,
+        "extracted_text": "2026 年 34 1/16 発行 t f | 上",
+        "status": "ok",
+        "skip_reason": ""
+      },
+      {
+        "page": 1,
+        "words_count": 0,
+        "chars_count": 0,
+        "extracted_text": "",
+        "status": "ok",
+        "skip_reason": ""
+      }
+    ],
+    "total_words": 9,
+    "total_chars": 17
+  }
+}

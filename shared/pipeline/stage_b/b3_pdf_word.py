@@ -64,15 +64,18 @@ class B3PDFWordProcessor:
                     slices = self._detect_slices(page)
                     logger.info(f"[B-3] ページ{page_num+1}: {len(slices)}スライス検出")
 
-                    # 各スライスからテキストを抽出
-                    for slice_idx, slice_bbox in enumerate(slices):
-                        block = self._extract_block(page, slice_bbox, page_num, slice_idx)
-                        if block['text'].strip():  # 空でないブロックのみ追加
-                            logical_blocks.append(block)
-
-                    # 表を抽出
+                    # ★修正: 先に表を検出（表領域を特定するため）
                     tables = self._extract_tables(page, page_num)
                     all_tables.extend(tables)
+
+                    # 表のbboxリストを作成
+                    table_bboxes = [table['bbox'] for table in tables]
+
+                    # ★修正: 各スライスからテキストを抽出（表領域を除外）
+                    for slice_idx, slice_bbox in enumerate(slices):
+                        block = self._extract_block(page, slice_bbox, page_num, slice_idx, table_bboxes)
+                        if block['text'].strip():  # 空でないブロックのみ追加
+                            logical_blocks.append(block)
 
                     # B-90 消去用：ページ全体の単語を収集（ルビ・本文問わず）
                     page_words = page.extract_words(
@@ -230,7 +233,8 @@ class B3PDFWordProcessor:
         page,
         bbox: Tuple[float, float, float, float],
         page_num: int,
-        slice_idx: int
+        slice_idx: int,
+        table_bboxes: List[Tuple[float, float, float, float]] = None
     ) -> Dict[str, Any]:
         """
         指定範囲からテキストブロックを抽出（Wordの単語順序を維持）
@@ -240,6 +244,7 @@ class B3PDFWordProcessor:
             bbox: 抽出範囲 (x0, y0, x1, y1)
             page_num: ページ番号
             slice_idx: スライスインデックス
+            table_bboxes: 表のbboxリスト（除外用）
 
         Returns:
             {
@@ -262,13 +267,21 @@ class B3PDFWordProcessor:
             keep_blank_chars=False
         )
 
+        if table_bboxes is None:
+            table_bboxes = []
+
         # ルビを除外（フォントサイズ 6pt 以下）
         # ただし、size=0.0pt（サイズ不明）は本文として救済する
+        # ★修正: 表領域の単語も除外
         body_words = []
         has_red = False
         has_bold = False
 
         for word in words:
+            # ★修正: 表領域内の単語をスキップ
+            word_bbox = (word['x0'], word['top'], word['x1'], word['bottom'])
+            if self._is_inside_any_table(word_bbox, table_bboxes):
+                continue
             avg_size = self._get_avg_size(word)
 
             # ルビ判定（小さいフォントサイズ）
@@ -322,6 +335,31 @@ class B3PDFWordProcessor:
         sizes = [char.get('size', 0) for char in chars]
         return sum(sizes) / len(sizes) if sizes else 0.0
 
+    def _is_inside_any_table(self, word_bbox: Tuple[float, float, float, float], table_bboxes: List[Tuple[float, float, float, float]]) -> bool:
+        """
+        単語が表領域内にあるかチェック
+
+        Args:
+            word_bbox: 単語のbbox (x0, y0, x1, y1)
+            table_bboxes: 表のbboxリスト [(x0, y0, x1, y1), ...]
+
+        Returns:
+            表領域内にある場合 True
+        """
+        if not table_bboxes:
+            return False
+
+        wx0, wy0, wx1, wy1 = word_bbox
+
+        for table_bbox in table_bboxes:
+            tx0, ty0, tx1, ty1 = table_bbox
+
+            # 単語が表領域内にあるかチェック（完全に内側）
+            if wx0 >= tx0 and wx1 <= tx1 and wy0 >= ty0 and wy1 <= ty1:
+                return True
+
+        return False
+
     def _extract_tables(self, page, page_num: int) -> List[Dict[str, Any]]:
         """
         ページ内の表を抽出
@@ -340,11 +378,20 @@ class B3PDFWordProcessor:
         """
         tables = []
         for idx, table in enumerate(page.find_tables()):
+            data = table.extract()
+            logger.info(f"[B-3] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
+            if data and len(data) > 0:
+                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
+                logger.debug(f"[B-3] Table {idx} 1行目サンプル: {first_row_sample}")
+
             tables.append({
                 'page': page_num,
                 'index': idx,
                 'bbox': table.bbox,
-                'data': table.extract()
+                'data': data,
+                'rows': len(data) if data else 0,
+                'cols': len(data[0]) if data and len(data) > 0 else 0,
+                'source': 'stage_b'
             })
         return tables
 

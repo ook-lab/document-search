@@ -69,20 +69,40 @@ class D3VectorLineExtractor:
 
                 # 線とrectを抽出
                 lines = self._extract_lines(page, page_width, page_height)
+                logger.info(f"[D-3] pdfplumber.lines から抽出: {len(lines)}本")
+                if lines:
+                    sample = lines[:3]
+                    logger.debug(f"[D-3] lines サンプル（最初3本）:")
+                    for i, line in enumerate(sample, 1):
+                        logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, length={line.get('length', 0):.1f}pt")
+
                 rect_lines = self._extract_rect_edges(page, page_width, page_height)
+                logger.info(f"[D-3] pdfplumber.rects から抽出: {len(rect_lines)}本")
+                if rect_lines:
+                    sample = rect_lines[:3]
+                    logger.debug(f"[D-3] rect_lines サンプル（最初3本）:")
+                    for i, line in enumerate(sample, 1):
+                        logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, length={line.get('length', 0):.1f}pt")
 
                 # 統合してクレンジング
+                before_merge = len(lines) + len(rect_lines)
                 all_lines = self._merge_and_clean(lines + rect_lines)
+                logger.info(f"[D-3] マージ・重複除去: {before_merge}本 → {len(all_lines)}本")
 
                 # B 抽出済み表領域の線をフィルタリング（二重検出防止）
                 if known_table_regions:
                     before = len(all_lines)
+                    logger.debug(f"[D-3] B抽出済み表領域: {len(known_table_regions)}個")
+                    for i, region in enumerate(known_table_regions, 1):
+                        bbox = region.get('bbox', [])
+                        logger.debug(f"  {i}. page={region.get('page')}, bbox={bbox}")
+
                     all_lines = self._filter_known_tables(
                         all_lines, known_table_regions, page_width, page_height, page_num
                     )
                     skipped = before - len(all_lines)
                     if skipped > 0:
-                        logger.info(f"[D-3] B抽出済み表領域フィルタ: {skipped}本をスキップ")
+                        logger.info(f"[D-3] B抽出済み表領域フィルタ: {skipped}本をスキップ（{before}本 → {len(all_lines)}本）")
 
                 # 水平・垂直に分類
                 horizontal_lines = [
@@ -157,8 +177,11 @@ class D3VectorLineExtractor:
 
             # フィルタリング
             if length < self.min_line_length:
+                logger.debug(f"[D-3] 短すぎる線をスキップ: length={length:.1f}pt < min={self.min_line_length}pt")
                 continue
-            if line.get('width', 0) > self.max_line_thickness:
+            line_width = line.get('width', 0)
+            if line_width > self.max_line_thickness:
+                logger.debug(f"[D-3] 太すぎる線をスキップ: width={line_width:.1f}pt > max={self.max_line_thickness}pt")
                 continue
 
             # 正規化座標に変換

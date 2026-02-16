@@ -648,6 +648,22 @@
                 </button>
             </div>
 
+            <!-- ブロックされたドキュメント一覧 -->
+            <h2 style="margin-bottom: 20px; color: #1f2937;">🚫 Gatekeeper ブロック（処理対象外）</h2>
+            <div class="requests-list" id="blocked-list" style="margin-bottom: 40px;">
+                <div class="empty-state">
+                    <p>読み込み中...</p>
+                </div>
+            </div>
+
+            <!-- 処理失敗ドキュメント一覧 -->
+            <h2 style="margin-bottom: 20px; color: #1f2937;">❌ 処理失敗</h2>
+            <div class="requests-list" id="failed-list" style="margin-bottom: 40px;">
+                <div class="empty-state">
+                    <p>読み込み中...</p>
+                </div>
+            </div>
+
             <!-- キュー一覧 -->
             <h2 style="margin-bottom: 20px; color: #1f2937;">📋 キュー内ドキュメント一覧</h2>
             <div class="requests-list" id="queue-list">
@@ -668,6 +684,8 @@
         window.addEventListener('load', function() {
             loadWorkspaces();
             refreshQueue();
+            loadBlockedDocuments();
+            loadFailedDocuments();
             loadDashboard();
             startPolling();
         });
@@ -677,6 +695,8 @@
             if (pollingTimer) return;
             pollingTimer = setInterval(() => {
                 refreshQueue();
+                loadBlockedDocuments();
+                loadFailedDocuments();
                 loadDashboard();
             }, POLLING_INTERVAL);
         }
@@ -685,6 +705,8 @@
         document.getElementById('workspace').addEventListener('change', function() {
             loadDashboard();
             refreshQueue();
+            loadBlockedDocuments();
+            loadFailedDocuments();
         });
 
         // ワークスペース一覧を読み込む
@@ -1069,6 +1091,250 @@
             } catch (error) {
                 console.error('キュー一覧取得エラー:', error);
                 document.getElementById('queue-list').innerHTML = `
+                    <div class="empty-state">
+                        <p>❌ 取得エラー: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // ブロックされたドキュメント一覧を読み込む
+        async function loadBlockedDocuments() {
+            try {
+                const workspace = document.getElementById('workspace').value || '';
+                const url = workspace
+                    ? `/internal/blocked-documents?workspace=${encodeURIComponent(workspace)}`
+                    : '/internal/blocked-documents';
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                const listEl = document.getElementById('blocked-list');
+
+                if (!data.success) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <p>❌ 取得エラー: ${data.error || 'Unknown error'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const blockedDocs = data.blocked_docs || [];
+                const blockStats = data.block_stats || {};
+
+                if (blockedDocs.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <p>✅ ブロックされたドキュメントはありません</p>
+                            <p style="font-size: 0.9em; color: #6b7280;">すべてのドキュメントが Gatekeeper を通過しています</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // ブロック理由別の統計を表示
+                const statsHtml = Object.entries(blockStats)
+                    .map(([code, count]) => `<span style="margin-right: 15px; color: #ef4444;">${code}: ${count}件</span>`)
+                    .join('');
+
+                const statsBar = `
+                    <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ef4444;">
+                        <div style="font-weight: 600; color: #991b1b; margin-bottom: 8px;">📊 ブロック理由別集計</div>
+                        <div style="font-size: 0.95em;">${statsHtml}</div>
+                    </div>
+                `;
+
+                const docsHtml = blockedDocs.map(doc => {
+                    const title = doc.title || doc.file_name || '(無題)';
+                    const shortId = doc.id.substring(0, 8);
+                    const blockCode = doc.gate_block_code || 'UNKNOWN';
+                    const blockReason = doc.gate_block_reason || '理由不明';
+
+                    return `
+                        <div class="request-card" style="border-left: 4px solid #ef4444;">
+                            <div class="request-header">
+                                <span class="request-id" title="${doc.id}">${shortId}...</span>
+                                <span class="request-status failed" style="background: #fef2f2; color: #991b1b;">🚫 BLOCK</span>
+                            </div>
+                            <div class="doc-titles">
+                                <div class="doc-titles-label">📄 ${title}</div>
+                            </div>
+                            <div style="background: #fef2f2; padding: 12px; border-radius: 6px; margin: 10px 0;">
+                                <div style="font-weight: 600; color: #991b1b; margin-bottom: 5px;">
+                                    ❌ ブロック理由: ${blockCode}
+                                </div>
+                                <div style="color: #7f1d1d; font-size: 0.9em;">
+                                    ${blockReason}
+                                </div>
+                            </div>
+                            <div class="request-info">
+                                <div class="info-item">
+                                    <div class="label">ワークスペース</div>
+                                    <div class="value">${doc.workspace || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">作成ソフト</div>
+                                    <div class="value">${doc.origin_app || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">信頼度</div>
+                                    <div class="value">${doc.origin_confidence || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">レイアウト</div>
+                                    <div class="value">${doc.layout_profile || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">ポリシーバージョン</div>
+                                    <div class="value">${doc.gate_policy_version || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">更新日時</div>
+                                    <div class="value">${formatDate(doc.updated_at)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                listEl.innerHTML = statsBar + docsHtml;
+
+            } catch (error) {
+                console.error('ブロックドキュメント取得エラー:', error);
+                document.getElementById('blocked-list').innerHTML = `
+                    <div class="empty-state">
+                        <p>❌ 取得エラー: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 処理失敗ドキュメント一覧を読み込む
+        async function loadFailedDocuments() {
+            try {
+                const workspace = document.getElementById('workspace').value || '';
+                const url = workspace
+                    ? `/internal/failed-documents?workspace=${encodeURIComponent(workspace)}`
+                    : '/internal/failed-documents';
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                const listEl = document.getElementById('failed-list');
+
+                if (!data.success) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <p>❌ 取得エラー: ${data.error || 'Unknown error'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const failedDocs = data.failed_docs || [];
+                const errorStats = data.error_stats || {};
+
+                if (failedDocs.length === 0) {
+                    listEl.innerHTML = `
+                        <div class="empty-state">
+                            <p>✅ 処理失敗したドキュメントはありません</p>
+                            <p style="font-size: 0.9em; color: #6b7280;">すべてのドキュメントが正常に処理されています</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // エラー種別の統計を表示（上位5件のみ）
+                const topErrors = Object.entries(errorStats)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5);
+
+                const statsHtml = topErrors
+                    .map(([error, count]) => {
+                        const shortError = error.length > 40 ? error.substring(0, 40) + '...' : error;
+                        return `<div style="margin-bottom: 5px;"><span style="color: #ef4444; font-weight: 600;">${count}件:</span> ${shortError}</div>`;
+                    })
+                    .join('');
+
+                const statsBar = `
+                    <div style="background: #fef2f2; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ef4444;">
+                        <div style="font-weight: 600; color: #991b1b; margin-bottom: 8px;">📊 エラー種別集計（上位5件）</div>
+                        <div style="font-size: 0.9em;">${statsHtml}</div>
+                    </div>
+                `;
+
+                const docsHtml = failedDocs.map(doc => {
+                    const title = doc.title || doc.file_name || '(無題)';
+                    const shortId = doc.id.substring(0, 8);
+                    const errorMsg = doc.error_message || '不明なエラー';
+                    const attemptCount = doc.attempt_count || 0;
+
+                    // metadataから詳細エラー情報を取得
+                    let metadata = {};
+                    try {
+                        if (typeof doc.metadata === 'string') {
+                            metadata = JSON.parse(doc.metadata);
+                        } else {
+                            metadata = doc.metadata || {};
+                        }
+                    } catch (e) {
+                        metadata = {};
+                    }
+                    const lastError = metadata.last_error || errorMsg;
+
+                    return `
+                        <div class="request-card" style="border-left: 4px solid #f59e0b;">
+                            <div class="request-header">
+                                <span class="request-id" title="${doc.id}">${shortId}...</span>
+                                <span class="request-status failed">❌ FAILED</span>
+                            </div>
+                            <div class="doc-titles">
+                                <div class="doc-titles-label">📄 ${title}</div>
+                            </div>
+                            <div style="background: #fffbeb; padding: 12px; border-radius: 6px; margin: 10px 0; border: 1px solid #fbbf24;">
+                                <div style="font-weight: 600; color: #92400e; margin-bottom: 5px;">
+                                    ⚠️ エラーメッセージ
+                                </div>
+                                <div style="color: #78350f; font-size: 0.9em; font-family: monospace; white-space: pre-wrap; max-height: 100px; overflow-y: auto;">
+                                    ${lastError}
+                                </div>
+                            </div>
+                            <div class="request-info">
+                                <div class="info-item">
+                                    <div class="label">ワークスペース</div>
+                                    <div class="value">${doc.workspace || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">作成ソフト</div>
+                                    <div class="value">${doc.origin_app || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">試行回数</div>
+                                    <div class="value" style="color: ${attemptCount > 2 ? '#ef4444' : '#6b7280'}; font-weight: ${attemptCount > 2 ? '600' : 'normal'};">${attemptCount}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">信頼度</div>
+                                    <div class="value">${doc.origin_confidence || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">レイアウト</div>
+                                    <div class="value">${doc.layout_profile || '-'}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="label">更新日時</div>
+                                    <div class="value">${formatDate(doc.updated_at)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                listEl.innerHTML = statsBar + docsHtml;
+
+            } catch (error) {
+                console.error('失敗ドキュメント取得エラー:', error);
+                document.getElementById('failed-list').innerHTML = `
                     <div class="empty-state">
                         <p>❌ 取得エラー: ${error.message}</p>
                     </div>

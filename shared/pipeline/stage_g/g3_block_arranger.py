@@ -18,36 +18,47 @@ from loguru import logger
 class G3BlockArranger:
     """G-3: Semantic Block Arrangement（ブロック整頓）"""
 
-    def __init__(self):
-        """Block Arranger 初期化"""
-        pass
+    def __init__(self, next_stage=None):
+        """
+        Block Arranger 初期化
+
+        Args:
+            next_stage: 次のステージ（G-5）のインスタンス
+        """
+        self.next_stage = next_stage
 
     def arrange(
         self,
-        raw_text: str,
-        events: List[Dict[str, Any]],
-        tasks: List[Dict[str, Any]],
-        notices: List[Dict[str, Any]]
+        g1_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         テキストを意味的なブロックに整理
 
         Args:
-            raw_text: Stage F の統合テキスト
-            events: イベントリスト
-            tasks: タスクリスト
-            notices: 注意事項リスト
+            g1_result: G-1の処理結果（直前ステージのみ）
 
         Returns:
             {
                 'success': bool,
-                'blocks': list,  # ブロックリスト
-                'block_count': int
+                'blocks': list,
+                'events': list,
+                'tasks': list,
+                'notices': list,
+                'document_info': dict,
+                'ui_tables': list
             }
         """
         logger.info("[G-3] ブロック整頓開始")
 
         try:
+            # ★G-1の結果から必要なデータを取得（直前ステージのみ）
+            raw_text = g1_result.get('raw_text', '')
+            events = g1_result.get('events', [])
+            tasks = g1_result.get('tasks', [])
+            notices = g1_result.get('notices', [])
+            document_info = g1_result.get('document_info', {})
+            ui_tables = g1_result.get('ui_tables', [])
+
             blocks = []
 
             # イベントブロック
@@ -97,11 +108,24 @@ class G3BlockArranger:
 
             logger.info(f"[G-3] 整頓完了: {len(blocks)}ブロック")
 
-            return {
+            result = {
                 'success': True,
                 'blocks': blocks,
-                'block_count': len(blocks)
+                'block_count': len(blocks),
+                # ★G-5に必要なデータを含める（G-1から受け取ったデータ）
+                'events': events,
+                'tasks': tasks,
+                'notices': notices,
+                'document_info': document_info,
+                'ui_tables': ui_tables
             }
+
+            # ★チェーン: 次のステージ（G-5）を呼び出す
+            if self.next_stage:
+                logger.info("[G-3] → 次のステージ（G-5）を呼び出します")
+                return self.next_stage.eliminate(g3_result=result)
+
+            return result
 
         except Exception as e:
             logger.error(f"[G-3] 整頓エラー: {e}", exc_info=True)

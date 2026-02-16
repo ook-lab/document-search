@@ -103,12 +103,21 @@ class D10ImageSlicer:
             # 表領域をフィルタリング（全面表の誤検出を除外）
             raw_table_regions = grid_result.get('table_regions', [])
             unified_lines = grid_result.get('unified_lines', {})
+            logger.info(f"[D-10] 表領域フィルタリング開始: {len(raw_table_regions)}個の表領域候補")
+
             table_regions = self._filter_table_regions(
                 raw_table_regions,
                 unified_lines,
                 width,
                 height
             )
+            logger.info(f"[D-10] フィルタリング結果: {len(table_regions)}個の表領域を採用")
+
+            # セル結果から bbox を調整（余分な領域を除外）
+            cells = cell_result.get('cells', [])
+            if cells:
+                table_regions = self._adjust_bbox_from_cells(table_regions, cells)
+                logger.info(f"[D-10] セル結果から bbox を調整完了")
 
             # 表領域を切り出し
             tables = []
@@ -123,6 +132,11 @@ class D10ImageSlicer:
                 x1 = int(bbox[2] * width)
                 y1 = int(bbox[3] * height)
 
+                logger.info(f"[D-10] 表画像切り出し {table_id}:")
+                logger.info(f"  ├─ 正規化bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]")
+                logger.info(f"  ├─ ピクセル座標: ({x0}, {y0}) - ({x1}, {y1})")
+                logger.info(f"  └─ サイズ: {x1-x0} x {y1-y0} px")
+
                 # 表画像を切り出し
                 table_image = image[y0:y1, x0:x1]
 
@@ -130,7 +144,7 @@ class D10ImageSlicer:
                 table_image_path = output_dir / f"d10_table_{table_id}.png"
                 cv2.imwrite(str(table_image_path), table_image)
 
-                logger.info(f"[D-10] 表画像保存: {table_image_path.name}")
+                logger.info(f"[D-10] 表画像保存完了: {table_image_path.name}")
 
                 tables.append({
                     'table_id': table_id,
@@ -140,6 +154,7 @@ class D10ImageSlicer:
                 })
 
             # 非表領域画像を生成（表を白塗り）
+            logger.info(f"[D-10] 非表画像生成開始: {len(table_regions)}個の表領域を白塗り")
             non_table_image = image.copy()
 
             for table_region in table_regions:
@@ -151,6 +166,8 @@ class D10ImageSlicer:
                 x1 = int(bbox[2] * width)
                 y1 = int(bbox[3] * height)
 
+                logger.debug(f"[D-10] 白塗り {table_region['table_id']}: ({x0}, {y0}) - ({x1}, {y1})")
+
                 # 白塗り
                 non_table_image[y0:y1, x0:x1] = 255
 
@@ -158,7 +175,7 @@ class D10ImageSlicer:
             non_table_image_path = output_dir / "d10_background.png"
             cv2.imwrite(str(non_table_image_path), non_table_image)
 
-            logger.info(f"[D-10] 非表画像保存: {non_table_image_path.name}")
+            logger.info(f"[D-10] 非表画像保存完了: {non_table_image_path.name}")
 
             logger.info("[D-10] 画像分割完了")
             logger.info(f"  ├─ 表画像: {len(tables)}枚")
@@ -231,14 +248,108 @@ class D10ImageSlicer:
             # 3) 判定
             if interior_hline_count >= self.min_interior_hlines:
                 # 内側水平線が十分あるので、真の全面tableと判断
-                logger.info(f"[D-10] 全面table許可: {table_id} (w={w:.2f}, h={h:.2f}, interior_hlines={interior_hline_count})")
+                logger.info(f"[D-10] ✓ 全面table許可: {table_id}")
+                logger.info(f"    ├─ サイズ比率: w={w:.3f}, h={h:.3f}")
+                logger.info(f"    ├─ 内側水平線数: {interior_hline_count} (閾値: {self.min_interior_hlines})")
+                logger.info(f"    └─ 判定: 真の全面表として採用")
                 filtered.append(region)
             else:
                 # 内側水平線が不足 → 誤検出として reject
-                logger.warning(f"[D-10] reject table {table_id} reason=full_page_bbox (w={w:.2f}, h={h:.2f}, interior_hlines={interior_hline_count})")
+                logger.warning(f"[D-10] ✗ 表領域除外: {table_id}")
+                logger.warning(f"    ├─ サイズ比率: w={w:.3f}, h={h:.3f}")
+                logger.warning(f"    ├─ 内側水平線数: {interior_hline_count} (閾値: {self.min_interior_hlines})")
+                logger.warning(f"    └─ 理由: 全面bbox判定で内側水平線不足（誤検出の可能性）")
 
-        logger.info(f"[D-10] 表領域フィルタ: {len(table_regions)} → {len(filtered)}")
+        logger.info(f"[D-10] 表領域フィルタリング完了: {len(table_regions)}個 → {len(filtered)}個")
         return filtered
+
+    def _adjust_bbox_from_cells(
+        self,
+        table_regions: List[Dict[str, Any]],
+        cells: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        セル結果から表領域の bbox を調整
+
+        Args:
+            table_regions: 表領域リスト
+            cells: セルリスト
+
+        Returns:
+            調整後の表領域リスト
+        """
+        if not cells or not table_regions:
+            return table_regions
+
+        # セルのY座標を収集
+        y_coords_all = []
+        for cell in cells:
+            bbox = cell.get('bbox')
+            if bbox and len(bbox) == 4:
+                y_coords_all.append(bbox[1])  # y0
+
+        if not y_coords_all:
+            logger.warning("[D-10] セルに有効な bbox がありません")
+            return table_regions
+
+        # Y座標をソート
+        y_coords_all.sort()
+
+        # 大きなギャップを検出（波線などで区切られた偽セルを除外）
+        GAP_THRESHOLD = 0.1  # 正規化座標で10%以上のギャップ
+        valid_y_start = y_coords_all[0]
+
+        for i in range(len(y_coords_all) - 1):
+            gap = y_coords_all[i + 1] - y_coords_all[i]
+            if gap > GAP_THRESHOLD:
+                # 大きなギャップを発見 → この後が実際の表
+                valid_y_start = y_coords_all[i + 1]
+                logger.info(f"[D-10] 大きなギャップ検出: y={y_coords_all[i]:.3f} → {y_coords_all[i+1]:.3f} (gap={gap:.3f})")
+                logger.info(f"[D-10] 実際の表の開始位置: y={valid_y_start:.3f}")
+                break
+
+        # 有効なセルのみから座標を取得
+        x_coords = []
+        y_coords = []
+
+        for cell in cells:
+            bbox = cell.get('bbox')
+            if bbox and len(bbox) == 4:
+                # ギャップより上のセルは除外
+                if bbox[1] >= valid_y_start - 0.01:  # 許容誤差
+                    x_coords.extend([bbox[0], bbox[2]])
+                    y_coords.extend([bbox[1], bbox[3]])
+
+        if not x_coords or not y_coords:
+            logger.warning("[D-10] 有効なセルがありません → 全セルを使用")
+            # フォールバック: 全セルを使用
+            for cell in cells:
+                bbox = cell.get('bbox')
+                if bbox and len(bbox) == 4:
+                    x_coords.extend([bbox[0], bbox[2]])
+                    y_coords.extend([bbox[1], bbox[3]])
+
+        # セル領域の外郭を計算
+        x_min = min(x_coords)
+        x_max = max(x_coords)
+        y_min = min(y_coords)
+        y_max = max(y_coords)
+
+        # 各表領域の bbox を調整
+        adjusted_regions = []
+        for region in table_regions:
+            original_bbox = region['bbox']
+            adjusted_bbox = [x_min, y_min, x_max, y_max]
+
+            logger.info(f"[D-10] Bbox 調整 {region['table_id']}:")
+            logger.info(f"  ├─ 元の bbox: [{original_bbox[0]:.3f}, {original_bbox[1]:.3f}, {original_bbox[2]:.3f}, {original_bbox[3]:.3f}]")
+            logger.info(f"  └─ 調整後: [{adjusted_bbox[0]:.3f}, {adjusted_bbox[1]:.3f}, {adjusted_bbox[2]:.3f}, {adjusted_bbox[3]:.3f}]")
+
+            adjusted_region = region.copy()
+            adjusted_region['bbox'] = adjusted_bbox
+            adjusted_regions.append(adjusted_region)
+
+        return adjusted_regions
 
     def _empty_result(self) -> Dict[str, Any]:
         """空の結果を返す"""

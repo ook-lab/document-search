@@ -30,7 +30,8 @@ class F3SmartDateNormalizer:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-flash-lite"
+        model_name: str = "gemini-2.5-flash-lite",
+        next_stage=None
     ):
         """
         Smart Date Normalizer 初期化
@@ -38,9 +39,11 @@ class F3SmartDateNormalizer:
         Args:
             api_key: Google AI API Key
             model_name: 使用するモデル名
+            next_stage: 次のステージ（F-5）のインスタンス
         """
         self.model_name = model_name
         self.api_key = api_key
+        self.next_stage = next_stage
 
         if not GENAI_AVAILABLE:
             logger.error("[F-3] google-generativeai が必要です")
@@ -53,11 +56,55 @@ class F3SmartDateNormalizer:
             logger.warning("[F-3] API key が設定されていません")
             self.model = None
 
+    def normalize(
+        self,
+        events: List[Dict[str, Any]],
+        year_context: Optional[int] = None,
+        merge_result: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        チェーンパターン用: イベントを正規化して次のステージへ
+
+        Args:
+            events: イベントリスト
+            year_context: 年度コンテキスト
+            merge_result: F-1の統合結果
+
+        Returns:
+            F-5の結果（チェーン経由）またはF-3の結果
+        """
+        # イベントの正規化（表データとテキストも渡す）
+        norm_result = self.normalize_dates(
+            events=events,
+            year_context=year_context,
+            merge_result=merge_result
+        )
+
+        if not norm_result.get('success'):
+            return norm_result
+
+        # merge_resultを更新
+        if merge_result:
+            merge_result['events'] = norm_result['normalized_events']
+
+        # ★チェーン: 次のステージ（F-5）を呼び出す
+        if self.next_stage and merge_result:
+            logger.info("[F-3] → 次のステージ（F-5）を呼び出します")
+            return self.next_stage.join(merge_result=merge_result)
+
+        # チェーンがない場合は正規化結果を返す
+        if merge_result:
+            merge_result['normalized_events'] = norm_result['normalized_events']
+            return merge_result
+
+        return norm_result
+
     def normalize_dates(
         self,
         events: List[Dict[str, Any]],
         year_context: Optional[int] = None,
-        reference_date: Optional[str] = None
+        reference_date: Optional[str] = None,
+        merge_result: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         イベントリストの日付を正規化
@@ -66,6 +113,7 @@ class F3SmartDateNormalizer:
             events: イベントリスト
             year_context: 年度コンテキスト（例: 2025）
             reference_date: 基準日（デフォルトは今日）
+            merge_result: F-1の統合結果（表データとテキストを含む）
 
         Returns:
             {
@@ -91,24 +139,40 @@ class F3SmartDateNormalizer:
         logger.info(f"[F-3] 日付正規化開始: {len(events)}件")
 
         try:
-            # 年度コンテキストを決定
-            if year_context is None:
-                year_context = datetime.now().year
-
             # 基準日を決定
             if reference_date is None:
                 reference_date = datetime.now().strftime('%Y-%m-%d')
 
+            # ★表データとテキストを取得（年度推定に使用）
+            tables = merge_result.get('tables', []) if merge_result else []
+            raw_text = merge_result.get('raw_integrated_text', '') if merge_result else ''
+
+            # ★修正: year_contextがNoneでもAIに推定させる
             # プロンプトを構築
-            prompt = self._build_prompt(events, year_context, reference_date)
+            prompt = self._build_prompt(events, year_context, reference_date, tables, raw_text)
 
             logger.info(f"[F-3] モデル: {self.model_name}")
-            logger.info(f"[F-3] 年度: {year_context}")
+            logger.info(f"[F-3] 年度ヒント: {year_context if year_context else 'なし（AIが推定）'}")
             logger.info(f"[F-3] 基準日: {reference_date}")
+            logger.info(f"[F-3] 年度推定用データ: 表{len(tables)}個, テキスト{len(raw_text)}文字")
+
+            # プロンプト全文をログ出力
+            logger.info("=" * 80)
+            logger.info("[F-3] AI プロンプト全文:")
+            logger.info("=" * 80)
+            logger.info(prompt)
+            logger.info("=" * 80)
 
             # Gemini に送信
             response = self.model.generate_content(prompt)
             raw_text = response.text
+
+            # レスポンス全文をログ出力
+            logger.info("=" * 80)
+            logger.info("[F-3] AI レスポンス全文:")
+            logger.info("=" * 80)
+            logger.info(raw_text)
+            logger.info("=" * 80)
 
             # レスポンスをパース
             normalized_events = self._parse_response(raw_text, events)
@@ -119,6 +183,36 @@ class F3SmartDateNormalizer:
             normalization_count = sum(
                 1 for e in normalized_events if e.get('normalized_date')
             )
+
+            # トークン使用量の詳細をログ出力
+            prompt_tokens = len(prompt) // 4
+            response_tokens = len(raw_text) // 4
+            logger.info(f"[F-3] トークン使用量詳細:")
+            logger.info(f"  ├─ プロンプト: 約{prompt_tokens} tokens")
+            logger.info(f"  ├─ レスポンス: 約{response_tokens} tokens")
+            logger.info(f"  └─ 合計: 約{tokens_used} tokens")
+
+            # 正規化されたイベントの詳細（変換前→変換後）をログ出力
+            logger.info("=" * 80)
+            logger.info("[F-3] 正規化イベント詳細（変換前→変換後）:")
+            logger.info("=" * 80)
+            for idx, event in enumerate(normalized_events, 1):
+                original = event.get('original_text', event.get('date_text', ''))
+                normalized_date = event.get('normalized_date')
+                normalized_time = event.get('normalized_time')
+
+                if normalized_date or normalized_time:
+                    logger.info(f"[F-3] Event #{idx}:")
+                    logger.info(f"  ├─ 元の表現: 「{original}」")
+                    if normalized_date:
+                        logger.info(f"  ├─ 正規化日付: {normalized_date}")
+                    if normalized_time:
+                        logger.info(f"  ├─ 正規化時刻: {normalized_time}")
+                    if year_context:
+                        logger.info(f"  └─ 年度ヒント: {year_context}年を使用")
+                    else:
+                        logger.info(f"  └─ 年度: AIがテキストから推定")
+            logger.info("=" * 80)
 
             logger.info(f"[F-3] 正規化完了:")
             logger.info(f"  ├─ 正規化成功: {normalization_count}件")
@@ -138,38 +232,86 @@ class F3SmartDateNormalizer:
     def _build_prompt(
         self,
         events: List[Dict[str, Any]],
-        year_context: int,
-        reference_date: str
+        year_context: Optional[int],
+        reference_date: str,
+        tables: Optional[List[Dict[str, Any]]] = None,
+        raw_text: Optional[str] = None
     ) -> str:
         """
         プロンプトを構築
 
         Args:
             events: イベントリスト
-            year_context: 年度
+            year_context: 年度（Noneの場合はAIが推定）
             reference_date: 基準日
+            tables: 表データ（年度推定に使用）
+            raw_text: 統合テキスト（年度推定に使用）
 
         Returns:
             プロンプト文字列
         """
         prompt_parts = []
 
+        # ★修正: year_contextの有無でプロンプトを変更
+        if year_context:
+            # 年度ヒントがある場合
+            context_info = f"""
+**コンテキスト:**
+- 年度ヒント: {year_context}年
+- 基準日: {reference_date}
+"""
+        else:
+            # 年度ヒントがない場合
+            context_info = f"""
+**コンテキスト:**
+- 基準日: {reference_date}
+- 年度情報: 不明（以下の情報から推定してください）
+"""
+
+        # ★年度推定のための追加情報
+        year_hints_section = ""
+        if not year_context:
+            year_hints = []
+
+            # テキストから年度ヒント抽出（先頭500文字）
+            if raw_text:
+                text_sample = raw_text[:500] if len(raw_text) > 500 else raw_text
+                year_hints.append(f"**文書テキスト（抜粋）:**\n```\n{text_sample}\n```")
+
+            # 表データから年度ヒント抽出（最初の表のみ）
+            if tables and len(tables) > 0:
+                table = tables[0]
+                headers = table.get('headers', [])
+                rows = table.get('rows', [])[:5]  # 最初の5行のみ
+                table_sample = f"ヘッダー: {headers}\n"
+                for i, row in enumerate(rows, 1):
+                    table_sample += f"行{i}: {row}\n"
+                year_hints.append(f"**表データ（抜粋）:**\n```\n{table_sample}```")
+
+            if year_hints:
+                year_hints_section = "\n\n**年度推定のための参考情報:**\n" + "\n\n".join(year_hints)
+
         # ベースプロンプト
         prompt_parts.append(f"""
 あなたは曖昧な日付表現を ISO 8601 形式に変換する専門家です。
 
-**コンテキスト:**
-- 年度: {year_context}年
-- 基準日: {reference_date}
+{context_info}{year_hints_section}
 
 **タスク:**
-以下のイベントリストに含まれる日付表現を、ISO 8601 形式（YYYY-MM-DD）に変換してください。
+1. **年度の推定**: テキストや表から年度情報を推定してください
+   - 例: "2025年度"、"令和7年"、"2025/1/16 発行"、表中の日付パターン
+   - ★表データとテキストの両方を確認し、年情報を見つけてください
+2. **曜日の検証**: 日付に曜日が付いている場合（例: "1/15（月）"）、変換後の日付が実際にその曜日か確認してください
+   - 曜日が合わない場合は、正しい年を再推定してください
+   - 例: "1/15（月）" → 2025-01-15が月曜日でない場合、2024-01-15や2026-01-15など、月曜日になる年を探してください
+3. **日付の変換**: 以下のイベントリストに含まれる日付表現を、ISO 8601 形式（YYYY-MM-DD）に変換してください
 
 **重要な変換ルール:**
-1. 「1/12」 → 「{year_context}-01-12」（年度を補完）
-2. 「来週月曜」 → 基準日から計算した具体的な日付
-3. 「11月9日」 → 「{year_context}-11-09」
-4. 時刻は「HH:MM」形式（24時間表記）
+1. 「1/12」 → 推定した年度を使って「YYYY-01-12」
+2. 「1/15（月）」 → 月曜日になる年を探して「YYYY-01-15」（曜日の整合性を優先）
+3. 「来週月曜」 → 基準日から計算した具体的な日付
+4. 「11月9日」 → 推定した年度を使って「YYYY-11-09」
+5. 時刻は「HH:MM」形式（24時間表記）
 
 **入力イベント:**
 ```json

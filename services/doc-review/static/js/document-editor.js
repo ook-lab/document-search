@@ -39,7 +39,6 @@ const FIELD_NAME_MAP = {
     "weekly_schedule": "📅 週間予定",
     "periods": "📅 時限別科目",
     "class_schedules": "📅 クラス別時間割",
-    "structured_tables": "📊 構造化テーブル",
     "monthly_schedule_blocks": "📅 月間予定表",
     "learning_content_blocks": "📚 教科別学習予定",
     "extracted_tables": "📊 抽出テーブル",
@@ -70,7 +69,6 @@ function detectStructuredFields(metadata) {
             key.endsWith("_blocks") ||
             key.endsWith("_matrix") ||
             key.endsWith("_tables") ||
-            key === "structured_tables" ||
             key === "weekly_schedule" ||
             key === "extracted_tables" ||
             key === "calendar_events" ||
@@ -241,54 +239,105 @@ function isTableCollection(data) {
 }
 
 function renderStructuredTable(key, data, label) {
-    // g22_output の特別処理（オブジェクト形式）
-    if (key === 'g22_output' && typeof data === 'object' && !Array.isArray(data)) {
-        let html = '<div class="g22-output-container">';
-
-        // calendar_events
-        if (data.calendar_events && data.calendar_events.length > 0) {
-            html += '<h4>📅 イベント・予定</h4>';
-            html += '<table class="data-table"><thead><tr><th>日付</th><th>時間</th><th>イベント</th><th>場所</th></tr></thead><tbody>';
-            data.calendar_events.forEach(event => {
-                html += `<tr>
-                    <td>${event.date || ''}</td>
-                    <td>${event.time || ''}</td>
-                    <td>${event.event || ''}</td>
-                    <td>${event.location || ''}</td>
-                </tr>`;
-            });
-            html += '</tbody></table>';
-        }
-
-        // tasks
-        if (data.tasks && data.tasks.length > 0) {
-            html += '<h4>✅ タスク・提出物</h4>';
-            html += '<table class="data-table"><thead><tr><th>期限</th><th>項目</th><th>詳細</th></tr></thead><tbody>';
-            data.tasks.forEach(task => {
-                html += `<tr>
-                    <td>${task.deadline || ''}</td>
-                    <td>${task.item || ''}</td>
-                    <td>${task.description || ''}</td>
-                </tr>`;
-            });
-            html += '</tbody></table>';
-        }
-
-        // notices
-        if (data.notices && data.notices.length > 0) {
-            html += '<h4>⚠️ 注意事項</h4>';
-            html += '<table class="data-table"><thead><tr><th>カテゴリ</th><th>内容</th></tr></thead><tbody>';
-            data.notices.forEach(notice => {
-                html += `<tr>
-                    <td>${notice.category || ''}</td>
-                    <td>${notice.content || ''}</td>
-                </tr>`;
-            });
-            html += '</tbody></table>';
-        }
-
+    // g21_output の特別処理（articles形式 → テキストブロック表示）
+    if (key === 'g21_output' && Array.isArray(data)) {
+        let html = '<div class="articles-container">';
+        data.forEach((article, index) => {
+            const title = article.title || `記事 ${index + 1}`;
+            const body = article.body || '';
+            html += `
+                <div class="article-block" style="margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 4px;">
+                    <h4 style="margin-top: 0; color: #333;">${title}</h4>
+                    <div style="white-space: pre-wrap; line-height: 1.6; color: #555;">${body}</div>
+                </div>
+            `;
+        });
         html += '</div>';
         return html || `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
+    }
+
+    // g12_output の特別処理（AI構造化テーブル）
+    if (key === 'g12_output' && Array.isArray(data)) {
+        return renderG12Output(key, data, label);
+    }
+
+    // g22_output の特別処理（2タブ: テキストブロック / タスク・カレンダー）
+    if (key === 'g22_output' && typeof data === 'object' && !Array.isArray(data)) {
+        const uid = 'g22-' + Date.now();
+
+        // G22-1: テキストブロック（g21_output の articles から）
+        const g21Articles = DocState.currentMetadata?.g21_output;
+        let tab1Content = '';
+        if (Array.isArray(g21Articles) && g21Articles.length > 0) {
+            tab1Content = '<div class="g22-text-blocks">';
+            g21Articles.forEach((article, idx) => {
+                const title = article.title || `ブロック ${idx + 1}`;
+                const body = article.body || '';
+                tab1Content += `
+                    <div class="article-block" style="margin-bottom:16px;border:1px solid #ddd;padding:12px;border-radius:4px;">
+                        <h5 style="margin:0 0 8px 0;color:#333;">${escapeHtml(title)}</h5>
+                        <div style="white-space:pre-wrap;line-height:1.6;color:#555;font-size:0.9em;">${escapeHtml(body)}</div>
+                    </div>
+                `;
+            });
+            tab1Content += '</div>';
+        } else {
+            tab1Content = '<div class="empty-state"><p>テキストブロックがありません（G-21データなし）</p></div>';
+        }
+
+        // G22-2: タスク・カレンダー要素
+        let tab2Content = '<div class="g22-extraction-container">';
+        if (data.calendar_events && data.calendar_events.length > 0) {
+            tab2Content += '<h4>📅 イベント・予定</h4>';
+            tab2Content += '<table class="data-table"><thead><tr><th>日付</th><th>時間</th><th>イベント</th><th>場所</th></tr></thead><tbody>';
+            data.calendar_events.forEach(event => {
+                tab2Content += `<tr>
+                    <td>${escapeHtml(event.date || '')}</td>
+                    <td>${escapeHtml(event.time || '')}</td>
+                    <td>${escapeHtml(event.event || '')}</td>
+                    <td>${escapeHtml(event.location || '')}</td>
+                </tr>`;
+            });
+            tab2Content += '</tbody></table>';
+        }
+        if (data.tasks && data.tasks.length > 0) {
+            tab2Content += '<h4>✅ タスク・提出物</h4>';
+            tab2Content += '<table class="data-table"><thead><tr><th>期限</th><th>項目</th><th>詳細</th></tr></thead><tbody>';
+            data.tasks.forEach(task => {
+                tab2Content += `<tr>
+                    <td>${escapeHtml(task.deadline || '')}</td>
+                    <td>${escapeHtml(task.item || '')}</td>
+                    <td>${escapeHtml(task.description || '')}</td>
+                </tr>`;
+            });
+            tab2Content += '</tbody></table>';
+        }
+        if (data.notices && data.notices.length > 0) {
+            tab2Content += '<h4>⚠️ 注意事項</h4>';
+            tab2Content += '<table class="data-table"><thead><tr><th>カテゴリ</th><th>内容</th></tr></thead><tbody>';
+            data.notices.forEach(notice => {
+                tab2Content += `<tr>
+                    <td>${escapeHtml(notice.category || '')}</td>
+                    <td>${escapeHtml(notice.content || '')}</td>
+                </tr>`;
+            });
+            tab2Content += '</tbody></table>';
+        }
+        if (!data.calendar_events?.length && !data.tasks?.length && !data.notices?.length) {
+            tab2Content += '<div class="empty-state"><p>抽出データがありません</p></div>';
+        }
+        tab2Content += '</div>';
+
+        return `
+            <div class="g22-tabs-container">
+                <div class="table-view-tabs" data-table-id="${uid}">
+                    <button class="table-view-tab active" data-view="text-blocks">📝 G22-1 テキストブロック</button>
+                    <button class="table-view-tab" data-view="extraction">✅ G22-2 タスク・カレンダー</button>
+                </div>
+                <div class="table-view-content" id="${uid}-text-blocks" style="display:block;">${tab1Content}</div>
+                <div class="table-view-content" id="${uid}-extraction" style="display:none;">${tab2Content}</div>
+            </div>
+        `;
     }
 
     if (!Array.isArray(data) || data.length === 0) {
@@ -937,6 +986,382 @@ function renderGenericTableData(tableData, refIds, index) {
 }
 
 // =============================================================================
+// G12 AI構造化テーブルのレンダリング
+// =============================================================================
+
+function renderG12Output(key, data, label) {
+    let html = '<div class="g12-output-container">';
+
+    data.forEach((item, idx) => {
+        const tableId = item.table_id || item.table_name || `表 ${idx + 1}`;
+        const description = item.description || '';
+        const tableType = item.table_type || '';
+        const metadata = item.metadata || {};
+
+        html += '<div class="structured-table-section">';
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <h4 class="table-title" style="margin:0;">${escapeHtml(tableId)}</h4>
+            ${tableType ? `<span class="table-type-badge">${escapeHtml(tableType)}</span>` : ''}
+        </div>`;
+
+        if (description) {
+            html += `<p style="color:#555;font-size:0.9em;margin:0 0 8px 0;">${escapeHtml(description)}</p>`;
+        }
+
+        // メタデータ（折りたたみ）
+        if (Object.keys(metadata).length > 0) {
+            html += '<details class="json-edit-details" style="margin-bottom:10px;"><summary>📋 メタデータ</summary><div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:8px;font-size:0.85em;">';
+            Object.entries(metadata).forEach(([k, v]) => {
+                const val = typeof v === 'object' ? JSON.stringify(v) : String(v ?? '');
+                html += `<span style="color:#667eea;font-weight:600;">${escapeHtml(k)}</span><span style="color:#333;">${escapeHtml(truncateText(val, 120))}</span>`;
+            });
+            html += '</div></details>';
+        }
+
+        // ── G12の標準形式: headers/rows（2D配列形式）────────────────────────
+        if (item.headers !== undefined || item.rows !== undefined) {
+            html += renderG11LayoutTable(item.headers || [], item.rows || []);
+        }
+        // ── G12の新形式: reshaped（ピボット形式）────────────────────────
+        else if (item.reshaped && Array.isArray(item.reshaped) && item.reshaped.length > 0) {
+            html += renderG12ReshapedTable(item.reshaped, item.col_map, item.header_meanings, item.metadata);
+        }
+        // ── G11の物理レイアウトをそのまま表示（original_headers/original_rows）──
+        else if (item.original_headers !== undefined || item.original_rows !== undefined) {
+            html += renderG11LayoutTable(item.original_headers || [], item.original_rows || []);
+        }
+        // ── 旧形式: structure（後方互換）────────────────────────
+        else if (item.structure && Object.keys(item.structure).length > 0) {
+            Object.entries(item.structure).forEach(([subKey, subData]) => {
+                html += `<div style="margin-bottom:14px;">`;
+                html += `<h5 style="margin:0 0 6px 0;font-size:0.95em;color:#444;border-left:3px solid #667eea;padding-left:8px;">${escapeHtml(subKey)}</h5>`;
+                html += renderG12SubData(subData);
+                html += '</div>';
+            });
+        } else {
+            html += '<p class="no-data">データなし</p>';
+        }
+
+        html += '</div>';
+    });
+
+    html += '</div>';
+    html += `
+        <details class="json-edit-details">
+            <summary>🔧 JSONを編集</summary>
+            <textarea class="json-editor" data-field="${key}" rows="10">${JSON.stringify(data, null, 2)}</textarea>
+        </details>
+    `;
+    return html;
+}
+
+/**
+ * G11の物理レイアウト（headers/rows）をそのままHTMLテーブルとして描画する。
+ * 行・列の向きは一切変えない。複数段ヘッダーもそのまま再現する。
+ */
+function renderG11LayoutTable(headers, rows) {
+    const allRows = [...(headers ? [headers].flat() : []), ...(rows || [])];
+    // headersが配列の配列か、1次元配列かを判定
+    const headerRows = Array.isArray(headers) && headers.length > 0
+        ? (Array.isArray(headers[0]) ? headers : [headers])
+        : [];
+    const dataRows = rows || [];
+
+    if (headerRows.length === 0 && dataRows.length === 0) {
+        return '<p class="no-data">データなし</p>';
+    }
+
+    let html = '<div class="table-wrapper"><table class="data-table">';
+
+    if (headerRows.length > 0) {
+        html += '<thead>';
+        headerRows.forEach(row => {
+            html += '<tr>';
+            (row || []).forEach(cell => {
+                const val = cell === null || cell === undefined ? '' : String(cell);
+                html += `<th>${escapeHtml(val)}</th>`;
+            });
+            html += '</tr>';
+        });
+        html += '</thead>';
+    }
+
+    if (dataRows.length > 0) {
+        html += '<tbody>';
+        dataRows.forEach(row => {
+            html += '<tr>';
+            (row || []).forEach(cell => {
+                const val = cell === null || cell === undefined ? '' : String(cell);
+                html += `<td>${escapeHtml(val)}</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody>';
+    }
+
+    html += '</table></div>';
+    return html;
+}
+
+/**
+ * reshaped レコード配列をピボットテーブルとして描画する。
+ *
+ * アルゴリズム:
+ * 1. ディメンションキーを全て収集（value/_row/_col/row_label は除外）
+ * 2. 各ディメンションのユニーク数をカウント
+ * 3. ユニーク数が最多 → 列軸、次 → 行軸、残り → グループ軸（クラスカード）
+ * 4. グループごとに 行×列 のピボットテーブルを描画
+ */
+function renderG12ReshapedTable(records) {
+    if (!records || records.length === 0) return '<p class="no-data">データなし</p>';
+
+    const META_KEYS = new Set(['value', '_row', '_col']);
+
+    // ディメンションキーを出現順に収集
+    const dimKeys = [];
+    records.forEach(r => {
+        Object.keys(r).forEach(k => {
+            if (!META_KEYS.has(k) && !dimKeys.includes(k)) dimKeys.push(k);
+        });
+    });
+
+    if (dimKeys.length === 0) {
+        return `<p>${records.map(r => escapeHtml(String(r.value))).join('　')}</p>`;
+    }
+
+    // ユニーク値を出現順に取得するヘルパー
+    const getOrdered = (dim, recs = records) => {
+        const seen = new Set();
+        const result = [];
+        recs.forEach(r => {
+            const v = r[dim];
+            if (v !== undefined && v !== null && !seen.has(v)) { seen.add(v); result.push(v); }
+        });
+        return result;
+    };
+
+    // 重複を許可するヘルパー（_rowでソート）
+    const getOrderedWithDuplicates = (dim, recs = records) => {
+        const result = [];
+        const seenRows = new Set();
+        recs.forEach(r => {
+            const v = r[dim];
+            const rowId = r._row;
+            if (v !== undefined && v !== null && !seenRows.has(rowId)) {
+                result.push({value: v, _row: rowId, record: r});
+                seenRows.add(rowId);
+            }
+        });
+        result.sort((a, b) => a._row - b._row);
+        return result;
+    };
+
+    // ユニーク数でソート: 少ない → グループ軸、多い → 列軸
+    const uniqueCounts = {};
+    dimKeys.forEach(k => { uniqueCounts[k] = getOrdered(k).length; });
+    const sorted = [...dimKeys].sort((a, b) => uniqueCounts[a] - uniqueCounts[b]);
+
+    if (sorted.length === 1) {
+        // 1ディメンション: 2列テーブル
+        const dim = sorted[0];
+        const vals = getOrdered(dim);
+        let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>';
+        html += `<th>${escapeHtml(dim)}</th><th>内容</th></tr></thead><tbody>`;
+        vals.forEach(v => {
+            const items = records.filter(r => r[dim] === v).map(r => escapeHtml(String(r.value)));
+            html += `<tr><td>${escapeHtml(String(v))}</td><td>${items.join('　')}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    // 2+ディメンション: colDim=最多, rowDim=次, groupDims=残り
+    const colDim  = sorted[sorted.length - 1];
+    const rowDim  = sorted[sorted.length - 2];
+    const groupDims = sorted.slice(0, sorted.length - 2);
+    const colVals = getOrdered(colDim);
+
+    // row_labelの重複をチェック
+    const rowLabelCounts = {};
+    records.forEach(r => {
+        const v = r[rowDim];
+        if (v !== undefined && v !== null) {
+            rowLabelCounts[v] = (rowLabelCounts[v] || 0) + 1;
+        }
+    });
+    const hasDuplicates = Object.values(rowLabelCounts).some(count => count > 1);
+
+    // 重複がある場合は_rowベースで取得
+    const rowVals = hasDuplicates ? getOrderedWithDuplicates(rowDim) : getOrdered(rowDim);
+
+    if (groupDims.length === 0) {
+        return renderG12PivotTable(records, rowDim, rowVals, colDim, colVals, hasDuplicates);
+    }
+
+    // グループごとにカード+ピボットテーブル
+    const groups = new Map();
+    records.forEach(r => {
+        const key = groupDims.map(d => String(r[d] ?? '')).join(' / ');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(r);
+    });
+
+    let html = '';
+    groups.forEach((groupRecords, groupKey) => {
+        html += `<div class="g12-card">`;
+        html += `<div class="g12-card-title">${escapeHtml(groupKey)}</div>`;
+        html += `<div class="g12-card-content">`;
+        // グループ内のrowValsを再計算（groupRecordsを使用）
+        const groupRowVals = hasDuplicates
+            ? getOrderedWithDuplicates(rowDim, groupRecords)
+            : getOrdered(rowDim, groupRecords);
+        html += renderG12PivotTable(groupRecords, rowDim, groupRowVals, colDim, colVals, hasDuplicates);
+        html += `</div></div>`;
+    });
+    return html;
+}
+
+/** 行×列のピボットテーブルを描画 */
+function renderG12PivotTable(records, rowDim, rowVals, colDim, colVals, hasDuplicates = false) {
+    let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>';
+    // row_labelの場合は列ヘッダーを空白に（技術的な名前を隠す）
+    const rowHeader = rowDim === 'row_label' ? '' : escapeHtml(rowDim);
+    html += `<th>${rowHeader}</th>`;
+    colVals.forEach(c => { html += `<th>${escapeHtml(String(c))}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    rowVals.forEach(rowVal => {
+        html += '<tr>';
+
+        if (hasDuplicates && typeof rowVal === 'object') {
+            // 重複がある場合、rowValは{value, _row, record}の形式
+            const actualRowVal = rowVal.value;
+            const rowIndex = rowVal._row;
+            const rowLabel = rowVal.record && rowVal.record.row_label !== undefined
+                ? rowVal.record.row_label
+                : actualRowVal;
+            html += `<th style="background:#f5f7ff;white-space:pre-wrap;">${escapeHtml(String(rowLabel))}</th>`;
+
+            colVals.forEach(colVal => {
+                const cell = records.find(r => r._row === rowIndex && r[colDim] === colVal);
+                html += `<td style="white-space:pre-wrap;">${cell ? escapeHtml(String(cell.value)) : ''}</td>`;
+            });
+        } else {
+            // 重複がない場合の通常処理
+            const firstCell = records.find(r => r[rowDim] === rowVal);
+            const rowLabel = firstCell && firstCell.row_label !== undefined
+                ? firstCell.row_label
+                : rowVal;
+            html += `<th style="background:#f5f7ff;white-space:pre-wrap;">${escapeHtml(String(rowLabel))}</th>`;
+
+            colVals.forEach(colVal => {
+                const cell = records.find(r => r[rowDim] === rowVal && r[colDim] === colVal);
+                html += `<td style="white-space:pre-wrap;">${cell ? escapeHtml(String(cell.value)) : ''}</td>`;
+            });
+        }
+
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    return html;
+}
+
+function renderG12SubData(data) {
+    if (data === null || data === undefined) return '<span style="color:#999;">-</span>';
+    if (typeof data !== 'object') return `<span>${escapeHtml(String(data))}</span>`;
+
+    if (Array.isArray(data)) {
+        if (data.length === 0) return '<span style="color:#999;">-</span>';
+        const first = data[0];
+
+        // スカラー配列（periods等）→ 横並び
+        if (typeof first !== 'object') {
+            return `<span>${data.map(s => escapeHtml(String(s))).join('　')}</span>`;
+        }
+
+        // 各行の値がどれくらい複雑かを判定
+        let hasNestedObj = false, hasScalarArr = false, hasObjArr = false;
+        data.forEach(row => {
+            if (!row || typeof row !== 'object') return;
+            Object.values(row).forEach(v => {
+                if (Array.isArray(v)) {
+                    if (v.length === 0 || typeof v[0] !== 'object') hasScalarArr = true;
+                    else hasObjArr = true;
+                } else if (v !== null && typeof v === 'object') {
+                    hasNestedObj = true;
+                }
+            });
+        });
+
+        // スカラー + スカラー配列のみ（schedule_by_day内の各曜日行）→ 時間割ピボット表
+        if (hasScalarArr && !hasNestedObj && !hasObjArr) {
+            const scalarKeys = Object.keys(first).filter(k => !Array.isArray(first[k]));
+            const pivotKey   = Object.keys(first).find(k => Array.isArray(first[k]) && (first[k].length === 0 || typeof first[k][0] !== 'object'));
+            if (pivotKey) {
+                const maxLen = Math.max(...data.map(row => (row[pivotKey] || []).length));
+                let html = '<div class="table-wrapper"><table class="data-table"><thead><tr>';
+                scalarKeys.forEach(k => { html += `<th>${escapeHtml(k)}</th>`; });
+                for (let i = 1; i <= maxLen; i++) html += `<th>${i}限</th>`;
+                html += '</tr></thead><tbody>';
+                data.forEach(row => {
+                    html += '<tr>';
+                    scalarKeys.forEach(k => { html += `<td>${escapeHtml(String(row[k] ?? ''))}</td>`; });
+                    const arr = row[pivotKey] || [];
+                    for (let i = 0; i < maxLen; i++) html += `<td>${escapeHtml(String(arr[i] ?? ''))}</td>`;
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+                return html;
+            }
+        }
+
+        // ネスト構造あり（schedules/rosters等の外側配列）→ クラスごとにカード分離
+        const nameKey = Object.keys(first).find(k =>
+            ['name', 'class', 'id', 'title', 'day'].some(n => k.toLowerCase().includes(n))
+        );
+        let html = '';
+        data.forEach((row, idx) => {
+            const title = nameKey ? String(row[nameKey] ?? idx) : String(idx + 1);
+            html += `<div class="g12-card">`;
+            html += `<div class="g12-card-title">${escapeHtml(title)}</div>`;
+            Object.entries(row).forEach(([k, v]) => {
+                if (k === nameKey) return;
+                html += `<div class="g12-card-section">`;
+                html += `<div class="g12-card-key">${escapeHtml(k)}</div>`;
+                html += `<div class="g12-card-content">${renderG12SubData(v)}</div>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        });
+        return html;
+    }
+
+    // オブジェクト: 全値が配列 → 2列テーブル（team_roster: {役割:[名前,...]}）
+    const entries = Object.entries(data);
+    if (entries.length === 0) return '<span style="color:#999;">-</span>';
+
+    if (entries.every(([, v]) => Array.isArray(v))) {
+        let html = '<div class="table-wrapper"><table class="data-table"><thead><tr><th>項目</th><th>内容</th></tr></thead><tbody>';
+        entries.forEach(([k, v]) => {
+            html += `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v.map(s => String(s)).join('、'))}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    // 汎用オブジェクト → 再帰
+    let html = '';
+    entries.forEach(([k, v]) => {
+        html += `<div style="margin-bottom:10px;">`;
+        html += `<div style="font-size:0.85em;color:#667eea;font-weight:600;margin-bottom:4px;">${escapeHtml(k)}</div>`;
+        html += renderG12SubData(v);
+        html += `</div>`;
+    });
+    return html;
+}
+
+// =============================================================================
 // 複数テーブルのレンダリング (structured_tables用)
 // =============================================================================
 
@@ -966,7 +1391,7 @@ function renderMultipleTables(key, tables, label) {
         const originalCells = table.cells || (table.grid_data && table.grid_data.cells) || [];
 
         if (!flatData && rows.length > 0) {
-            const generated = generateDisplayFormats(rows, table.columns, originalCells);
+            const generated = generateDisplayFormats(rows, table.headers || table.columns, originalCells);  // ★ table.headers を優先
             flatData = generated.flatData;
             flatColumns = generated.flatColumns;
             // gridData は既存があれば保持（ドメインハンドラの構造を優先）
@@ -1042,7 +1467,8 @@ function generateDisplayFormats(rows, columns, originalCells) {
 
         } else if (Array.isArray(firstRow)) {
             // 2D配列 → 辞書に変換
-            flatColumns = columns || firstRow.map((_, i) => `列${i + 1}`);
+            // ★ headers が空の場合は display_headers を自動生成
+            flatColumns = (columns && columns.length > 0) ? columns : firstRow.map((_, i) => `列${i + 1}`);
             rows.forEach(row => {
                 const rowObj = {};
                 flatColumns.forEach((col, i) => {
@@ -1085,9 +1511,9 @@ function generateDisplayFormats(rows, columns, originalCells) {
 
     } else if (flatData.length > 0) {
         // cellsがない場合はflatDataから復元
-        gridData.columns = columns;
+        gridData.columns = flatColumns;  // ★ columns → flatColumns
         flatData.forEach(row => {
-            gridData.rows.push(columns.map(c => row[c] !== undefined ? row[c] : ''));
+            gridData.rows.push(flatColumns.map(c => row[c] !== undefined ? row[c] : ''));  // ★ columns → flatColumns
         });
     }
 
@@ -2177,9 +2603,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             tabsContainer.querySelectorAll('.table-view-tab').forEach(t => t.classList.remove('active'));
             tab.classList.add('active');
 
-            // コンテンツの表示切り替え
-            document.getElementById(`${tableId}-flat`).style.display = view === 'flat' ? 'block' : 'none';
-            document.getElementById(`${tableId}-grid`).style.display = view === 'grid' ? 'block' : 'none';
+            // コンテンツの表示切り替え（汎用: 親要素内の全 table-view-content を非表示後、対象のみ表示）
+            const contentParent = tabsContainer.parentElement;
+            if (contentParent) {
+                contentParent.querySelectorAll('.table-view-content').forEach(c => c.style.display = 'none');
+            }
+            const target = document.getElementById(`${tableId}-${view}`);
+            if (target) target.style.display = 'block';
         }
     });
 });

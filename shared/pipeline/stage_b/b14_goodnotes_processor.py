@@ -49,25 +49,41 @@ class B14GoodnotesProcessor:
                 'tags': dict
             }
         """
-        logger.info(f"[B-14] Goodnotes処理開始: {file_path.name}")
+        logger.info(f"[B-14] ========== Goodnotes処理開始 ==========")
+        logger.info(f"[B-14] 入力ファイル: {file_path.name}")
 
         try:
             with pdfplumber.open(str(file_path)) as pdf:
+                logger.info(f"[B-14] PDF情報:")
+                logger.info(f"[B-14]   ├─ ページ数: {len(pdf.pages)}")
+                logger.info(f"[B-14]   ├─ メタデータ: {pdf.metadata}")
+
                 digital_texts = []
                 handwritten_zones = []
                 logical_blocks = []
                 all_words = []  # 削除対象の全単語
 
                 for page_num, page in enumerate(pdf.pages):
-                    logger.info(f"[B-14] ページ {page_num + 1} を処理中")
+                    logger.info(f"[B-14] ページ {page_num + 1}/{len(pdf.pages)} を処理中")
+                    logger.info(f"[B-14]   ├─ ページサイズ: {page.width:.1f} x {page.height:.1f} pt")
 
                     # デジタルテキストを抽出
                     page_digital_texts = self._extract_digital_text(page, page_num)
                     digital_texts.extend(page_digital_texts)
+                    logger.info(f"[B-14]   ├─ デジタルテキスト: {len(page_digital_texts)}文字")
 
                     # 手書き領域を特定
                     page_handwritten_zones = self._detect_handwritten_zones(page, page_num)
                     handwritten_zones.extend(page_handwritten_zones)
+                    logger.info(f"[B-14]   ├─ 手書き領域: {len(page_handwritten_zones)}個")
+
+                    # 手書き領域の詳細ログ
+                    for idx, zone in enumerate(page_handwritten_zones):
+                        bbox = zone.get('bbox', [0, 0, 0, 0])
+                        width = bbox[2] - bbox[0] if len(bbox) >= 4 else 0
+                        height = bbox[3] - bbox[1] if len(bbox) >= 4 else 0
+                        logger.info(f"[B-14]   │   ├─ 領域 {idx+1}: type={zone.get('subtype', 'unknown')}, "
+                                  f"size={width:.1f}x{height:.1f} pt, bbox={bbox}")
 
                     # 論理ブロックを生成
                     page_blocks = self._create_logical_blocks(
@@ -77,6 +93,7 @@ class B14GoodnotesProcessor:
                         page.height
                     )
                     logical_blocks.extend(page_blocks)
+                    logger.info(f"[B-14]   ├─ 論理ブロック: {len(page_blocks)}個")
 
                     # 削除用：ページ全体の単語を収集
                     page_words = page.extract_words(
@@ -90,15 +107,35 @@ class B14GoodnotesProcessor:
                             'text': word['text'],
                             'bbox': (word['x0'], word['top'], word['x1'], word['bottom'])
                         })
+                    logger.info(f"[B-14]   └─ 単語（削除対象）: {len(page_words)}個")
 
-                logger.info(f"[B-14] 処理完了:")
-                logger.info(f"  ├─ デジタルテキスト: {len(digital_texts)}個")
-                logger.info(f"  ├─ 手書き領域: {len(handwritten_zones)}個")
-                logger.info(f"  ├─ 論理ブロック: {len(logical_blocks)}個")
-                logger.info(f"  └─ 単語（削除対象）: {len(all_words)}個")
+                # 全ページの集計ログ
+                logger.info(f"[B-14] ========== 抽出結果サマリー ==========")
+                logger.info(f"[B-14] デジタルテキスト総数: {len(digital_texts)}文字")
+                logger.info(f"[B-14] 手書き領域総数: {len(handwritten_zones)}個")
+                logger.info(f"[B-14] 論理ブロック総数: {len(logical_blocks)}個")
+                logger.info(f"[B-14] 削除対象単語総数: {len(all_words)}個")
 
+                # デジタルテキストのサンプル出力
+                if digital_texts:
+                    combined_text = ''.join([t.get('text', '') for t in digital_texts])
+                    sample_text = combined_text[:200] if len(combined_text) > 200 else combined_text
+                    logger.info(f"[B-14] デジタルテキストサンプル（先頭200文字）:")
+                    logger.info(f"[B-14]   「{sample_text}」")
+                else:
+                    logger.warning(f"[B-14] デジタルテキストが抽出されませんでした")
+
+                # 論理ブロックのサンプル
+                if logical_blocks:
+                    first_block = logical_blocks[0]
+                    block_text = first_block.get('text', '')[:100]
+                    logger.info(f"[B-14] 論理ブロックサンプル（1個目、先頭100文字）:")
+                    logger.info(f"[B-14]   「{block_text}」")
+
+                # purged PDF 生成
+                logger.info(f"[B-14] ========== テキスト削除処理開始 ==========")
                 purged_pdf_path = self._purge_extracted_text(file_path, all_words)
-                logger.info(f"[B-14] テキスト削除完了: {purged_pdf_path}")
+                logger.info(f"[B-14] purged PDF 生成完了: {purged_pdf_path.name}")
 
                 return {
                     'is_structured': True,
@@ -109,14 +146,16 @@ class B14GoodnotesProcessor:
                     'all_words': all_words,
                     'purged_pdf_path': str(purged_pdf_path),
                     'tags': {
-                        'source': 'goodnotes',
+                        'source': 'stage_b',
+                        'processor': 'b14_goodnotes',
                         'has_handwriting': len(handwritten_zones) > 0,
                         'digital_text_count': len(digital_texts)
                     }
                 }
 
         except Exception as e:
-            logger.error(f"[B-14] 処理エラー: {e}", exc_info=True)
+            logger.error(f"[B-14] ========== 処理エラー ==========", exc_info=True)
+            logger.error(f"[B-14] エラー詳細: {e}")
             return {
                 'is_structured': False,
                 'error': str(e),
@@ -289,6 +328,10 @@ class B14GoodnotesProcessor:
           - structured_tables が抽出済み -> 削除（Stage D の二重検出を防ぐ）
           - structured_tables が空 -> 保持（Stage D が検出できるよう残す）
         """
+        logger.info(f"[B-14] テキスト削除処理開始")
+        logger.info(f"[B-14]   ├─ 削除対象単語: {len(all_words)}個")
+        logger.info(f"[B-14]   └─ 表構造データ: {len(structured_tables) if structured_tables else 0}個")
+
         try:
             import fitz
         except ImportError:
@@ -297,6 +340,7 @@ class B14GoodnotesProcessor:
 
         try:
             doc = fitz.open(str(file_path))
+            logger.info(f"[B-14] PDF読み込み完了: {len(doc)}ページ")
 
             words_by_page: Dict[int, List[Dict]] = {}
             for word in all_words:
@@ -317,6 +361,7 @@ class B14GoodnotesProcessor:
 
                 # フェーズ1: テキスト削除（常時）
                 if page_words:
+                    logger.info(f"[B-14] ページ {page_num + 1}: {len(page_words)}単語を削除")
                     for word in page_words:
                         page.add_redact_annot(fitz.Rect(word['bbox']))
                         deleted_words += 1
@@ -328,6 +373,7 @@ class B14GoodnotesProcessor:
                 # フェーズ2: 表罫線削除（表構造抽出済みの場合のみ）
                 page_tables = tables_by_page.get(page_num, [])
                 if page_tables:
+                    logger.info(f"[B-14] ページ {page_num + 1}: {len(page_tables)}表の罫線を削除")
                     for table in page_tables:
                         bbox = table.get('bbox')
                         if bbox:
@@ -345,15 +391,17 @@ class B14GoodnotesProcessor:
             doc.save(str(purged_pdf_path))
             doc.close()
 
-            logger.info(f"[B-14] テキスト削除: {deleted_words}語")
+            logger.info(f"[B-14] ========== テキスト削除完了 ==========")
+            logger.info(f"[B-14] 削除した単語: {deleted_words}個")
             if deleted_table_graphics > 0:
-                logger.info(f"[B-14] 表罫線削除: {deleted_table_graphics}表（抽出済みのため）")
+                logger.info(f"[B-14] 削除した表罫線: {deleted_table_graphics}個（抽出済みのため）")
             else:
                 logger.info(f"[B-14] 表罫線: 保持（Stage D 検出用）")
-            logger.info(f"[B-14] purged PDF 保存: {purged_pdf_path.name}")
+            logger.info(f"[B-14] purged PDF 保存先: {purged_pdf_path}")
 
             return purged_pdf_path
 
         except Exception as e:
-            logger.error(f"[B-14] テキスト削除エラー: {e}", exc_info=True)
+            logger.error(f"[B-14] テキスト削除エラー", exc_info=True)
+            logger.error(f"[B-14] エラー詳細: {e}")
             return file_path
