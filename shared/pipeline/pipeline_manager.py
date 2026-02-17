@@ -1093,7 +1093,8 @@ class PipelineManager:
             stage_e_result = self.stage_e.process(
                 purged_pdf_path=purged_pdf_path,
                 stage_d_result=stage_d_result,
-                output_dir=doc_temp_dir
+                output_dir=doc_temp_dir,
+                stage_b_result=stage_b_result
             )
             if not stage_e_result or not stage_e_result.get('success'):
                 return {'success': False, 'error': 'Stage E失敗'}

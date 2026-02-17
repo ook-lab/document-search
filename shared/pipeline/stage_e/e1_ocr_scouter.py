@@ -31,7 +31,7 @@ class E1OcrScouter:
         self,
         low_density_threshold: int = 100,   # 低密度判定の閾値（文字数）
         high_density_threshold: int = 500,  # 高密度判定の閾値（文字数）
-        min_char_threshold: int = 10        # 最小文字数（これ以下は処理スキップ）
+        min_char_threshold: int = 1         # 最小文字数（0文字のみスキップ）
     ):
         """
         OCR Scouter 初期化
@@ -155,7 +155,10 @@ class E1OcrScouter:
                 'density_level': density_level,
                 'should_skip': should_skip,
                 'extracted_text': text,
-                'confidence': confidence
+                'confidence': confidence,
+                # エイリアスキー（controller から density/skip でアクセス可能）
+                'density': density_level,
+                'skip': should_skip,
             }
 
             if include_words:
@@ -193,7 +196,10 @@ class E1OcrScouter:
             'density_level': 'none',
             'should_skip': True,
             'extracted_text': '',
-            'confidence': 0.0
+            'confidence': 0.0,
+            # エイリアスキー
+            'density': 'none',
+            'skip': True,
         }
 
     def scout_all_pages(

@@ -136,7 +136,8 @@ class D8GridAnalyzer:
         table_regions = self._identify_table_regions(
             h_lines,
             v_lines,
-            intersections
+            intersections,
+            page_index=page_index
         )
         logger.info(f"[D-8] 表領域特定完了: {len(table_regions)}個")
         for region in table_regions:
@@ -149,6 +150,7 @@ class D8GridAnalyzer:
             logger.info(f"  └─ 垂直線数: {region.get('v_line_count')}")
 
         return {
+            'page_index': page_index,
             'intersections': intersections,
             'table_regions': table_regions,
             'unified_lines': {
@@ -340,7 +342,8 @@ class D8GridAnalyzer:
         self,
         h_lines: List[Dict[str, Any]],
         v_lines: List[Dict[str, Any]],
-        intersections: List[Dict[str, float]]
+        intersections: List[Dict[str, float]],
+        page_index: int = 0
     ) -> List[Dict[str, Any]]:
         """
         交点から表領域を特定
@@ -409,6 +412,9 @@ class D8GridAnalyzer:
         # 単一の表領域として返す（複雑な場合は連結成分解析が必要）
         table_region = {
             'table_id': 'T1',
+            'canonical_id': 'T1',                          # 後段で使う汎用ID
+            'source': 'stage_d',                           # 出自（B表と区別）
+            'origin_uid': f"D:P{page_index}:T1",           # 出自付き一意ID（混線防止）
             'bbox': [x_min, y_min, x_max, y_max],
             'intersection_count': len(intersections),
             'h_line_count': len(h_lines),

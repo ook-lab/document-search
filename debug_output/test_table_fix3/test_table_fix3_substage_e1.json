@@ -1,27 +1,5 @@
 {
   "non_table_scout": null,
   "table_scouts": [],
-  "page_scout": {
-    "pages_total": 2,
-    "pages_processed": 2,
-    "per_page": [
-      {
-        "page": 0,
-        "words_count": 5,
-        "chars_count": 12,
-        "extracted_text": "2026 年 33 1/9 発行",
-        "status": "ok",
-        "skip_reason": ""
-      },
-      {
-        "page": 1,
-        "words_count": 0,
-        "chars_count": 0,
-        "status": "blank_skip",
-        "skip_reason": "blank_page"
-      }
-    ],
-    "total_words": 5,
-    "total_chars": 12
-  }
+  "page_scout": {}
 }

@@ -114,7 +114,7 @@ class B11GoogleDocsProcessor:
                                 'bbox': [x0, y0, x1, y1]
                             })
 
-            fitz_doc.close()
+                fitz_doc.close()
 
                 # テキストを生成
                 text_with_tags = self._build_text(logical_blocks)
@@ -222,8 +222,20 @@ class B11GoogleDocsProcessor:
                 'cols': len(data[0]) if data else 0,
                 'data': data,
                 'bbox': table.bbox,
-                'source': 'stage_b',  # F-5が結合処理を認識するために必要
+                'source': 'stage_b',              # F-5が結合処理を認識するために必要
+                'origin_uid': f"B:P{page_num}:T{idx}",  # 出自付き一意ID（D表と混線防止）
+                'canonical_id': f"T{idx + 1}",    # 汎用ID（後段用）
+                'table_id': f"T{idx + 1}",        # 汎用表現（D表と同形式）
             })
+
+        # 全経路で必須キーを補完（appendが複数経路あっても確実に揃える）
+        for i, t in enumerate(tables):
+            page = t.get('page', 0)
+            idx = t.get('index', i)
+            t.setdefault('source', 'stage_b')
+            t.setdefault('origin_uid', f"B:P{page}:T{idx}")
+            t.setdefault('canonical_id', f"T{idx + 1}")
+            t.setdefault('table_id', f"T{idx + 1}")
 
         return tables
 

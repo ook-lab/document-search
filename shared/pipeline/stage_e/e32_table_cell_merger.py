@@ -1,21 +1,15 @@
 """
-E-32: Table Cell Merger（構造 + セルOCR 合成）
+E-32: Image Candidate Builder（候補集合化）
 
-E-30（構造）と E-31（セルOCR）の結果を合成して
-最終的な表データを完成させる。
+E-30（Gemini: cells=bbox/row/col/text）と
+E-31（セルOCR転送: cell_texts）を受け取り、
 
-正しい依存順：
-  E-30（構造：セルbbox確定）→ E-31（セルOCR）→ E-32（合成）
+D10セル(row/col)ごとの「画像由来候補集合（image_candidates）」を生成する。
 
-入力：
-  struct_result: E-30 の出力 (cells, n_rows, n_cols, table_id)
-  ocr_result: E-31 の出力 (cell_texts)
-
-出力：
-  grid: list[list[str]]  2次元テキストグリッド
-  cells: 全セル（text 埋め済み）
-  table_markdown: Markdown 形式の表
-  route: "E30→E31→E32"
+NOTE:
+- 正本化（SSOT化）は E-40 のみ。ここでは候補集合化だけ。
+- next_stage は持たない（E-40 は controller が明示実行）
+- cell_texts は E-31 が struct_result.cells[].text から変換したもの
 """
 
 from typing import Dict, Any, List
@@ -23,7 +17,7 @@ from loguru import logger
 
 
 class E32TableCellMerger:
-    """E-32: Table Cell Merger（構造とOCRを合成）"""
+    """E-32: 候補集合化（image_candidates を返して終わり）"""
 
     def merge(
         self,
@@ -31,161 +25,87 @@ class E32TableCellMerger:
         ocr_result: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        E-30 の構造とテキストを使用（E-31のOCRは不要）
+        E-30 の構造結果と E-31 の OCR 結果（Gemini テキスト変換済み）を
+        (row,col) でマッチさせて image_candidates を生成する。
 
         Args:
-            struct_result: E-30 の結果（既にtextを含む）
-                {cells: [{row,col,x0,y0,x1,y1,rowspan,colspan,text}],
-                 n_rows, n_cols, table_id, tokens_used, ...}
-            ocr_result: E-31 の結果（スキップされるため空）
+            struct_result: E-30 の出力
+                {cells: [{row, col, x0, y0, x1, y1, rowspan, colspan, text}], ...}
+            ocr_result: E-31 の OCR 結果
+                {cell_texts: [{row, col, text, confidence}], ocr_engine: str}
 
         Returns:
             {
                 'success': bool,
+                'route': 'E32_IMAGE_CANDIDATES',
                 'table_id': str,
-                'n_rows': int,
-                'n_cols': int,
-                'cells': list,                # text含むセルリスト
-                'grid': list[list[str]],      # 2次元グリッド
-                'table_markdown': str,        # Markdown 形式
-                'route': 'E30→E32_DIRECT',
-                'model_used': str,
-                'tokens_used': int
+                'image_candidates': [
+                    {
+                        'cell_id': 'R0C1',
+                        'row': int, 'col': int,
+                        'items': [{'text': str, 'confidence': float, 'source': 'image_e31'}]
+                    }
+                ]
             }
         """
-        table_id = struct_result.get('table_id', 'E30_Unknown')
-        n_rows = struct_result.get('n_rows', 0)
-        n_cols = struct_result.get('n_cols', 0)
-        cells = struct_result.get('cells', [])
+        if not struct_result or not struct_result.get('success'):
+            logger.warning("[E-32] struct_result なし/失敗 → 空candidates")
+            return {'success': False, 'route': 'E32_NO_STRUCT', 'image_candidates': []}
 
-        logger.info(
-            f"[E-32] 合成開始: table_id={table_id},"
-            f" {n_rows}行 × {n_cols}列, セル={len(cells)}"
-        )
+        cells = struct_result.get('cells', []) or []
+        if not cells:
+            logger.info("[E-32] struct_result.cells が空 → 空candidates")
+            return {'success': False, 'route': 'E32_NO_CELLS', 'image_candidates': []}
 
-        if not cells or n_rows == 0 or n_cols == 0:
-            logger.warning("[E-32] 構造情報が空 → 空テーブルを返す")
-            return self._empty_result(table_id, struct_result)
+        cell_texts = (ocr_result or {}).get('cell_texts', []) or []
 
-        # ★E-30で既にtextが含まれているため、そのまま使用
-        logger.info("[E-32] ★E-30で取得済みのテキストを使用（E-31スキップ）")
+        # (row,col) → cell_texts のインデックス化
+        ct_index: Dict[tuple, List[Dict]] = {}
+        for t in cell_texts:
+            r = t.get('row')
+            c = t.get('col')
+            if r is None or c is None:
+                continue
+            key = (int(r), int(c))
+            ct_index.setdefault(key, []).append(t)
 
-        cells_with_text = cells  # E-30の結果をそのまま使用
-        text_count = sum(1 for c in cells if c.get('text'))
-
-        logger.info(f"[E-32] テキスト含むセル: {text_count}/{len(cells)}")
-
-        # 統合詳細をログ出力
-        logger.info("=" * 80)
-        logger.info("[E-32] E-30データの確認:")
-        logger.info("=" * 80)
-        logger.info(f"  ├─ E-30 セル数: {len(cells)}")
-        logger.info(f"  ├─ テキスト含むセル: {text_count}")
-        logger.info(f"  ├─ テキストなしセル: {len(cells) - text_count}")
-        logger.info(f"  └─ カバー率: {text_count / len(cells) * 100:.1f}%")
-
-        # サンプルをログ出力（最初の5セル）
-        logger.info("-" * 80)
-        logger.info("[E-32] セルサンプル（最初の5セル）:")
-        logger.info("-" * 80)
-        for idx, cell in enumerate(cells_with_text[:5], 1):
-            row = cell.get('row', 0)
-            col = cell.get('col', 0)
-            text = cell.get('text', '')
-            bbox = (cell.get('x0'), cell.get('y0'), cell.get('x1'), cell.get('y1'))
-
-            logger.info(f"  Cell #{idx}:")
-            logger.info(f"    ├─ 座標: R{row}C{col}")
-            logger.info(f"    ├─ bbox: {bbox}")
-            logger.info(f"    ├─ rowspan: {cell.get('rowspan', 1)}")
-            logger.info(f"    ├─ colspan: {cell.get('colspan', 1)}")
-            logger.info(f"    └─ text: 「{text[:50]}{'...' if len(text) > 50 else ''}」")
-        logger.info("=" * 80)
-
-        # 2次元グリッドを構築
-        grid = self._build_grid(cells_with_text, n_rows, n_cols)
-
-        # Markdown 形式に変換
-        table_markdown = self._grid_to_markdown(grid)
-
-        logger.info(f"[E-32] 合成完了: route=E30→E31→E32")
-
-        return {
-            'success': True,
-            'table_id': table_id,
-            'n_rows': n_rows,
-            'n_cols': n_cols,
-            'cells': cells_with_text,
-            'grid': grid,
-            'table_markdown': table_markdown,
-            'route': 'E30→E31→E32',
-            'model_used': struct_result.get('model_used', ''),
-            'tokens_used': struct_result.get('tokens_used', 0)
-        }
-
-    def _build_grid(
-        self,
-        cells: List[Dict[str, Any]],
-        n_rows: int,
-        n_cols: int
-    ) -> List[List[str]]:
-        """セルリストから2次元グリッド（テキスト）を構築"""
-        # 空グリッドで初期化
-        grid = [['' for _ in range(n_cols)] for _ in range(n_rows)]
+        image_candidates = []
+        non_empty = 0
 
         for cell in cells:
-            row = cell.get('row', 0)
-            col = cell.get('col', 0)
-            text = cell.get('text', '')
-            rowspan = cell.get('rowspan', 1)
-            colspan = cell.get('colspan', 1)
+            r = int(cell.get('row', 0))
+            c = int(cell.get('col', 0))
+            cell_id = f"R{r}C{c}"
 
-            # グリッド範囲内かチェック
-            if row >= n_rows or col >= n_cols:
-                continue
+            items = []
+            for t in ct_index.get((r, c), []):
+                txt = (t.get('text') or '').strip()
+                if not txt:
+                    continue
+                items.append({
+                    'text': txt,
+                    'confidence': float(t.get('confidence', 1.0)),
+                    'source': 'image_e31',
+                })
 
-            # rowspan/colspan が及ぶ全セルにテキストを配置
-            for dr in range(rowspan):
-                for dc in range(colspan):
-                    r = row + dr
-                    c = col + dc
-                    if r < n_rows and c < n_cols:
-                        grid[r][c] = text
+            if items:
+                non_empty += 1
 
-        return grid
+            image_candidates.append({
+                'cell_id': cell_id,
+                'row': r,
+                'col': c,
+                'items': items,
+            })
 
-    def _grid_to_markdown(self, grid: List[List[str]]) -> str:
-        """2次元グリッドを Markdown 表形式に変換"""
-        if not grid:
-            return ''
+        logger.info(
+            f"[E-32] 候補集合化完了: "
+            f"image_candidates={len(image_candidates)} non_empty={non_empty}"
+        )
 
-        lines = []
-        for i, row in enumerate(grid):
-            # セル内の改行を <br> に変換
-            cells = [cell.replace('\n', '<br>').replace('|', '\\|') for cell in row]
-            lines.append('| ' + ' | '.join(cells) + ' |')
-            if i == 0:
-                # ヘッダー行の後にセパレータ
-                separator = '|' + '|'.join(['---'] * len(row)) + '|'
-                lines.append(separator)
-
-        return '\n'.join(lines)
-
-    def _empty_result(
-        self,
-        table_id: str,
-        struct_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """空テーブルを返す"""
         return {
             'success': True,
-            'table_id': table_id,
-            'n_rows': 0,
-            'n_cols': 0,
-            'cells': [],
-            'grid': [],
-            'table_markdown': '',
-            'route': 'E30→E31→E32',
-            'model_used': struct_result.get('model_used', ''),
-            'tokens_used': struct_result.get('tokens_used', 0)
+            'route': 'E32_IMAGE_CANDIDATES',
+            'table_id': struct_result.get('table_id'),
+            'image_candidates': image_candidates,
         }

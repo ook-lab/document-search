@@ -59,7 +59,8 @@ class E30TableStructureExtractor:
         image_path: Path,
         cell_map: Optional[List[Dict]] = None,
         page_index: Optional[int] = None,
-        table_index: Optional[int] = None
+        table_index: Optional[int] = None,
+        d10_table: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         表画像からセル構造（bbox/row/col）を抽出する。
@@ -70,6 +71,7 @@ class E30TableStructureExtractor:
             cell_map: Stage D の cell_map（行列数ヒント用）
             page_index: ページ番号（table_id生成用）
             table_index: 表番号（table_id生成用）
+            d10_table: D10 tables[] の1要素（E-31/E-32 の cell_map 割当に必須）
 
         Returns:
             {
@@ -185,7 +187,8 @@ class E30TableStructureExtractor:
                 return self.next_stage.extract_cells(
                     image_path=image_path,
                     cells=cells,
-                    struct_result=struct_result
+                    struct_result=struct_result,
+                    d10_table=d10_table
                 )
 
             return struct_result
@@ -200,7 +203,8 @@ class E30TableStructureExtractor:
                 return self.next_stage.extract_cells(
                     image_path=image_path,
                     cells=[],
-                    struct_result=error_result
+                    struct_result=error_result,
+                    d10_table=d10_table
                 )
 
             return error_result

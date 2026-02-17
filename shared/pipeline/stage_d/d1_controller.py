@@ -16,7 +16,7 @@ D-10: Image Slicer（画像分割）
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from loguru import logger
 
 from .d3_vector_line_extractor import D3VectorLineExtractor
@@ -42,7 +42,10 @@ class D1Controller:
         pdf_path: Path,
         purged_image_path: Optional[Path] = None,
         page_num: int = 0,
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
+        b_structured_tables: Optional[List[Dict[str, Any]]] = None,
+        page_width_pt: Optional[float] = None,
+        page_height_pt: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Stage D 視覚構造解析を実行
@@ -130,7 +133,12 @@ class D1Controller:
 
             # D-8: 格子解析
             logger.info("\n[D-1] ステップ3: 格子解析（D-8）")
-            grid_result = self.d8_grid.analyze(vector_result, raster_result)
+            grid_result = self.d8_grid.analyze(
+                vector_result,
+                raster_result,
+                pdf_path=str(pdf_path),
+                page_index=page_num
+            )
 
             # D-8結果のサマリー
             logger.info("[D-1] D-8結果サマリー:")
@@ -161,6 +169,16 @@ class D1Controller:
                 logger.debug(f"[D-1] セルサンプル（最初5個）:")
                 for cell in sample_cells:
                     logger.debug(f"  {cell.get('cell_id')}: bbox={cell.get('bbox')}")
+
+            # B/D 重複排除（D-10実行前に行い、無駄な画像生成を防ぐ）
+            if (b_structured_tables is not None
+                    and page_width_pt is not None and page_height_pt is not None
+                    and page_width_pt > 0 and page_height_pt > 0):
+                grid_result = self._deduplicate_d_vs_b(
+                    grid_result, b_structured_tables, page_num,
+                    page_width_pt, page_height_pt
+                )
+                logger.info(f"[D-1] B/D重複排除後の表領域数: {len(grid_result.get('table_regions', []))}個")
 
             # D-10: 画像分割
             slice_result = None
@@ -323,3 +341,112 @@ class D1Controller:
         logger.info(f"[D-1] PNG 生成完了: {image_path.name} ({pix.width}x{pix.height})")
 
         return image_path
+
+    def _deduplicate_d_vs_b(
+        self,
+        grid_result: Dict[str, Any],
+        b_tables: List[Dict[str, Any]],
+        page_num: int,
+        page_width_pt: float,
+        page_height_pt: float,
+        iou_threshold: float = 0.80,
+        overlap_threshold: float = 0.95
+    ) -> Dict[str, Any]:
+        """
+        D由来の表領域とB由来の表を比較し、同一表と判定されたD領域を除外する。
+        B由来表が優先（統合せず、Dをそのまま削除）。
+
+        Args:
+            grid_result: D-8の格子解析結果（table_regions を含む）
+            b_tables: B由来の表リスト（bbox は pdfplumber pt座標）
+            page_num: 現在処理中のページ番号
+            page_width_pt: ページ幅（pt）— B bbox 正規化用
+            page_height_pt: ページ高さ（pt）— B bbox 正規化用
+            iou_threshold: IoU 一致閾値（デフォルト 0.80）
+            overlap_threshold: 包含率閾値（デフォルト 0.95）
+
+        Returns:
+            table_regions をフィルタリングした新しい grid_result
+        """
+        d_regions = grid_result.get('table_regions', [])
+        if not d_regions:
+            return grid_result
+
+        # 同ページの B 表のみに絞り、bbox を正規化（pt → 0-1）
+        b_bboxes_norm = []
+        b_uids = []
+        for bt in b_tables:
+            if bt.get('page') != page_num:
+                continue
+            bb = bt['bbox']  # pdfplumber: (x0, y0, x1, y1) in pt
+            b_bboxes_norm.append([
+                bb[0] / page_width_pt,
+                bb[1] / page_height_pt,
+                bb[2] / page_width_pt,
+                bb[3] / page_height_pt,
+            ])
+            b_uids.append(bt.get('origin_uid', f"B:P{page_num}:T{bt.get('index', '?')}"))
+
+        if not b_bboxes_norm:
+            # このページにB表がない → D表はそのまま
+            return grid_result
+
+        kept = []
+        for d_region in d_regions:
+            d_bbox = d_region['bbox']  # 正規化済み（0-1）
+            origin_uid = d_region.get('origin_uid', d_region.get('table_id', '?'))
+
+            matched_b_uid = None
+            best_iou = 0.0
+
+            for i, bb_norm in enumerate(b_bboxes_norm):
+                iou = self._calc_iou(d_bbox, bb_norm)
+                overlap = self._calc_min_overlap(d_bbox, bb_norm)
+
+                if iou >= iou_threshold or overlap >= overlap_threshold:
+                    if iou > best_iou:
+                        best_iou = iou
+                        matched_b_uid = b_uids[i]
+
+            if matched_b_uid:
+                logger.info(
+                    f"[D-1] 重複排除: {origin_uid} → B表と同一領域  "
+                    f"iou={best_iou:.2f}  action=DROP_D  matched_b={matched_b_uid}"
+                )
+            else:
+                logger.info(f"[D-1] D表保持: {origin_uid}  (B表との重複なし)")
+                kept.append(d_region)
+
+        new_grid_result = dict(grid_result)
+        new_grid_result['table_regions'] = kept
+        return new_grid_result
+
+    @staticmethod
+    def _calc_iou(bbox_a: List[float], bbox_b: List[float]) -> float:
+        """2つの正規化bboxのIoUを計算"""
+        ix0 = max(bbox_a[0], bbox_b[0])
+        iy0 = max(bbox_a[1], bbox_b[1])
+        ix1 = min(bbox_a[2], bbox_b[2])
+        iy1 = min(bbox_a[3], bbox_b[3])
+        if ix1 <= ix0 or iy1 <= iy0:
+            return 0.0
+        inter = (ix1 - ix0) * (iy1 - iy0)
+        area_a = (bbox_a[2] - bbox_a[0]) * (bbox_a[3] - bbox_a[1])
+        area_b = (bbox_b[2] - bbox_b[0]) * (bbox_b[3] - bbox_b[1])
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
+
+    @staticmethod
+    def _calc_min_overlap(bbox_a: List[float], bbox_b: List[float]) -> float:
+        """2つの正規化bboxの包含率（小さい方の面積に対する交差面積）を計算"""
+        ix0 = max(bbox_a[0], bbox_b[0])
+        iy0 = max(bbox_a[1], bbox_b[1])
+        ix1 = min(bbox_a[2], bbox_b[2])
+        iy1 = min(bbox_a[3], bbox_b[3])
+        if ix1 <= ix0 or iy1 <= iy0:
+            return 0.0
+        inter = (ix1 - ix0) * (iy1 - iy0)
+        area_a = (bbox_a[2] - bbox_a[0]) * (bbox_a[3] - bbox_a[1])
+        area_b = (bbox_b[2] - bbox_b[0]) * (bbox_b[3] - bbox_b[1])
+        min_area = min(area_a, area_b)
+        return inter / min_area if min_area > 0 else 0.0

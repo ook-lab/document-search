@@ -78,7 +78,7 @@ class D10ImageSlicer:
         """
         if not CV2_AVAILABLE:
             logger.error("[D-10] OpenCV/PIL が利用できません")
-            return self._empty_result()
+            return self._empty_result(grid_result.get('page_index', 0))
 
         logger.info(f"[D-10] 画像分割開始: {image_path.name}")
 
@@ -91,7 +91,7 @@ class D10ImageSlicer:
 
             if image is None:
                 logger.error(f"[D-10] 画像読み込み失敗: {image_path}")
-                return self._empty_result()
+                return self._empty_result(grid_result.get('page_index', 0))
 
             height, width = image.shape[:2]
             logger.info(f"[D-10] 画像サイズ: {width}x{height}")
@@ -126,13 +126,22 @@ class D10ImageSlicer:
                 table_id = table_region['table_id']
                 bbox = table_region['bbox']
 
+                # 出自付き一意ID（D-8で付与されたものを優先）
+                origin_uid = table_region.get('origin_uid')
+                if not origin_uid:
+                    # フォールバック（万一 D-8 未対応でも壊さない）
+                    origin_uid = f"D:P{grid_result.get('page_index', 0)}:{table_id}"
+
+                # ファイル名に使えるようにサニタイズ（: などを排除）
+                safe_uid = origin_uid.replace(':', '_').replace('/', '_')
+
                 # 正規化座標をピクセル座標に変換
                 x0 = int(bbox[0] * width)
                 y0 = int(bbox[1] * height)
                 x1 = int(bbox[2] * width)
                 y1 = int(bbox[3] * height)
 
-                logger.info(f"[D-10] 表画像切り出し {table_id}:")
+                logger.info(f"[D-10] 表画像切り出し {table_id} ({origin_uid}):")
                 logger.info(f"  ├─ 正規化bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]")
                 logger.info(f"  ├─ ピクセル座標: ({x0}, {y0}) - ({x1}, {y1})")
                 logger.info(f"  └─ サイズ: {x1-x0} x {y1-y0} px")
@@ -140,14 +149,17 @@ class D10ImageSlicer:
                 # 表画像を切り出し
                 table_image = image[y0:y1, x0:x1]
 
-                # 保存
-                table_image_path = output_dir / f"d10_table_{table_id}.png"
+                # 保存（ファイル名は origin_uid ベースで一意化）
+                table_image_path = output_dir / f"d10_table_{safe_uid}.png"
                 cv2.imwrite(str(table_image_path), table_image)
 
                 logger.info(f"[D-10] 表画像保存完了: {table_image_path.name}")
 
                 tables.append({
                     'table_id': table_id,
+                    'origin_uid': origin_uid,                             # 出自付き一意ID（混線防止）
+                    'source': table_region.get('source', 'stage_d'),      # B/D 区別
+                    'canonical_id': table_region.get('canonical_id', table_id),  # 汎用ID
                     'bbox': bbox,
                     'image_path': str(table_image_path),
                     'cell_map': cell_result.get('cells', [])
@@ -182,7 +194,7 @@ class D10ImageSlicer:
             logger.info(f"  └─ 非表画像: 1枚")
 
             return {
-                'page_index': 0,
+                'page_index': grid_result.get('page_index', 0),
                 'tables': tables,
                 'non_table_image_path': str(non_table_image_path),
                 'metadata': {
@@ -192,7 +204,7 @@ class D10ImageSlicer:
 
         except Exception as e:
             logger.error(f"[D-10] 分割エラー: {e}", exc_info=True)
-            return self._empty_result()
+            return self._empty_result(grid_result.get('page_index', 0))
 
     def _filter_table_regions(
         self,
@@ -351,10 +363,10 @@ class D10ImageSlicer:
 
         return adjusted_regions
 
-    def _empty_result(self) -> Dict[str, Any]:
-        """空の結果を返す"""
+    def _empty_result(self, page_index: int = 0) -> Dict[str, Any]:
+        """空の結果を返す（page_index を維持）"""
         return {
-            'page_index': 0,
+            'page_index': page_index,
             'tables': [],
             'non_table_image_path': '',
             'metadata': {}

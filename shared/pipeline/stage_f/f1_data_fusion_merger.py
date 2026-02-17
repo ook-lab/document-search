@@ -11,8 +11,11 @@ Stage B（デジタル抽出）と Stage E（視覚抽出）の結果を
 """
 
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 from loguru import logger
+
+# E37 は F に渡してはいけない。この source を検出したら設計違反として拒否する。
+_FORBIDDEN_SOURCES_IN_TABLE = frozenset({'b_embed'})
 
 
 class F1DataFusionMerger:
@@ -32,7 +35,8 @@ class F1DataFusionMerger:
         stage_a_result: Optional[Dict[str, Any]] = None,
         stage_b_result: Optional[Dict[str, Any]] = None,
         stage_d_result: Optional[Dict[str, Any]] = None,
-        stage_e_result: Optional[Dict[str, Any]] = None
+        stage_e_result: Optional[Dict[str, Any]] = None,
+        e40_table_ssot: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
         各ステージの結果を統合
@@ -72,7 +76,7 @@ class F1DataFusionMerger:
             events, tasks, notices = self._extract_structured_content(stage_e_result)
 
             # 表データを統合
-            tables = self._merge_tables(stage_b_result, stage_e_result)
+            tables = self._merge_tables(stage_b_result, stage_e_result, e40_table_ssot)
 
             # メタデータを構築
             metadata = self._build_metadata(
@@ -331,30 +335,70 @@ class F1DataFusionMerger:
     def _merge_tables(
         self,
         stage_b_result: Optional[Dict[str, Any]],
-        stage_e_result: Optional[Dict[str, Any]]
+        stage_e_result: Optional[Dict[str, Any]],
+        e40_table_ssot: Optional[List[Dict[str, Any]]] = None
     ) -> List[Dict[str, Any]]:
         """
         表データを統合
 
+        優先順位:
+          1. E40（image SSOT）: D由来の画像表の確定テキスト
+          2. Stage B: 埋め込みテキストの表（B表とD表は D1 dedup で排他保証済み）
+          3. Stage E（旧互換）: 旧設計の table_contents（移行期のみ）
+
         Args:
             stage_b_result: Stage B の結果
             stage_e_result: Stage E の結果
+            e40_table_ssot: E40 の結果リスト（D由来画像表の image SSOT）
+                各要素: {origin_uid, canonical_id, cells: [{row, col, text, source:'image_ocr'}]}
 
         Returns:
             表データリスト
+
+        Raises:
+            ValueError: E40 結果に b_embed source が含まれている場合（設計違反）
         """
         tables = []
 
-        # Stage B の表（優先）
+        # ─────────────────────────────────────────────────
+        # 1) E40 (image SSOT): D由来の画像表。優先（B表とは排他）
+        # ─────────────────────────────────────────────────
+        if e40_table_ssot:
+            for e40 in e40_table_ssot:
+                # ガード: b_embed は設計違反（E37 の結果が混入したら即エラー）
+                for cell in e40.get('cells', []):
+                    if cell.get('source') in _FORBIDDEN_SOURCES_IN_TABLE:
+                        raise ValueError(
+                            f"[F-1] 設計違反: E40 結果に禁止 source '{cell.get('source')}' が含まれています。"
+                            f" origin_uid={e40.get('origin_uid')} row={cell.get('row')} col={cell.get('col')}"
+                            " → E37 の結果を F に渡してはいけません。"
+                        )
+
+                tables.append({
+                    'table_id': e40.get('canonical_id', 'T?'),
+                    'origin_uid': e40.get('origin_uid', ''),
+                    'source': 'stage_e40',
+                    'cells': e40.get('cells', []),
+                    'provenance': {'table_text_source': 'E40_IMAGE_SSOT'},
+                })
+                logger.info(
+                    f"[F-1] E40表採用: {e40.get('canonical_id')} ({e40.get('origin_uid')})"
+                    f" cells={len(e40.get('cells', []))}"
+                )
+
+        # ─────────────────────────────────────────────────
+        # 2) Stage B の表（埋め込みテキスト表）
+        #    D1 dedup により E40 と重複しない保証あり
+        # ─────────────────────────────────────────────────
         if stage_b_result:
             # structured_tables（PDF/Native Word）
             if 'structured_tables' in stage_b_result:
                 for idx, table in enumerate(stage_b_result['structured_tables']):
-                    # ★修正: table オブジェクト全体ではなく、data フィールドを抽出
                     tables.append({
-                        'table_id': f'B_T{idx + 1}',
+                        'table_id': table.get('table_id', f'B_T{idx + 1}'),
+                        'origin_uid': table.get('origin_uid', f'B:P{table.get("page",0)}:T{idx}'),
                         'source': 'stage_b',
-                        'data': table.get('data', [])  # table['data'] を取り出す
+                        'data': table.get('data', [])
                     })
 
             # sheets（Native Excel）
@@ -366,7 +410,9 @@ class F1DataFusionMerger:
                         'data': sheet
                     })
 
-        # Stage E の表（補完）
+        # ─────────────────────────────────────────────────
+        # 3) Stage E の表（旧設計互換。E40 移行完了後は削除予定）
+        # ─────────────────────────────────────────────────
         if stage_e_result:
             table_contents = stage_e_result.get('table_contents', [])
             for idx, table in enumerate(table_contents):

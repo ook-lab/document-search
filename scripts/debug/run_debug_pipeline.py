@@ -61,11 +61,8 @@ from shared.pipeline.stage_d.d8_grid_analyzer import D8GridAnalyzer
 from shared.pipeline.stage_d.d9_cell_identifier import D9CellIdentifier
 from shared.pipeline.stage_d.d10_image_slicer import D10ImageSlicer
 
-# サブステージ クラスのインポート（Stage E）
-from shared.pipeline.stage_e.e1_ocr_scouter import E1OcrScouter
-from shared.pipeline.stage_e.e5_text_block_visualizer import E5TextBlockVisualizer
-from shared.pipeline.stage_e.e21_context_extractor import E21ContextExtractor
-from shared.pipeline.stage_e.e30_table_structure_extractor import E30TableStructureExtractor
+# Stage E コントローラー（E1〜E40 全処理を内包）
+from shared.pipeline.stage_e import E1Controller as E1ControllerFull
 
 # サブステージ クラスのインポート（Stage F）
 from shared.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
@@ -87,7 +84,7 @@ class DebugPipeline:
         "A": ["A3"],
         "B": ["B1"],  # B90削除: B1で抽出＋削除を統合
         "D": ["D3", "D5", "D8", "D9", "D10"],
-        "E": ["E1", "E5", "E20", "E30"],
+        "E": ["E1"],
         "F": ["F1", "F3", "F5"],
         "G": ["G1", "G3", "G5", "G11", "G12", "G21", "G22"],
     }
@@ -97,7 +94,7 @@ class DebugPipeline:
         "A3",
         "B1",  # B90削除
         "D3", "D5", "D8", "D9", "D10",
-        "E1", "E5", "E20", "E30",
+        "E1",
         "F1", "F3", "F5",
         "G1", "G3", "G5", "G11", "G12", "G21", "G22",
     ]
@@ -135,12 +132,9 @@ class DebugPipeline:
         self._d9 = D9CellIdentifier()
         self._d10 = D10ImageSlicer()
 
-        # Stage E サブステージ
+        # Stage E コントローラー（E1〜E40 全処理）
         _gemini_key = os.environ.get('GOOGLE_AI_API_KEY')
-        self._e1 = E1OcrScouter()
-        self._e5 = E5TextBlockVisualizer()
-        self._e20 = E21ContextExtractor(api_key=_gemini_key)
-        self._e30 = E30TableStructureExtractor(api_key=_gemini_key)
+        self._stage_e = E1ControllerFull(gemini_api_key=_gemini_key)
 
         # Stage F サブステージ
         self._f1 = F1DataFusionMerger()
@@ -544,12 +538,11 @@ class DebugPipeline:
         ctx["D"] = stage_d
 
     # ════════════════════════════════════════
-    # Stage E（サブステージ: E1→E5→E20, E30）
+    # Stage E（E1Controller.process() 統合実行）
     # ════════════════════════════════════════
 
     def _exec_stage_e(self, ctx, active_set, force):
-        e_subs = {"E1", "E5", "E20", "E30"}
-        if not (e_subs & active_set):
+        if "E1" not in active_set:
             ctx["E"] = self.load_stage("E")
             return
 
@@ -561,121 +554,19 @@ class DebugPipeline:
             ctx["E"] = {'success': False, 'error': 'No Stage D data'}
             return
 
-        if not stage_b:
-            logger.warning("[Stage E] Stage B データなし。ページスカウトをスキップ。")
-            stage_b = {}  # 空の辞書を渡す
+        cached = self.load_stage("E")
+        if not self._should_run("E1", active_set, force, cached is not None):
+            ctx["E"] = cached
+            return
 
-        non_table_image = stage_d.get('non_table_image_path')
-        tables = stage_d.get('tables', [])
-        total_tokens = 0
-        models_used = []
-
-        # E1: OCR Scouter（全画像 + ページ単位スカウト）
-        e1 = self.load_substage("E1")
-        if self._should_run("E1", active_set, force, e1 is not None):
-            logger.info("[E1] OCR Scouter 実行中...")
-            e1 = {'non_table_scout': None, 'table_scouts': [], 'page_scout': {}}
-
-            # ページ単位スカウト（Stage D で生成済みの画像を使用）
-            # output_dir 直下の purged_page_*.png を検索
-            page_images = list(self.output_dir.glob("purged_page_*.png"))
-            if page_images:
-                logger.info(f"[E1] ページ単位スカウト実行（Stage D 生成画像を使用）...")
-                try:
-                    page_count = len(page_images)
-                    logger.info(f"[E1] 検出画像: {page_count}ページ")
-
-                    # scout_all_pages 実行（output_dir を渡す）
-                    e1['page_scout'] = self._e1.scout_all_pages(self.output_dir, page_count)
-                except Exception as e:
-                    logger.error(f"[E1] ページスカウトエラー: {e}", exc_info=True)
-            else:
-                logger.warning(f"[E1] purged_page_*.png が見つかりません: {self.output_dir}")
-
-            # 既存の table/non-table スカウト（互換性維持）
-            if non_table_image and Path(non_table_image).exists():
-                e1['non_table_scout'] = self._e1.scout(Path(non_table_image))
-            for tbl in tables:
-                img = Path(tbl.get('image_path', ''))
-                if img.exists():
-                    scout = self._e1.scout(img)
-                    scout['table_id'] = tbl.get('table_id', 'Unknown')
-                    e1['table_scouts'].append(scout)
-            self.save_substage("E1", e1)
-        ctx["E1"] = e1
-
-        # E5: Text Block Visualizer（非表領域）
-        e5 = self.load_substage("E5")
-        if self._should_run("E5", active_set, force, e5 is not None):
-            logger.info("[E5] Text Block Visualizer 実行中...")
-            e5 = {'block_result': None, 'block_hint': ''}
-            if non_table_image and Path(non_table_image).exists():
-                scout = (ctx.get("E1") or {}).get('non_table_scout', {})
-                extracted_text = scout.get('extracted_text') if scout else None
-                block_result = self._e5.detect_blocks(Path(non_table_image), extracted_text)
-                block_hint = self._e5.generate_prompt_hint(block_result.get('blocks', []))
-                e5 = {'block_result': block_result, 'block_hint': block_hint}
-            self.save_substage("E5", e5)
-        ctx["E5"] = e5
-
-        # E20: Context Extractor（非表領域 → Gemini Flash-lite）
-        e20 = self.load_substage("E20")
-        if self._should_run("E20", active_set, force, e20 is not None):
-            logger.info("[E20] Context Extractor 実行中...")
-            e20 = {'success': False}
-            if non_table_image and Path(non_table_image).exists():
-                scout = (ctx.get("E1") or {}).get('non_table_scout', {})
-                if scout and not scout.get('should_skip'):
-                    block_hint = (ctx.get("E5") or {}).get('block_hint', '')
-                    extract = self._e20.extract(Path(non_table_image), block_hint=block_hint)
-                    e20 = {
-                        **extract,
-                        'scout_result': scout,
-                        'block_result': (ctx.get("E5") or {}).get('block_result')
-                    }
-                    total_tokens += extract.get('tokens_used', 0)
-                    model = extract.get('model_used')
-                    if model and model not in models_used:
-                        models_used.append(model)
-            self.save_substage("E20", e20)
-        ctx["E20"] = e20
-
-        # E30: Table Structure Extractor（表領域 → Gemini Flash）
-        e30 = self.load_substage("E30")
-        if self._should_run("E30", active_set, force, e30 is not None):
-            logger.info("[E30] Table Structure Extractor 実行中...")
-            e30 = {'table_results': []}
-            scout_map = {}
-            if ctx.get("E1"):
-                scout_map = {s.get('table_id'): s for s in ctx["E1"].get('table_scouts', [])}
-            for tbl in tables:
-                tid = tbl.get('table_id', 'Unknown')
-                img = Path(tbl.get('image_path', ''))
-                if not img.exists():
-                    continue
-                scout = scout_map.get(tid, {})
-                if scout.get('should_skip'):
-                    continue
-                extract = self._e30.extract(img, cell_map=tbl.get('cell_map', []))
-                e30['table_results'].append({**extract, 'table_id': tid, 'scout_result': scout})
-                total_tokens += extract.get('tokens_used', 0)
-                model = extract.get('model_used')
-                if model and model not in models_used:
-                    models_used.append(model)
-            self.save_substage("E30", e30)
-        ctx["E30"] = e30
-
-        # Stage E 結果を合成・保存
-        e1_data = ctx.get("E1") or {}
-        page_scout = e1_data.get('page_scout', {})
-
-        stage_e = {
-            'success': True,
-            'non_table_content': ctx.get("E20") or {},
-            'table_contents': (ctx.get("E30") or {}).get('table_results', []),
-            'page_scout': page_scout,
-            'metadata': {'total_tokens': total_tokens, 'models_used': models_used}
-        }
+        logger.info("[Stage E] E1Controller.process() 実行中...")
+        stage_e = self._stage_e.process(
+            purged_pdf_path=None,
+            stage_d_result=stage_d,
+            stage_b_result=stage_b or None,
+            output_dir=self.output_dir,
+            gemini_api_key=os.environ.get('GOOGLE_AI_API_KEY'),
+        )
         self.save_stage("E", stage_e)
         ctx["E"] = stage_e
 

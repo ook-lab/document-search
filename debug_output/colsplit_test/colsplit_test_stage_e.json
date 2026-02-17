@@ -1,133 +1,336 @@
 {
   "success": true,
   "non_table_content": {
-    "success": false,
-    "error": "Gemini API not available",
-    "extracted_content": {},
-    "raw_response": "",
-    "model_used": "gemini-2.5-flash-lite",
-    "tokens_used": 0,
-    "route": "E22_IMAGE_ONLY",
-    "vision_text_used": false,
-    "scout_result": {
-      "char_count": 23,
-      "density_level": "low",
-      "should_skip": false,
-      "extracted_text": "2026年\n\n35\n\n1/23 発行                                                                 C2\na ~~ > > a ~~\n\n",
-      "confidence": 0.046
+    "success": true,
+    "extracted_content": {
+      "text": "2026年\n\n35\n\n1/23 発行\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
-    "block_result": {
-      "blocks": [
-        {
-          "block_id": 1,
-          "type": "list",
-          "bbox": [
-            849,
-            135,
-            1122,
-            316
-          ],
-          "bbox_normalized": [
-            0.6658823529411765,
-            0.08181818181818182,
-            0.88,
-            0.19151515151515153
-          ],
-          "text_hint": ""
-        },
-        {
-          "block_id": 2,
-          "type": "list",
-          "bbox": [
-            159,
-            136,
-            304,
-            322
-          ],
-          "bbox_normalized": [
-            0.12470588235294118,
-            0.08242424242424243,
-            0.2384313725490196,
-            0.19515151515151516
-          ],
-          "text_hint": ""
-        },
-        {
-          "block_id": 3,
-          "type": "title",
-          "bbox": [
-            136,
-            328,
-            1139,
-            388
-          ],
-          "bbox_normalized": [
-            0.10666666666666667,
-            0.1987878787878788,
-            0.8933333333333333,
-            0.23515151515151514
-          ],
-          "text_hint": ""
-        },
-        {
-          "block_id": 4,
-          "type": "paragraph",
-          "bbox": [
-            136,
-            707,
-            1173,
-            1243
-          ],
-          "bbox_normalized": [
-            0.10666666666666667,
-            0.42848484848484847,
-            0.92,
-            0.7533333333333333
-          ],
-          "text_hint": ""
-        }
-      ],
-      "image_size": [
-        1275,
-        1650
-      ],
-      "overlay_image_path": ""
-    }
-  },
-  "table_contents": [],
-  "page_scout": {
-    "pages_total": 3,
-    "pages_processed": 3,
-    "per_page": [
+    "blocks": [
       {
-        "page": 0,
-        "words_count": 12,
-        "chars_count": 23,
-        "extracted_text": "2026 年 35 1/23 発行 C2 a ~~ > > a ~~",
-        "status": "ok",
-        "skip_reason": ""
+        "text": "2026年",
+        "bbox": [
+          104,
+          89,
+          226,
+          108
+        ],
+        "type": "paragraph",
+        "page": 0
       },
       {
-        "page": 1,
-        "words_count": 0,
-        "chars_count": 0,
-        "extracted_text": "",
-        "status": "ok",
-        "skip_reason": ""
+        "text": "35",
+        "bbox": [
+          134,
+          115,
+          205,
+          154
+        ],
+        "type": "paragraph",
+        "page": 0
       },
       {
-        "page": 2,
-        "words_count": 0,
-        "chars_count": 0,
-        "status": "blank_skip",
-        "skip_reason": "blank_page"
+        "text": "1/23 発行",
+        "bbox": [
+          116,
+          143,
+          207,
+          160
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          116,
+          206,
+          997,
+          246
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          234,
+          997,
+          263
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          118,
+          272,
+          998,
+          301
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          122,
+          303,
+          999,
+          332
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          118,
+          332,
+          997,
+          361
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          362,
+          997,
+          391
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          118,
+          392,
+          997,
+          421
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          421,
+          998,
+          450
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          451,
+          998,
+          480
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          121,
+          481,
+          999,
+          510
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          511,
+          998,
+          540
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          540,
+          999,
+          569
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          118,
+          570,
+          997,
+          599
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          600,
+          998,
+          629
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          629,
+          999,
+          658
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          659,
+          998,
+          688
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          689,
+          999,
+          718
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          719,
+          998,
+          748
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          748,
+          998,
+          777
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          121,
+          777,
+          999,
+          806
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          807,
+          999,
+          836
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          836,
+          998,
+          865
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          866,
+          998,
+          895
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          120,
+          895,
+          999,
+          924
+        ],
+        "type": "paragraph",
+        "page": 0
+      },
+      {
+        "text": "",
+        "bbox": [
+          119,
+          925,
+          998,
+          954
+        ],
+        "type": "paragraph",
+        "page": 0
       }
     ],
-    "total_words": 12,
-    "total_chars": 23
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"2026年\",\n      \"bbox\": [104, 89, 122, 19],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"35\",\n      \"bbox\": [134, 115, 71, 39],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"1/23 発行\",\n      \"bbox\": [116, 143, 91, 17],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [116, 206, 881, 40],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 234, 877, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [118, 272, 880, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [122, 303, 877, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [118, 332, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 362, 878, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [118, 392, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 421, 878, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 451, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [121, 481, 878, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 511, 878, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 540, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [118, 570, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 600, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 629, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 659, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 689, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 719, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 748, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [121, 777, 878, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 807, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 836, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 866, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [120, 895, 879, 29],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"\",\n      \"bbox\": [119, 925, 879, 29],\n      \"type\": \"paragraph\"\n    }\n  ]\n}\n```",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 781,
+    "route": "E22_IMAGE_ONLY",
+    "vision_text_used": false,
+    "role": "NON_TABLE_FINAL_TEXT",
+    "priority": 100,
+    "is_final_non_table": true
   },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
   "metadata": {
-    "total_tokens": 0,
-    "models_used": []
+    "total_tokens": 781,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
   }
 }

@@ -1,18 +1,92 @@
 {
-  "success": false,
-  "error": "Gemini API not available",
-  "extracted_content": {},
-  "raw_response": "",
+  "success": true,
+  "extracted_content": {
+    "text": "2026年\n\n35\n\n1/23 発行\n\n2026\n\nー\n\nー"
+  },
+  "blocks": [
+    {
+      "text": "2026年",
+      "bbox": [
+        111,
+        93,
+        344,
+        209
+      ],
+      "type": "list_item",
+      "page": 0
+    },
+    {
+      "text": "35",
+      "bbox": [
+        126,
+        123,
+        357,
+        283
+      ],
+      "type": "list_item",
+      "page": 0
+    },
+    {
+      "text": "1/23 発行",
+      "bbox": [
+        116,
+        165,
+        350,
+        351
+      ],
+      "type": "list_item",
+      "page": 0
+    },
+    {
+      "text": "2026",
+      "bbox": [
+        678,
+        94,
+        1487,
+        209
+      ],
+      "type": "list_item",
+      "page": 0
+    },
+    {
+      "text": "ー",
+      "bbox": [
+        109,
+        205,
+        1034,
+        432
+      ],
+      "type": "title",
+      "page": 0
+    },
+    {
+      "text": "ー",
+      "bbox": [
+        107,
+        434,
+        1025,
+        1185
+      ],
+      "type": "paragraph",
+      "page": 0
+    }
+  ],
+  "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"2026年\",\n      \"bbox\": [111, 93, 233, 116],\n      \"type\": \"list_item\"\n    },\n    {\n      \"text\": \"35\",\n      \"bbox\": [126, 123, 231, 160],\n      \"type\": \"list_item\"\n    },\n    {\n      \"text\": \"1/23 発行\",\n      \"bbox\": [116, 165, 234, 186],\n      \"type\": \"list_item\"\n    },\n    {\n      \"text\": \"2026\",\n      \"bbox\": [678, 94, 809, 115],\n      \"type\": \"list_item\"\n    },\n    {\n      \"text\": \"ー\",\n      \"bbox\": [109, 205, 925, 227],\n      \"type\": \"title\"\n    },\n    {\n      \"text\": \"ー\",\n      \"bbox\": [107, 434, 918, 751],\n      \"type\": \"paragraph\"\n    }\n  ]\n}\n```",
   "model_used": "gemini-2.5-flash-lite",
-  "tokens_used": 0,
+  "tokens_used": 333,
   "route": "E22_IMAGE_ONLY",
   "vision_text_used": false,
+  "role": "NON_TABLE_FINAL_TEXT",
+  "priority": 100,
+  "is_final_non_table": true,
   "scout_result": {
     "char_count": 23,
     "density_level": "low",
     "should_skip": false,
     "extracted_text": "2026年\n\n35\n\n1/23 発行                                                                 C2\na ~~ > > a ~~\n\n",
-    "confidence": 0.046
+    "confidence": 0.046,
+    "density": "low",
+    "skip": false
   },
   "block_result": {
     "blocks": [

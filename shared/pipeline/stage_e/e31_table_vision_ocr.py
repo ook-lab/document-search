@@ -1,19 +1,16 @@
 """
-E-31: Table Cell OCR（セル単位 Vision OCR）
+E-31: Table Cell OCR（チェーン中継）
 
-E-30 が確定したセル bbox に基づき、表画像から
-セルごとに切り出して Vision API OCR を実行する。
+チェーン:
+  E-30（Gemini image OCR: struct_result）
+    → E-31（d10_table を付与して E-32 へ転送）
+      → E-32（D10 cell_map に割当）
+        → E-40（image SSOT 正本化）
 
-正しい依存順：
-  E-30（構造：セルbbox確定）→ E-31（セルOCR）→ E-32（合成）
-
-入力：
-  image_path: 表画像
-  cells: E-30 が返した cells リスト（row, col, x0, y0, x1, y1 を含む）
-
-出力：
-  cell_texts: [{row, col, text, confidence}]
-  route: "E31_CELL_OCR"
+E-31 の現役割:
+  - d10_table（D10の cell_map 情報）を受け取り、チェーンに流す
+  - 将来 Vision API word-level OCR を追加する場合もここに実装する
+  - 現状は E-30（Gemini）がテキストを持つため、OCR 処理はスキップ
 """
 
 import io
@@ -55,41 +52,70 @@ class E31TableVisionOcr:
         self,
         image_path: Path,
         cells: List[Dict[str, Any]],
-        struct_result: Dict[str, Any] = None
+        struct_result: Dict[str, Any] = None,
+        d10_table: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
-        ★修正: E-30で既にテキストを取得しているため、セルごとのVision API呼び出しをスキップ
+        E-30 のテキスト取得済みのため OCR スキップ。d10_table を付与して E-32 へ転送。
 
         Args:
-            image_path: 表画像パス
+            image_path: 表画像パス（将来の Vision API 用に保持）
             cells: E-30 の cells リスト（既にtextを含む）
-            struct_result: E-30の構造抽出結果（チェーン用）
+            struct_result: E-30 の構造抽出結果（チェーン用）
+            d10_table: D10 tables[] の1要素（cell_map を E-32 に渡すために必須）
+                {origin_uid, canonical_id, bbox, cell_map: [{row, col, bbox}]}
 
         Returns:
-            E-32の結果（チェーン経由）またはE-31の結果
+            E-32 → E-40 チェーンの最終結果（image SSOT）
         """
         logger.info("=" * 80)
-        logger.info("[E-31] ★セルOCRスキップ（E-30で既にテキスト取得済み）")
+        logger.info("[E-31] OCRスキップ（E-30取得済み）→ E-32 へ d10_table 付きで転送")
         logger.info("=" * 80)
 
-        # E-30で既にテキストが取得されているため、空のocr_resultを返す
-        # （E-32がE-30のテキストをそのまま使用）
+        # ★ガード: d10_table が None なら致命エラー
+        if d10_table is None:
+            logger.error("[E-31] ★致命エラー: d10_table が渡されていません。E-30 の extract_structure() に d10_table= を指定してください。")
+            return {
+                'success': False,
+                'route': 'E31_MISSING_D10_TABLE',
+                'error': 'd10_table が E31 に渡されていません。E30 の呼び出し元を確認してください。',
+            }
+
+        logger.info(f"[E-31] d10_table: {d10_table.get('origin_uid')} cells={len(d10_table.get('cell_map', []))}")
+
+        # E-30 Gemini が取得したテキストを cell_texts 形式に変換
+        struct_cells = (struct_result or {}).get('cells', []) if struct_result else []
+        cell_texts = []
+        for c in struct_cells:
+            txt = (c.get('text') or '').strip()
+            if txt:
+                cell_texts.append({
+                    'row': c.get('row'),
+                    'col': c.get('col'),
+                    'text': txt,
+                    'confidence': 1.0,  # Gemini 由来
+                })
+        logger.info(f"[E-31] E30テキストを cell_texts に変換: {len(cell_texts)}セル")
+
         ocr_result = {
-            'success': True,
-            'cell_texts': [],  # 空（E-30の結果を使用）
+            'cell_texts': cell_texts,
             'ocr_engine': 'GEMINI_E30',
-            'route': 'E31_SKIP_ALREADY_EXTRACTED',
-            'cells_processed': 0
+            'route': 'E31_PASS_THROUGH',
         }
 
-        logger.info("[E-31] E-30で取得済みのテキストをそのまま使用します")
-
-        # ★チェーン: E-32を呼び出す
+        # チェーン: E-32.merge() を呼び出す
         if self.next_stage and struct_result:
-            logger.info("[E-31] → 次のステージ（E-32）を呼び出します")
+            logger.info("[E-31] → 次のステージ（E-32.merge()）を呼び出します")
             return self.next_stage.merge(struct_result, ocr_result)
 
-        return ocr_result
+        # next_stage なし（単体テスト等）
+        return {
+            'success': True,
+            'cell_texts': cell_texts,
+            'ocr_engine': 'GEMINI_E30',
+            'route': 'E31_PASS_THROUGH',
+            'cells_processed': len(cell_texts),
+        }
 
     def extract_cells_OLD_DESIGN(
         self,
