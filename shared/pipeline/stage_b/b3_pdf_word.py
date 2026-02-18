@@ -26,7 +26,7 @@ class B3PDFWordProcessor:
     # 空白列検出の最小幅（pt）
     GAP_MIN_WIDTH = 10.0
 
-    def process(self, file_path: Path) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         """
         Word由来PDFから構造化データを抽出
 
@@ -59,7 +59,11 @@ class B3PDFWordProcessor:
                 all_tables = []
                 all_words = []  # B-90 消去用：全単語（ルビ・本文問わず）
 
+                _masked = set(masked_pages or [])
                 for page_num, page in enumerate(pdf.pages):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-3] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     # スライス検出（文字の空白列を基準に分割）
                     slices = self._detect_slices(page)
                     logger.info(f"[B-3] ページ{page_num+1}: {len(slices)}スライス検出")

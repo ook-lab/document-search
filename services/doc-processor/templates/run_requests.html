@@ -1267,21 +1267,34 @@
                 const docsHtml = failedDocs.map(doc => {
                     const title = doc.title || doc.file_name || '(無題)';
                     const shortId = doc.id.substring(0, 8);
-                    const errorMsg = doc.error_message || '不明なエラー';
                     const attemptCount = doc.attempt_count || 0;
 
-                    // metadataから詳細エラー情報を取得
+                    // エラーメッセージ: 優先順位 last_error_reason > error_message > metadata.last_error
                     let metadata = {};
                     try {
-                        if (typeof doc.metadata === 'string') {
-                            metadata = JSON.parse(doc.metadata);
-                        } else {
-                            metadata = doc.metadata || {};
-                        }
-                    } catch (e) {
-                        metadata = {};
-                    }
-                    const lastError = metadata.last_error || errorMsg;
+                        metadata = (typeof doc.metadata === 'string')
+                            ? JSON.parse(doc.metadata)
+                            : (doc.metadata || {});
+                    } catch (e) { metadata = {}; }
+
+                    const errorDetail = doc.last_error_reason
+                        || doc.error_message
+                        || metadata.last_error
+                        || '不明なエラー';
+
+                    // Gatekeeper情報
+                    const gateCode   = doc.gate_block_code || '';
+                    const gateReason = doc.gate_block_reason || '';
+                    const creator    = doc.pdf_creator || '';
+                    const producer   = doc.pdf_producer || '';
+
+                    const gateHtml = (gateCode || creator) ? `
+                        <div style="background: #fef3c7; padding: 8px 12px; border-radius: 4px; margin-top: 6px; font-size: 0.82em; font-family: monospace;">
+                            ${gateCode    ? `<div><b>Gate:</b> ${gateCode}</div>` : ''}
+                            ${gateReason  ? `<div><b>理由:</b> ${gateReason}</div>` : ''}
+                            ${creator     ? `<div><b>Creator:</b> ${creator}</div>` : ''}
+                            ${producer    ? `<div><b>Producer:</b> ${producer}</div>` : ''}
+                        </div>` : '';
 
                     return `
                         <div class="request-card" style="border-left: 4px solid #f59e0b;">
@@ -1296,9 +1309,10 @@
                                 <div style="font-weight: 600; color: #92400e; margin-bottom: 5px;">
                                     ⚠️ エラーメッセージ
                                 </div>
-                                <div style="color: #78350f; font-size: 0.9em; font-family: monospace; white-space: pre-wrap; max-height: 100px; overflow-y: auto;">
-                                    ${lastError}
+                                <div style="color: #78350f; font-size: 0.9em; font-family: monospace; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">
+                                    ${errorDetail}
                                 </div>
+                                ${gateHtml}
                             </div>
                             <div class="request-info">
                                 <div class="info-item">

@@ -13,7 +13,7 @@ from loguru import logger
 class B5PDFPPTProcessor:
     """B-5: PDF-PowerPoint Processor（PDF-PowerPoint専用）"""
 
-    def process(self, file_path: Path) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         """
         PowerPoint由来PDFから構造化データを抽出
 
@@ -45,7 +45,11 @@ class B5PDFPPTProcessor:
                 all_tables = []
                 all_words = []  # 削除対象の全単語
 
+                _masked = set(masked_pages or [])
                 for page_num, page in enumerate(pdf.pages):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-5] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     # テキストボックスを検出（座標ベース）
                     textboxes = self._extract_textboxes(page, page_num)
 

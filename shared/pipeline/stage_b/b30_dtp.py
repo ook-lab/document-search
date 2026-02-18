@@ -16,7 +16,7 @@ class B30DtpProcessor:
     # 近接ボックスのマージ閾値（pt）
     MERGE_THRESHOLD = 5.0
 
-    def process(self, file_path: Path) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         """
         InDesign由来PDFから構造化データを抽出
 
@@ -48,7 +48,11 @@ class B30DtpProcessor:
                 all_tables = []
                 all_words = []  # 削除対象の全単語
 
+                _masked = set(masked_pages or [])
                 for page_num, page in enumerate(pdf.pages):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-30] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     # ★修正: 先に表を検出（表領域を特定するため）
                     tables = self._extract_tables(page, page_num)
                     all_tables.extend(tables)

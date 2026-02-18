@@ -577,6 +577,44 @@ class PipelineManager:
         except Exception as e:
             logger.error(f"処理中マークエラー: {e}")
 
+    # ------------------------------------------------------------------
+    # Stage D / E マルチページ結果マージ
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _merge_d_results(d_results: list) -> dict:
+        """
+        複数ページの D 結果を E1Controller が読める単一 dict にまとめる。
+
+        - tables: 全ページ分を結合（各 table に image_path あり → E がそのまま処理）
+        - non_table_image_paths: ページごとの背景画像パスリスト
+          （E1Controller はこのリストをループして非表領域を処理する）
+        - non_table_image_path: 後方互換のため先頭ページ分を残す
+        """
+        if not d_results:
+            return {}
+        if len(d_results) == 1:
+            d = dict(d_results[0])
+            # 単一ページでもリスト形式を追加
+            if d.get('non_table_image_path'):
+                d['non_table_image_paths'] = [d['non_table_image_path']]
+            return d
+
+        base = dict(d_results[0])
+        all_tables = []
+        non_table_image_paths = []
+
+        for dr in d_results:
+            all_tables.extend(dr.get('tables', []) or [])
+            img = dr.get('non_table_image_path')
+            if img:
+                non_table_image_paths.append(img)
+
+        base['tables'] = all_tables
+        base['non_table_image_paths'] = non_table_image_paths
+        base['page_count'] = len(d_results)
+        return base
+
     def _update_document_progress(self, document_id: str, progress: float, log_message: str = None):
         """ドキュメントの進捗を更新"""
         try:
@@ -1014,7 +1052,8 @@ class PipelineManager:
             logger.info("[Stage A] 書類種別判定開始")
             stage_a_result = self.stage_a.process(str(local_path))
             if not stage_a_result or not stage_a_result.get('success'):
-                return {'success': False, 'error': 'Stage A失敗'}
+                detail = (stage_a_result or {}).get('error', '')
+                return {'success': False, 'error': f'Stage A失敗: {detail}' if detail else 'Stage A失敗'}
 
             # Stage A の結果を DB に保存
             try:
@@ -1064,32 +1103,80 @@ class PipelineManager:
                 a_result=stage_a_result
             )
             if not stage_b_result or not stage_b_result.get('success'):
-                return {'success': False, 'error': 'Stage B失敗'}
+                b_error = (stage_b_result or {}).get('error', '不明')
+                raw_meta = stage_a_result.get('raw_metadata', {})
+                creator = raw_meta.get('Creator', '')
+                producer = raw_meta.get('Producer', '')
+                gate = stage_a_result.get('a5_gatekeeper') or stage_a_result.get('gatekeeper') or {}
+                origin_app = stage_a_result.get('origin_app', '')
+                confidence = stage_a_result.get('confidence', '')
+                gate_code = gate.get('block_code', '')
+                gate_reason = gate.get('block_reason', '')
+                parts = [f'Stage B失敗: {b_error}']
+                if creator:    parts.append(f'Creator={creator}')
+                if producer:   parts.append(f'Producer={producer}')
+                if origin_app: parts.append(f'判定={origin_app}({confidence})')
+                if gate_code:  parts.append(f'Gate={gate_code}')
+                if gate_reason:parts.append(f'理由={gate_reason}')
+                return {'success': False, 'error': ' | '.join(parts)}
 
             purged_pdf_path = stage_b_result.get('purged_pdf_path')
             if not purged_pdf_path:
-                return {'success': False, 'error': 'Stage B: purged_pdf_path が生成されませんでした'}
+                return {'success': False, 'error': 'Stage B失敗: purged_pdf_path が生成されませんでした'}
 
-            # Stage D: Visual Structure Analysis
-            self._update_document_progress(document_id, 0.45, '視覚構造解析')
-            logger.info("[Stage D] 視覚構造解析開始")
+            # Stage D + E: Multi-page loop
+            # A5 page_type_map からコンテンツページを決定（COVER/UNKNOWN はスキップ）
+            _NON_CONTENT = {'COVER', 'UNKNOWN'}
+            _page_type_map = stage_a_result.get('page_type_map', {})
+            if _page_type_map:
+                content_pages = sorted(
+                    idx for idx, ptype in _page_type_map.items()
+                    if ptype not in _NON_CONTENT
+                )
+            else:
+                content_pages = [0]  # フォールバック: ページ0のみ
 
-            # D1Controller は単一ページ処理のため、purged_image_path を取得
-            purged_image_paths = stage_b_result.get('purged_image_paths', [])
-            purged_image_path = purged_image_paths[0] if purged_image_paths else None
+            logger.info(f"[Stage D] 処理対象ページ: {[p+1 for p in content_pages]}")
 
-            stage_d_result = self.stage_d.process(
-                pdf_path=Path(purged_pdf_path),
-                purged_image_path=Path(purged_image_path) if purged_image_path else None,
-                page_num=0,
-                output_dir=Path(doc_temp_dir)
-            )
-            if not stage_d_result or not stage_d_result.get('success'):
-                return {'success': False, 'error': 'Stage D失敗'}
+            all_d_results = []
 
-            # Stage E: Vision Extraction & AI Structuring
+            for page_idx, page_num in enumerate(content_pages):
+                # ページ別出力ディレクトリ（ファイル名衝突回避）
+                page_output_dir = Path(doc_temp_dir) / f"page_{page_num}"
+                page_output_dir.mkdir(parents=True, exist_ok=True)
+
+                # Stage D: Visual Structure Analysis（1ページずつ）
+                progress_d = 0.45 + (page_idx / len(content_pages)) * 0.05
+                self._update_document_progress(document_id, progress_d, f'視覚構造解析 p{page_num+1}')
+                logger.info(f"[Stage D] ページ {page_num+1} 視覚構造解析開始")
+
+                # purged_image_path は None → D1 が page_num 指定で自動生成
+                d_result = self.stage_d.process(
+                    pdf_path=Path(purged_pdf_path),
+                    purged_image_path=None,
+                    page_num=page_num,
+                    output_dir=page_output_dir
+                )
+                if not d_result or not d_result.get('success'):
+                    detail = (d_result or {}).get('error', '')
+                    logger.warning(f"[Stage D] ページ {page_num+1} 失敗: {detail} → スキップ")
+                    continue
+                all_d_results.append(d_result)
+
+            if not all_d_results:
+                return {'success': False, 'error': 'Stage D失敗: 全ページが失敗しました'}
+
+            logger.info(f"[Stage D] 完了: {len(all_d_results)}/{len(content_pages)}ページ")
+
+            # 全ページの D 結果をマージ
+            # tables: 全ページ分を結合
+            # non_table_image_paths: ページごとの背景画像リスト（E が順番に処理）
+            stage_d_result = self._merge_d_results(all_d_results)
+
+            # Stage E: 全ページ分の PNG を一括処理
+            # E1Controller は non_table_image_paths リストをループして処理する
             self._update_document_progress(document_id, 0.50, 'AI抽出')
-            logger.info("[Stage E] AI抽出開始")
+            logger.info(f"[Stage E] AI抽出開始: {len(all_d_results)}ページ分")
             stage_e_result = self.stage_e.process(
                 purged_pdf_path=purged_pdf_path,
                 stage_d_result=stage_d_result,
@@ -1097,7 +1184,8 @@ class PipelineManager:
                 stage_b_result=stage_b_result
             )
             if not stage_e_result or not stage_e_result.get('success'):
-                return {'success': False, 'error': 'Stage E失敗'}
+                detail = (stage_e_result or {}).get('error', '')
+                return {'success': False, 'error': f'Stage E失敗: {detail}' if detail else 'Stage E失敗'}
 
             # Stage F: Data Fusion & Normalization
             self._update_document_progress(document_id, 0.55, 'データ統合')
@@ -1109,7 +1197,8 @@ class PipelineManager:
                 stage_e_result=stage_e_result
             )
             if not stage_f_result or not stage_f_result.get('success'):
-                return {'success': False, 'error': 'Stage F失敗'}
+                detail = (stage_f_result or {}).get('error', '')
+                return {'success': False, 'error': f'Stage F失敗: {detail}' if detail else 'Stage F失敗'}
 
             # Stage G: UI Optimized Structuring
             self._update_document_progress(document_id, 0.60, 'UI最適化')
@@ -1119,7 +1208,8 @@ class PipelineManager:
                 f5_result=stage_f_result
             )
             if not stage_g_result or not stage_g_result.get('success'):
-                return {'success': False, 'error': 'Stage G失敗'}
+                detail = (stage_g_result or {}).get('error', '')
+                return {'success': False, 'error': f'Stage G失敗: {detail}' if detail else 'Stage G失敗'}
 
             # Stage G の結果を DB に保存
             try:

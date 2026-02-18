@@ -13,7 +13,7 @@ from loguru import logger
 class B4PDFExcelProcessor:
     """B-4: PDF-Excel Processor（PDF-Excel専用）"""
 
-    def process(self, file_path: Path) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         """
         Excel由来PDFから構造化データを抽出
 
@@ -45,7 +45,11 @@ class B4PDFExcelProcessor:
                 logical_blocks = []
                 all_words = []  # 削除対象の全単語
 
+                _masked = set(masked_pages or [])
                 for page_num, page in enumerate(pdf.pages):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-4] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     # 格子解析により表を検出
                     tables = self._extract_grid_tables(page, page_num)
                     all_tables.extend(tables)

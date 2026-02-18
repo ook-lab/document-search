@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from loguru import logger
 import statistics
+import math
 
 
 class B42MultiColumnReportProcessor:
@@ -29,7 +30,7 @@ class B42MultiColumnReportProcessor:
     # アンカー（順位）のパターン（数字のみ）
     ANCHOR_PATTERN = r'^\d+$'
 
-    def process(self, file_path: Path) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         """
         マルチカラム帳票から構造化データを抽出
 
@@ -66,7 +67,11 @@ class B42MultiColumnReportProcessor:
                 all_columns = []
                 all_words = []  # 削除対象の全単語
 
+                _masked = set(masked_pages or [])
                 for page_num, page in enumerate(pdf.pages):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-42] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     logger.info(f"[B-42] ========== ページ {page_num + 1}/{len(pdf.pages)} 処理中 ==========")
                     logger.info(f"[B-42]   ├─ ページサイズ: {page.width:.1f} x {page.height:.1f} pt")
 
@@ -166,6 +171,16 @@ class B42MultiColumnReportProcessor:
         """
         カラム・セグメンテーション（垂直スライス）
 
+        【修正 2026-02-18】
+        旧実装は chars の x0/x1 を「点」として 1pt ビンに打ち density==0 をガター扱い。
+        → 文字領域でも点と点の間が全部 0 になるため、ページ左余白（x=0〜min_text_x）が
+          ガター誤認され、先頭カラムが (0,0,0,h) の幅0 bbox になって within_bbox がクラッシュ。
+
+        本実装の修正ポイント:
+        1. chars の [x0,x1] 区間を「占有（面）」として塗りつぶす（点→面）
+        2. 文字の実在範囲 [min_text_x, max_text_x] の外側に触れるガターは除外（余白≠ガター）
+        3. 幅0/極小カラムを生成しない（_add_column で幅チェック）
+
         Args:
             page: pdfplumberのPageオブジェクト
 
@@ -174,73 +189,91 @@ class B42MultiColumnReportProcessor:
         """
         logger.info(f"[B-42] カラム検出開始")
 
-        # ページ全体のサイズ
         page_width = float(page.width)
         page_height = float(page.height)
 
-        # 全文字のX座標を収集
         chars = page.chars
         if not chars:
             logger.warning(f"[B-42] 文字が見つかりません。ページ全体を1カラムとして扱います")
-            return [(0, 0, page_width, page_height)]
+            return [(0.0, 0.0, page_width, page_height)]
 
         logger.info(f"[B-42]   ├─ 文字数: {len(chars)}個")
 
-        x_coords = [c['x0'] for c in chars] + [c['x1'] for c in chars]
-        x_coords = sorted(set(x_coords))
+        # 文字の実在範囲（余白を判別するために使用）
+        min_text_x = min(float(c.get('x0', 0.0)) for c in chars)
+        max_text_x = max(float(c.get('x1', 0.0)) for c in chars)
+        logger.info(f"[B-42]   ├─ テキスト実在範囲: x={min_text_x:.1f} ~ {max_text_x:.1f}")
 
-        # X座標の密度分布を計算（ヒストグラム）
-        # 1pt単位でビンを作成
-        bins = {}
-        for x in x_coords:
-            bin_key = int(x)
-            bins[bin_key] = bins.get(bin_key, 0) + 1
+        # chars の [x0, x1] 区間を占有として塗りつぶす（点ではなく面）
+        W = int(math.ceil(page_width))
+        occ = [0] * (W + 1)
+        for c in chars:
+            cx0 = float(c.get('x0', 0.0))
+            cx1 = float(c.get('x1', 0.0))
+            if cx1 <= cx0:
+                continue
+            s = max(0, int(math.floor(cx0)))
+            e = min(W, int(math.ceil(cx1)))
+            for x in range(s, e):
+                occ[x] = 1
 
-        # ガター（空白領域）を検出
+        # ガター（空白領域）を検出（ページ全体をスキャン）
         gutters = []
         in_gutter = False
         gutter_start = None
 
-        for x in range(int(page_width)):
-            density = bins.get(x, 0)
-
-            if density == 0:  # 空白
+        for x in range(W):
+            if occ[x] == 0:
                 if not in_gutter:
                     gutter_start = x
                     in_gutter = True
-            else:  # 文字あり
-                if in_gutter:
+            else:
+                if in_gutter and gutter_start is not None:
                     gutter_width = x - gutter_start
                     if gutter_width >= self.GUTTER_THRESHOLD:
-                        gutters.append((gutter_start, x))
+                        gutters.append((float(gutter_start), float(x)))
                     in_gutter = False
+                    gutter_start = None
 
-        logger.info(f"[B-42]   ├─ ガター検出: {len(gutters)}個 (閾値={self.GUTTER_THRESHOLD}pt)")
-        for idx, (start, end) in enumerate(gutters):
-            logger.info(f"[B-42]   │   ├─ ガター {idx + 1}: x={start}-{end} (幅={end - start}pt)")
+        if in_gutter and gutter_start is not None:
+            gutter_width = W - gutter_start
+            if gutter_width >= self.GUTTER_THRESHOLD:
+                gutters.append((float(gutter_start), float(W)))
 
-        # ガターでページを分割
-        if not gutters:
-            # ガターがない場合は全体を1カラムとする
-            logger.info(f"[B-42]   └─ ガターなし。ページ全体を1カラムとして扱います")
-            return [(0, 0, page_width, page_height)]
+        # ページ端（文字実在範囲外）に接するガターは「余白」なので除外
+        # = ガターが min_text_x より左、または max_text_x より右から始まる/終わる場合は除外
+        EPS = 1.0
+        filtered = [
+            (start, end) for (start, end) in gutters
+            if start >= min_text_x - EPS and end <= max_text_x + EPS
+        ]
+        logger.info(f"[B-42]   ├─ ガター検出: {len(gutters)}個 → 余白除外後: {len(filtered)}個 (閾値={self.GUTTER_THRESHOLD}pt)")
+        for idx, (start, end) in enumerate(filtered):
+            logger.info(f"[B-42]   │   ├─ ガター {idx + 1}: x={start:.1f}-{end:.1f} (幅={end - start:.1f}pt)")
 
-        columns = []
+        if not filtered:
+            logger.info(f"[B-42]   └─ 有効ガターなし。ページ全体を1カラムとして扱います")
+            return [(0.0, 0.0, page_width, page_height)]
 
-        # 最初のカラム（左端〜最初のガター）
-        columns.append((0, 0, gutters[0][0], page_height))
+        # ガターでページを分割（幅0/極小カラムは作らない）
+        columns: List[Tuple[float, float, float, float]] = []
 
-        # 中間のカラム
-        for i in range(len(gutters) - 1):
-            x0 = gutters[i][1]
-            x1 = gutters[i + 1][0]
-            columns.append((x0, 0, x1, page_height))
+        def _add_column(x0: float, x1: float):
+            if x1 - x0 <= 1.0:
+                logger.debug(f"[B-42]   幅0/極小カラムをスキップ: x={x0:.1f}-{x1:.1f}")
+                return
+            columns.append((float(x0), 0.0, float(x1), page_height))
 
-        # 最後のカラム（最後のガター〜右端）
-        columns.append((gutters[-1][1], 0, page_width, page_height))
+        _add_column(0.0, filtered[0][0])
+        for i in range(len(filtered) - 1):
+            _add_column(filtered[i][1], filtered[i + 1][0])
+        _add_column(filtered[-1][1], page_width)
+
+        if not columns:
+            logger.warning(f"[B-42] 有効カラムが生成できません。ページ全体を1カラムとして扱います")
+            return [(0.0, 0.0, page_width, page_height)]
 
         logger.info(f"[B-42]   └─ カラム分割完了: {len(columns)}カラム")
-
         return columns
 
     def _extract_records_from_column(
@@ -274,6 +307,11 @@ class B42MultiColumnReportProcessor:
         logger.info(f"[B-42] カラム {col_idx + 1} のレコード抽出開始")
 
         x0, y0, x1, y1 = column_bbox
+
+        # 幅0/極小 bbox は pdfplumber が例外を投げるためスキップ（二重安全）
+        if x1 <= x0 + 1.0:
+            logger.warning(f"[B-42]   カラム {col_idx + 1}: 無効bbox ({x0:.1f},{y0:.1f},{x1:.1f},{y1:.1f}) → スキップ")
+            return []
 
         # カラム内の文字を抽出
         cropped = page.within_bbox((x0, y0, x1, y1))

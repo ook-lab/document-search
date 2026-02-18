@@ -24,9 +24,16 @@ PDF処理（座標解析）:
 特化型処理:
 - B42MultiColumnReportProcessor: 多段組レポート専用
 
+後処理:
+- B90ResultMerger: MIXED 文書の複数 B プロセッサ結果をマージ
+
 抽出＋削除統合:
 - 各プロセッサ（B3, B11, B12, etc.）で抽出と同時に削除を実行
 - purged_pdf_path を Stage D に渡す
+
+MIXED 文書対応（masked_pages）:
+- 各 B プロセッサは masked_pages を受け取り、該当ページをスキップ
+- B1 が type_groups ごとにプロセッサを実行、B90 でマージ
 """
 
 from .b1_controller import B1Controller
@@ -41,6 +48,7 @@ from .b12_google_sheets import B12GoogleSheetsProcessor
 from .b14_goodnotes_processor import B14GoodnotesProcessor
 from .b30_dtp import B30DtpProcessor
 from .b42_multicolumn_report import B42MultiColumnReportProcessor
+from .b90_result_merger import B90ResultMerger
 
 __all__ = [
     'B1Controller',
@@ -55,4 +63,5 @@ __all__ = [
     'B14GoodnotesProcessor',
     'B30DtpProcessor',
     'B42MultiColumnReportProcessor',
+    'B90ResultMerger',
 ]

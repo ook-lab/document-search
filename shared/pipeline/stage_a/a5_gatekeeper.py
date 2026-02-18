@@ -121,12 +121,18 @@ class A5Gatekeeper:
             return asdict(d)
         logger.info("  ✓ 信頼度チェック通過")
 
-        # v1 allowlist：WORD（FLOW/FIXED）、GOOGLE_DOCS（FLOW/FIXED）を通す
+        # v1 allowlist：WORD / GOOGLE_DOCS / REPORT / DTP / MIXED を通す
         allowed_combinations = [
             ("WORD", "FLOW"),
             ("WORD", "FIXED"),
             ("GOOGLE_DOCS", "FLOW"),
             ("GOOGLE_DOCS", "FIXED"),
+            ("REPORT", "FLOW"),
+            ("REPORT", "FIXED"),
+            ("DTP", "FLOW"),
+            ("DTP", "FIXED"),
+            ("MIXED", "FLOW"),
+            ("MIXED", "FIXED"),
         ]
         logger.info("[A-5 Gatekeeper] Allowlistチェック:")
         logger.info(f"  ├─ 組み合わせ: ({origin_app}, {layout_profile})")
@@ -220,6 +226,21 @@ class A5Gatekeeper:
             allowed_procs = ["B11_GOOGLE_DOCS"]
             reason_suffix = f"GOOGLE_DOCS+{layout_profile}"
             logger.info(f"  ├─ origin_app=GOOGLE_DOCS → B11_GOOGLE_DOCS")
+        elif origin_app == "REPORT":
+            allowed_procs = ["B42_MULTICOLUMN"]
+            reason_suffix = f"REPORT+{layout_profile}"
+            logger.info(f"  ├─ origin_app=REPORT → B42_MULTICOLUMN")
+        elif origin_app == "DTP":
+            allowed_procs = ["B30_DTP"]
+            reason_suffix = f"DTP+{layout_profile}"
+            logger.info(f"  ├─ origin_app=DTP → B30_DTP")
+        elif origin_app == "MIXED":
+            # MIXED: B1 が type_groups を見て複数プロセッサを選択する
+            # Gatekeeper は全プロセッサを許可リストに入れておく
+            allowed_procs = ["B3_PDF_WORD", "B30_DTP", "B42_MULTICOLUMN",
+                             "B11_GOOGLE_DOCS", "B12_GOOGLE_SHEETS"]
+            reason_suffix = f"MIXED+{layout_profile}"
+            logger.info(f"  ├─ origin_app=MIXED → 全プロセッサ許可（B1 が type_groups で選択）")
         else:  # WORD
             if layout_profile == "FIXED":
                 allowed_procs = ["B30_DTP"]

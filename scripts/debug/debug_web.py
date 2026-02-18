@@ -65,16 +65,22 @@ STAGE_DEPS = {
     "G": ["A", "B", "D", "E", "F"]
 }
 
-# サブステージ表示名
+# サブステージ表示名（DebugPipeline.ALL_SUBSTAGES と同期すること）
 SUBSTAGE_LABELS = {
+    # Stage A
     "A3": "Entry Point",
-    "B1": "Controller",
+    # Stage B
+    "B1": "Controller（MIXED対応）",
+    # Stage D
     "D3": "罫線抽出", "D5": "ラスター検出", "D8": "格子解析",
     "D9": "セル特定", "D10": "画像分割",
-    "E1": "OCR Scouter", "E5": "ブロック認識",
-    "E20": "地の文抽出", "E30": "表抽出",
+    # Stage E（E1Controller が E21/E30/E32/E37/E40 を内包）
+    "E1": "AI抽出（全処理）",
+    # Stage F
     "F1": "データ統合", "F3": "日付正規化", "F5": "表結合",
+    # Stage G
     "G1": "表再現", "G3": "ブロック整頓", "G5": "ノイズ除去",
+    "G11": "表構造化", "G12": "表AI処理", "G21": "記事生成", "G22": "カレンダー抽出",
 }
 
 
@@ -136,6 +142,7 @@ def run_pipeline():
     session_id = data.get('session_id', '')
     start = data.get('start') or None
     end = data.get('end') or None
+    target = data.get('target') or None  # 単一ステージ/サブステージ指定（--stage 相当）
     force = data.get('force') == 'true'
 
     # 新規セッション
@@ -165,6 +172,13 @@ def run_pipeline():
             if dep not in completed:
                 return jsonify({'error': f'前提ステージ {dep} が未完了です'}), 400
 
+    # target 指定時は start/end を無視（--stage 相当）
+    if target:
+        if target not in DebugPipeline.VALID_TARGETS:
+            return jsonify({'error': f'無効なターゲット: {target}。有効値: {DebugPipeline.VALID_TARGETS}'}), 400
+        start = None
+        end = None
+
     # ジョブ作成
     job_id = str(uuid.uuid4())[:8]
     log_queue = Queue()
@@ -179,7 +193,7 @@ def run_pipeline():
     # バックグラウンド実行
     thread = Thread(
         target=_run_pipeline_job,
-        args=(job_id, session_id, str(pdf_path) if pdf_path else None, start, end, force),
+        args=(job_id, session_id, str(pdf_path) if pdf_path else None, start, end, target, force),
         daemon=True
     )
     thread.start()
@@ -257,7 +271,7 @@ def test_drive():
 # Pipeline 実行
 # ────────────────────────────────────────
 
-def _run_pipeline_job(job_id, session_id, pdf_path, start, end, force):
+def _run_pipeline_job(job_id, session_id, pdf_path, start, end, target, force):
     """バックグラウンドスレッドでパイプラインを実行"""
     job = _jobs[job_id]
     log_queue = job['queue']
@@ -284,6 +298,8 @@ def _run_pipeline_job(job_id, session_id, pdf_path, start, end, force):
             pdf_path=pdf_path,
             start=start,
             end=end,
+            target=target,
+            mode="only" if target else "all",
             force=force,
         )
         job['result'] = result

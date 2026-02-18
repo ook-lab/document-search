@@ -26,7 +26,7 @@ except ImportError:
 class B11GoogleDocsProcessor:
     """B-11: Google Docs Processor（Google Docs由来PDF専用）"""
 
-    def process(self, file_path: Path) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         """
         Google Docs由来PDFから構造化データを抽出
 
@@ -65,7 +65,11 @@ class B11GoogleDocsProcessor:
                 all_tables = []
                 all_text_blocks = []  # 削除対象の全テキストブロック
 
+                _masked = set(masked_pages or [])
                 for page_num in range(len(fitz_doc)):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-11] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     fitz_page = fitz_doc[page_num]
                     plumber_page = pdf.pages[page_num]
 

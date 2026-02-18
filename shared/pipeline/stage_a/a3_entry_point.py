@@ -142,6 +142,10 @@ class A3EntryPoint:
                 'reason': type_result['reason'],
                 'raw_metadata': type_result.get('raw_metadata', {}),
 
+                # ページ別型解析（B1 の MIXED マルチプロセッサ処理に使用）
+                'page_type_map': type_result.get('page_type_map', {}),
+                'type_groups': type_result.get('type_groups', {}),
+
                 'page_count': dimension_result['page_count'],
                 'dimensions': dimension_result['dimensions'],
                 'dimensions_mm': dimension_result['dimensions_mm'],

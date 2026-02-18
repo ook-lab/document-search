@@ -31,7 +31,8 @@ class B14GoodnotesProcessor:
 
     def process(
         self,
-        file_path: Path
+        file_path: Path,
+        masked_pages=None
     ) -> Dict[str, Any]:
         """
         Goodnotes PDFを処理
@@ -63,7 +64,11 @@ class B14GoodnotesProcessor:
                 logical_blocks = []
                 all_words = []  # 削除対象の全単語
 
+                _masked = set(masked_pages or [])
                 for page_num, page in enumerate(pdf.pages):
+                    if _masked and page_num in _masked:
+                        logger.debug(f"[B-14] ページ{page_num+1}: マスク → スキップ")
+                        continue
                     logger.info(f"[B-14] ページ {page_num + 1}/{len(pdf.pages)} を処理中")
                     logger.info(f"[B-14]   ├─ ページサイズ: {page.width:.1f} x {page.height:.1f} pt")
 

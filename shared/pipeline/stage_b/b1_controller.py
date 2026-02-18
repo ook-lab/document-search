@@ -7,10 +7,15 @@ Stage Aの判定結果に基づいて、適切なStage Bプロセッサを選択
 1. ファイル拡張子の確認（PDF vs Native）
 2. Stage Aの document_type に基づいてプロセッサを選択
 3. 特化型プロセッサ（B-40番台）への対応
+
+MIXED 文書の処理:
+- A5 TypeAnalyzer が page_type_map / type_groups を生成した場合、
+  type ごとに masked_pages を設定して複数プロセッサを実行
+- 複数の生結果は B90 ResultMerger でマージして単一 stage_b_result を返す
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from loguru import logger
 
 from .b3_pdf_word import B3PDFWordProcessor
@@ -24,6 +29,20 @@ from .b12_google_sheets import B12GoogleSheetsProcessor
 from .b14_goodnotes_processor import B14GoodnotesProcessor
 from .b30_dtp import B30DtpProcessor
 from .b42_multicolumn_report import B42MultiColumnReportProcessor
+from .b90_result_merger import B90ResultMerger
+
+# COVER / UNKNOWN はコンテンツなし扱い（B プロセッサを割り当てない）
+_NON_CONTENT_TYPES = {'COVER', 'UNKNOWN'}
+
+# ページ種別 → デフォルトプロセッサ名のマップ（FIXED レイアウト判断は B1 が上書き）
+_TYPE_TO_PROCESSOR: Dict[str, str] = {
+    'REPORT': 'B42_MULTICOLUMN',
+    'DTP':    'B30_DTP',
+    'WORD':   'B3_PDF_WORD',
+    'GOOGLE_DOCS':    'B11_GOOGLE_DOCS',
+    'GOOGLE_SHEETS':  'B12_GOOGLE_SHEETS',
+    'GOODNOTES':      'B14_GOODNOTES',
+}
 
 
 class B1Controller:
@@ -43,6 +62,7 @@ class B1Controller:
         self.b14_goodnotes = B14GoodnotesProcessor()
         self.b30_dtp = B30DtpProcessor()
         self.b42_multicolumn = B42MultiColumnReportProcessor()
+        self.b90_merger = B90ResultMerger()
 
     def process(
         self,
@@ -122,14 +142,28 @@ class B1Controller:
         # Stage A の結果から origin_app と layout_profile を取得
         origin_app = None
         layout_profile = 'FLOW'  # デフォルト
+        type_groups: Dict[str, List[int]] = {}
+        page_type_map: Dict[int, str] = {}
+
         if a_result:
             # 2軸取得（新形式）
             origin_app = a_result.get('origin_app') or a_result.get('document_type')
             layout_profile = a_result.get('layout_profile', 'FLOW')
+            type_groups = a_result.get('type_groups', {}) or {}
+            page_type_map = a_result.get('page_type_map', {}) or {}
             logger.info(f"  ├─ Stage A判定（作成ソフト）: {origin_app}")
-            logger.info(f"  └─ Stage A判定（レイアウト）: {layout_profile}")
+            logger.info(f"  ├─ Stage A判定（レイアウト）: {layout_profile}")
+            logger.info(f"  └─ type_groups: { {t: len(p) for t, p in type_groups.items()} }")
 
-        # プロセッサを選択（2軸ルーティング）
+        # ── MIXED / 複数コンテンツ型: B90 経由マルチプロセッサ処理 ──
+        content_groups = {t: p for t, p in type_groups.items()
+                          if t not in _NON_CONTENT_TYPES}
+        if len(content_groups) > 1:
+            return self._process_multi_type(
+                file_path, content_groups, page_type_map, allowed, layout_profile
+            )
+
+        # ── 単一型（従来動作）──
         processor_name = self._select_processor(file_ext, origin_app, layout_profile)
 
         # Gate の allowlist にないプロセッサは実行しない（最後の門）
@@ -146,6 +180,59 @@ class B1Controller:
 
         # プロセッサを実行
         return self._execute_processor(processor_name, file_path)
+
+    def _process_multi_type(
+        self,
+        file_path: Path,
+        content_groups: Dict[str, List[int]],
+        page_type_map: Dict[int, str],
+        allowed: List[str],
+        layout_profile: str,
+    ) -> Dict[str, Any]:
+        """
+        MIXED 文書: 型グループごとに masked_pages 付きでプロセッサを実行し、
+        B90 でマージして返す。
+        """
+        total_pages = max(page_type_map.keys()) + 1 if page_type_map else 0
+        logger.info(f"[B-1] MIXED 処理開始: {len(content_groups)}型 / {total_pages}ページ")
+
+        raw_results: List[Dict[str, Any]] = []
+
+        for ptype, page_indices in content_groups.items():
+            processor_name = _TYPE_TO_PROCESSOR.get(ptype)
+            if not processor_name:
+                logger.warning(f"[B-1]   {ptype} → 対応プロセッサなし → スキップ")
+                continue
+            if processor_name not in allowed:
+                logger.warning(f"[B-1]   {ptype} → {processor_name} がallowlist外 → スキップ")
+                continue
+
+            # このグループ以外のページをマスク
+            masked = [i for i in range(total_pages) if i not in page_indices]
+            logger.info(f"[B-1]   {ptype}: {processor_name} pages={page_indices} masked={masked}")
+
+            result = self._execute_processor(processor_name, file_path, masked_pages=masked)
+            result['_source_type'] = ptype
+            result['_source_pages'] = page_indices
+            raw_results.append(result)
+
+        if not raw_results:
+            return {
+                'is_structured': False,
+                'error': 'MIXED 処理: すべての型グループがスキップされました',
+                'processor_name': 'B1_CONTROLLER',
+            }
+
+        if len(raw_results) == 1:
+            # 1件のみ → マージ不要
+            r = raw_results[0]
+            r.pop('_source_type', None)
+            r.pop('_source_pages', None)
+            return r
+
+        # B90 でマージ
+        logger.info(f"[B-1] B90 ResultMerger に渡す: {len(raw_results)}件")
+        return self.b90_merger.merge(raw_results)
 
     def _select_processor(
         self,
@@ -228,13 +315,19 @@ class B1Controller:
             logger.error(f"[B-1] 未対応の拡張子: {file_ext}")
             return 'UNKNOWN'
 
-    def _execute_processor(self, processor_name: str, file_path: Path) -> Dict[str, Any]:
+    def _execute_processor(
+        self,
+        processor_name: str,
+        file_path: Path,
+        masked_pages: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
         """
         プロセッサを実行
 
         Args:
             processor_name: プロセッサ名
             file_path: ファイルパス
+            masked_pages: スキップするページ番号リスト（0始まり）
 
         Returns:
             プロセッサの実行結果
@@ -264,7 +357,13 @@ class B1Controller:
             }
 
         try:
-            result = processor.process(file_path)
+            # masked_pages を受け付けるプロセッサには渡す
+            import inspect
+            sig = inspect.signature(processor.process)
+            if 'masked_pages' in sig.parameters and masked_pages:
+                result = processor.process(file_path, masked_pages=masked_pages)
+            else:
+                result = processor.process(file_path)
             result['processor_name'] = processor_name
 
             # 完全なログ出力

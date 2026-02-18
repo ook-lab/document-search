@@ -390,9 +390,20 @@ class DebugPipeline:
             logger.info("[B1] Controller 実行中（抽出＋削除統合）...")
             if not pdf_path:
                 raise FileNotFoundError("Stage B にはPDFファイルが必要です")
+            # JSONキャッシュ経由の場合 page_type_map / type_groups のキーが文字列になる
+            # B1Controller が max(keys()) + 1 を使うため int に正規化する
+            a_result = dict(ctx.get("A") or {})
+            if 'page_type_map' in a_result:
+                a_result['page_type_map'] = self._normalize_page_type_map(a_result['page_type_map'])
+            if 'type_groups' in a_result:
+                # type_groups の値（ページリスト）も int に正規化
+                a_result['type_groups'] = {
+                    t: [int(p) for p in pages]
+                    for t, pages in a_result['type_groups'].items()
+                }
             b1 = self._stage_b.process(
                 file_path=pdf_path,
-                a_result=ctx.get("A")
+                a_result=a_result
             )
             self.save_substage("B1", b1)
         ctx["B1"] = b1
@@ -409,6 +420,34 @@ class DebugPipeline:
     # ════════════════════════════════════════
     # Stage D（サブステージ: D3→D5→D8→D9→D10）
     # ════════════════════════════════════════
+
+    @staticmethod
+    def _normalize_page_type_map(raw: dict) -> dict:
+        """JSON キャッシュで文字列化されたキーを int に戻す"""
+        return {int(k): v for k, v in raw.items()}
+
+    @staticmethod
+    def _merge_d_results(d_results: list) -> dict:
+        """複数ページの D 結果を E1Controller が読める単一 dict に統合"""
+        if not d_results:
+            return {}
+        if len(d_results) == 1:
+            d = dict(d_results[0])
+            if d.get('non_table_image_path'):
+                d['non_table_image_paths'] = [d['non_table_image_path']]
+            return d
+        base = dict(d_results[0])
+        all_tables = []
+        non_table_image_paths = []
+        for dr in d_results:
+            all_tables.extend(dr.get('tables', []) or [])
+            img = dr.get('non_table_image_path')
+            if img:
+                non_table_image_paths.append(img)
+        base['tables'] = all_tables
+        base['non_table_image_paths'] = non_table_image_paths
+        base['page_count'] = len(d_results)
+        return base
 
     def _exec_stage_d(self, ctx, active_set, force):
         d_subs = {"D3", "D5", "D8", "D9", "D10"}
@@ -430,20 +469,31 @@ class DebugPipeline:
             ctx["D"] = {'success': False, 'error': 'No purged PDF'}
             return
 
-        page_num = 0
+        # page_type_map からコンテンツページを決定（COVER/UNKNOWN はスキップ）
+        _NON_CONTENT = {'COVER', 'UNKNOWN'}
+        stage_a = ctx.get("A") or self.load_stage("A")
+        raw_ptm = (stage_a or {}).get('page_type_map', {})
+        page_type_map = self._normalize_page_type_map(raw_ptm) if raw_ptm else {}
 
-        # ════════════════════════════════════════════════════════════════
+        if page_type_map:
+            content_pages = sorted(
+                idx for idx, ptype in page_type_map.items()
+                if ptype not in _NON_CONTENT
+            )
+        else:
+            content_pages = [0]  # フォールバック: ページ0のみ
+
+        logger.info(f"[Stage D] 処理対象ページ: {[p+1 for p in content_pages]}")
+
+        # ────────────────────────────────────────────────────────────────
         # 【統一 PNG 生成】全ページを一度だけ生成（D と E で共有）
-        # output_dir 直下に保存（他のファイルと同じ階層）
-        # ════════════════════════════════════════════════════════════════
+        # ────────────────────────────────────────────────────────────────
         logger.info("[Stage D] PNG 生成開始")
-
         import fitz
         doc = fitz.open(purged_pdf_path)
-        page_count = len(doc)
-        logger.info(f"[Stage D] ページ数: {page_count}")
-
-        for page_idx in range(page_count):
+        total_pages = len(doc)
+        logger.info(f"[Stage D] ページ数: {total_pages}")
+        for page_idx in range(total_pages):
             page_img_path = self.output_dir / f"purged_page_{page_idx}.png"
             if not page_img_path.exists():
                 page = doc.load_page(page_idx)
@@ -451,29 +501,48 @@ class DebugPipeline:
                 pix.save(str(page_img_path))
                 logger.info(f"[PNG生成] purged_page_{page_idx}.png 完了")
         doc.close()
+        # ────────────────────────────────────────────────────────────────
 
-        purged_image_path = self.output_dir / f"purged_page_{page_num}.png"
-        logger.info(f"[Stage D] 使用画像: {purged_image_path.name}")
-        # ════════════════════════════════════════════════════════════════
+        # D1 Controller を使用してマルチページ統合処理
+        from shared.pipeline.stage_d import D1Controller
+        d1 = D1Controller()
 
-        # D1 Controller を使用して統合処理
-        if "D3" not in active_set and "D5" not in active_set and "D8" not in active_set and "D9" not in active_set and "D10" not in active_set:
-            # サブステージ指定がない場合は D1 Controller を直接使用
-            logger.info("[Stage D] D1 Controller で統合実行...")
-            from shared.pipeline.stage_d import D1Controller
-            d1 = D1Controller()
-            stage_d = d1.process(
-                pdf_path=Path(purged_pdf_path),
-                purged_image_path=purged_image_path,  # 既存の画像を渡す
-                page_num=page_num,
-                output_dir=self.output_dir
-            )
+        # サブステージ個別実行かどうかを判定
+        is_substage_mode = any(s in active_set for s in ("D3", "D5", "D8", "D9", "D10"))
+
+        if not is_substage_mode or not ({"D3","D5","D8","D9","D10"} <= active_set):
+            # D1 Controller でマルチページ一括処理
+            logger.info(f"[Stage D] D1 Controller マルチページ実行: {len(content_pages)}ページ")
+            all_d_results = []
+            for page_idx, page_num in enumerate(content_pages):
+                page_output_dir = self.output_dir / f"page_{page_num}"
+                page_output_dir.mkdir(parents=True, exist_ok=True)
+                purged_image_path = self.output_dir / f"purged_page_{page_num}.png"
+                logger.info(f"[Stage D] ページ {page_num+1} 実行中... 画像: {purged_image_path.name}")
+                d_result = d1.process(
+                    pdf_path=Path(purged_pdf_path),
+                    purged_image_path=purged_image_path,
+                    page_num=page_num,
+                    output_dir=page_output_dir
+                )
+                if d_result and d_result.get('success'):
+                    all_d_results.append(d_result)
+                else:
+                    logger.warning(f"[Stage D] ページ {page_num+1} 失敗 → スキップ")
+
+            stage_d = self._merge_d_results(all_d_results)
+            if not stage_d:
+                stage_d = {'success': False, 'error': 'Stage D: 全ページ失敗'}
             self.save_stage("D", stage_d)
             ctx["D"] = stage_d
             return
 
-        # サブステージ個別実行の場合（デバッグ用）
-        # D3: ベクトル罫線抽出（B抽出済み表領域はスキップ）
+        # ─── サブステージ個別実行（デバッグ用: ページ0のみ）─────────────
+        page_num = content_pages[0] if content_pages else 0
+        purged_image_path = self.output_dir / f"purged_page_{page_num}.png"
+        logger.info(f"[Stage D] サブステージモード: ページ{page_num+1}のみ処理")
+
+        # D3: ベクトル罫線抽出
         d3 = self._get_substage_data("D3", ctx)
         if self._should_run("D3", active_set, force, d3 is not None):
             logger.info("[D3] ベクトル罫線抽出 実行中...")
@@ -489,10 +558,10 @@ class DebugPipeline:
             self.save_substage("D5", d5)
         ctx["D5"] = d5
 
-        # D8: 格子解析（不可視線フィルタ有効）
+        # D8: 格子解析
         d8 = self._get_substage_data("D8", ctx)
         if self._should_run("D8", active_set, force, d8 is not None):
-            logger.info("[D8] 格子解析 実行中（外枠除外 + 不可視線フィルタ）...")
+            logger.info("[D8] 格子解析 実行中...")
             d8 = self._d8.analyze(
                 ctx.get("D3"),
                 ctx.get("D5"),
@@ -520,12 +589,14 @@ class DebugPipeline:
             self.save_substage("D10", d10)
         ctx["D10"] = d10
 
-        # Stage D 結果を合成・保存
+        # Stage D 結果を合成・保存（サブステージモード: 単一ページ）
+        non_table_img = (d10 or {}).get('non_table_image_path', '')
         stage_d = {
             'success': True,
             'page_index': page_num,
             'tables': (d10 or {}).get('tables', []),
-            'non_table_image_path': (d10 or {}).get('non_table_image_path', ''),
+            'non_table_image_path': non_table_img,
+            'non_table_image_paths': [non_table_img] if non_table_img else [],
             'metadata': (d10 or {}).get('metadata', {}),
             'debug': {
                 'vector_lines': d3,

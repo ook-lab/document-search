@@ -129,37 +129,65 @@ class E1Controller:
         logger.info("=" * 90)
 
         # ===========================
-        # 非表領域処理
+        # 非表領域処理（マルチページ対応）
+        # non_table_image_paths があれば全ページ分ループ、なければ単一画像にフォールバック
         # ===========================
         total_tokens = 0
         models_used = []
         non_table_content = {}
-        non_table_image = stage_d_result.get('non_table_image_path')
 
-        if non_table_image and Path(non_table_image).exists():
+        # マルチページ: non_table_image_paths リスト、単一: non_table_image_path
+        non_table_images = stage_d_result.get('non_table_image_paths') or []
+        if not non_table_images:
+            single = stage_d_result.get('non_table_image_path')
+            if single:
+                non_table_images = [single]
+
+        all_non_table_results = []
+        for img_idx, non_table_image in enumerate(non_table_images):
             non_table_path = Path(non_table_image)
+            if not non_table_path.exists():
+                logger.info(f"[E-1] 非表領域画像なし → スキップ: {non_table_path.name}")
+                continue
+
             scout = self.scouter.scout(non_table_path, include_words=False)
             cc = int(scout.get('char_count', 0))
-            logger.info(f"[E-1] 非表 char_count={cc}")
+            logger.info(f"[E-1] 非表[{img_idx}] char_count={cc}")
 
             if cc >= 1:
-                logger.info(f"[E-1] 非表: E21 実行")
-                non_table_content = self.context_extractor.extract(
+                logger.info(f"[E-1] 非表[{img_idx}]: E21 実行")
+                page_ntc = self.context_extractor.extract(
                     non_table_path,
-                    page=page,
+                    page=page + img_idx,
                     words=[],
                     blocks=[],
                     block_hint='',
                     vision_text=None
                 )
-                total_tokens += int(non_table_content.get('tokens_used', 0))
-                m = non_table_content.get('model_used')
+                total_tokens += int(page_ntc.get('tokens_used', 0))
+                m = page_ntc.get('model_used')
                 if m and m not in models_used:
                     models_used.append(m)
+                all_non_table_results.append(page_ntc)
             else:
-                logger.info("[E-1] 非表: char_count=0 → スキップ")
+                logger.info(f"[E-1] 非表[{img_idx}]: char_count=0 → スキップ")
+
+        # 複数ページの非表結果をマージ（schedule/tasks/notices/items を結合）
+        if len(all_non_table_results) == 1:
+            non_table_content = all_non_table_results[0]
+        elif len(all_non_table_results) > 1:
+            merged = {'success': True}
+            for key in ('schedule', 'tasks', 'notices', 'events', 'items'):
+                combined = []
+                for r in all_non_table_results:
+                    v = r.get(key)
+                    if isinstance(v, list):
+                        combined.extend(v)
+                if combined:
+                    merged[key] = combined
+            non_table_content = merged
         else:
-            logger.info("[E-1] 非表領域画像なし → スキップ")
+            logger.info("[E-1] 非表領域: 全画像スキップ")
 
         # ===========================
         # 表領域処理

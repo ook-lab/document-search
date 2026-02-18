@@ -803,8 +803,9 @@ def get_failed_documents():
         # 失敗したドキュメントを取得
         query = db.client.table('Rawdata_FILE_AND_MAIL').select(
             'id, title, file_name, workspace, doc_type, created_at, updated_at, '
-            'error_message, attempt_count, metadata, '
-            'origin_app, origin_confidence, layout_profile'
+            'error_message, last_error_reason, attempt_count, failed_at, metadata, '
+            'origin_app, origin_confidence, layout_profile, '
+            'gate_block_code, gate_block_reason, pdf_creator, pdf_producer'
         ).eq('processing_status', 'failed')
 
         if workspace and workspace != 'all':
