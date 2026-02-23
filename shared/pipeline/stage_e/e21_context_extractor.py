@@ -70,7 +70,8 @@ class E21ContextExtractor:
         block_hint: Optional[str] = None,
         custom_prompt: Optional[str] = None,
         vision_text: Optional[str] = None,
-        anchor_text: Optional[str] = None
+        anchor_text: Optional[str] = None,
+        log_file=None,
     ) -> Dict[str, Any]:
         """
         画像からテキストを忠実に抽出
@@ -84,6 +85,7 @@ class E21ContextExtractor:
             custom_prompt: カスタムプロンプト（オプション）
             vision_text: E-21 の Vision OCR テキスト（あれば注入、なければ画像のみ）
             anchor_text: PDF由来テキスト（将来の拡張口、現在は null でOK）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -97,6 +99,36 @@ class E21ContextExtractor:
                 'vision_text_used': bool    # Vision OCR テキストをプロンプトに注入したか
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[E-21]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._extract_impl(
+                image_path, page, words, blocks, block_hint,
+                custom_prompt, vision_text, anchor_text
+            )
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _extract_impl(
+        self,
+        image_path: Path,
+        page: int = 0,
+        words: Optional[List[Dict[str, Any]]] = None,
+        blocks: Optional[List[Dict[str, Any]]] = None,
+        block_hint: Optional[str] = None,
+        custom_prompt: Optional[str] = None,
+        vision_text: Optional[str] = None,
+        anchor_text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """extract() の実装本体"""
         if not GENAI_AVAILABLE or not self.model:
             logger.error("[E-21] Gemini API が利用できません")
             return self._error_result("Gemini API not available")
@@ -159,14 +191,14 @@ class E21ContextExtractor:
             import json
             logger.info(json.dumps(parsed_result, ensure_ascii=False, indent=2))
 
-            # 座標付きブロックの統計
+            # 座標付きブロック全件
             logger.info(f"[E-21] 座標付きブロック数: {len(blocks)}")
             if blocks:
-                logger.info("[E-21] ブロックサンプル（先頭3個）:")
-                for idx, block in enumerate(blocks[:3], 1):
-                    text_preview = block.get('text', '')[:50]
+                logger.info("[E-21] ブロック全件:")
+                for idx, block in enumerate(blocks, 1):
+                    text = block.get('text', '')
                     bbox = block.get('bbox', [])
-                    logger.info(f"  Block {idx}: bbox={bbox}, text='{text_preview}...'")
+                    logger.info(f"  Block {idx}: bbox={bbox}, text='{text}'")
 
             # トークン数を概算（文字数 / 4）
             tokens_used = (len(prompt) + len(raw_text)) // 4

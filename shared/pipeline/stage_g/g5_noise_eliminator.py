@@ -31,13 +31,15 @@ class G5NoiseEliminator:
 
     def eliminate(
         self,
-        g3_result: Dict[str, Any]
+        g3_result: Dict[str, Any],
+        log_file=None,
     ) -> Dict[str, Any]:
         """
         ノイズを除去してクリーンなUI用データを生成
 
         Args:
             g3_result: G-3の結果（直前ステージのみ）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -46,6 +48,26 @@ class G5NoiseEliminator:
                 'size_reduction': str  # データサイズ削減率
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-5]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._eliminate_impl(g3_result)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _eliminate_impl(
+        self,
+        g3_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """eliminate() の実装本体"""
         logger.info("[G-5] ノイズ除去開始")
 
         try:
@@ -56,6 +78,7 @@ class G5NoiseEliminator:
             notices = g3_result.get('notices', [])
             document_info = g3_result.get('document_info', {})
             ui_tables = g3_result.get('ui_tables', [])
+            display_fields = g3_result.get('display_fields')
 
             # ドキュメント情報（必要最小限）
             clean_doc_info = {
@@ -131,7 +154,8 @@ class G5NoiseEliminator:
                         timeline=ui_data.get('timeline', []),
                         actions=ui_data.get('actions', []),
                         notices=ui_data.get('notices', []),
-                        year_context=document_info.get('year_context')  # ★年情報を渡す
+                        year_context=document_info.get('year_context'),  # ★年情報を渡す
+                        display_fields=display_fields,  # ★Supabase display_* 個別フィールド
                     )
                     result['text_result'] = text_result
 

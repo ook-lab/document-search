@@ -794,141 +794,103 @@ class PipelineManager:
         preserve_workspace: bool = True,
         progress_callback=None
     ) -> Dict[str, Any]:
-        """テキストのみドキュメントを処理（Stage F v1.1契約対応）"""
+        """テキストのみドキュメントを処理（F→G→J→K）"""
+        import json
         from shared.common.processing.metadata_chunker import MetadataChunker
 
         document_id = doc['id']
         file_name = doc.get('file_name', 'text_only')
-        workspace_to_use = doc.get('workspace', 'unknown') if preserve_workspace else 'unknown'
 
-        display_subject = doc.get('display_subject', '')
-        display_post_text = doc.get('display_post_text', '')
-        attachment_text = doc.get('attachment_text', '')  # カラムなし、常に空文字列
-
-        text_parts = []
-        if display_subject:
-            text_parts.append(f"【件名】\n{display_subject}")
-        if display_post_text:
-            text_parts.append(f"【本文】\n{display_post_text}")
-        if attachment_text:
-            text_parts.append(f"【添付ファイル】\n{attachment_text}")
-
-        combined_text = '\n\n'.join(text_parts)
-
-        if not combined_text.strip():
+        # テキスト有無の確認（display_* フィールドが何もなければ処理不要）
+        if not any([
+            doc.get('display_subject'),
+            doc.get('display_post_text'),
+            doc.get('display_sender'),
+            doc.get('display_sender_email'),
+            doc.get('display_sent_at'),
+        ]):
             return {'success': False, 'error': 'テキストが空です'}
 
         # ============================================
-        # Stage F相当: post_body構築（v1.1契約）
-        # テキストのみドキュメントでもpost_bodyを処理
+        # Stage F: F1→F3→F5 チェーン（テキストのみ）
+        # A→B→D→E をスキップし、rawdata_record から直接 F1 に入力
         # ============================================
-        self._update_document_progress(document_id, 0.2, 'post_body構築')
-        logger.info(f"[テキストのみ] post_body構築中...")
+        self._update_document_progress(document_id, 0.2, 'データ統合')
+        logger.info("[Stage F] テキストのみ: データ統合開始（A/B/D/E スキップ）")
 
-        # post_body構築
-        post_body = {
-            "text": display_post_text or "",
-            "source": "display_post_text",
-            "char_count": len(display_post_text) if display_post_text else 0
-        }
+        stage_f_result = self.stage_f.process(rawdata_record=doc)
+        if not stage_f_result or not stage_f_result.get('success'):
+            detail = (stage_f_result or {}).get('error', '')
+            return {'success': False, 'error': f'Stage F失敗: {detail}' if detail else 'Stage F失敗'}
 
-        # text_blocks構築（post_bodyを最優先ブロックとして追加）
-        text_blocks = []
+        # Stage G: UI最適化
+        self._update_document_progress(document_id, 0.40, 'UI最適化')
+        logger.info("[Stage G] UI最適化開始")
+        stage_g_result = self.stage_g.process(f5_result=stage_f_result)
+        if not stage_g_result or not stage_g_result.get('success'):
+            detail = (stage_g_result or {}).get('error', '')
+            return {'success': False, 'error': f'Stage G失敗: {detail}' if detail else 'Stage G失敗'}
 
-        # post_bodyブロック（常に先頭）
-        if post_body.get("text"):
-            text_blocks.append({
-                "block_type": "post_body",
-                "text": post_body["text"],
-                "source": post_body["source"],
-                "char_count": post_body["char_count"],
-                "priority": "highest"
-            })
+        ui_data = stage_g_result.get('ui_data', {})
+        final_metadata = stage_g_result.get('final_metadata', {})
 
-        # 件名ブロック
-        if display_subject:
-            text_blocks.append({
-                "block_type": "subject",
-                "text": display_subject,
-                "source": "display_subject",
-                "char_count": len(display_subject),
-                "priority": "high"
-            })
+        try:
+            self.db.client.table('Rawdata_FILE_AND_MAIL').update({
+                'stage_g_structured_data': ui_data,
+                'metadata': final_metadata,
+                'g11_structured_tables': json.dumps(final_metadata.get('g11_output', []), ensure_ascii=False) if final_metadata.get('g11_output') else None,
+                'g12_table_analyses': json.dumps(final_metadata.get('g12_output', []), ensure_ascii=False) if final_metadata.get('g12_output') else None,
+                'g21_articles': json.dumps(final_metadata.get('g21_output', []), ensure_ascii=False) if final_metadata.get('g21_output') else None,
+                'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None,
+            }).eq('id', document_id).execute()
+            logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
+        except Exception as e:
+            logger.warning(f"Stage G 結果の DB 保存エラー: {e}")
 
-        # 添付テキストブロック
-        if attachment_text:
-            text_blocks.append({
-                "block_type": "attachment",
-                "text": attachment_text,
-                "source": "attachment_text",
-                "char_count": len(attachment_text),
-                "priority": "medium"
-            })
+        if not final_metadata:
+            logger.warning("[Stage G] final_metadata が空です")
+            return {'success': False, 'error': 'Stage G: final_metadata が生成されませんでした'}
 
-        # stage_f_structure構築（v1.1契約フォーマット）
-        stage_f_structure = {
-            "schema_version": "stage_h_input.v1.1",
-            "post_body": post_body,
-            "full_text": combined_text,
-            "text_blocks": text_blocks,
-            "tables": [],
-            "layout_elements": [],
-            "visual_elements": [],
-            "warnings": ["F_TEXT_ONLY_MODE: 添付ファイルなし、テキストのみ処理"],
-            "_contract_violation": False,
-            "_fallback_mode": True,
-            "_text_only_mode": True
-        }
-
-        logger.info(f"[Stage F完了] post_body: {post_body['char_count']}文字, text_blocks: {len(text_blocks)}個")
-
-        # テキストのみの場合: シンプルな metadata 構築（AI不要）
-        self._update_document_progress(document_id, 0.3, 'メタデータ構築')
-
-        # articles 形式で構築
-        articles = []
-        if display_subject:
-            articles.append({
-                'title': '件名',
-                'body': display_subject
-            })
-        if display_post_text:
-            articles.append({
-                'title': '本文',
-                'body': display_post_text
-            })
-        if attachment_text:
-            articles.append({
-                'title': '添付テキスト',
-                'body': attachment_text
-            })
-
-        # シンプルな metadata 構築
-        simple_metadata = {
-            'articles': articles,
-            'calendar_events': [],
-            'tasks': [],
-            'notices': [],
-            'structured_tables': []
-        }
-
-        document_date = None
-        tags = []
-
-        logger.info(f"[テキストのみ] シンプルなmetadata構築完了: articles={len(articles)}件")
-
-        # Stage J
-        self._update_document_progress(document_id, 0.6, 'チャンク化')
+        # Stage J: チャンク化
+        self._update_document_progress(document_id, 0.60, 'チャンク化')
         metadata_chunker = MetadataChunker()
+        g22_output = final_metadata.get('g22_output', {})
         document_data = {
             'file_name': file_name,
             'doc_type': doc.get('doc_type'),
-            'display_subject': display_subject,
-            'display_post_text': display_post_text,
+            'display_subject': doc.get('display_subject'),
+            'display_post_text': doc.get('display_post_text'),
             'display_sender': doc.get('display_sender'),
             'display_type': doc.get('display_type'),
             'display_sent_at': doc.get('display_sent_at'),
             'classroom_sender_email': doc.get('classroom_sender_email'),
+            # G21: articles → text_blocks（title/body → title/content）
+            'text_blocks': [
+                {'title': a.get('title', ''), 'content': a.get('body', '')}
+                for a in final_metadata.get('g21_output', [])
+                if a.get('body', '').strip()
+            ],
+            # G12: table analyses → structured_tables（description → table_title）
+            'structured_tables': [
+                {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
+                for t in final_metadata.get('g12_output', [])
+                if t.get('rows')
+            ],
+            # G22: calendar_events（date/time/event → event_date/event_time/event_name）
+            'calendar_events': [
+                {'event_date': e.get('date', ''), 'event_time': e.get('time', ''), 'event_name': e.get('event', ''), 'location': e.get('location', '')}
+                for e in g22_output.get('calendar_events', [])
+            ],
+            # G22: tasks（item → task_name）
+            'tasks': [
+                {'task_name': t.get('item', ''), 'deadline': t.get('deadline', ''), 'description': t.get('description', '')}
+                for t in g22_output.get('tasks', [])
+            ],
+            # G22: notices
+            'notices': [
+                {'category': n.get('category', ''), 'content': n.get('content', '')}
+                for n in g22_output.get('notices', [])
+            ],
         }
 
         chunks = metadata_chunker.create_metadata_chunks(document_data)
@@ -938,8 +900,8 @@ class PipelineManager:
         except Exception as e:
             logger.warning(f"既存チャンク削除エラー（継続）: {e}")
 
-        # Stage K
-        self._update_document_progress(document_id, 0.8, 'Embedding')
+        # Stage K: Embedding
+        self._update_document_progress(document_id, 0.80, 'Embedding')
         stage_k_result = self.stage_k.embed_and_save(document_id, chunks)
 
         if not stage_k_result.get('success'):
@@ -951,14 +913,15 @@ class PipelineManager:
 
         try:
             self.db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'metadata': simple_metadata,
+                'metadata': final_metadata,
                 'processing_status': 'completed',
                 'processing_progress': 1.0
             }).eq('id', document_id).execute()
-            logger.info(f"[テキストのみ] metadata を DB に保存: articles={len(articles)}件")
+            logger.info(f"[テキストのみ] 完了: articles={len(final_metadata.get('articles', []))}件")
         except Exception as e:
             return {'success': False, 'error': f"ドキュメント更新エラー: {e}"}
 
+        logger.info("[パイプライン完了] F→G→J→K すべて成功（テキストのみ）")
         return {'success': True}
 
     async def _process_with_attachment(
@@ -1100,7 +1063,8 @@ class PipelineManager:
             logger.info("[Stage B] 物理構造抽出開始")
             stage_b_result = self.stage_b.process(
                 file_path=str(local_path),
-                a_result=stage_a_result
+                a_result=stage_a_result,
+                log_dir=local_path.parent,
             )
             if not stage_b_result or not stage_b_result.get('success'):
                 b_error = (stage_b_result or {}).get('error', '不明')
@@ -1125,18 +1089,30 @@ class PipelineManager:
                 return {'success': False, 'error': 'Stage B失敗: purged_pdf_path が生成されませんでした'}
 
             # Stage D + E: Multi-page loop
-            # A5 page_type_map からコンテンツページを決定（COVER/UNKNOWN はスキップ）
-            _NON_CONTENT = {'COVER', 'UNKNOWN'}
+            # page_type_map からコンテンツページを決定
+            # - COVER のみ除外（テキストなし・処理不要）
+            # - UNKNOWN（LOW信頼度）は Stage B をスキップ済みだが D/E には含める → OCR
             _page_type_map = stage_a_result.get('page_type_map', {})
+            _page_confidence_map = stage_a_result.get('page_confidence_map', {})
             if _page_type_map:
                 content_pages = sorted(
                     idx for idx, ptype in _page_type_map.items()
-                    if ptype not in _NON_CONTENT
+                    if ptype != 'COVER'
                 )
             else:
                 content_pages = [0]  # フォールバック: ページ0のみ
 
-            logger.info(f"[Stage D] 処理対象ページ: {[p+1 for p in content_pages]}")
+            low_conf_pages_set = {
+                int(idx) for idx, conf in _page_confidence_map.items()
+                if conf == 'LOW'
+            }
+            high_conf_count = len(content_pages) - len(
+                [p for p in content_pages if p in low_conf_pages_set]
+            )
+            logger.info(
+                f"[Stage D] 処理対象ページ: {[p+1 for p in content_pages]} "
+                f"（HIGH={high_conf_count}, LOW/OCR={len(low_conf_pages_set)}）"
+            )
 
             all_d_results = []
 
@@ -1194,7 +1170,8 @@ class PipelineManager:
                 stage_a_result=stage_a_result,
                 stage_b_result=stage_b_result,
                 stage_d_result=stage_d_result,
-                stage_e_result=stage_e_result
+                stage_e_result=stage_e_result,
+                rawdata_record=doc,
             )
             if not stage_f_result or not stage_f_result.get('success'):
                 detail = (stage_f_result or {}).get('error', '')
@@ -1259,6 +1236,7 @@ class PipelineManager:
             from shared.common.processing.metadata_chunker import MetadataChunker
             metadata_chunker = MetadataChunker()
 
+            g22_output = final_metadata.get('g22_output', {})
             document_data = {
                 'file_name': file_name,
                 'doc_type': doc.get('doc_type'),
@@ -1268,6 +1246,33 @@ class PipelineManager:
                 'display_type': doc.get('display_type'),
                 'display_sent_at': doc.get('display_sent_at'),
                 'classroom_sender_email': doc.get('classroom_sender_email'),
+                # G21: articles → text_blocks（title/body → title/content）
+                'text_blocks': [
+                    {'title': a.get('title', ''), 'content': a.get('body', '')}
+                    for a in final_metadata.get('g21_output', [])
+                    if a.get('body', '').strip()
+                ],
+                # G12: table analyses → structured_tables（description → table_title）
+                'structured_tables': [
+                    {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
+                    for t in final_metadata.get('g12_output', [])
+                    if t.get('rows')
+                ],
+                # G22: calendar_events（date/time/event → event_date/event_time/event_name）
+                'calendar_events': [
+                    {'event_date': e.get('date', ''), 'event_time': e.get('time', ''), 'event_name': e.get('event', ''), 'location': e.get('location', '')}
+                    for e in g22_output.get('calendar_events', [])
+                ],
+                # G22: tasks（item → task_name）
+                'tasks': [
+                    {'task_name': t.get('item', ''), 'deadline': t.get('deadline', ''), 'description': t.get('description', '')}
+                    for t in g22_output.get('tasks', [])
+                ],
+                # G22: notices
+                'notices': [
+                    {'category': n.get('category', ''), 'content': n.get('content', '')}
+                    for n in g22_output.get('notices', [])
+                ],
             }
 
             chunks = metadata_chunker.create_metadata_chunks(document_data)

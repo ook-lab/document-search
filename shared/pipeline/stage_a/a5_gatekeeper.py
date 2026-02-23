@@ -17,6 +17,15 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from loguru import logger
+import yaml
+
+# 判定ルール定義ファイル（TypeAnalyzerと共通・唯一の設定場所）
+_RULES_FILE = Path(__file__).parent / 'type_rules.yaml'
+
+
+def _load_rules() -> dict:
+    with open(_RULES_FILE, encoding='utf-8') as f:
+        return yaml.safe_load(f)
 
 
 @dataclass(frozen=True)
@@ -37,15 +46,13 @@ class A5Gatekeeper:
     それ以外は全 BLOCK。許可範囲は運用しながら拡張する。
     """
 
-    POLICY_VERSION = "A5.v1"
+    # 全設定は type_rules.yaml から読む（コードに定数を持たない）
+    def __init__(self):
+        rules = _load_rules()
+        gk = rules.get('gatekeeper', {})
 
-    # ---- v1: 緩和した閾値（画像多め・テキスト少なめのドキュメント対応）----
-    MIN_AVG_WORDS_PER_PAGE = 20  # 80→20 緩和
-    MIN_AVG_CHARS_PER_PAGE = 100  # 300→100 緩和
-    MAX_AVG_IMAGES_PER_PAGE = 10  # 5→10 緩和
-    MAX_AVG_X_STD = 200  # 80→200 緩和
-    MIN_AVG_WORDS_PER_LINE = 1.0  # 5.0→1.0 緩和
-    MAX_AVG_VECTORS_PER_PAGE = 500  # 300→500 緩和
+        self.POLICY_VERSION       = gk.get('policy_version', 'A5.v1')
+        self.ALLOWED_COMBINATIONS = [tuple(c) for c in gk.get('allowed_combinations', [])]
 
     def evaluate(self, file_path: str | Path, a_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -77,13 +84,32 @@ class A5Gatekeeper:
             logger.warning(f"[A-5 Gatekeeper] ✗ BLOCK: {d.block_reason}")
             return asdict(d)
 
-        # PDF 以外は許可しない
-        if file_path.suffix.lower() != ".pdf":
+        # Native ファイルは拡張子で確定（PDF固有チェックを全スキップ）
+        _NATIVE = {
+            '.docx': 'B6_NATIVE_WORD',
+            '.xlsx': 'B7_NATIVE_EXCEL',
+            '.pptx': 'B8_NATIVE_PPT',
+        }
+        suffix = file_path.suffix.lower()
+        if suffix in _NATIVE:
+            proc = _NATIVE[suffix]
+            logger.info(f"[A-5 Gatekeeper] ✓ ALLOW (native): {suffix} → {proc}")
+            return asdict(GatekeeperDecision(
+                decision="ALLOW",
+                allowed_processors=[proc],
+                block_code=None,
+                block_reason=f"native file: {suffix}",
+                evidence={"suffix": suffix},
+                policy_version=self.POLICY_VERSION,
+            ))
+
+        # 未知の拡張子は BLOCK
+        if suffix != ".pdf":
             d = GatekeeperDecision(
                 decision="BLOCK",
                 allowed_processors=[],
                 block_code="EXT_NOT_ALLOWED",
-                block_reason=f"拡張子が許可されていない: {file_path.suffix}",
+                block_reason=f"未対応の拡張子: {file_path.suffix}",
                 evidence={"suffix": file_path.suffix},
                 policy_version=self.POLICY_VERSION,
             )
@@ -121,23 +147,11 @@ class A5Gatekeeper:
             return asdict(d)
         logger.info("  ✓ 信頼度チェック通過")
 
-        # v1 allowlist：WORD / GOOGLE_DOCS / REPORT / DTP / MIXED を通す
-        allowed_combinations = [
-            ("WORD", "FLOW"),
-            ("WORD", "FIXED"),
-            ("GOOGLE_DOCS", "FLOW"),
-            ("GOOGLE_DOCS", "FIXED"),
-            ("REPORT", "FLOW"),
-            ("REPORT", "FIXED"),
-            ("DTP", "FLOW"),
-            ("DTP", "FIXED"),
-            ("MIXED", "FLOW"),
-            ("MIXED", "FIXED"),
-        ]
+        # v1 allowlist：ALLOWED_COMBINATIONS クラス属性を参照（唯一の定義場所）
         logger.info("[A-5 Gatekeeper] Allowlistチェック:")
         logger.info(f"  ├─ 組み合わせ: ({origin_app}, {layout_profile})")
-        logger.info(f"  └─ 許可リスト: {allowed_combinations}")
-        if (origin_app, layout_profile) not in allowed_combinations:
+        logger.info(f"  └─ 許可リスト: {self.ALLOWED_COMBINATIONS}")
+        if (origin_app, layout_profile) not in self.ALLOWED_COMBINATIONS:
             d = GatekeeperDecision(
                 decision="BLOCK",
                 allowed_processors=[],
@@ -157,17 +171,45 @@ class A5Gatekeeper:
         logger.info(f"  ├─ avg_chars_per_page: {probe['avg_chars_per_page']:.1f}")
         logger.info(f"  └─ avg_vectors_per_page: {probe['avg_vectors_per_page']:.1f}")
 
-        # ---- Stage A メトリクスから閾値評価用の値を取得 ----
-        avg_images = float(layout_metrics.get("avg_images_per_page", 0) or 0)
-        avg_words = float(layout_metrics.get("avg_words_per_page", 0) or 0)
-        avg_x_std = float(layout_metrics.get("avg_x_std", 0) or 0)
-        avg_wpl = float(layout_metrics.get("avg_words_per_line", 0) or 0)
+        # ---- page_type_map からコンテンツページを特定（evidence 記録用）----
+        _EXCLUDE_FROM_METRICS = frozenset({'UNKNOWN', 'SCAN'})
+        page_type_map = a_result.get("page_type_map") or {}
+        content_pages = {
+            int(p): t for p, t in page_type_map.items()
+            if t not in _EXCLUDE_FROM_METRICS
+        } if page_type_map else {}
+        logger.info(
+            f"[A-5 Gatekeeper] page_type_map: 全{len(page_type_map)}ページ → "
+            f"コンテンツページ {len(content_pages)}ページ "
+            f"（除外: {len(page_type_map) - len(content_pages)}ページ）"
+        )
 
-        logger.info("[A-5 Gatekeeper] Stage A メトリクス:")
+        # ---- Stage A メトリクスを evidence 用に取得 ----
+        # A4 layout_metrics.per_page があればコンテンツページのみで再計算
+        # （a4_layout → layout_metrics → per_page の階層構造）
+        per_page = layout_metrics.get("per_page") or []
+        if per_page and content_pages:
+            content_rows = [
+                m for m in per_page
+                if m.get("page") in content_pages
+            ]
+        else:
+            content_rows = []
+
+        if content_rows:
+            avg_images = sum(r.get("images", 0) for r in content_rows) / len(content_rows)
+            avg_words  = sum(r.get("words",  0) for r in content_rows) / len(content_rows)
+            avg_x_std  = sum(r.get("x_std",  0) for r in content_rows) / len(content_rows)
+            logger.info("[A-5 Gatekeeper] メトリクス（コンテンツページのみ再計算）:")
+        else:
+            avg_images = float(layout_metrics.get("avg_images_per_page", 0) or 0)
+            avg_words  = float(layout_metrics.get("avg_words_per_page",  0) or 0)
+            avg_x_std  = float(layout_metrics.get("avg_x_std",           0) or 0)
+            logger.info("[A-5 Gatekeeper] メトリクス（全ページ平均 ※per_page_metricsなし）:")
+
         logger.info(f"  ├─ avg_images_per_page: {avg_images:.1f}")
         logger.info(f"  ├─ avg_words_per_page: {avg_words:.1f}")
-        logger.info(f"  ├─ avg_x_std: {avg_x_std:.1f}")
-        logger.info(f"  └─ avg_words_per_line: {avg_wpl:.2f}")
+        logger.info(f"  └─ avg_x_std: {avg_x_std:.1f}")
 
         evidence = {
             "origin_app": origin_app,
@@ -176,80 +218,126 @@ class A5Gatekeeper:
             "avg_images_per_page": avg_images,
             "avg_words_per_page": avg_words,
             "avg_x_std": avg_x_std,
-            "avg_words_per_line": avg_wpl,
             **probe,
         }
 
-        # ---- 閾値チェック（GOOGLE_DOCS はスキップ、WORD のみ）----
-        failures: List[str] = []
-        if origin_app == "WORD":
-            logger.info("[A-5 Gatekeeper] 閾値チェック（WORD のみ）:")
-            logger.info(f"  ├─ avg_words_per_page >= {self.MIN_AVG_WORDS_PER_PAGE}: {avg_words:.1f} {'✓' if avg_words >= self.MIN_AVG_WORDS_PER_PAGE else '✗'}")
-            logger.info(f"  ├─ avg_chars_per_page >= {self.MIN_AVG_CHARS_PER_PAGE}: {probe['avg_chars_per_page']:.1f} {'✓' if probe['avg_chars_per_page'] >= self.MIN_AVG_CHARS_PER_PAGE else '✗'}")
-            logger.info(f"  ├─ avg_images_per_page <= {self.MAX_AVG_IMAGES_PER_PAGE}: {avg_images:.1f} {'✓' if avg_images <= self.MAX_AVG_IMAGES_PER_PAGE else '✗'}")
-            logger.info(f"  ├─ avg_x_std <= {self.MAX_AVG_X_STD}: {avg_x_std:.1f} {'✓' if avg_x_std <= self.MAX_AVG_X_STD else '✗'}")
-            logger.info(f"  ├─ avg_words_per_line >= {self.MIN_AVG_WORDS_PER_LINE}: {avg_wpl:.2f} {'✓' if avg_wpl >= self.MIN_AVG_WORDS_PER_LINE else '✗'}")
-            logger.info(f"  └─ avg_vectors_per_page <= {self.MAX_AVG_VECTORS_PER_PAGE}: {probe['avg_vectors_per_page']:.1f} {'✓' if probe['avg_vectors_per_page'] <= self.MAX_AVG_VECTORS_PER_PAGE else '✗'}")
-
-            if avg_words < self.MIN_AVG_WORDS_PER_PAGE:
-                failures.append(f"avg_words_per_page<{self.MIN_AVG_WORDS_PER_PAGE} (actual={avg_words:.1f})")
-            if probe["avg_chars_per_page"] < self.MIN_AVG_CHARS_PER_PAGE:
-                failures.append(f"avg_chars_per_page<{self.MIN_AVG_CHARS_PER_PAGE} (actual={probe['avg_chars_per_page']:.1f})")
-            if avg_images > self.MAX_AVG_IMAGES_PER_PAGE:
-                failures.append(f"avg_images_per_page>{self.MAX_AVG_IMAGES_PER_PAGE} (actual={avg_images:.1f})")
-            if avg_x_std > self.MAX_AVG_X_STD:
-                failures.append(f"avg_x_std>{self.MAX_AVG_X_STD} (actual={avg_x_std:.1f})")
-            if avg_wpl < self.MIN_AVG_WORDS_PER_LINE:
-                failures.append(f"avg_words_per_line<{self.MIN_AVG_WORDS_PER_LINE} (actual={avg_wpl:.2f})")
-            if probe["avg_vectors_per_page"] > self.MAX_AVG_VECTORS_PER_PAGE:
-                failures.append(f"avg_vectors_per_page>{self.MAX_AVG_VECTORS_PER_PAGE} (actual={probe['avg_vectors_per_page']:.1f})")
-        else:
-            logger.info(f"[A-5 Gatekeeper] 閾値チェックスキップ（{origin_app} は WORD 以外）")
-
-        if failures:
-            d = GatekeeperDecision(
-                decision="BLOCK",
-                allowed_processors=[],
-                block_code="GATE_CONDITION_FAILED",
-                block_reason="; ".join(failures),
-                evidence=evidence,
-                policy_version=self.POLICY_VERSION,
-            )
-            logger.warning(f"[A-5 Gatekeeper] ✗ BLOCK（閾値チェック失敗）:")
-            for failure in failures:
-                logger.warning(f"    - {failure}")
-            return asdict(d)
-
         # ---- ALLOW（プロセッサ選択）----
+        # 各分岐の根拠: origin_app は A2 メタデータ一致 or ページフォント解析で確定したもの
+        # （具体的な根拠は上の A2 ログ参照）
+        a2_reason = a_result.get("reason", "")
         logger.info("[A-5 Gatekeeper] プロセッサ選択:")
+        logger.info(f"  ├─ 判定根拠: {a2_reason}")
         if origin_app == "GOOGLE_DOCS":
+            # メタデータ Creator/Producer に 'google docs' が含まれていたため
             allowed_procs = ["B11_GOOGLE_DOCS"]
             reason_suffix = f"GOOGLE_DOCS+{layout_profile}"
             logger.info(f"  ├─ origin_app=GOOGLE_DOCS → B11_GOOGLE_DOCS")
         elif origin_app == "REPORT":
+            # ページフォントに WING (WINJr帳票システム固有) が含まれていたため
             allowed_procs = ["B42_MULTICOLUMN"]
             reason_suffix = f"REPORT+{layout_profile}"
             logger.info(f"  ├─ origin_app=REPORT → B42_MULTICOLUMN")
-        elif origin_app == "DTP":
-            allowed_procs = ["B30_DTP"]
-            reason_suffix = f"DTP+{layout_profile}"
-            logger.info(f"  ├─ origin_app=DTP → B30_DTP")
+        elif origin_app == "ILLUSTRATOR":
+            # メタデータ Creator/Producer に 'adobe illustrator' が含まれていたため
+            # REPORTページ（WING帳票）が混在する場合は B42 も許可
+            _type_groups = a_result.get("type_groups") or {}
+            if "REPORT" in _type_groups:
+                allowed_procs = ["B30_ILLUSTRATOR", "B42_MULTICOLUMN"]
+                reason_suffix = f"ILLUSTRATOR+REPORT混在+{layout_profile}"
+                logger.info(f"  ├─ origin_app=ILLUSTRATOR + REPORTページあり → B30_ILLUSTRATOR + B42_MULTICOLUMN")
+            else:
+                allowed_procs = ["B30_ILLUSTRATOR"]
+                reason_suffix = f"ILLUSTRATOR+{layout_profile}"
+                logger.info(f"  ├─ origin_app=ILLUSTRATOR → B30_ILLUSTRATOR")
+        elif origin_app == "INDESIGN":
+            # メタデータ Creator/Producer に 'adobe indesign' が含まれていたため
+            allowed_procs = ["B31_INDESIGN"]
+            reason_suffix = f"INDESIGN+{layout_profile}"
+            logger.info(f"  ├─ origin_app=INDESIGN → B31_INDESIGN")
+        elif origin_app == "EXCEL":
+            allowed_procs = ["B4_PDF_EXCEL"]
+            reason_suffix = f"EXCEL+{layout_profile}"
+            logger.info(f"  ├─ origin_app=EXCEL → B4_PDF_EXCEL")
+        elif origin_app == "GOOGLE_SHEETS":
+            allowed_procs = ["B12_GOOGLE_SHEETS"]
+            reason_suffix = f"GOOGLE_SHEETS+{layout_profile}"
+            logger.info(f"  ├─ origin_app=GOOGLE_SHEETS → B12_GOOGLE_SHEETS")
+        elif origin_app == "GOODNOTES":
+            allowed_procs = ["B14_GOODNOTES"]
+            reason_suffix = f"GOODNOTES+{layout_profile}"
+            logger.info(f"  ├─ origin_app=GOODNOTES → B14_GOODNOTES")
+        elif origin_app == "POWERPOINT":
+            # メタデータ Creator/Producer に 'powerpoint' が含まれていたため
+            allowed_procs = ["B5_PDF_PPT"]
+            reason_suffix = f"POWERPOINT+{layout_profile}"
+            logger.info(f"  ├─ origin_app=POWERPOINT → B5_PDF_PPT")
+        elif origin_app == "ACROBAT_PDFMAKER":
+            # Word文書をAcrobatアドイン経由でPDF化 → Word系プロセッサで処理
+            allowed_procs = ["B3_PDF_WORD"]
+            reason_suffix = f"ACROBAT_PDFMAKER+{layout_profile}"
+            logger.info(f"  ├─ origin_app=ACROBAT_PDFMAKER → B3_PDF_WORD")
         elif origin_app == "MIXED":
-            # MIXED: B1 が type_groups を見て複数プロセッサを選択する
-            # Gatekeeper は全プロセッサを許可リストに入れておく
-            allowed_procs = ["B3_PDF_WORD", "B30_DTP", "B42_MULTICOLUMN",
-                             "B11_GOOGLE_DOCS", "B12_GOOGLE_SHEETS"]
+            # B80_SCAN_OCR は含まない: B80 は未実装スタブ。
+            # MIXED 内の SCAN ページは B1 が routing_rules.yaml の BLOCK 設定でスキップする。
+            allowed_procs = ["B3_PDF_WORD", "B61_PDF_WORD_LTSC", "B62_PDF_WORD_2019",
+                             "B4_PDF_EXCEL", "B5_PDF_PPT", "B30_ILLUSTRATOR", "B31_INDESIGN",
+                             "B42_MULTICOLUMN", "B11_GOOGLE_DOCS", "B12_GOOGLE_SHEETS"]
             reason_suffix = f"MIXED+{layout_profile}"
             logger.info(f"  ├─ origin_app=MIXED → 全プロセッサ許可（B1 が type_groups で選択）")
+        elif origin_app == "CANVA":
+            allowed_procs = ["B16_CANVA"]
+            reason_suffix = f"CANVA+{layout_profile}"
+            logger.info(f"  ├─ origin_app=CANVA → B16_CANVA")
+        elif origin_app == "STUDYAID":
+            allowed_procs = ["B17_STUDYAID"]
+            reason_suffix = f"STUDYAID+{layout_profile}"
+            logger.info(f"  ├─ origin_app=STUDYAID → B17_STUDYAID")
+        elif origin_app == "IOS_QUARTZ":
+            allowed_procs = ["B18_IOS_QUARTZ"]
+            reason_suffix = f"IOS_QUARTZ+{layout_profile}"
+            logger.info(f"  ├─ origin_app=IOS_QUARTZ → B18_IOS_QUARTZ")
+        elif origin_app == "ACROBAT":
+            allowed_procs = ["B39_ACROBAT"]
+            reason_suffix = f"ACROBAT+{layout_profile}"
+            logger.info(f"  ├─ origin_app=ACROBAT → B39_ACROBAT")
+        elif origin_app == "SCAN":
+            # B80未実装 → BLOCK（allowed_combinations に含まれていないため通常ここには到達しない）
+            d = GatekeeperDecision(
+                decision="BLOCK",
+                allowed_processors=[],
+                block_code="SCAN_NOT_IMPLEMENTED",
+                block_reason="origin_app=SCAN: B80_SCAN_OCR は未実装スタブ。OCR実装完了まで処理停止。",
+                evidence={"origin_app": origin_app, "layout_profile": layout_profile},
+                policy_version=self.POLICY_VERSION,
+            )
+            logger.warning(f"[A-5 Gatekeeper] ✗ BLOCK: {d.block_reason}")
+            return asdict(d)
+        elif origin_app == "UNKNOWN":
+            # 推論エンジン未実装 → BLOCK（allowed_combinations に含まれていないため通常ここには到達しない）
+            d = GatekeeperDecision(
+                decision="BLOCK",
+                allowed_processors=[],
+                block_code="UNKNOWN_NOT_SUPPORTED",
+                block_reason="origin_app=UNKNOWN: 推論エンジン未実装。InferenceEngine 実装後に解禁する。",
+                evidence={"origin_app": origin_app, "layout_profile": layout_profile},
+                policy_version=self.POLICY_VERSION,
+            )
+            logger.warning(f"[A-5 Gatekeeper] ✗ BLOCK: {d.block_reason}")
+            return asdict(d)
+        elif origin_app == "WORD_LTSC":
+            allowed_procs = ["B61_PDF_WORD_LTSC"]
+            reason_suffix = f"WORD_LTSC+{layout_profile}"
+            logger.info(f"  ├─ origin_app=WORD_LTSC → B61_PDF_WORD_LTSC")
+        elif origin_app == "WORD_2019":
+            allowed_procs = ["B62_PDF_WORD_2019"]
+            reason_suffix = f"WORD_2019+{layout_profile}"
+            logger.info(f"  ├─ origin_app=WORD_2019 → B62_PDF_WORD_2019")
         else:  # WORD
-            if layout_profile == "FIXED":
-                allowed_procs = ["B30_DTP"]
-                reason_suffix = "WORD+FIXED"
-                logger.info(f"  ├─ origin_app=WORD, layout=FIXED → B30_DTP")
-            else:
-                allowed_procs = ["B3_PDF_WORD"]
-                reason_suffix = "WORD+FLOW"
-                logger.info(f"  ├─ origin_app=WORD, layout=FLOW → B3_PDF_WORD")
+            # メタデータ or ページフォント（MS-PGothic/Meiryo等）でWORDと判定
+            # Word PDF は標準テキストオブジェクト構造 → B3 一択（FLOW/FIXED 不問）
+            allowed_procs = ["B3_PDF_WORD"]
+            reason_suffix = f"WORD+{layout_profile}"
+            logger.info(f"  ├─ origin_app=WORD → B3_PDF_WORD")
 
         d = GatekeeperDecision(
             decision="ALLOW",

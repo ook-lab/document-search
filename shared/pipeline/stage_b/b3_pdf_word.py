@@ -26,12 +26,14 @@ class B3PDFWordProcessor:
     # 空白列検出の最小幅（pt）
     GAP_MIN_WIDTH = 10.0
 
-    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None, log_file=None) -> Dict[str, Any]:
         """
         Word由来PDFから構造化データを抽出
 
         Args:
             file_path: PDFファイルパス
+            masked_pages: スキップするページ番号リスト（0始まり）
+            log_file: 個別ログファイルパス（Noneなら共有ロガーのみ）
 
         Returns:
             {
@@ -44,6 +46,22 @@ class B3PDFWordProcessor:
                 'purged_image_path': str         # テキスト消去後の画像
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[B-3]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._process_impl(file_path, masked_pages)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _process_impl(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         logger.info(f"[B-3] PDF-Word処理開始: {file_path.name}")
 
         try:
@@ -81,18 +99,14 @@ class B3PDFWordProcessor:
                         if block['text'].strip():  # 空でないブロックのみ追加
                             logical_blocks.append(block)
 
-                    # B-90 消去用：ページ全体の単語を収集（ルビ・本文問わず）
-                    page_words = page.extract_words(
-                        x_tolerance=3,
-                        y_tolerance=3,
-                        keep_blank_chars=False
-                    )
-                    for word in page_words:
-                        all_words.append({
-                            'page': page_num,
-                            'text': word['text'],
-                            'bbox': (word['x0'], word['top'], word['x1'], word['bottom'])
-                        })
+                    # B-90 消去用：pdfplumber chars で1文字単位で全回収（取りこぼし防止）
+                    for ch in (page.chars or []):
+                        if ch.get('text', '').strip():
+                            all_words.append({
+                                'page': page_num,
+                                'text': ch['text'],
+                                'bbox': (ch['x0'], ch['top'], ch['x1'], ch['bottom'])
+                            })
 
                 # 装飾タグ付きテキストを生成
                 text_with_tags = self._build_tagged_text(logical_blocks)
@@ -110,6 +124,8 @@ class B3PDFWordProcessor:
                 logger.info(f"  ├─ ブロック: {len(logical_blocks)}")
                 logger.info(f"  ├─ 表: {len(all_tables)}")
                 logger.info(f"  └─ 全単語（削除対象）: {len(all_words)}")
+                for idx, block in enumerate(logical_blocks):
+                    logger.info(f"[B-3] block{idx} (page={block.get('page')}, slice={block.get('slice')}): {block.get('text', '')}")
 
                 # ════════════════════════════════════════
                 # 抽出＋削除統合: 抽出したテキストを即座に削除
@@ -241,7 +257,7 @@ class B3PDFWordProcessor:
         table_bboxes: List[Tuple[float, float, float, float]] = None
     ) -> Dict[str, Any]:
         """
-        指定範囲からテキストブロックを抽出（Wordの単語順序を維持）
+        指定範囲からテキストブロックを抽出（char単位でルビを先に除外して行復元）
 
         Args:
             page: pdfplumberのPageオブジェクト
@@ -264,52 +280,35 @@ class B3PDFWordProcessor:
         x0, y0, x1, y1 = bbox
         cropped = page.within_bbox((x0, y0, x1, y1))
 
-        # 単語を抽出（pdfplumber が Word の並びをある程度保持）
-        words = cropped.extract_words(
-            x_tolerance=3,
-            y_tolerance=3,
-            keep_blank_chars=False
-        )
-
         if table_bboxes is None:
             table_bboxes = []
 
-        # ルビを除外（フォントサイズ 6pt 以下）
-        # ただし、size=0.0pt（サイズ不明）は本文として救済する
-        # ★修正: 表領域の単語も除外
-        body_words = []
-        has_red = False
-        has_bold = False
+        # char単位で全取得（空白文字除外）
+        chars = [ch for ch in (cropped.chars or []) if ch.get("text", "").strip()]
 
-        for word in words:
-            # ★修正: 表領域内の単語をスキップ
-            word_bbox = (word['x0'], word['top'], word['x1'], word['bottom'])
-            if self._is_inside_any_table(word_bbox, table_bboxes):
+        # 表領域内のcharを除外
+        chars = [
+            ch for ch in chars
+            if not self._is_inside_any_table(
+                (ch["x0"], ch["top"], ch["x1"], ch["bottom"]), table_bboxes
+            )
+        ]
+
+        # ルビ除外（size > 0 かつ size <= RUBY_SIZE_THRESHOLD）
+        body_chars = []
+        for ch in chars:
+            size = float(ch.get("size") or 0)
+            if 0 < size <= self.RUBY_SIZE_THRESHOLD:
+                logger.debug(f"[B-3] ルビ除外: '{ch['text']}' (size={size:.1f}pt)")
                 continue
-            avg_size = self._get_avg_size(word)
+            body_chars.append(ch)
 
-            # ルビ判定（小さいフォントサイズ）
-            # size=0.0pt は「サイズ不明」なので本文として扱う（救済）
-            if 0 < avg_size <= self.RUBY_SIZE_THRESHOLD:
-                logger.debug(f"[B-3] ルビ除外: '{word['text']}' (size={avg_size:.1f}pt)")
-                continue
+        # 装飾検出
+        has_bold = any('bold' in ch.get('fontname', '').lower() for ch in body_chars)
+        has_red = False  # TODO: color情報で赤字検出
 
-            # size=0.0pt または size > 6.0pt は本文として採用
-            if avg_size == 0.0:
-                logger.debug(f"[B-3] サイズ不明を救済: '{word['text']}' (size=0.0pt → 本文扱い)")
-
-            body_words.append(word)
-
-            # 装飾検出
-            fontname = word.get('fontname', '').lower()
-            if 'bold' in fontname:
-                has_bold = True
-
-            # TODO: 赤字検出（pdfplumber の color 情報を活用）
-
-        # 単語を結合して「意味のある文章」を復元
-        # Word の並び順を維持（座標で並べ直さない）
-        text = " ".join([w['text'] for w in body_words])
+        # 行クラスタリングでテキスト復元
+        text = self._chars_to_text_lines(body_chars)
 
         return {
             'page': page_num,
@@ -318,26 +317,76 @@ class B3PDFWordProcessor:
             'text': text,
             'has_red': has_red,
             'has_bold': has_bold,
-            'word_count': len(body_words)
+            'word_count': len(text.split()) if text else 0
         }
 
-    def _get_avg_size(self, word: Dict[str, Any]) -> float:
+    def _chars_to_text_lines(self, chars: List[Dict]) -> str:
         """
-        単語の平均フォントサイズを取得
+        char列をtop座標でクラスタリングして行復元し、改行で連結して返す
 
         Args:
-            word: pdfplumber の word オブジェクト
+            chars: pdfplumber の char オブジェクトのリスト
 
         Returns:
-            平均フォントサイズ（pt）
+            復元テキスト（行間は改行）
         """
-        # pdfplumber の word には 'chars' が含まれる
-        chars = word.get('chars', [])
         if not chars:
-            return 0.0
+            return ""
 
-        sizes = [char.get('size', 0) for char in chars]
-        return sum(sizes) / len(sizes) if sizes else 0.0
+        # top座標でソート
+        sorted_chars = sorted(chars, key=lambda c: (c["top"], c["x0"]))
+
+        # 行クラスタリング（tol=2.0pt）
+        tol = 2.0
+        lines: List[List[Dict]] = []
+        current_line = [sorted_chars[0]]
+        current_top = sorted_chars[0]["top"]
+
+        for ch in sorted_chars[1:]:
+            if abs(ch["top"] - current_top) <= tol:
+                current_line.append(ch)
+            else:
+                lines.append(current_line)
+                current_line = [ch]
+                current_top = ch["top"]
+        lines.append(current_line)
+
+        # 各行をx0順に並べてテキスト化
+        result_lines = []
+        for line_chars in lines:
+            line_chars_sorted = sorted(line_chars, key=lambda c: c["x0"])
+            result_lines.append(self._line_chars_to_text(line_chars_sorted))
+
+        return "\n".join(result_lines)
+
+    def _line_chars_to_text(self, line_chars: List[Dict]) -> str:
+        """
+        1行分のchar列を文字幅中央値基準のギャップ検出でスペース挿入しながらテキスト化
+
+        Args:
+            line_chars: x0順に並んだ1行分のcharリスト
+
+        Returns:
+            スペース挿入済みのテキスト
+        """
+        if not line_chars:
+            return ""
+
+        # 文字幅の中央値でgap_thresholdを決定
+        import statistics
+        widths = [ch["x1"] - ch["x0"] for ch in line_chars if ch["x1"] > ch["x0"]]
+        gap_threshold = statistics.median(widths) * 0.8 if widths else 3.0
+
+        result = line_chars[0]["text"]
+        for i in range(1, len(line_chars)):
+            prev = line_chars[i - 1]
+            curr = line_chars[i]
+            gap = curr["x0"] - prev["x1"]
+            if gap > gap_threshold:
+                result += " "
+            result += curr["text"]
+
+        return result
 
     def _is_inside_any_table(self, word_bbox: Tuple[float, float, float, float], table_bboxes: List[Tuple[float, float, float, float]]) -> bool:
         """
@@ -384,9 +433,9 @@ class B3PDFWordProcessor:
         for idx, table in enumerate(page.find_tables()):
             data = table.extract()
             logger.info(f"[B-3] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
-            if data and len(data) > 0:
-                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
-                logger.debug(f"[B-3] Table {idx} 1行目サンプル: {first_row_sample}")
+            if data:
+                for row_idx, row in enumerate(data):
+                    logger.info(f"[B-3] Table {idx} 行{row_idx}: {row}")
 
             tables.append({
                 'page': page_num,
@@ -433,12 +482,12 @@ class B3PDFWordProcessor:
         structured_tables: List[Dict[str, Any]] = None
     ) -> Path:
         """
-        抽出したテキストを PDF から直接削除
+        抽出したテキストを PDF から削除
 
-        フェーズ1: テキスト（words）を常に削除
-        フェーズ2: 表の罫線（graphics）を条件付きで削除
-          - structured_tables が抽出済み -> 削除（Stage D の二重検出を防ぐ）
-          - structured_tables が空 -> 保持（Stage D が検出できるよう残す）
+        フェーズ1: 抽出した文字の bbox のみ redaction（抽出できた部分だけ消す）
+        フェーズ2: 残存テキスト検査 → 残っていたページだけ追いredact（最大5回）
+        フェーズ3: それでも残るページのみ BT..ET 全消し（ページ限定フォールバック）
+        フェーズ4: 表罫線削除（structured_tables がある場合のみ）
         """
         try:
             import fitz
@@ -448,65 +497,84 @@ class B3PDFWordProcessor:
 
         try:
             doc = fitz.open(str(file_path))
+            page_count = len(doc)
 
+            # フェーズ1: 抽出した文字 bbox のみ redaction
             words_by_page: Dict[int, List[Dict]] = {}
-            for word in all_words:
-                words_by_page.setdefault(word['page'], []).append(word)
+            for w in all_words:
+                words_by_page.setdefault(w['page'], []).append(w)
 
-            tables_by_page: Dict[int, List[Dict]] = {}
-            if structured_tables:
-                for table in structured_tables:
-                    pn = table.get('page', 0)
-                    tables_by_page.setdefault(pn, []).append(table)
-
-            deleted_words = 0
-            deleted_table_graphics = 0
-
-            for page_num in range(len(doc)):
+            deleted_chars = 0
+            for page_num in range(page_count):
                 page = doc[page_num]
-                page_words = words_by_page.get(page_num, [])
+                for w in words_by_page.get(page_num, []):
+                    page.add_redact_annot(fitz.Rect(w['bbox']))
+                    deleted_chars += 1
+                page.apply_redactions(
+                    images=fitz.PDF_REDACT_IMAGE_NONE,
+                    graphics=False
+                )
 
-                # フェーズ1: テキスト削除（常時）
-                if page_words:
-                    for word in page_words:
-                        page.add_redact_annot(fitz.Rect(word['bbox']))
-                        deleted_words += 1
+            logger.info(f"[B-3] フェーズ1: 抽出文字を削除 {deleted_chars}文字")
+
+            # フェーズ2: 残存テキスト検査 → 追いredact（最大5回）
+            for attempt in range(1, 6):
+                remaining_pages = []
+                for page_num in range(page_count):
+                    page = doc[page_num]
+                    if page.get_text("text").strip():
+                        remaining_pages.append(page_num)
+
+                if not remaining_pages:
+                    break
+
+                logger.info(f"[B-3] フェーズ2 試行{attempt}: 残存テキストあり {remaining_pages}")
+                for page_num in remaining_pages:
+                    page = doc[page_num]
+                    for block in page.get_text("rawdict").get("blocks", []):
+                        if block.get("type") != 0:
+                            continue
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                if span.get("text", "").strip():
+                                    page.add_redact_annot(fitz.Rect(span["bbox"]))
                     page.apply_redactions(
                         images=fitz.PDF_REDACT_IMAGE_NONE,
                         graphics=False
                     )
 
-                # フェーズ2: 表罫線削除（表構造抽出済みの場合のみ）
-                page_tables = tables_by_page.get(page_num, [])
-                if page_tables:
-                    for table in page_tables:
-                        bbox = table.get('bbox')
-                        if bbox:
-                            page.add_redact_annot(fitz.Rect(bbox))
-                            deleted_table_graphics += 1
-                    page.apply_redactions(
-                        images=fitz.PDF_REDACT_IMAGE_NONE,
-                        graphics=True
-                    )
-
             purged_dir = file_path.parent / "purged"
             purged_dir.mkdir(parents=True, exist_ok=True)
             purged_pdf_path = purged_dir / f"b3_{file_path.stem}_purged.pdf"
-
             doc.save(str(purged_pdf_path))
             doc.close()
 
-            logger.info(f"[B-3] テキスト削除: {deleted_words}語")
-            if deleted_table_graphics > 0:
-                logger.info(f"[B-3] 表罫線削除: {deleted_table_graphics}表（抽出済みのため）")
-            else:
-                logger.info(f"[B-3] 表罫線: 保持（Stage D 検出用）")
-            logger.info(f"[B-3] purged PDF 保存: {purged_pdf_path.name}")
+            # フェーズ4: 表罫線削除（structured_tables がある場合のみ）
+            if structured_tables:
+                try:
+                    doc2 = fitz.open(str(purged_pdf_path))
+                    deleted_table_graphics = 0
+                    for page_index, page in enumerate(doc2):
+                        page_tables = [t for t in structured_tables if t.get("page") == page_index]
+                        if not page_tables:
+                            continue
+                        for t in page_tables:
+                            bbox = t.get("bbox")
+                            if bbox:
+                                page.add_redact_annot(fitz.Rect(bbox))
+                                deleted_table_graphics += 1
+                        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=True)
+                    doc2.save(str(purged_pdf_path))
+                    doc2.close()
+                    logger.info(f"[B-3] フェーズ4: 表罫線削除 {deleted_table_graphics}表")
+                except Exception as e:
+                    logger.warning(f"[B-3] 表罫線削除エラー: {e}")
 
+            logger.info(f"[B-3] purged PDF 保存: {purged_pdf_path.name}")
             return purged_pdf_path
 
         except Exception as e:
-            logger.error(f"[B-3] テキスト削除エラー: {e}", exc_info=True)
+            logger.error(f"[B-3] purge エラー: {e}", exc_info=True)
             return file_path
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """エラー結果を返す"""

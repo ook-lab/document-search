@@ -53,7 +53,7 @@ class E31TableVisionOcr:
         image_path: Path,
         cells: List[Dict[str, Any]],
         struct_result: Dict[str, Any] = None,
-        d10_table: Dict[str, Any] = None
+        d10_table: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """
         E-30 のテキスト取得済みのため OCR スキップ。d10_table を付与して E-32 へ転送。
@@ -96,6 +96,8 @@ class E31TableVisionOcr:
                     'confidence': 1.0,  # Gemini 由来
                 })
         logger.info(f"[E-31] E30テキストを cell_texts に変換: {len(cell_texts)}セル")
+        for row_idx, ct in enumerate(cell_texts):
+            logger.info(f"[E-31]   行{row_idx}: {ct}")
 
         ocr_result = {
             'cell_texts': cell_texts,
@@ -172,7 +174,7 @@ class E31TableVisionOcr:
 
                 # 有効なcropサイズか確認
                 if x1 <= x0 or y1 <= y0:
-                    logger.debug(f"[E-31] R{row}C{col}: bbox 不正({x0},{y0},{x1},{y1}) → 空")
+                    logger.info(f"[E-31] R{row}C{col}: bbox 不正({x0},{y0},{x1},{y1}) → 空")
                     cell_texts.append({'row': row, 'col': col, 'text': '', 'confidence': 0.0})
                     continue
 
@@ -185,7 +187,7 @@ class E31TableVisionOcr:
                 content = buf.getvalue()
 
                 # Vision API OCR
-                logger.debug(f"[E-31] R{row}C{col}: Vision API 呼び出し中... (bbox={x0},{y0},{x1},{y1})")
+                logger.info(f"[E-31] R{row}C{col}: Vision API 呼び出し中... (bbox={x0},{y0},{x1},{y1})")
                 vision_image = gcloud_vision.Image(content=content)
                 response = client.document_text_detection(image=vision_image)
 
@@ -206,7 +208,7 @@ class E31TableVisionOcr:
                         total_chars += len(text)
 
                 cell_texts.append({'row': row, 'col': col, 'text': text, 'confidence': confidence})
-                logger.debug(f"[E-31] R{row}C{col}: '{text[:50]}' (confidence={confidence})")
+                logger.info(f"[E-31] R{row}C{col}: '{text}' (confidence={confidence})")
 
                 # 進捗表示（10セルごと）
                 if (idx + 1) % 10 == 0:

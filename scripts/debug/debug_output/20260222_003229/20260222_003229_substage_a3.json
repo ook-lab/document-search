@@ -1,0 +1,168 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "MIXED",
+    "confidence": "HIGH",
+    "reason": "ページ混在: REPORT:1p, WORD:1p",
+    "raw_metadata": {
+      "CreationDate": "D:20251209113945+09'00'",
+      "ModDate": "D:20251209113945+09'00'"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 595.32,
+      "height": 841.92,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01566666666668,
+      "height": 297.0106666666666,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 5.5,
+      "avg_words_per_page": 73.5,
+      "avg_x_std": 154.1681199140852,
+      "avg_words_per_line": 0.769774011299435,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 7,
+          "words": 44,
+          "chars": 1233,
+          "x_std": 153.26290120442027,
+          "lines": 66,
+          "words_per_line": 0.6666666666666666
+        },
+        {
+          "page": 1,
+          "images": 4,
+          "words": 103,
+          "chars": 1883,
+          "x_std": 155.07333862375012,
+          "lines": 118,
+          "words_per_line": 0.8728813559322034
+        }
+      ]
+    }
+  },
+  "origin_app": "MIXED",
+  "document_type": "MIXED",
+  "confidence": "HIGH",
+  "reason": "ページ混在: REPORT:1p, WORD:1p",
+  "raw_metadata": {
+    "CreationDate": "D:20251209113945+09'00'",
+    "ModDate": "D:20251209113945+09'00'"
+  },
+  "page_type_map": {
+    "0": "REPORT",
+    "1": "WORD"
+  },
+  "type_groups": {
+    "REPORT": [
+      0
+    ],
+    "WORD": [
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 595.32,
+    "height": 841.92,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01566666666668,
+    "height": 297.0106666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 5.5,
+    "avg_words_per_page": 73.5,
+    "avg_x_std": 154.1681199140852,
+    "avg_words_per_line": 0.769774011299435,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 7,
+        "words": 44,
+        "chars": 1233,
+        "x_std": 153.26290120442027,
+        "lines": 66,
+        "words_per_line": 0.6666666666666666
+      },
+      {
+        "page": 1,
+        "images": 4,
+        "words": 103,
+        "chars": 1883,
+        "x_std": 155.07333862375012,
+        "lines": 118,
+        "words_per_line": 0.8728813559322034
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD",
+      "B30_ILLUSTRATOR",
+      "B31_INDESIGN",
+      "B42_MULTICOLUMN",
+      "B11_GOOGLE_DOCS",
+      "B12_GOOGLE_SHEETS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（MIXED+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "MIXED",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 5.5,
+      "avg_words_per_page": 73.5,
+      "avg_x_std": 154.1681199140852,
+      "probe_ok": true,
+      "avg_chars_per_page": 1558.0,
+      "avg_vectors_per_page": 138.0
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD",
+      "B30_ILLUSTRATOR",
+      "B31_INDESIGN",
+      "B42_MULTICOLUMN",
+      "B11_GOOGLE_DOCS",
+      "B12_GOOGLE_SHEETS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（MIXED+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "MIXED",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 5.5,
+      "avg_words_per_page": 73.5,
+      "avg_x_std": 154.1681199140852,
+      "probe_ok": true,
+      "avg_chars_per_page": 1558.0,
+      "avg_vectors_per_page": 138.0
+    },
+    "policy_version": "A5.v1"
+  }
+}

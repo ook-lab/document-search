@@ -89,7 +89,7 @@ class E20NonTableVisionOcr:
     def extract_with_coordinates(
         self,
         image_path: Path,
-        page: int = 0
+        page: int = 0,
     ) -> Dict[str, Any]:
         """
         非表領域画像から座標付きブロックを抽出
@@ -190,11 +190,9 @@ class E20NonTableVisionOcr:
                         })
 
             logger.info(f"[E-20] 抽出完了: {len(blocks)}段落, {len(full_text)}文字")
-            logger.info(f"[E-20] ===== 抽出された段落 =====")
-            for idx, block in enumerate(blocks[:10], 1):  # 最初の10段落のみ表示
-                logger.info(f"  段落{idx}: {block['text'][:50]}...")
-            if len(blocks) > 10:
-                logger.info(f"  ... ({len(blocks) - 10}段落省略)")
+            logger.info(f"[E-20] ===== 抽出された段落 全件 =====")
+            for idx, block in enumerate(blocks, 1):
+                logger.info(f"  段落{idx}: {block['text']}")
             logger.info("=" * 80)
 
             return {

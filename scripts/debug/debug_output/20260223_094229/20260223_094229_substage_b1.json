@@ -1,0 +1,11 @@
+{
+  "is_structured": false,
+  "error": "body extraction failed: total_body_chars=11",
+  "text_with_tags": "",
+  "logical_blocks": [],
+  "structured_tables": [],
+  "tags": {},
+  "all_words": [],
+  "purged_pdf_path": "",
+  "processor_name": "B61_PDF_WORD_LTSC"
+}

@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 4105,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

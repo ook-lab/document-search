@@ -1,0 +1,135 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "GOOGLE_DOCS",
+    "confidence": "HIGH",
+    "reason": "キーワード一致: google.*docs",
+    "raw_metadata": {
+      "Title": "【5年生】天体観測会のお知らせ ",
+      "Producer": "Skia/PDF m146 Google Docs Renderer"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 1,
+    "dimensions": {
+      "width": 596.0,
+      "height": 842.0,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.25555555555553,
+      "height": 297.03888888888883,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 51.0,
+      "avg_x_std": 121.12729861096354,
+      "avg_words_per_line": 0.6296296296296297,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 0,
+          "words": 51,
+          "chars": 1006,
+          "x_std": 121.12729861096354,
+          "lines": 81,
+          "words_per_line": 0.6296296296296297
+        }
+      ]
+    }
+  },
+  "origin_app": "GOOGLE_DOCS",
+  "document_type": "GOOGLE_DOCS",
+  "confidence": "HIGH",
+  "reason": "キーワード一致: google.*docs",
+  "raw_metadata": {
+    "Title": "【5年生】天体観測会のお知らせ ",
+    "Producer": "Skia/PDF m146 Google Docs Renderer"
+  },
+  "page_type_map": {
+    "0": "WORD"
+  },
+  "type_groups": {
+    "WORD": [
+      0
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH"
+  },
+  "page_count": 1,
+  "dimensions": {
+    "width": 596.0,
+    "height": 842.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.25555555555553,
+    "height": 297.03888888888883,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 0.0,
+    "avg_words_per_page": 51.0,
+    "avg_x_std": 121.12729861096354,
+    "avg_words_per_line": 0.6296296296296297,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 0,
+        "words": 51,
+        "chars": 1006,
+        "x_std": 121.12729861096354,
+        "lines": 81,
+        "words_per_line": 0.6296296296296297
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 51.0,
+      "avg_x_std": 121.12729861096354,
+      "probe_ok": true,
+      "avg_chars_per_page": 1006.0,
+      "avg_vectors_per_page": 2.0
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 51.0,
+      "avg_x_std": 121.12729861096354,
+      "probe_ok": true,
+      "avg_chars_per_page": 1006.0,
+      "avg_vectors_per_page": 2.0
+    },
+    "policy_version": "A5.v1"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "is_structured": false,
+  "error": "GATE_BLOCKED: GATE_CONDITION_FAILED avg_images_per_page>10 (actual=131.8)",
+  "processor_name": "B1_CONTROLLER"
+}

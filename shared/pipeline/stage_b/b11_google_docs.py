@@ -26,12 +26,14 @@ except ImportError:
 class B11GoogleDocsProcessor:
     """B-11: Google Docs Processor（Google Docs由来PDF専用）"""
 
-    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None, log_file=None) -> Dict[str, Any]:
         """
         Google Docs由来PDFから構造化データを抽出
 
         Args:
             file_path: PDFファイルパス
+            masked_pages: スキップするページ番号リスト（0始まり）
+            log_file: 個別ログファイルパス（Noneなら共有ロガーのみ）
 
         Returns:
             {
@@ -43,6 +45,22 @@ class B11GoogleDocsProcessor:
                 'purged_image_path': str
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[B-11]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._process_impl(file_path, masked_pages)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _process_impl(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         logger.info(f"[B-11] Google Docs処理開始: {file_path.name}")
 
         if not FITZ_AVAILABLE:
@@ -134,6 +152,8 @@ class B11GoogleDocsProcessor:
                 logger.info(f"  ├─ テキストブロック: {len(logical_blocks)}")
                 logger.info(f"  ├─ 表: {len(all_tables)}")
                 logger.info(f"  └─ 全テキストブロック（削除対象）: {len(all_text_blocks)}")
+                for idx, block in enumerate(logical_blocks):
+                    logger.info(f"[B-11] block{idx} (page={block.get('page')}): {block.get('text', '')}")
 
                 # デバッグ：各表のdataサイズを確認
                 for idx, tbl in enumerate(all_tables):
@@ -214,10 +234,9 @@ class B11GoogleDocsProcessor:
 
             # デバッグ：追加する表のデータ内容を確認
             logger.info(f"[B-11] Table {idx}: {len(data)}行×{len(data[0]) if data else 0}列 追加")
-            if data and len(data) > 0:
-                # 最初の数セルをサンプル表示
-                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
-                logger.debug(f"[B-11] Table {idx} 1行目サンプル: {first_row_sample}")
+            if data:
+                for row_idx, row in enumerate(data):
+                    logger.info(f"[B-11] Table {idx} 行{row_idx}: {row}")
 
             tables.append({
                 'page': page_num,

@@ -97,6 +97,56 @@
   .status-msg.running { color: #a0c4ff; }
   .status-msg.done { color: #6fdd8b; }
   .status-msg.error { color: #f07070; }
+
+  /* Diagnosis panel */
+  #diagPanel { display: none; }
+  .diag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .diag-verdict { font-size: 1.1rem; font-weight: 700; padding: 4px 16px; border-radius: 6px; }
+  .diag-verdict.ALLOW { background: #1a4a2e; color: #6fdd8b; }
+  .diag-verdict.BLOCK { background: #4a1a1a; color: #f07070; }
+
+  .diag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .diag-card { background: #1e1e38; border: 1px solid #3a3a5a; border-radius: 8px; padding: 12px; }
+  .diag-card h3 { font-size: 0.82rem; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .diag-card.full { grid-column: 1 / -1; }
+
+  .check-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0;
+               border-bottom: 1px solid #2a2a42; font-size: 0.83rem; }
+  .check-row:last-child { border-bottom: none; }
+  .check-icon { flex-shrink: 0; font-size: 1rem; width: 20px; text-align: center; margin-top: 1px; }
+  .check-label { flex: 1; color: #ccc; }
+  .check-label .sub { color: #666; font-size: 0.78rem; margin-top: 2px; }
+  .check-val { color: #a0c4ff; font-family: monospace; font-size: 0.82rem; white-space: nowrap; }
+  .check-val.ok { color: #6fdd8b; }
+  .check-val.ng { color: #f07070; }
+
+  .meta-row { display: flex; gap: 8px; padding: 4px 0; font-size: 0.82rem;
+              border-bottom: 1px solid #2a2a42; }
+  .meta-row:last-child { border-bottom: none; }
+  .meta-key { color: #888; width: 80px; flex-shrink: 0; }
+  .meta-val { color: #c0d0e0; font-family: monospace; word-break: break-all; }
+
+  .page-type-badge { display: inline-block; padding: 2px 10px; border-radius: 10px;
+                     font-size: 0.78rem; font-weight: 600; margin: 2px; }
+  .page-type-badge.WORD { background: #1a3a5a; color: #80c0ff; }
+  .page-type-badge.REPORT { background: #2a3a1a; color: #90d060; }
+  .page-type-badge.DTP { background: #3a2a4a; color: #c090f0; }
+  .page-type-badge.COVER { background: #3a3a1a; color: #d0c060; }
+  .page-type-badge.UNKNOWN { background: #3a2a2a; color: #f07070; }
+
+  .suggestion { padding: 8px 12px; border-radius: 6px; margin-top: 8px; font-size: 0.83rem; }
+  .suggestion.info { background: #1a2a3a; border-left: 3px solid #4080c0; color: #90c0e0; }
+  .suggestion.fix  { background: #1a3a2a; border-left: 3px solid #40a060; color: #80d090; }
+  .suggestion strong { display: block; margin-bottom: 4px; }
+
+  .pattern-toggle { cursor: pointer; color: #666; font-size: 0.8rem; margin-top: 8px;
+                    text-decoration: underline; }
+  .pattern-toggle:hover { color: #999; }
+  .pattern-table { display: none; margin-top: 8px; font-size: 0.78rem; }
+  .pattern-table.open { display: block; }
+  .pattern-group { margin-bottom: 6px; }
+  .pattern-group-name { color: #a0c4ff; font-weight: 600; }
+  .pattern-list { color: #777; padding-left: 12px; }
 </style>
 </head>
 <body>
@@ -178,6 +228,14 @@
     <div class="file-list" id="fileList">
       <span style="color:#666; font-size:0.85rem;">実行後に表示されます</span>
     </div>
+  </div>
+
+  <!-- Stage A Diagnosis -->
+  <div class="section" id="diagPanel">
+    <div class="section-header">
+      <h2>Stage A 診断</h2>
+    </div>
+    <div id="diagContent"></div>
   </div>
 </div>
 
@@ -281,6 +339,8 @@ function onSessionChange() {
       });
       // File list
       renderFiles(data.files, sid);
+      // Diagnosis
+      if (data.completed.includes('A')) loadDiagnosis(sid);
     });
 }
 
@@ -358,8 +418,9 @@ function connectSSE(jobId, sessionId, btn) {
       } else {
         setStatus('done', '完了');
       }
-      // Refresh files
+      // Refresh files & diagnosis
       refreshFiles(sessionId);
+      loadDiagnosis(sessionId);
     }
   };
 
@@ -461,6 +522,220 @@ function closeModal() {
 
 function closeModalOutside(e) {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
+}
+
+// ────────────────────────────────────────
+// Diagnosis
+// ────────────────────────────────────────
+function loadDiagnosis(sessionId) {
+  const panel = document.getElementById('diagPanel');
+  const content = document.getElementById('diagContent');
+  panel.style.display = 'block';
+  content.innerHTML = '<span style="color:#666;font-size:0.85rem;">読み込み中...</span>';
+
+  fetch('/api/sessions/' + sessionId + '/diagnosis')
+    .then(r => r.json())
+    .then(d => {
+      if (!d.available) {
+        content.innerHTML = '<span style="color:#666;font-size:0.85rem;">Stage A 未実行</span>';
+        return;
+      }
+      content.innerHTML = buildDiagHTML(d);
+    })
+    .catch(() => {
+      content.innerHTML = '<span style="color:#f07070;font-size:0.85rem;">診断データ取得失敗</span>';
+    });
+}
+
+function buildDiagHTML(d) {
+  const c = d.checks;
+  const ok = v => v ? '✓' : '✗';
+  const cls = v => v ? 'ok' : 'ng';
+
+  // 総合判定
+  const verdictCls = d.decision === 'ALLOW' ? 'ALLOW' : 'BLOCK';
+  let html = `<div class="diag-header">
+    <div>
+      <span style="font-size:0.85rem;color:#888;">種別: </span>
+      <strong style="color:#e0e0e0;">${d.origin_app}</strong>
+      <span style="margin:0 8px;color:#555;">|</span>
+      <span style="font-size:0.85rem;color:#888;">信頼度: </span>
+      <strong style="color:${c.confidence_ok ? '#6fdd8b' : '#f07070'};">${d.confidence}</strong>
+      <span style="margin:0 8px;color:#555;">|</span>
+      <span style="font-size:0.85rem;color:#888;">レイアウト: </span>
+      <strong style="color:#e0e0e0;">${d.layout_profile}</strong>
+    </div>
+    <span class="diag-verdict ${verdictCls}">${d.decision}${d.block_code ? ' (' + d.block_code + ')' : ''}</span>
+  </div>`;
+
+  html += '<div class="diag-grid">';
+
+  // ① メタデータ
+  html += `<div class="diag-card">
+    <h3>① メタデータ（Creator/Producer）</h3>`;
+  for (const [k, v] of Object.entries(d.metadata)) {
+    if (k === 'Title' || k === 'Author') continue;
+    html += `<div class="meta-row"><span class="meta-key">${k}</span><span class="meta-val">${escHtml(v)}</span></div>`;
+  }
+  html += `<div style="margin-top:8px; font-size:0.82rem; color:${c.confidence_ok ? '#6fdd8b' : '#f07070'};">
+    → ${escHtml(d.reason)}
+  </div>`;
+
+  // メタデータ照合詳細（採点内容・採点方法）
+  if (d.meta_match_detail) {
+    const md = d.meta_match_detail;
+    html += `<div style="margin-top:10px;">
+      <div style="font-size:0.78rem;color:#666;margin-bottom:4px;">照合対象文字列:</div>
+      <div style="font-family:monospace;font-size:0.82rem;color:#a0c4ff;background:#0d0d1a;padding:4px 8px;border-radius:4px;word-break:break-all;">"${escHtml(md.searched)}"</div>
+    </div>
+    <table style="width:100%;margin-top:8px;font-size:0.78rem;border-collapse:collapse;">
+      <tr style="color:#666;border-bottom:1px solid #2a2a42;">
+        <th style="text-align:left;padding:3px 6px;width:30%;">種別</th>
+        <th style="text-align:left;padding:3px 6px;">パターン</th>
+        <th style="text-align:center;padding:3px 6px;width:40px;">結果</th>
+      </tr>`;
+    for (const r of md.results) {
+      const rowCls = r.matched ? 'color:#6fdd8b' : 'color:#555';
+      const icon = r.matched ? '✓' : '✗';
+      const iconCls = r.matched ? '#6fdd8b' : '#3a3a3a';
+      const patternStr = r.patterns.map(p =>
+        r.matched && p === r.matched_pattern
+          ? `<span style="color:#ffdd60;font-weight:bold;">${escHtml(p)}</span>`
+          : `<span style="color:#444;">${escHtml(p)}</span>`
+      ).join(' <span style="color:#333;">|</span> ');
+      html += `<tr style="border-bottom:1px solid #1e1e30;${rowCls}">
+        <td style="padding:3px 6px;">${r.app}</td>
+        <td style="padding:3px 6px;font-family:monospace;">${patternStr}</td>
+        <td style="text-align:center;color:${iconCls};font-weight:bold;">${icon}</td>
+      </tr>`;
+    }
+    html += '</table>';
+  }
+  html += '</div>';
+
+  // ② ページフォント解析
+  html += `<div class="diag-card">
+    <h3>② ページフォント解析</h3>`;
+  if (Object.keys(d.page_types).length === 0) {
+    html += '<span style="color:#666;font-size:0.82rem;">データなし</span>';
+  } else {
+    for (const [t, cnt] of Object.entries(d.page_types)) {
+      html += `<span class="page-type-badge ${t}">${t}: ${cnt}p</span>`;
+    }
+    const hasContent = Object.keys(d.page_types).some(t => t !== 'UNKNOWN' && t !== 'COVER');
+    html += `<div style="margin-top:8px; font-size:0.82rem; color:${hasContent ? '#6fdd8b' : '#f07070'};">
+      ${hasContent ? '✓ フォントで種別確定' : '✗ フォントが既知パターン不一致'}
+    </div>`;
+  }
+
+  // ページ別フォント詳細（採点内容）
+  if (d.page_font_detail && Object.keys(d.page_font_detail).length > 0) {
+    html += `<div style="margin-top:10px;">`;
+    for (const [pageIdx, pd] of Object.entries(d.page_font_detail)) {
+      const isUnknown = pd.matched_type === 'UNKNOWN';
+      html += `<div style="margin-bottom:6px;">
+        <div style="font-size:0.78rem;color:#888;margin-bottom:2px;">Page ${pageIdx}
+          <span style="margin-left:8px;color:${isUnknown ? '#f07070' : '#6fdd8b'};">→ ${pd.matched_type}</span>
+          ${pd.matched_font ? `<span style="color:#888;font-size:0.75rem;"> (font="${escHtml(pd.matched_font)}", pattern="${escHtml(pd.matched_pattern)}")</span>` : ''}
+        </div>
+        <div style="font-family:monospace;font-size:0.75rem;color:${isUnknown ? '#664444' : '#446644'};background:#0d0d1a;padding:3px 8px;border-radius:4px;word-break:break-all;">
+          検出フォント: ${pd.fonts.length > 0 ? pd.fonts.map(f => escHtml(f)).join(', ') : '(なし)'}
+        </div>
+      </div>`;
+    }
+    // フォントパターン参照表（折りたたみ）
+    html += `<div class="pattern-toggle" onclick="togglePatterns(this)" style="margin-top:6px;">▶ 照合パターン一覧を表示</div>
+      <div class="pattern-table">`;
+    for (const [grp, patterns] of Object.entries(d.page_patterns || {})) {
+      html += `<div class="pattern-group">
+        <span class="pattern-group-name">${grp}</span>:
+        <span class="pattern-list">${patterns.join(' / ')}</span>
+      </div>`;
+    }
+    html += '</div>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // ③ Gatekeeper チェック
+  html += `<div class="diag-card">
+    <h3>③ Gatekeeper チェック</h3>
+    <div class="check-row">
+      <span class="check-icon">${c.confidence_ok ? '✓' : '✗'}</span>
+      <span class="check-label">信頼度チェック<div class="sub">confidence == HIGH が必須</div></span>
+      <span class="check-val ${cls(c.confidence_ok)}">${d.confidence}</span>
+    </div>
+    <div class="check-row">
+      <span class="check-icon">${c.confidence_ok ? (c.allowlist_ok ? '✓' : '✗') : '―'}</span>
+      <span class="check-label">Allowlistチェック<div class="sub">(${d.origin_app}, ${d.layout_profile})</div></span>
+      <span class="check-val ${c.confidence_ok ? cls(c.allowlist_ok) : ''}">${c.confidence_ok ? (c.allowlist_ok ? 'OK' : '対象外') : 'スキップ'}</span>
+    </div>`;
+
+  if (c.threshold_results) {
+    for (const tr of c.threshold_results) {
+      html += `<div class="check-row">
+        <span class="check-icon">${ok(tr.ok)}</span>
+        <span class="check-label">${tr.name}<div class="sub">条件: ${tr.condition}</div></span>
+        <span class="check-val ${cls(tr.ok)}">${tr.value}</span>
+      </div>`;
+    }
+  } else if (c.allowlist_ok) {
+    html += `<div class="check-row">
+      <span class="check-icon" style="color:#555;">―</span>
+      <span class="check-label" style="color:#555;">閾値チェック<div class="sub">WORDのみ適用</div></span>
+      <span class="check-val" style="color:#555;">スキップ</span>
+    </div>`;
+  }
+  html += '</div>';
+
+  // ④ メトリクス
+  const m = d.layout_metrics;
+  html += `<div class="diag-card">
+    <h3>④ レイアウトメトリクス</h3>
+    <div class="check-row">
+      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-label">avg_images/page<div class="sub">≤10 でWORD閾値OK</div></span>
+      <span class="check-val ${m.avg_images <= 10 ? 'ok' : 'ng'}">${m.avg_images}</span>
+    </div>
+    <div class="check-row">
+      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-label">avg_words/page<div class="sub">≥20 でWORD閾値OK</div></span>
+      <span class="check-val ${m.avg_words >= 20 ? 'ok' : 'ng'}">${m.avg_words}</span>
+    </div>
+    <div class="check-row">
+      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-label">avg_chars/page<div class="sub">≥100 でWORD閾値OK</div></span>
+      <span class="check-val ${m.avg_chars >= 100 ? 'ok' : 'ng'}">${m.avg_chars}</span>
+    </div>
+    <div class="check-row">
+      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-label">avg_x_std<div class="sub">≥100 → FIXED判定</div></span>
+      <span class="check-val">${m.avg_x_std}</span>
+    </div>
+  </div>`;
+
+  html += '</div>'; // diag-grid
+
+  // 提案
+  if (d.suggestions && d.suggestions.length > 0) {
+    html += '<div style="margin-top:12px;">';
+    for (const s of d.suggestions) {
+      html += `<div class="suggestion ${s.type}"><strong>${escHtml(s.title)}</strong>${escHtml(s.text)}</div>`;
+    }
+    html += '</div>';
+  }
+
+  return html;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function togglePatterns(el) {
+  const table = el.nextElementSibling;
+  const open = table.classList.toggle('open');
+  el.textContent = (open ? '▼' : '▶') + el.textContent.slice(1);
 }
 
 // ────────────────────────────────────────

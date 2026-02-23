@@ -1,58 +1,75 @@
 """
-B-42: Multi-Column Report Processor（業務帳票・多段組専用）
+B-42: Multi-Column Report Processor（汎用物理構造抽出）
 
-同一項目（順位・氏名・校舎・点数）が横に複数セット並んでいる
-マルチカラム帳票を攻略するための特化型プロセッサ。
-
-処理フロー:
-1. カラム・セグメンテーション（垂直スライス）
-2. アンカーベースのレコード結合（Y軸アラインメント）
-3. マルチライン・セルのマージ（氏名と校舎の親子関係）
-4. 不規則なヘッダー・フッターの除外
+設計方針:
+- 列の意味（順位/氏名等）や文字種（数字等）を一切仮定しない
+- テキストボックス（pdfplumber word）を最小単位とし、分割・結合しない
+- 表グリッド（col_edges, row_edges）を正本とし、セルへ機械的に割り当てる
+- 行あたり要素数を計測し、列数との一致/不足/過剰を判定してログ出力
+- 折り返し等の意味解釈は後段AIへ委譲
 """
 
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from loguru import logger
 import statistics
 import math
 
 
 class B42MultiColumnReportProcessor:
-    """B-42: Multi-Column Report Processor（業務帳票・多段組専用）"""
+    """B-42: Multi-Column Report Processor（汎用物理構造抽出）"""
 
-    # ガター検出の閾値（pt）
-    GUTTER_THRESHOLD = 30.0
-
-    # Y座標の許容誤差（pt）
     Y_TOLERANCE = 3.0
 
-    # アンカー（順位）のパターン（数字のみ）
-    ANCHOR_PATTERN = r'^\d+$'
+    TABLE_SETTINGS_LINES = {
+        "vertical_strategy": "lines",
+        "horizontal_strategy": "lines",
+        "snap_tolerance": 3,
+        "snap_x_tolerance": 3,
+        "snap_y_tolerance": 3,
+        "join_tolerance": 3,
+        "join_x_tolerance": 3,
+        "join_y_tolerance": 3,
+        "edge_min_length": 3,
+        "min_words_vertical": 3,
+        "min_words_horizontal": 1,
+        "intersection_tolerance": 3,
+        "intersection_x_tolerance": 3,
+        "intersection_y_tolerance": 3,
+    }
 
-    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None, log_file=None) -> Dict[str, Any]:
         """
-        マルチカラム帳票から構造化データを抽出
-
-        Args:
-            file_path: PDFファイルパス
+        マルチカラム帳票から物理的構造データを抽出
 
         Returns:
             {
                 'is_structured': bool,
-                'data_type': str,                # 'report_multicolumn'
-                'records': [...],                # レコードリスト
-                'columns': [...],                # カラム情報
-                'tags': {...},                   # メタ情報
-                'purged_image_path': str         # テキスト消去後の画像
+                'data_type': 'report_multicolumn',
+                'records': [],                    # 意味推測なし。後段AIへ委譲
+                'structured_tables': [...],       # グリッド付きテーブル一覧
+                'table_count_per_page': {...},
+                'logical_blocks': [...],
+                'tags': {...},
+                'all_words': [...],
+                'purged_pdf_path': str,
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[B-42]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+
         logger.info(f"[B-42] ========== Multi-Column Report処理開始 ==========")
         logger.info(f"[B-42] 入力ファイル: {file_path.name}")
 
         try:
             import pdfplumber
-            import re
         except ImportError:
             logger.error("[B-42] pdfplumber がインストールされていません")
             return self._error_result("pdfplumber not installed")
@@ -63,451 +80,559 @@ class B42MultiColumnReportProcessor:
                 logger.info(f"[B-42]   ├─ ページ数: {len(pdf.pages)}")
                 logger.info(f"[B-42]   ├─ メタデータ: {pdf.metadata}")
 
-                all_records = []
-                all_columns = []
-                all_words = []  # 削除対象の全単語
+                all_words: List[Dict] = []
+                structured_tables: List[Dict] = []
+                table_count_per_page: Dict[int, int] = {}
 
                 _masked = set(masked_pages or [])
+
                 for page_num, page in enumerate(pdf.pages):
                     if _masked and page_num in _masked:
                         logger.debug(f"[B-42] ページ{page_num+1}: マスク → スキップ")
+                        table_count_per_page[page_num] = 0
                         continue
-                    logger.info(f"[B-42] ========== ページ {page_num + 1}/{len(pdf.pages)} 処理中 ==========")
-                    logger.info(f"[B-42]   ├─ ページサイズ: {page.width:.1f} x {page.height:.1f} pt")
 
-                    # 1. カラム・セグメンテーション
-                    columns = self._detect_columns(page)
-                    logger.info(f"[B-42]   ├─ カラム検出: {len(columns)}個")
-
-                    # カラムの詳細ログ
-                    for col_idx, col_bbox in enumerate(columns):
-                        x0, y0, x1, y1 = col_bbox
-                        width = x1 - x0
-                        logger.info(f"[B-42]   │   ├─ カラム {col_idx + 1}: "
-                                  f"x={x0:.1f}-{x1:.1f} (幅={width:.1f}pt)")
-
-                    # 2. 各カラムからレコードを抽出
-                    page_records = 0
-                    for col_idx, column_bbox in enumerate(columns):
-                        records = self._extract_records_from_column(
-                            page, column_bbox, page_num, col_idx
-                        )
-                        all_records.extend(records)
-                        page_records += len(records)
-                        logger.info(f"[B-42]   │   ├─ カラム {col_idx + 1}: {len(records)}レコード抽出")
-
-                        # レコードサンプル
-                        if records and col_idx == 0:  # 最初のカラムの最初のレコードのみ
-                            sample = records[0]
-                            logger.info(f"[B-42]   │   │   └─ サンプル: rank={sample.get('rank')}, "
-                                      f"name={sample.get('name')}, "
-                                      f"org={sample.get('organization')}, "
-                                      f"score={sample.get('score')}")
-
-                    all_columns.extend(columns)
-                    logger.info(f"[B-42]   ├─ ページ総レコード: {page_records}個")
-
-                    # 削除用：ページ全体の単語を収集
-                    page_words = page.extract_words(
-                        x_tolerance=3,
-                        y_tolerance=3,
-                        keep_blank_chars=False
+                    logger.info(f"[B-42] ========== ページ {page_num+1}/{len(pdf.pages)} 処理中 ==========")
+                    logger.info(
+                        f"[B-42]   ├─ ページサイズ: {page.width:.1f} x {page.height:.1f} pt"
                     )
-                    for word in page_words:
+                    logger.info(
+                        f"[B-42]   ├─ lines={len(page.lines or [])} "
+                        f"rects={len(page.rects or [])} "
+                        f"chars={len(page.chars or [])}"
+                    )
+
+                    # テキストボックス取得（最小単位、スペースで分割しない）
+                    page_words = page.extract_words(
+                        x_tolerance=2, y_tolerance=2, keep_blank_chars=True
+                    )
+                    logger.info(f"[B-42]   ├─ テキストボックス（words）: {len(page_words)}個")
+
+                    # テーブル検出（グリッド確定）
+                    page_tables = self._detect_tables(page, page_num)
+                    logger.info(f"[B-42]   ├─ テーブル検出: {len(page_tables)}個")
+
+                    # テーブルごとにグリッド割り当て
+                    for tbl in page_tables:
+                        tbl_with_grid = self._extract_grid(page_words, tbl)
+                        structured_tables.append(tbl_with_grid)
+                        self._log_table(tbl_with_grid)
+
+                    table_count_per_page[page_num] = len(page_tables)
+
+                    # purge用に全単語収集
+                    for w in page_words:
                         all_words.append({
                             'page': page_num,
-                            'text': word['text'],
-                            'bbox': (word['x0'], word['top'], word['x1'], word['bottom'])
+                            'text': w['text'],
+                            'bbox': (w['x0'], w['top'], w['x1'], w['bottom'])
                         })
                     logger.info(f"[B-42]   └─ 単語（削除対象）: {len(page_words)}個")
 
-                # メタ情報
+                # サマリー
+                logger.info(f"[B-42] ========== 抽出結果サマリー ==========")
+                logger.info(f"[B-42] 総テーブル数: {len(structured_tables)}個")
+                logger.info(
+                    f"[B-42] ページ別テーブル数: "
+                    f"{[(p, n) for p, n in sorted(table_count_per_page.items())]}"
+                )
+                logger.info(f"[B-42] 削除対象単語総数: {len(all_words)}個")
+
+                logical_blocks = self._words_to_logical_blocks(all_words)
+                logger.info(f"[B-42] logical_blocks: {len(logical_blocks)}件")
+                for idx, lb in enumerate(logical_blocks):
+                    logger.info(
+                        f"[B-42]   block[{idx}] page={lb['page']} text={lb['text']!r}"
+                    )
+
+                logger.info(f"[B-42] ========== テキスト削除処理開始 ==========")
+                purged_pdf_path = self._purge_extracted_text(
+                    file_path, all_words, structured_tables
+                )
+                logger.info(f"[B-42] purged PDF 生成完了: {purged_pdf_path.name}")
+
                 tags = {
                     'source': 'stage_b',
                     'processor': 'b42_multicolumn_report',
                     'page_count': len(pdf.pages),
-                    'column_count': len(all_columns),
-                    'record_count': len(all_records)
+                    'table_count': len(structured_tables),
                 }
 
-                # 全ページの集計ログ
-                logger.info(f"[B-42] ========== 抽出結果サマリー ==========")
-                logger.info(f"[B-42] 総カラム数: {len(all_columns)}個")
-                logger.info(f"[B-42] 総レコード数: {len(all_records)}個")
-                logger.info(f"[B-42] 削除対象単語総数: {len(all_words)}個")
-
-                # レコードサンプル（先頭5件）
-                if all_records:
-                    logger.info(f"[B-42] レコードサンプル（先頭5件）:")
-                    for idx, rec in enumerate(all_records[:5]):
-                        logger.info(f"[B-42]   {idx + 1}. rank={rec.get('rank')}, "
-                                  f"name={rec.get('name')}, "
-                                  f"org={rec.get('organization')}, "
-                                  f"score={rec.get('score')}")
-                else:
-                    logger.warning(f"[B-42] レコードが抽出されませんでした")
-
-                # purged PDF 生成
-                logger.info(f"[B-42] ========== テキスト削除処理開始 ==========")
-                purged_pdf_path = self._purge_extracted_text(file_path, all_words)
-                logger.info(f"[B-42] purged PDF 生成完了: {purged_pdf_path.name}")
+                if _sink_id is not None:
+                    logger.remove(_sink_id)
 
                 return {
                     'is_structured': True,
                     'data_type': 'report_multicolumn',
-                    'records': all_records,
-                    'columns': all_columns,
+                    'records': [],  # 意味推測なし。後段AIへ委譲
+                    'structured_tables': structured_tables,
+                    'table_count_per_page': table_count_per_page,
+                    'logical_blocks': logical_blocks,
                     'tags': tags,
                     'all_words': all_words,
-                    'purged_pdf_path': str(purged_pdf_path)
+                    'purged_pdf_path': str(purged_pdf_path),
                 }
 
         except Exception as e:
             logger.error(f"[B-42] ========== 処理エラー ==========", exc_info=True)
             logger.error(f"[B-42] エラー詳細: {e}")
+            if _sink_id is not None:
+                logger.remove(_sink_id)
             return self._error_result(str(e))
 
-    def _detect_columns(self, page) -> List[Tuple[float, float, float, float]]:
+    # ------------------------------------------------------------------
+    # テーブル検出
+    # ------------------------------------------------------------------
+
+    def _detect_tables(self, page, page_num: int) -> List[Dict]:
         """
-        カラム・セグメンテーション（垂直スライス）
+        テーブルを検出し、col_edges / row_edges を含む dict リストを返す。
 
-        【修正 2026-02-18】
-        旧実装は chars の x0/x1 を「点」として 1pt ビンに打ち density==0 をガター扱い。
-        → 文字領域でも点と点の間が全部 0 になるため、ページ左余白（x=0〜min_text_x）が
-          ガター誤認され、先頭カラムが (0,0,0,h) の幅0 bbox になって within_bbox がクラッシュ。
-
-        本実装の修正ポイント:
-        1. chars の [x0,x1] 区間を「占有（面）」として塗りつぶす（点→面）
-        2. 文字の実在範囲 [min_text_x, max_text_x] の外側に触れるガターは除外（余白≠ガター）
-        3. 幅0/極小カラムを生成しない（_add_column で幅チェック）
-
-        Args:
-            page: pdfplumberのPageオブジェクト
-
-        Returns:
-            [(x0, y0, x1, y1), ...] カラムのbboxリスト
+        優先1: pdfplumber ネイティブ find_tables()
+        優先2: 縦罫線・横罫線クラスタリング
+        優先3: 文字Xヒストグラム
         """
-        logger.info(f"[B-42] カラム検出開始")
+        tables = self._try_find_tables_native(page, page_num)
+        if tables:
+            return tables
+
+        logger.warning(f"[B-42]   find_tables=0 → 縦罫線クラスタリングへ")
+        tables = self._find_tables_from_rules(page, page_num)
+        if tables:
+            return tables
+
+        logger.warning(f"[B-42]   縦罫線クラスタリング=0 → 文字ヒストグラムへ")
+        tables = self._find_tables_from_chars(page, page_num)
+        if not tables:
+            logger.error(f"[B-42]   テーブル検出失敗（全手法）: page={page_num}")
+        return tables
+
+    def _try_find_tables_native(self, page, page_num: int) -> List[Dict]:
+        """
+        pdfplumber find_tables() でテーブルを検出する。
+        table.cells から col_edges / row_edges を確定する。
+        """
+        try:
+            tables = page.find_tables(self.TABLE_SETTINGS_LINES)
+        except Exception as e:
+            logger.warning(f"[B-42]   find_tables失敗: {e}")
+            return []
+
+        if not tables:
+            return []
+
+        logger.info(f"[B-42]   find_tables検出: {len(tables)}個")
+
+        result = []
+        for i, table in enumerate(tables):
+            try:
+                bbox = tuple(float(v) for v in table.bbox)
+
+                # table.cells から col_edges / row_edges を確定
+                col_xs: set = set()
+                row_ys: set = set()
+                for cell in (table.cells or []):
+                    cx0, ctop, cx1, cbottom = cell
+                    col_xs.add(float(cx0))
+                    col_xs.add(float(cx1))
+                    row_ys.add(float(ctop))
+                    row_ys.add(float(cbottom))
+
+                col_edges = sorted(col_xs)
+                row_edges = sorted(row_ys)
+
+                # cells が取れない場合は bbox 両端だけ
+                if len(col_edges) < 2:
+                    col_edges = [bbox[0], bbox[2]]
+                if len(row_edges) < 2:
+                    row_edges = [bbox[1], bbox[3]]
+
+                cols_count = len(col_edges) - 1
+                rows_count = len(row_edges) - 1
+
+                logger.info(
+                    f"[B-42]   ├─ table[{i}] "
+                    f"bbox=({bbox[0]:.1f},{bbox[1]:.1f},{bbox[2]:.1f},{bbox[3]:.1f}) "
+                    f"rows={rows_count} cols={cols_count}"
+                )
+
+                result.append({
+                    "page": page_num,
+                    "table_index": i,
+                    "bbox": bbox,
+                    "col_edges": col_edges,
+                    "row_edges": row_edges,
+                    "cols_count": cols_count,
+                    "rows_count": rows_count,
+                    "source": "pdfplumber_lines",
+                })
+
+            except Exception as e:
+                logger.warning(f"[B-42]   table[{i}] 処理エラー: {e}")
+                continue
+
+        return result
+
+    def _find_tables_from_rules(self, page, page_num: int) -> List[Dict]:
+        """
+        縦罫線・横罫線をクラスタリングして col_edges / row_edges を確定する。
+        """
+        page_width = float(page.width)
+        page_height = float(page.height)
+        min_v_length = page_height * 0.10
+        min_h_length = page_width * 0.10
+
+        v_xs: List[float] = []  # 縦罫線 x 座標
+        h_ys: List[float] = []  # 横罫線 y 座標
+
+        for ln in (page.lines or []):
+            lx0, ly0 = float(ln.get('x0', 0)), float(ln.get('y0', 0))
+            lx1, ly1 = float(ln.get('x1', 0)), float(ln.get('y1', 0))
+            if abs(lx1 - lx0) < 1.0 and abs(ly1 - ly0) >= min_v_length:
+                v_xs.append((lx0 + lx1) / 2.0)
+            elif abs(ly1 - ly0) < 1.0 and abs(lx1 - lx0) >= min_h_length:
+                h_ys.append((ly0 + ly1) / 2.0)
+
+        for rc in (page.rects or []):
+            rx0, ry0 = float(rc.get('x0', 0)), float(rc.get('y0', 0))
+            rx1, ry1 = float(rc.get('x1', 0)), float(rc.get('y1', 0))
+            w, h = abs(rx1 - rx0), abs(ry1 - ry0)
+            if h >= min_v_length:
+                v_xs.extend([rx0, rx1])
+            if w >= min_h_length:
+                h_ys.extend([ry0, ry1])
+
+        logger.info(
+            f"[B-42]   縦罫線候補: {len(v_xs)}個 (min_len={min_v_length:.1f}pt) "
+            f"横罫線候補: {len(h_ys)}個 (min_len={min_h_length:.1f}pt)"
+        )
+
+        col_edges = self._cluster_coords(v_xs, tolerance=2.0)
+        row_edges = self._cluster_coords(h_ys, tolerance=2.0)
+
+        if len(col_edges) < 2:
+            logger.warning(f"[B-42]   縦罫線クラスタ不足（{len(col_edges)}）→ 検出不能")
+            return []
+
+        if len(row_edges) < 2:
+            # 横罫線が取れない場合はテキストボックスの y 範囲で補完
+            words = page.extract_words(x_tolerance=2, y_tolerance=2, keep_blank_chars=True)
+            if words:
+                row_edges = [
+                    min(float(w['top']) for w in words) - 2.0,
+                    max(float(w['bottom']) for w in words) + 2.0,
+                ]
+                logger.info(f"[B-42]   横罫線なし → テキスト範囲で補完: y={row_edges[0]:.1f}-{row_edges[1]:.1f}")
+            else:
+                row_edges = [0.0, page_height]
+
+        cols_count = len(col_edges) - 1
+        rows_count = len(row_edges) - 1
+        bbox = (col_edges[0], row_edges[0], col_edges[-1], row_edges[-1])
+
+        logger.info(
+            f"[B-42]   縦罫線クラスタ: {cols_count}列 横罫線クラスタ: {rows_count}行"
+        )
+        logger.info(f"[B-42]   col_edges: {[f'{x:.1f}' for x in col_edges]}")
+        logger.info(f"[B-42]   row_edges: {[f'{y:.1f}' for y in row_edges]}")
+
+        return [{
+            "page": page_num,
+            "table_index": 0,
+            "bbox": bbox,
+            "col_edges": col_edges,
+            "row_edges": row_edges,
+            "cols_count": cols_count,
+            "rows_count": rows_count,
+            "source": "rule_clusters",
+        }]
+
+    def _find_tables_from_chars(self, page, page_num: int) -> List[Dict]:
+        """
+        文字Xヒストグラムによるテーブル検出（最終フォールバック）。
+        文字の[x0, x1]区間を1ptビンで塗り、空白バンドをガターとして列境界にする。
+        """
+        chars = page.chars or []
+        if len(chars) < 30:
+            logger.error(f"[B-42]   文字不足({len(chars)}) → テーブル検出不能")
+            return []
 
         page_width = float(page.width)
         page_height = float(page.height)
 
-        chars = page.chars
-        if not chars:
-            logger.warning(f"[B-42] 文字が見つかりません。ページ全体を1カラムとして扱います")
-            return [(0.0, 0.0, page_width, page_height)]
+        n_bins = int(page_width) + 2
+        hist = [0] * n_bins
+        all_x0, all_x1 = [], []
 
-        logger.info(f"[B-42]   ├─ 文字数: {len(chars)}個")
-
-        # 文字の実在範囲（余白を判別するために使用）
-        min_text_x = min(float(c.get('x0', 0.0)) for c in chars)
-        max_text_x = max(float(c.get('x1', 0.0)) for c in chars)
-        logger.info(f"[B-42]   ├─ テキスト実在範囲: x={min_text_x:.1f} ~ {max_text_x:.1f}")
-
-        # chars の [x0, x1] 区間を占有として塗りつぶす（点ではなく面）
-        W = int(math.ceil(page_width))
-        occ = [0] * (W + 1)
         for c in chars:
-            cx0 = float(c.get('x0', 0.0))
-            cx1 = float(c.get('x1', 0.0))
+            cx0, cx1 = float(c.get('x0', 0)), float(c.get('x1', 0))
             if cx1 <= cx0:
                 continue
-            s = max(0, int(math.floor(cx0)))
-            e = min(W, int(math.ceil(cx1)))
-            for x in range(s, e):
-                occ[x] = 1
+            all_x0.append(cx0)
+            all_x1.append(cx1)
+            for b in range(int(cx0), min(int(math.ceil(cx1)), n_bins)):
+                hist[b] += 1
 
-        # ガター（空白領域）を検出（ページ全体をスキャン）
-        gutters = []
-        in_gutter = False
-        gutter_start = None
+        if not all_x0:
+            return []
 
-        for x in range(W):
-            if occ[x] == 0:
-                if not in_gutter:
-                    gutter_start = x
-                    in_gutter = True
+        min_x, max_x = min(all_x0), max(all_x1)
+        GUTTER_TH = 5.0
+
+        logger.info(
+            f"[B-42]   文字Xヒストグラム: chars={len(chars)} "
+            f"text_range=[{min_x:.1f}, {max_x:.1f}]"
+        )
+
+        gutters: List[Tuple[float, float]] = []
+        in_g, gs = False, 0
+        for b in range(int(min_x), min(int(math.ceil(max_x)) + 2, n_bins)):
+            if hist[b] == 0:
+                if not in_g:
+                    in_g, gs = True, b
             else:
-                if in_gutter and gutter_start is not None:
-                    gutter_width = x - gutter_start
-                    if gutter_width >= self.GUTTER_THRESHOLD:
-                        gutters.append((float(gutter_start), float(x)))
-                    in_gutter = False
-                    gutter_start = None
+                if in_g:
+                    if (b - gs) >= GUTTER_TH:
+                        gutters.append((float(gs), float(b)))
+                    in_g = False
+        if in_g and (n_bins - gs) >= GUTTER_TH:
+            gutters.append((float(gs), float(n_bins)))
 
-        if in_gutter and gutter_start is not None:
-            gutter_width = W - gutter_start
-            if gutter_width >= self.GUTTER_THRESHOLD:
-                gutters.append((float(gutter_start), float(W)))
+        logger.info(f"[B-42]   ガター候補: {len(gutters)}個 (TH={GUTTER_TH}pt)")
+        for i, (gx0, gx1) in enumerate(gutters):
+            logger.info(f"[B-42]   ├─ ガター{i+1}: x={gx0:.1f}-{gx1:.1f} (幅={gx1-gx0:.1f}pt)")
 
-        # ページ端（文字実在範囲外）に接するガターは「余白」なので除外
-        # = ガターが min_text_x より左、または max_text_x より右から始まる/終わる場合は除外
-        EPS = 1.0
-        filtered = [
-            (start, end) for (start, end) in gutters
-            if start >= min_text_x - EPS and end <= max_text_x + EPS
+        if not gutters:
+            logger.error(f"[B-42]   ガターなし → テーブル検出不能")
+            return []
+
+        col_edges = [min_x] + [(g0 + g1) / 2 for g0, g1 in gutters] + [max_x]
+        col_edges = sorted(set(col_edges))
+
+        # 横方向はテキストボックスの y 範囲で補完
+        words = page.extract_words(x_tolerance=2, y_tolerance=2, keep_blank_chars=True)
+        if words:
+            y0 = min(float(w['top']) for w in words) - 2.0
+            y1 = max(float(w['bottom']) for w in words) + 2.0
+        else:
+            y0, y1 = 0.0, page_height
+
+        row_edges = [y0, y1]
+        bbox = (col_edges[0], y0, col_edges[-1], y1)
+
+        logger.info(f"[B-42]   文字ヒストグラム → {len(col_edges)-1}列")
+
+        return [{
+            "page": page_num,
+            "table_index": 0,
+            "bbox": bbox,
+            "col_edges": col_edges,
+            "row_edges": row_edges,
+            "cols_count": len(col_edges) - 1,
+            "rows_count": len(row_edges) - 1,
+            "source": "char_histogram",
+        }]
+
+    # ------------------------------------------------------------------
+    # グリッド割り当て
+    # ------------------------------------------------------------------
+
+    def _extract_grid(self, page_words: List[Dict], table_info: Dict) -> Dict:
+        """
+        テキストボックスをグリッドセルに機械的に割り当てる。
+
+        各テキストボックスの中心座標 (cx, cy) を求め、
+        col_edges / row_edges のどの区間に入るかで列・行を決定する。
+        分割しない・結合しない。
+        """
+        bbox = table_info['bbox']
+        col_edges = table_info['col_edges']
+        row_edges = table_info['row_edges']
+        cols_count = table_info['cols_count']
+        rows_count = table_info['rows_count']
+        page_num = table_info['page']
+
+        # テーブル bbox 内のテキストボックスを絞り込む
+        x0, y0, x1, y1 = bbox
+        words_in_table = [
+            w for w in page_words
+            if float(w['x0']) >= x0 - 2 and float(w['x1']) <= x1 + 2
+            and float(w['top']) >= y0 - 2 and float(w['bottom']) <= y1 + 2
         ]
-        logger.info(f"[B-42]   ├─ ガター検出: {len(gutters)}個 → 余白除外後: {len(filtered)}個 (閾値={self.GUTTER_THRESHOLD}pt)")
-        for idx, (start, end) in enumerate(filtered):
-            logger.info(f"[B-42]   │   ├─ ガター {idx + 1}: x={start:.1f}-{end:.1f} (幅={end - start:.1f}pt)")
 
-        if not filtered:
-            logger.info(f"[B-42]   └─ 有効ガターなし。ページ全体を1カラムとして扱います")
-            return [(0.0, 0.0, page_width, page_height)]
+        logger.info(
+            f"[B-42]   table[{table_info['table_index']}] "
+            f"テーブル内テキストボックス: {len(words_in_table)}個"
+        )
 
-        # ガターでページを分割（幅0/極小カラムは作らない）
-        columns: List[Tuple[float, float, float, float]] = []
+        # グリッド初期化: cells[row][col] = [{text, bbox}, ...]
+        cells = [[[] for _ in range(cols_count)] for _ in range(rows_count)]
 
-        def _add_column(x0: float, x1: float):
-            if x1 - x0 <= 1.0:
-                logger.debug(f"[B-42]   幅0/極小カラムをスキップ: x={x0:.1f}-{x1:.1f}")
-                return
-            columns.append((float(x0), 0.0, float(x1), page_height))
+        for w in words_in_table:
+            cx = (float(w['x0']) + float(w['x1'])) / 2
+            cy = (float(w['top']) + float(w['bottom'])) / 2
+            col_i = self._find_interval(cx, col_edges)
+            row_i = self._find_interval(cy, row_edges)
 
-        _add_column(0.0, filtered[0][0])
-        for i in range(len(filtered) - 1):
-            _add_column(filtered[i][1], filtered[i + 1][0])
-        _add_column(filtered[-1][1], page_width)
-
-        if not columns:
-            logger.warning(f"[B-42] 有効カラムが生成できません。ページ全体を1カラムとして扱います")
-            return [(0.0, 0.0, page_width, page_height)]
-
-        logger.info(f"[B-42]   └─ カラム分割完了: {len(columns)}カラム")
-        return columns
-
-    def _extract_records_from_column(
-        self,
-        page,
-        column_bbox: Tuple[float, float, float, float],
-        page_num: int,
-        col_idx: int
-    ) -> List[Dict[str, Any]]:
-        """
-        カラム内からレコードを抽出（アンカーベース）
-
-        Args:
-            page: pdfplumberのPageオブジェクト
-            column_bbox: カラムのbbox (x0, y0, x1, y1)
-            page_num: ページ番号
-            col_idx: カラムインデックス
-
-        Returns:
-            [{
-                'rank': str,
-                'name': str,
-                'organization': str,
-                'score': str,
-                'page': int,
-                'column_index': int
-            }, ...]
-        """
-        import re
-
-        logger.info(f"[B-42] カラム {col_idx + 1} のレコード抽出開始")
-
-        x0, y0, x1, y1 = column_bbox
-
-        # 幅0/極小 bbox は pdfplumber が例外を投げるためスキップ（二重安全）
-        if x1 <= x0 + 1.0:
-            logger.warning(f"[B-42]   カラム {col_idx + 1}: 無効bbox ({x0:.1f},{y0:.1f},{x1:.1f},{y1:.1f}) → スキップ")
-            return []
-
-        # カラム内の文字を抽出
-        cropped = page.within_bbox((x0, y0, x1, y1))
-        chars = cropped.chars
-
-        if not chars:
-            logger.warning(f"[B-42]   カラム {col_idx + 1}: 文字が見つかりません")
-            return []
-
-        logger.info(f"[B-42]   ├─ 文字数: {len(chars)}個")
-
-        # 文字をY座標でグループ化（行を作成）
-        lines = self._group_chars_by_y(chars)
-        logger.info(f"[B-42]   ├─ 行数: {len(lines)}行")
-
-        # アンカー（順位）を検出
-        anchors = []
-        for line in lines:
-            text = line['text'].strip()
-            # 数字のみの行をアンカーとする
-            if re.match(self.ANCHOR_PATTERN, text):
-                anchors.append({
-                    'rank': text,
-                    'y': line['y'],
-                    'line_index': line['index']
-                })
-
-        logger.info(f"[B-42]   ├─ アンカー（順位）: {len(anchors)}個")
-        if anchors:
-            sample_ranks = [a['rank'] for a in anchors[:5]]
-            logger.info(f"[B-42]   │   └─ サンプル: {', '.join(sample_ranks)}")
-
-        if not anchors:
-            logger.warning(f"[B-42]   └─ カラム {col_idx + 1}: アンカー（順位）が見つかりません")
-            return []
-
-        # 各アンカーからレコードを構築
-        records = []
-        for i, anchor in enumerate(anchors):
-            # 次のアンカーまでのY範囲を決定
-            y_start = anchor['y']
-            y_end = anchors[i + 1]['y'] if i + 1 < len(anchors) else y1
-
-            # この範囲内の文字を収集
-            record_chars = [c for c in chars if y_start <= c['top'] <= y_end]
-
-            # レコードを構築
-            record = self._build_record(
-                record_chars, anchor['rank'], page_num, col_idx
-            )
-
-            if record:
-                records.append(record)
-
-        logger.info(f"[B-42]   └─ レコード構築完了: {len(records)}個")
-
-        return records
-
-    def _group_chars_by_y(self, chars: List[Dict]) -> List[Dict[str, Any]]:
-        """
-        文字をY座標でグループ化（行を作成）
-
-        Args:
-            chars: 文字リスト
-
-        Returns:
-            [{
-                'index': int,
-                'y': float,
-                'text': str,
-                'chars': [...]
-            }, ...]
-        """
-        if not chars:
-            return []
-
-        # Y座標でソート
-        chars_sorted = sorted(chars, key=lambda c: (c['top'], c['x0']))
-
-        # グループ化
-        lines = []
-        current_line = []
-        prev_y = None
-
-        for char in chars_sorted:
-            if prev_y is None or abs(char['top'] - prev_y) < self.Y_TOLERANCE:
-                current_line.append(char)
-            else:
-                if current_line:
-                    lines.append({
-                        'index': len(lines),
-                        'y': statistics.mean([c['top'] for c in current_line]),
-                        'text': ''.join([c['text'] for c in current_line]),
-                        'chars': current_line
-                    })
-                current_line = [char]
-            prev_y = char['top']
-
-        if current_line:
-            lines.append({
-                'index': len(lines),
-                'y': statistics.mean([c['top'] for c in current_line]),
-                'text': ''.join([c['text'] for c in current_line]),
-                'chars': current_line
-            })
-
-        return lines
-
-    def _build_record(
-        self,
-        record_chars: List[Dict],
-        rank: str,
-        page_num: int,
-        col_idx: int
-    ) -> Dict[str, Any]:
-        """
-        文字リストからレコードを構築
-
-        Args:
-            record_chars: レコード範囲内の文字リスト
-            rank: 順位
-            page_num: ページ番号
-            col_idx: カラムインデックス
-
-        Returns:
-            {
-                'rank': str,
-                'name': str,
-                'organization': str,
-                'score': str,
-                'page': int,
-                'column_index': int
-            }
-        """
-        import re
-
-        # 行をグループ化
-        lines = self._group_chars_by_y(record_chars)
-
-        # 順位行を除外
-        lines = [line for line in lines if line['text'].strip() != rank]
-
-        if not lines:
-            return None
-
-        # フォントサイズで分類（大きい＝氏名、小さい＝校舎、数字＝点数）
-        name_candidates = []
-        org_candidates = []
-        score_candidates = []
-
-        for line in lines:
-            text = line['text'].strip()
-            if not text:
+            if col_i is None or row_i is None:
+                logger.debug(
+                    f"[B-42]   範囲外テキストボックス: text={w['text']!r} "
+                    f"cx={cx:.1f} cy={cy:.1f} → col={col_i} row={row_i}"
+                )
                 continue
 
-            # フォントサイズの平均を計算
-            avg_size = statistics.mean([c.get('size', 10) for c in line['chars']])
+            cells[row_i][col_i].append({
+                'text': w['text'],
+                'bbox': (
+                    float(w['x0']), float(w['top']),
+                    float(w['x1']), float(w['bottom'])
+                ),
+            })
 
-            # 数字のみ（点数）
-            if re.match(r'^\d+$', text):
-                score_candidates.append({'text': text, 'size': avg_size, 'y': line['y']})
-            # それ以外
-            else:
-                # フォントサイズで氏名と校舎を分離
-                if avg_size > 8:  # 閾値は調整可能
-                    name_candidates.append({'text': text, 'size': avg_size, 'y': line['y']})
-                else:
-                    org_candidates.append({'text': text, 'size': avg_size, 'y': line['y']})
+        # 行ごとの統計
+        rows = []
+        for r in range(rows_count):
+            row_cells = cells[r]
+            elements_in_row = sum(len(cell) for cell in row_cells)
+            filled_cells = sum(1 for cell in row_cells if cell)
+            empty_cells = cols_count - filled_cells
+            multi_cells = sum(1 for cell in row_cells if len(cell) > 1)
 
-        # 最も大きいフォントサイズの行を氏名とする
-        name = ''
-        if name_candidates:
-            name = max(name_candidates, key=lambda x: x['size'])['text']
-        elif org_candidates:
-            # 校舎候補しかない場合、最初のものを氏名とする
-            name = org_candidates[0]['text']
-            org_candidates = org_candidates[1:]
-
-        # 校舎（氏名の次に大きいもの、または最初のもの）
-        organization = ''
-        if org_candidates:
-            organization = org_candidates[0]['text']
-
-        # 点数（最後のもの）
-        score = ''
-        if score_candidates:
-            score = score_candidates[-1]['text']
+            rows.append({
+                'row_index': r,
+                'elements_in_row': elements_in_row,
+                'filled_cells': filled_cells,
+                'empty_cells': empty_cells,
+                'multi_cells': multi_cells,
+                'cells': row_cells,
+            })
 
         return {
-            'rank': rank,
-            'name': name,
-            'organization': organization,
-            'score': score,
-            'page': page_num,
-            'column_index': col_idx
+            **table_info,
+            'rows': rows,
         }
+
+    def _log_table(self, tbl: Dict) -> None:
+        """テーブルの構造ログを出力する"""
+        ti = tbl['table_index']
+        bbox = tbl['bbox']
+        logger.info(
+            f"[B-42]   table[{ti}] "
+            f"bbox=({bbox[0]:.1f},{bbox[1]:.1f},{bbox[2]:.1f},{bbox[3]:.1f}) "
+            f"rows={tbl['rows_count']} cols={tbl['cols_count']} "
+            f"source={tbl['source']}"
+        )
+        logger.info(f"[B-42]   col_edges: {[f'{x:.1f}' for x in tbl['col_edges']]}")
+        logger.info(f"[B-42]   row_edges: {[f'{y:.1f}' for y in tbl['row_edges']]}")
+
+        cols_count = tbl['cols_count']
+        for row in tbl['rows']:
+            ri = row['row_index']
+            e = row['elements_in_row']
+            f = row['filled_cells']
+            em = row['empty_cells']
+            m = row['multi_cells']
+
+            if em == 0 and m == 0:
+                status = "列通り"
+            elif em > 0:
+                empty_idxs = [c for c, cell in enumerate(row['cells']) if not cell]
+                status = f"空欄あり col={empty_idxs}"
+            else:
+                multi_idxs = [c for c, cell in enumerate(row['cells']) if len(cell) > 1]
+                status = f"複数要素 col={multi_idxs}"
+
+            logger.info(
+                f"[B-42]   │ row[{ri:3d}]: "
+                f"elements={e} filled={f} empty={em} multi={m} → {status}"
+            )
+            for ci, cell in enumerate(row['cells']):
+                for tb in cell:
+                    b = tb['bbox']
+                    logger.info(
+                        f"[B-42]   │   col[{ci}] text={tb['text']!r} "
+                        f"bbox=({b[0]:.1f},{b[1]:.1f},{b[2]:.1f},{b[3]:.1f})"
+                    )
+
+    # ------------------------------------------------------------------
+    # ユーティリティ
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_interval(val: float, edges: List[float]) -> Optional[int]:
+        """val がどの区間 [edges[i], edges[i+1]) に入るか返す。なければ None。"""
+        for i in range(len(edges) - 1):
+            if edges[i] - 0.5 <= val < edges[i + 1] + 0.5:
+                return i
+        return None
+
+    @staticmethod
+    def _cluster_coords(coords: List[float], tolerance: float = 2.0) -> List[float]:
+        """座標リストを tolerance 内でクラスタリングして代表値リストを返す"""
+        if not coords:
+            return []
+        sorted_c = sorted(coords)
+        clusters = []
+        cur = [sorted_c[0]]
+        for x in sorted_c[1:]:
+            if x - cur[-1] <= tolerance:
+                cur.append(x)
+            else:
+                clusters.append(sum(cur) / len(cur))
+                cur = [x]
+        clusters.append(sum(cur) / len(cur))
+        return clusters
+
+    # ------------------------------------------------------------------
+    # logical_blocks（B90用）
+    # ------------------------------------------------------------------
+
+    def _words_to_logical_blocks(self, all_words: List[Dict]) -> List[Dict]:
+        """all_words を行単位の logical_blocks に集約する（B90用）"""
+        if not all_words:
+            return []
+
+        sorted_words = sorted(
+            all_words,
+            key=lambda w: (w['page'], w['bbox'][1], w['bbox'][0])
+        )
+
+        blocks = []
+        current_words = [sorted_words[0]]
+
+        for w in sorted_words[1:]:
+            prev = current_words[-1]
+            same_page = w['page'] == prev['page']
+            same_line = same_page and abs(w['bbox'][1] - prev['bbox'][1]) <= self.Y_TOLERANCE
+            if same_line:
+                current_words.append(w)
+            else:
+                blocks.append(self._flush_line(current_words))
+                current_words = [w]
+
+        if current_words:
+            blocks.append(self._flush_line(current_words))
+
+        return blocks
+
+    def _flush_line(self, words: List[Dict]) -> Dict:
+        """ワードリストを1つの logical_block にまとめる"""
+        text = ' '.join(w['text'] for w in words)
+        x0 = min(w['bbox'][0] for w in words)
+        y0 = min(w['bbox'][1] for w in words)
+        x1 = max(w['bbox'][2] for w in words)
+        y1 = max(w['bbox'][3] for w in words)
+        return {
+            'page': words[0]['page'],
+            'bbox': [x0, y0, x1, y1],
+            'text': text,
+            'merged_count': len(words),
+            '_source': 'REPORT',
+        }
+
+    # ------------------------------------------------------------------
+    # テキスト削除（purge）
+    # ------------------------------------------------------------------
 
     def _purge_extracted_text(
         self,
@@ -562,7 +687,7 @@ class B42MultiColumnReportProcessor:
                         deleted_words += 1
                     page.apply_redactions(
                         images=fitz.PDF_REDACT_IMAGE_NONE,
-                        graphics=False
+                        graphics=True
                     )
 
                 # フェーズ2: 表罫線削除（表構造抽出済みの場合のみ）
@@ -600,15 +725,21 @@ class B42MultiColumnReportProcessor:
             logger.error(f"[B-42] テキスト削除エラー", exc_info=True)
             logger.error(f"[B-42] エラー詳細: {e}")
             return file_path
+
+    # ------------------------------------------------------------------
+    # エラー結果
+    # ------------------------------------------------------------------
+
     def _error_result(self, error_message: str) -> Dict[str, Any]:
-        """エラー結果を返す"""
         return {
             'is_structured': False,
             'error': error_message,
-            'data_type': 'unknown',
+            'data_type': 'report_multicolumn',
             'records': [],
-            'columns': [],
+            'structured_tables': [],
+            'table_count_per_page': {},
+            'logical_blocks': [],
             'tags': {},
             'all_words': [],
-            'purged_pdf_path': ''
+            'purged_pdf_path': '',
         }

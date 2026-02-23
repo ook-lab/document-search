@@ -25,13 +25,15 @@ class G1TableReproducer:
 
     def reproduce(
         self,
-        tables: List[Dict[str, Any]]
+        tables: List[Dict[str, Any]],
+        log_dir=None
     ) -> Dict[str, Any]:
         """
         表データを Pure JSON 形式に変換
 
         Args:
             tables: Stage F の consolidated_tables
+            log_dir: ログディレクトリ（オプション）
 
         Returns:
             {
@@ -40,6 +42,28 @@ class G1TableReproducer:
                 'conversion_count': int
             }
         """
+        _log_dir = Path(log_dir) if log_dir else None
+        _sink_id = None
+        if _log_dir:
+            _log_dir.mkdir(parents=True, exist_ok=True)
+            _sink_id = logger.add(
+                str(_log_dir / "g1_reproducer.log"),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-1]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._reproduce_impl(tables)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _reproduce_impl(
+        self,
+        tables: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """reproduce() の実装本体"""
         if not tables:
             logger.info("[G-1] 変換する表がありません")
             return {
@@ -125,6 +149,10 @@ class G1TableReproducer:
                     continue
                 row = self._parse_markdown_row(line)
                 rows.append(row)
+
+            logger.info(f"[G-1] Markdown変換結果 全行:")
+            for row_idx, row in enumerate(rows):
+                logger.info(f"[G-1]   行{row_idx}: {row}")
 
             return {
                 'table_id': table.get('table_id', 'Unknown'),
@@ -276,6 +304,10 @@ class G1TableReproducer:
                     row = [str(record.get(key, '')) for key in headers]
                     rows.append(row)
 
+                logger.info(f"[G-1] Stage B(dict)変換結果 全行:")
+                for row_idx, row in enumerate(rows):
+                    logger.info(f"[G-1]   行{row_idx}: {row}")
+
                 return {
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
@@ -311,6 +343,10 @@ class G1TableReproducer:
                     rows = data           # 全ての data をデータ行として使用
                     row_count = len(data)
 
+                logger.info(f"[G-1] Stage B(array)変換結果 全行:")
+                for row_idx, row in enumerate(rows):
+                    logger.info(f"[G-1]   行{row_idx}: {row}")
+
                 return {
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
@@ -326,12 +362,16 @@ class G1TableReproducer:
             elif isinstance(data, list) and len(data) > 0:
                 # 文字列や数値の配列を1行の表として扱う
                 logger.warning(f"[G-1] data[0] の型が想定外: {type(data[0])}, 1行として処理")
+                rows = [[str(item) for item in data]]
+                logger.info(f"[G-1] Stage B(scalar)変換結果 全行:")
+                for row_idx, row in enumerate(rows):
+                    logger.info(f"[G-1]   行{row_idx}: {row}")
                 return {
                     'table_id': table.get('table_id', 'Unknown'),
                     'type': 'ui_table',
                     'source': table.get('source', 'unknown'),
                     'headers': [],  # 空ヘッダー（仮ヘッダー生成しない）
-                    'rows': [[str(item) for item in data]],  # ★ data → rows
+                    'rows': rows,  # ★ data → rows
                     'row_count': 1,
                     'col_count': len(data)
                 }

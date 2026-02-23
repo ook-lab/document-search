@@ -1,0 +1,23 @@
+{
+  "success": false,
+  "error": "name 'avg_wpl' is not defined",
+  "origin_app": "UNKNOWN",
+  "document_type": "UNKNOWN",
+  "layout_profile": "FLOW",
+  "layout_metrics": {},
+  "page_count": 0,
+  "dimensions": {
+    "width": 0,
+    "height": 0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 0,
+    "height": 0,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "raw_metadata": {},
+  "confidence": "NONE",
+  "reason": "エラーにより判定不能"
+}

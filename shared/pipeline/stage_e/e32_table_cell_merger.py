@@ -22,7 +22,7 @@ class E32TableCellMerger:
     def merge(
         self,
         struct_result: Dict[str, Any],
-        ocr_result: Dict[str, Any]
+        ocr_result: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         E-30 の構造結果と E-31 の OCR 結果（Gemini テキスト変換済み）を
@@ -102,6 +102,8 @@ class E32TableCellMerger:
             f"[E-32] 候補集合化完了: "
             f"image_candidates={len(image_candidates)} non_empty={non_empty}"
         )
+        for row_idx, cand in enumerate(image_candidates):
+            logger.info(f"[E-32]   行{row_idx}: {cand}")
 
         return {
             'success': True,

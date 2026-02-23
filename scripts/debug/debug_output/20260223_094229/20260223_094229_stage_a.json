@@ -1,0 +1,450 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "WORD_LTSC",
+    "confidence": "HIGH",
+    "reason": "Creator一致: microsoft.*word.*ltsc",
+    "raw_metadata": {
+      "Author": "江口",
+      "Creator": "Microsoft® Word LTSC",
+      "CreationDate": "D:20260202075439+09'00'",
+      "ModDate": "D:20260202075439+09'00'",
+      "Producer": "Microsoft® Word LTSC"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 595.32,
+      "height": 841.92,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01566666666668,
+      "height": 297.0106666666666,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 3.0,
+      "avg_words_per_page": 80.5,
+      "avg_x_std": 92.54894317754598,
+      "avg_words_per_line": 1.4235197368421053,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 6,
+          "words": 31,
+          "chars": 135,
+          "has_selectable_text": true,
+          "x_std": 80.86856823340037,
+          "lines": 38,
+          "words_per_line": 0.8157894736842105,
+          "vector_count": 40,
+          "fonts": [
+            {
+              "name": "BCDEEE+HGMaruGothicMPRO",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDGEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-B",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDHEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDIEE+Century",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": [
+            {
+              "width": 540,
+              "height": 800,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 128,
+              "height": 70,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 248,
+              "height": 43,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 203,
+              "height": 71,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 382,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 427,
+              "height": 568,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            }
+          ]
+        },
+        {
+          "page": 1,
+          "images": 0,
+          "words": 130,
+          "chars": 586,
+          "has_selectable_text": true,
+          "x_std": 104.22931812169159,
+          "lines": 64,
+          "words_per_line": 2.03125,
+          "vector_count": 220,
+          "fonts": [
+            {
+              "name": "BCDEEE+HGMaruGothicMPRO",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDHEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDGEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-B",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDJEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-B",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDKEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDLEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDIEE+Century",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": []
+        }
+      ]
+    }
+  },
+  "origin_app": "WORD_LTSC",
+  "document_type": "WORD_LTSC",
+  "confidence": "HIGH",
+  "reason": "Creator一致: microsoft.*word.*ltsc",
+  "raw_metadata": {
+    "Author": "江口",
+    "Creator": "Microsoft® Word LTSC",
+    "CreationDate": "D:20260202075439+09'00'",
+    "ModDate": "D:20260202075439+09'00'",
+    "Producer": "Microsoft® Word LTSC"
+  },
+  "page_type_map": {
+    "0": "WORD_LTSC",
+    "1": "WORD_LTSC"
+  },
+  "type_groups": {
+    "WORD_LTSC": [
+      0,
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 595.32,
+    "height": 841.92,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01566666666668,
+    "height": 297.0106666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 3.0,
+    "avg_words_per_page": 80.5,
+    "avg_x_std": 92.54894317754598,
+    "avg_words_per_line": 1.4235197368421053,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 6,
+        "words": 31,
+        "chars": 135,
+        "has_selectable_text": true,
+        "x_std": 80.86856823340037,
+        "lines": 38,
+        "words_per_line": 0.8157894736842105,
+        "vector_count": 40,
+        "fonts": [
+          {
+            "name": "BCDEEE+HGMaruGothicMPRO",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDGEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-B",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDHEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDIEE+Century",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": [
+          {
+            "width": 540,
+            "height": 800,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 128,
+            "height": 70,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 248,
+            "height": 43,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 203,
+            "height": 71,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 382,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 427,
+            "height": 568,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 130,
+        "chars": 586,
+        "has_selectable_text": true,
+        "x_std": 104.22931812169159,
+        "lines": 64,
+        "words_per_line": 2.03125,
+        "vector_count": 220,
+        "fonts": [
+          {
+            "name": "BCDEEE+HGMaruGothicMPRO",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDHEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-R",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDGEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-B",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDJEE+UD ãã¸ã¿ã« æç§æ¸ä½ N-B",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDKEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDLEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDIEE+Century",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": []
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B61_PDF_WORD_LTSC"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD_LTSC+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD_LTSC",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 3.0,
+      "avg_words_per_page": 80.5,
+      "avg_x_std": 92.54894317754598,
+      "probe_ok": true,
+      "avg_chars_per_page": 360.5,
+      "avg_vectors_per_page": 130.0
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B61_PDF_WORD_LTSC"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD_LTSC+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD_LTSC",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 3.0,
+      "avg_words_per_page": 80.5,
+      "avg_x_std": 92.54894317754598,
+      "probe_ok": true,
+      "avg_chars_per_page": 360.5,
+      "avg_vectors_per_page": 130.0
+    },
+    "policy_version": "A5.v2"
+  }
+}

@@ -27,7 +27,8 @@ class G11TableStructurer:
     def structure(
         self,
         ui_tables: List[Dict[str, Any]],
-        year_context: Optional[int] = None
+        year_context: Optional[int] = None,
+        log_file=None
     ) -> Dict[str, Any]:
         """
         UI用表データを metadata 形式に構造化
@@ -35,6 +36,7 @@ class G11TableStructurer:
         Args:
             ui_tables: Stage G の UI用表データ
             year_context: 年度コンテキスト（G-12に渡す）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -42,6 +44,27 @@ class G11TableStructurer:
                 'structured_tables': list  # metadata 用の表データ
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-11]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._structure_impl(ui_tables, year_context)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _structure_impl(
+        self,
+        ui_tables: List[Dict[str, Any]],
+        year_context: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """structure() の実装本体"""
         logger.info("")
         logger.info("[G-11] ========== 表の構造化開始 ==========")
         logger.info(f"[G-11] 入力表数: {len(ui_tables)}個")
@@ -64,10 +87,10 @@ class G11TableStructurer:
                 logger.info(f"    │   {columns}")
                 logger.info(f"    ├─ data: {len(data)}行")
 
-                # サンプル行を表示
+                # 全行を表示
                 if data:
-                    logger.info(f"    └─ サンプル行（先頭3行）:")
-                    for row_idx, row in enumerate(data[:3], 1):
+                    logger.info(f"    └─ 全行:")
+                    for row_idx, row in enumerate(data, 1):
                         logger.info(f"        Row {row_idx}: {row}")
                 else:
                     logger.info(f"    └─ データ行なし")
@@ -120,14 +143,11 @@ class G11TableStructurer:
                     logger.info(f"  │   {headers}")
                     logger.info(f"  ├─ rows: {len(rows)}行")
 
-                    # サンプル行
+                    # 全行
                     if rows:
-                        logger.info(f"  └─ サンプル行（先頭3行、末尾1行）:")
-                        for row_idx, row in enumerate(rows[:3], 1):
+                        logger.info(f"  └─ 全行:")
+                        for row_idx, row in enumerate(rows, 1):
                             logger.info(f"      Row {row_idx}: {row}")
-                        if len(rows) > 3:
-                            logger.info(f"      ... ({len(rows)-4}行省略)")
-                            logger.info(f"      Row {len(rows)}: {rows[-1]}")
                     else:
                         logger.info(f"  └─ データ行なし")
 

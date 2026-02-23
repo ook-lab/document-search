@@ -1,0 +1,2902 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "WORD",
+    "confidence": "HIGH",
+    "reason": "Creator一致: microsoft.*word",
+    "raw_metadata": {
+      "Author": "山元 直子",
+      "Creator": "Microsoft® Word LTSC",
+      "CreationDate": "D:20260113121415+09'00'",
+      "ModDate": "D:20260113121415+09'00'",
+      "Producer": "Microsoft® Word LTSC"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 515.8,
+      "height": 728.6,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 181.96277777777775,
+      "height": 257.0338888888889,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 92.5,
+      "avg_words_per_page": 140.0,
+      "avg_x_std": 124.46179867408914,
+      "avg_words_per_line": 2.7663934426229506,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 158,
+          "words": 185,
+          "chars": 846,
+          "has_selectable_text": true,
+          "x_std": 128.58869761690164,
+          "lines": 61,
+          "words_per_line": 3.0327868852459017,
+          "vector_count": 85,
+          "fonts": [
+            {
+              "name": "BCDEEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDGEE+YuMincho-Regular",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDHEE+UDDigiKyokashoN",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDIEE+UDDigiKyokashoN",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDJEE+HGPMinchoB",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDKEE+HGPMinchoB",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDLEE+YuGothicUI-Semibold",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDMEE+YuGothicUI-Semibold",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDNEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-B",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDOEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-B",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": [
+            {
+              "width": 14,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 29,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 204,
+              "height": 31,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 94,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 41,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 423,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 11,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 171,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 323,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 67,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 141,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 227,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 57,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 29,
+              "height": 26,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 31,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 14,
+              "height": 11,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 59,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 179,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 40,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 57,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 15,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 209,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 67,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 216,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 83,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 94,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 68,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 31,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 43,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 84,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 503,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 43,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 318,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 63,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 108,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 27,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 57,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 13,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 54,
+              "height": 28,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 1407,
+              "height": 152,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 90,
+              "height": 90,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 284,
+              "height": 249,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 240,
+              "height": 97,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 669,
+              "height": 516,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 596,
+              "height": 523,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 419,
+              "height": 116,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 568,
+              "height": 456,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 68,
+              "height": 34,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 65,
+              "height": 16,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 385,
+              "height": 34,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 167,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 150,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 85,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 67,
+              "height": 28,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 30,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 55,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 11,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 113,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 27,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 149,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 51,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 181,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 27,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 241,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 14,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 80,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 13,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 214,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 319,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 30,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 246,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 57,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 52,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 87,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 57,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 320,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 116,
+              "height": 60,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 61,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 39,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 27,
+              "height": 25,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 188,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 53,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 84,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 59,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 158,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 798,
+              "height": 116,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 29,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 75,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 408,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 51,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 68,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 67,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 147,
+              "height": 99,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 104,
+              "height": 104,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 182,
+              "height": 119,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 111,
+              "height": 86,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 105,
+              "height": 99,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 125,
+              "height": 131,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 93,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 67,
+              "height": 15,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 53,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 60,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 119,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 84,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 178,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 14,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 60,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 29,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 208,
+              "height": 29,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 178,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 41,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 88,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 60,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 58,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 13,
+              "height": 13,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 200,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 14,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 59,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 27,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 96,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 69,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 59,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 28,
+              "height": 14,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 56,
+              "height": 30,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            }
+          ]
+        },
+        {
+          "page": 1,
+          "images": 27,
+          "words": 95,
+          "chars": 618,
+          "has_selectable_text": true,
+          "x_std": 120.33489973127664,
+          "lines": 38,
+          "words_per_line": 2.5,
+          "vector_count": 220,
+          "fonts": [
+            {
+              "name": "BCDPEE+HGPSoeiKakupoptai",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDIEE+UDDigiKyokashoN",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDHEE+UDDigiKyokashoN",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": [
+            {
+              "width": 95,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 98,
+              "height": 24,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 95,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 98,
+              "height": 24,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 132,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 84,
+              "height": 24,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 140,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 98,
+              "height": 25,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 94,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 98,
+              "height": 25,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 139,
+              "height": 45,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 98,
+              "height": 24,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 173,
+              "height": 42,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 354,
+              "height": 76,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 291,
+              "height": 90,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 227,
+              "height": 305,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 173,
+              "height": 292,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 281,
+              "height": 282,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 444,
+              "height": 256,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 386,
+              "height": 289,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 416,
+              "height": 303,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 509,
+              "height": 308,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 383,
+              "height": 266,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 539,
+              "height": 278,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 267,
+              "height": 196,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 196,
+              "height": 196,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 165,
+              "height": 165,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "origin_app": "WORD",
+  "document_type": "WORD",
+  "confidence": "HIGH",
+  "reason": "Creator一致: microsoft.*word",
+  "raw_metadata": {
+    "Author": "山元 直子",
+    "Creator": "Microsoft® Word LTSC",
+    "CreationDate": "D:20260113121415+09'00'",
+    "ModDate": "D:20260113121415+09'00'",
+    "Producer": "Microsoft® Word LTSC"
+  },
+  "page_type_map": {
+    "0": "WORD",
+    "1": "WORD"
+  },
+  "type_groups": {
+    "WORD": [
+      0,
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 515.8,
+    "height": 728.6,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 181.96277777777775,
+    "height": 257.0338888888889,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 92.5,
+    "avg_words_per_page": 140.0,
+    "avg_x_std": 124.46179867408914,
+    "avg_words_per_line": 2.7663934426229506,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 158,
+        "words": 185,
+        "chars": 846,
+        "has_selectable_text": true,
+        "x_std": 128.58869761690164,
+        "lines": 61,
+        "words_per_line": 3.0327868852459017,
+        "vector_count": 85,
+        "fonts": [
+          {
+            "name": "BCDEEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-R",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDGEE+YuMincho-Regular",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDHEE+UDDigiKyokashoN",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDIEE+UDDigiKyokashoN",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDJEE+HGPMinchoB",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDKEE+HGPMinchoB",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDLEE+YuGothicUI-Semibold",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDMEE+YuGothicUI-Semibold",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDNEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-B",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDOEE+UD ãã¸ã¿ã« æç§æ¸ä½ NK-B",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": [
+          {
+            "width": 14,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 29,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 204,
+            "height": 31,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 94,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 41,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 423,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 11,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 171,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 323,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 67,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 141,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 227,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 57,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 29,
+            "height": 26,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 31,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 14,
+            "height": 11,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 59,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 179,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 40,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 57,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 15,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 209,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 67,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 216,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 83,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 94,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 68,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 31,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 43,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 84,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 503,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 43,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 318,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 63,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 108,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 27,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 57,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 13,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 54,
+            "height": 28,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 1407,
+            "height": 152,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 90,
+            "height": 90,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 284,
+            "height": 249,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 240,
+            "height": 97,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 669,
+            "height": 516,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 596,
+            "height": 523,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 419,
+            "height": 116,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 568,
+            "height": 456,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 68,
+            "height": 34,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 65,
+            "height": 16,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 385,
+            "height": 34,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 167,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 150,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 85,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 67,
+            "height": 28,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 30,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 55,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 11,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 113,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 27,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 149,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 51,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 181,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 27,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 241,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 14,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 80,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 13,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 214,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 319,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 30,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 246,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 57,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 52,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 87,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 57,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 320,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 116,
+            "height": 60,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 61,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 39,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 27,
+            "height": 25,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 188,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 53,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 84,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 59,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 158,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 798,
+            "height": 116,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 29,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 75,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 408,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 51,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 68,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 67,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 147,
+            "height": 99,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 104,
+            "height": 104,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 182,
+            "height": 119,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 111,
+            "height": 86,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 105,
+            "height": 99,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 125,
+            "height": 131,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 93,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 67,
+            "height": 15,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 53,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 60,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 119,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 84,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 178,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 14,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 60,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 29,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 208,
+            "height": 29,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 178,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 41,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 88,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 60,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 58,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 13,
+            "height": 13,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 200,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 14,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 59,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 27,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 96,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 69,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 59,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 28,
+            "height": 14,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 56,
+            "height": 30,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "images": 27,
+        "words": 95,
+        "chars": 618,
+        "has_selectable_text": true,
+        "x_std": 120.33489973127664,
+        "lines": 38,
+        "words_per_line": 2.5,
+        "vector_count": 220,
+        "fonts": [
+          {
+            "name": "BCDPEE+HGPSoeiKakupoptai",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDIEE+UDDigiKyokashoN",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDHEE+UDDigiKyokashoN",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": [
+          {
+            "width": 95,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 98,
+            "height": 24,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 95,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 98,
+            "height": 24,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 132,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 84,
+            "height": 24,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 140,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 98,
+            "height": 25,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 94,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 98,
+            "height": 25,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 139,
+            "height": 45,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 98,
+            "height": 24,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 173,
+            "height": 42,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 354,
+            "height": 76,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 291,
+            "height": 90,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 227,
+            "height": 305,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 173,
+            "height": 292,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 281,
+            "height": 282,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 444,
+            "height": 256,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 386,
+            "height": 289,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 416,
+            "height": 303,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 509,
+            "height": 308,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 383,
+            "height": 266,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 539,
+            "height": 278,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 267,
+            "height": 196,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 196,
+            "height": 196,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 165,
+            "height": 165,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          }
+        ]
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 92.5,
+      "avg_words_per_page": 140.0,
+      "avg_x_std": 124.46179867408914,
+      "probe_ok": true,
+      "avg_chars_per_page": 732.0,
+      "avg_vectors_per_page": 152.5
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 92.5,
+      "avg_words_per_page": 140.0,
+      "avg_x_std": 124.46179867408914,
+      "probe_ok": true,
+      "avg_chars_per_page": 732.0,
+      "avg_vectors_per_page": 152.5
+    },
+    "policy_version": "A5.v2"
+  }
+}

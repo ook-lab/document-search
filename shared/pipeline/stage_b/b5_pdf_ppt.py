@@ -13,12 +13,14 @@ from loguru import logger
 class B5PDFPPTProcessor:
     """B-5: PDF-PowerPoint Processor（PDF-PowerPoint専用）"""
 
-    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None, log_file=None) -> Dict[str, Any]:
         """
         PowerPoint由来PDFから構造化データを抽出
 
         Args:
             file_path: PDFファイルパス
+            masked_pages: スキップするページ番号リスト（0始まり）
+            log_file: 個別ログファイルパス（Noneなら共有ロガーのみ）
 
         Returns:
             {
@@ -30,6 +32,22 @@ class B5PDFPPTProcessor:
                 'purged_image_path': str         # テキスト消去後の画像
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[B-5]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._process_impl(file_path, masked_pages)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _process_impl(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         logger.info(f"[B-5] PDF-PowerPoint処理開始: {file_path.name}")
 
         try:
@@ -89,6 +107,9 @@ class B5PDFPPTProcessor:
                 }
 
                 logger.info(f"[B-5] 抽出完了: スライド={len(logical_blocks)}, 表={len(all_tables)}, 単語（削除対象）={len(all_words)}")
+                for slide in logical_blocks:
+                    for tb_idx, tb in enumerate(slide.get('textboxes', [])):
+                        logger.info(f"[B-5] slide{slide.get('page')} textbox{tb_idx}: {tb.get('text', '')}")
 
                 purged_pdf_path = self._purge_extracted_text(file_path, all_words, all_tables)
                 logger.info(f"[B-5] テキスト削除完了: {purged_pdf_path}")
@@ -191,9 +212,9 @@ class B5PDFPPTProcessor:
         for idx, table in enumerate(page.find_tables()):
             data = table.extract()
             logger.info(f"[B-5] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
-            if data and len(data) > 0:
-                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
-                logger.debug(f"[B-5] Table {idx} 1行目サンプル: {first_row_sample}")
+            if data:
+                for row_idx, row in enumerate(data):
+                    logger.info(f"[B-5] Table {idx} 行{row_idx}: {row}")
 
             tables.append({
                 'page': page_num,

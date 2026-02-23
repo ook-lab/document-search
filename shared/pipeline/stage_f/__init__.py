@@ -43,7 +43,8 @@ class F1Controller:
         stage_b_result=None,
         stage_d_result=None,
         stage_e_result=None,
-        year_context=None
+        year_context=None,
+        rawdata_record=None,
     ):
         """
         Stage F 処理実行（チェーン開始）
@@ -54,6 +55,7 @@ class F1Controller:
             stage_d_result: Stage D の結果
             stage_e_result: Stage E の結果
             year_context: 年度コンテキスト
+            rawdata_record: Rawdata_FILE_AND_MAIL の1行（display_* フィールド付与用）
 
         Returns:
             F-5の最終結果（チェーン経由）
@@ -62,7 +64,8 @@ class F1Controller:
             stage_a_result=stage_a_result,
             stage_b_result=stage_b_result,
             stage_d_result=stage_d_result,
-            stage_e_result=stage_e_result
+            stage_e_result=stage_e_result,
+            rawdata_record=rawdata_record,
         )
 
 

@@ -26,9 +26,11 @@ E-1: Stage E Controller（唯一の執行者）
 
 from loguru import logger
 from pathlib import Path
+from typing import Optional
 
 from .e1_ocr_scouter import E1OcrScouter
 from .e5_text_block_visualizer import E5TextBlockVisualizer
+from .e16_line_eraser import E16LineEraser
 from .e20_non_table_vision_ocr import E20NonTableVisionOcr
 from .e21_context_extractor import E21ContextExtractor
 from .e30_table_structure_extractor import E30TableStructureExtractor
@@ -55,6 +57,7 @@ class E1Controller:
         self.visualizer = E5TextBlockVisualizer()
 
         # 非表処理
+        self.line_eraser = E16LineEraser()
         self.non_table_vision_ocr = E20NonTableVisionOcr()
         self.context_extractor = E21ContextExtractor(api_key=gemini_api_key)
 
@@ -90,6 +93,60 @@ class E1Controller:
         cands = e37_result.get('embedded_candidates', []) or []
         return len(cands) > 0
 
+    @staticmethod
+    def _crop_to_text_roi(
+        image_path: Path,
+        words: list,
+        output_dir=None,
+        margin: int = 60,
+    ) -> Path:
+        """
+        E-1のwordsのbbox全体を包む外接矩形にマージンを付けてクロップ。
+
+        根拠: E-1（Tesseract）が文字と判定した領域 = 本文が存在する場所。
+             その周辺のみをGeminiに渡すことで、罫線・装飾・円弧などを除外する。
+
+        Args:
+            image_path: 元画像パス
+            words:      E-1が返した単語リスト [{'text':..., 'bbox':[x1,y1,x2,y2], ...}]
+            output_dir: 保存先（省略時は元画像と同ディレクトリ）
+            margin:     外接矩形に加えるマージン（px）。行間・句読点を拾うため。
+
+        Returns:
+            クロップ済み画像パス（失敗時は元画像パスをフォールバック）
+        """
+        import cv2
+
+        output_dir = Path(output_dir) if output_dir else image_path.parent
+        output_path = output_dir / (image_path.stem + "_roi" + image_path.suffix)
+
+        img = cv2.imread(str(image_path))
+        if img is None:
+            logger.error(f"[E-1] ROIクロップ: 画像読み込み失敗 → 元画像で続行")
+            return image_path
+
+        img_h, img_w = img.shape[:2]
+
+        # words の bbox を union
+        x1 = min(w['bbox'][0] for w in words)
+        y1 = min(w['bbox'][1] for w in words)
+        x2 = max(w['bbox'][2] for w in words)
+        y2 = max(w['bbox'][3] for w in words)
+
+        # マージンを加えて画像範囲にクリップ
+        rx1 = max(0,     x1 - margin)
+        ry1 = max(0,     y1 - margin)
+        rx2 = min(img_w, x2 + margin)
+        ry2 = min(img_h, y2 + margin)
+
+        crop = img[ry1:ry2, rx1:rx2]
+        cv2.imwrite(str(output_path), crop)
+        logger.info(
+            f"[E-1] ROIクロップ完了: ({rx1},{ry1})-({rx2},{ry2}) "
+            f"({rx2-rx1}x{ry2-ry1}px) → {output_path.name}"
+        )
+        return output_path
+
     # ------------------------------------------------------------------
     # メイン処理
     # ------------------------------------------------------------------
@@ -101,6 +158,7 @@ class E1Controller:
         stage_b_result=None,
         output_dir=None,
         gemini_api_key=None,
+        log_dir=None,
     ):
         """
         Stage E 処理実行
@@ -111,6 +169,7 @@ class E1Controller:
             stage_b_result: Stage B の結果（E37 監査用。なくても動作）
             output_dir: 出力ディレクトリ
             gemini_api_key: API Key（オプション）
+            log_dir: ログディレクトリ（オプション）
 
         Returns:
             {
@@ -122,6 +181,19 @@ class E1Controller:
                 'metadata': dict              # F1 が読む
             }
         """
+        return self._process_impl(
+            purged_pdf_path, stage_d_result, stage_b_result, output_dir, gemini_api_key
+        )
+
+    def _process_impl(
+        self,
+        purged_pdf_path,
+        stage_d_result,
+        stage_b_result=None,
+        output_dir=None,
+        gemini_api_key=None,
+    ):
+        """process() の実装本体"""
         page = stage_d_result.get('page_index', 0)
 
         logger.info("=" * 90)
@@ -150,19 +222,34 @@ class E1Controller:
                 logger.info(f"[E-1] 非表領域画像なし → スキップ: {non_table_path.name}")
                 continue
 
-            scout = self.scouter.scout(non_table_path, include_words=False)
+            scout = self.scouter.scout(non_table_path, include_words=True)
             cc = int(scout.get('char_count', 0))
             logger.info(f"[E-1] 非表[{img_idx}] char_count={cc}")
 
             if cc >= 1:
-                logger.info(f"[E-1] 非表[{img_idx}]: E21 実行")
+                words = scout.get('words', [])
+                if words:
+                    # E-1のwordsからROIクロップ → 本文領域のみをE-21に渡す
+                    logger.info(f"[E-1] 非表[{img_idx}]: ROIクロップ({len(words)}単語) → E21 実行")
+                    e21_input_path = self._crop_to_text_roi(
+                        non_table_path,
+                        words,
+                        output_dir=Path(output_dir) if output_dir else None,
+                    )
+                else:
+                    # wordsが空だがcc>=1 → E-16（罫線除去）でフォールバック
+                    logger.info(f"[E-1] 非表[{img_idx}]: words空 → E16（罫線除去）→ E21 実行")
+                    e21_input_path = self.line_eraser.erase(
+                        non_table_path,
+                        output_dir=Path(output_dir) if output_dir else None,
+                    )
                 page_ntc = self.context_extractor.extract(
-                    non_table_path,
+                    e21_input_path,
                     page=page + img_idx,
-                    words=[],
+                    words=words,
                     blocks=[],
                     block_hint='',
-                    vision_text=None
+                    vision_text=None,
                 )
                 total_tokens += int(page_ntc.get('tokens_used', 0))
                 m = page_ntc.get('model_used')
@@ -224,7 +311,7 @@ class E1Controller:
                     cell_map=d10_table.get('cell_map', []),
                     page_index=d10_table.get('page_index', page),
                     table_index=d10_table.get('table_index'),
-                    d10_table=d10_table
+                    d10_table=d10_table,
                 )
             else:
                 logger.info(f"[E-1]   char_count<{_TABLE_OCR_THRESHOLD} → 表 OCR スキップ")
@@ -234,7 +321,7 @@ class E1Controller:
             if stage_b_result:
                 e37_result = self.embedded_assigner.assign(
                     d10_table=d10_table,
-                    stage_b_result=stage_b_result
+                    stage_b_result=stage_b_result,
                 )
                 table_audit.append({
                     'table_id': table_id,
@@ -255,7 +342,7 @@ class E1Controller:
             e40_result = self.ssot_consolidator.consolidate(
                 d10_table=d10_table,
                 e32_result=e32_result,
-                e37_result=e37_result
+                e37_result=e37_result,
             )
 
             if e40_result and e40_result.get('success'):

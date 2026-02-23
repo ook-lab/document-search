@@ -33,7 +33,7 @@ class E27PositionMerger:
         self,
         e20_result: Dict[str, Any] = None,
         e21_result: Dict[str, Any] = None,
-        e25_result: Dict[str, Any] = None
+        e25_result: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """
         E20、E21、E25の結果を位置順にマージ
@@ -132,16 +132,15 @@ class E27PositionMerger:
             logger.info(f"  ├─ E21（Gemini AI）: {e21_count}ブロック")
             logger.info(f"  └─ E25（段落グループ）: {e25_count}ブロック")
 
-            # サンプル出力
+            # 全ブロック出力
             logger.info("")
-            logger.info("[E-27] ===== マージ結果サンプル（先頭5ブロック） =====")
-            for idx, block in enumerate(merged_blocks[:5], 1):
+            logger.info("[E-27] ===== マージ結果 全ブロック =====")
+            for idx, block in enumerate(merged_blocks, 1):
                 source = block.get('source', 'unknown')
-                text = block.get('text', '')[:50]
+                text = block.get('text', '')
                 page = block.get('page', 0)
                 bbox = block.get('bbox', [0, 0, 0, 0])
-                logger.info(f"ブロック{idx} [{source}] (p{page}, y={bbox[1]:.0f}):")
-                logger.info(f"  {text}...")
+                logger.info(f"ブロック{idx} [{source}] (p{page}, y={bbox[1]:.0f}): {text}")
 
             logger.info("")
             logger.info(f"[E-27] 位置順マージ完了: {len(merged_blocks)}ブロック")

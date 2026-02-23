@@ -1,0 +1,376 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "ILLUSTRATOR",
+    "confidence": "HIGH",
+    "reason": "キーワード一致: adobe.*illustrator",
+    "raw_metadata": {
+      "CreationDate": "D:20251125154906+09'00'",
+      "Creator": "Adobe Illustrator CS6 (Windows)",
+      "ModDate": "D:20251125154906+09'00'",
+      "Producer": "Adobe PDF library 10.01",
+      "Title": ""
+    }
+  },
+  "a3_dimension": {
+    "page_count": 12,
+    "dimensions": {
+      "width": 595.275,
+      "height": 841.89,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 209.99979166666665,
+      "height": 297.0000833333333,
+      "unit": "mm"
+    },
+    "is_multi_size": true
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 2.0833333333333335,
+      "avg_words_per_page": 1002.75,
+      "avg_x_std": 120.2744851757256,
+      "avg_words_per_line": 5.380947037729531,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 2,
+          "words": 16,
+          "chars": 203,
+          "x_std": 59.30180253348931,
+          "lines": 18,
+          "words_per_line": 0.8888888888888888
+        },
+        {
+          "page": 1,
+          "images": 1,
+          "words": 1238,
+          "chars": 3446,
+          "x_std": 128.04563797205742,
+          "lines": 204,
+          "words_per_line": 6.068627450980392
+        },
+        {
+          "page": 2,
+          "images": 1,
+          "words": 1214,
+          "chars": 3510,
+          "x_std": 129.43404953413705,
+          "lines": 194,
+          "words_per_line": 6.257731958762887
+        },
+        {
+          "page": 3,
+          "images": 1,
+          "words": 1209,
+          "chars": 3436,
+          "x_std": 127.96731548376974,
+          "lines": 199,
+          "words_per_line": 6.075376884422111
+        },
+        {
+          "page": 4,
+          "images": 1,
+          "words": 1205,
+          "chars": 3397,
+          "x_std": 129.5481394630132,
+          "lines": 188,
+          "words_per_line": 6.409574468085107
+        },
+        {
+          "page": 5,
+          "images": 1,
+          "words": 1182,
+          "chars": 3267,
+          "x_std": 127.41374699673567,
+          "lines": 188,
+          "words_per_line": 6.287234042553192
+        },
+        {
+          "page": 6,
+          "images": 1,
+          "words": 1171,
+          "chars": 3382,
+          "x_std": 129.11564465430672,
+          "lines": 186,
+          "words_per_line": 6.295698924731183
+        },
+        {
+          "page": 7,
+          "images": 1,
+          "words": 1157,
+          "chars": 2975,
+          "x_std": 126.93520703359322,
+          "lines": 193,
+          "words_per_line": 5.994818652849741
+        },
+        {
+          "page": 8,
+          "images": 1,
+          "words": 1159,
+          "chars": 3073,
+          "x_std": 128.63430664765755,
+          "lines": 191,
+          "words_per_line": 6.0680628272251305
+        },
+        {
+          "page": 9,
+          "images": 1,
+          "words": 1242,
+          "chars": 3176,
+          "x_std": 127.80010066319181,
+          "lines": 189,
+          "words_per_line": 6.571428571428571
+        },
+        {
+          "page": 10,
+          "images": 1,
+          "words": 1203,
+          "chars": 3248,
+          "x_std": 127.95371988607182,
+          "lines": 199,
+          "words_per_line": 6.045226130653266
+        },
+        {
+          "page": 11,
+          "images": 13,
+          "words": 37,
+          "chars": 94,
+          "x_std": 101.14415124068381,
+          "lines": 23,
+          "words_per_line": 1.608695652173913
+        }
+      ]
+    }
+  },
+  "origin_app": "ILLUSTRATOR",
+  "document_type": "ILLUSTRATOR",
+  "confidence": "HIGH",
+  "reason": "キーワード一致: adobe.*illustrator",
+  "raw_metadata": {
+    "CreationDate": "D:20251125154906+09'00'",
+    "Creator": "Adobe Illustrator CS6 (Windows)",
+    "ModDate": "D:20251125154906+09'00'",
+    "Producer": "Adobe PDF library 10.01",
+    "Title": ""
+  },
+  "page_type_map": {
+    "0": "DTP",
+    "1": "REPORT",
+    "2": "REPORT",
+    "3": "REPORT",
+    "4": "REPORT",
+    "5": "REPORT",
+    "6": "REPORT",
+    "7": "REPORT",
+    "8": "REPORT",
+    "9": "REPORT",
+    "10": "REPORT",
+    "11": "COVER"
+  },
+  "type_groups": {
+    "DTP": [
+      0
+    ],
+    "REPORT": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "COVER": [
+      11
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH",
+    "2": "HIGH",
+    "3": "HIGH",
+    "4": "HIGH",
+    "5": "HIGH",
+    "6": "HIGH",
+    "7": "HIGH",
+    "8": "HIGH",
+    "9": "HIGH",
+    "10": "HIGH",
+    "11": "HIGH"
+  },
+  "page_count": 12,
+  "dimensions": {
+    "width": 595.275,
+    "height": 841.89,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 209.99979166666665,
+    "height": 297.0000833333333,
+    "unit": "mm"
+  },
+  "is_multi_size": true,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 2.0833333333333335,
+    "avg_words_per_page": 1002.75,
+    "avg_x_std": 120.2744851757256,
+    "avg_words_per_line": 5.380947037729531,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 2,
+        "words": 16,
+        "chars": 203,
+        "x_std": 59.30180253348931,
+        "lines": 18,
+        "words_per_line": 0.8888888888888888
+      },
+      {
+        "page": 1,
+        "images": 1,
+        "words": 1238,
+        "chars": 3446,
+        "x_std": 128.04563797205742,
+        "lines": 204,
+        "words_per_line": 6.068627450980392
+      },
+      {
+        "page": 2,
+        "images": 1,
+        "words": 1214,
+        "chars": 3510,
+        "x_std": 129.43404953413705,
+        "lines": 194,
+        "words_per_line": 6.257731958762887
+      },
+      {
+        "page": 3,
+        "images": 1,
+        "words": 1209,
+        "chars": 3436,
+        "x_std": 127.96731548376974,
+        "lines": 199,
+        "words_per_line": 6.075376884422111
+      },
+      {
+        "page": 4,
+        "images": 1,
+        "words": 1205,
+        "chars": 3397,
+        "x_std": 129.5481394630132,
+        "lines": 188,
+        "words_per_line": 6.409574468085107
+      },
+      {
+        "page": 5,
+        "images": 1,
+        "words": 1182,
+        "chars": 3267,
+        "x_std": 127.41374699673567,
+        "lines": 188,
+        "words_per_line": 6.287234042553192
+      },
+      {
+        "page": 6,
+        "images": 1,
+        "words": 1171,
+        "chars": 3382,
+        "x_std": 129.11564465430672,
+        "lines": 186,
+        "words_per_line": 6.295698924731183
+      },
+      {
+        "page": 7,
+        "images": 1,
+        "words": 1157,
+        "chars": 2975,
+        "x_std": 126.93520703359322,
+        "lines": 193,
+        "words_per_line": 5.994818652849741
+      },
+      {
+        "page": 8,
+        "images": 1,
+        "words": 1159,
+        "chars": 3073,
+        "x_std": 128.63430664765755,
+        "lines": 191,
+        "words_per_line": 6.0680628272251305
+      },
+      {
+        "page": 9,
+        "images": 1,
+        "words": 1242,
+        "chars": 3176,
+        "x_std": 127.80010066319181,
+        "lines": 189,
+        "words_per_line": 6.571428571428571
+      },
+      {
+        "page": 10,
+        "images": 1,
+        "words": 1203,
+        "chars": 3248,
+        "x_std": 127.95371988607182,
+        "lines": 199,
+        "words_per_line": 6.045226130653266
+      },
+      {
+        "page": 11,
+        "images": 13,
+        "words": 37,
+        "chars": 94,
+        "x_std": 101.14415124068381,
+        "lines": 23,
+        "words_per_line": 1.608695652173913
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B30_ILLUSTRATOR"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（ILLUSTRATOR+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "ILLUSTRATOR",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.0909090909090908,
+      "avg_words_per_page": 1090.5454545454545,
+      "avg_x_std": 122.0136064425476,
+      "probe_ok": true,
+      "avg_chars_per_page": 2767.25,
+      "avg_vectors_per_page": 235.83333333333334
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B30_ILLUSTRATOR"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（ILLUSTRATOR+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "ILLUSTRATOR",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.0909090909090908,
+      "avg_words_per_page": 1090.5454545454545,
+      "avg_x_std": 122.0136064425476,
+      "probe_ok": true,
+      "avg_chars_per_page": 2767.25,
+      "avg_vectors_per_page": 235.83333333333334
+    },
+    "policy_version": "A5.v1"
+  }
+}

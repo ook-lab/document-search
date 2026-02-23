@@ -62,7 +62,7 @@ class D8GridAnalyzer:
         vector_result: Dict[str, Any],
         raster_result: Optional[Dict[str, Any]] = None,
         pdf_path: Optional[str] = None,
-        page_index: int = 0
+        page_index: int = 0,
     ) -> Dict[str, Any]:
         """
         罫線から格子構造を解析
@@ -127,10 +127,9 @@ class D8GridAnalyzer:
         intersections = self._find_intersections(h_lines, v_lines)
         logger.info(f"[D-8] 交点計算完了: {len(intersections)}個")
         if intersections:
-            sample = intersections[:5]
-            logger.debug(f"[D-8] 交点サンプル（最初5個）:")
-            for i, point in enumerate(sample, 1):
-                logger.debug(f"  {i}. x={point['x']:.3f}, y={point['y']:.3f}")
+            logger.info(f"[D-8] 交点 全件:")
+            for i, point in enumerate(intersections, 1):
+                logger.info(f"  {i}. x={point['x']:.3f}, y={point['y']:.3f}")
 
         # 表領域を特定
         table_regions = self._identify_table_regions(

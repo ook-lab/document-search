@@ -60,7 +60,8 @@ class G22TextAIProcessor:
     def process(
         self,
         articles: List[Dict[str, Any]],
-        year_context: Optional[int] = None
+        year_context: Optional[int] = None,
+        log_file=None
     ) -> Dict[str, Any]:
         """
         articles からイベント、タスク、注意事項を抽出
@@ -69,6 +70,7 @@ class G22TextAIProcessor:
             articles: G-21 で生成された articles
                 [{'title': str, 'body': str}, ...]
             year_context: 年度コンテキスト（日付推定に使用）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -79,6 +81,27 @@ class G22TextAIProcessor:
                 'tokens_used': int
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-22]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._process_impl(articles, year_context)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _process_impl(
+        self,
+        articles: List[Dict[str, Any]],
+        year_context: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """process() の実装本体"""
         logger.info("[G-22] ========================================")
         logger.info("[G-22] AI処理開始")
         logger.info("[G-22] ========================================")
@@ -89,41 +112,31 @@ class G22TextAIProcessor:
 
         # 入力データのサマリーをログ出力
         logger.info("")
-        logger.info("[G-22] ========== 入力データ詳細 ==========")
+        logger.info("[G-22] ========== 入力データ詳細（G-21 の全 articles） ==========")
         logger.info(f"articles: {len(articles)}件")
 
         if not articles:
             logger.info("(処理する articles がありません)")
-            logger.info("=" * 60)
-            logger.info("")
-            logger.info("[G-22] ========================================")
-            logger.info("[G-22] AI処理完了（処理なし）")
-            logger.info("[G-22] ========================================")
             return {
                 'success': True,
+                'topic_sections': [],
                 'calendar_events': [],
                 'tasks': [],
                 'notices': [],
                 'tokens_used': 0
             }
 
-        # articles の詳細をログ出力
-        logger.info("")
-        logger.info("[G-22] ===== articles の詳細 =====")
+        # G-21 の全 articles の詳細をログ出力
         for i, article in enumerate(articles, 1):
             title = article.get('title', '(タイトルなし)')
             body = article.get('body', '')
-            logger.info(f"Article {i}:")
-            logger.info(f"  title: {title}")
-            logger.info(f"  body length: {len(body)}文字")
-            logger.info(f"  body: {body}")
-            logger.info("")
+            logger.info(f"Article {i}: title={title} body={len(body)}文字")
         logger.info("=" * 60)
 
         try:
-            # articles を1つのテキストに統合
+            # G-21 の全 articles をそのまま統合してAIに渡す
             logger.info("")
-            logger.info("[G-22] articles を統合中...")
+            logger.info("[G-22] G-21 の全 articles を統合中...")
             full_text = self._combine_articles(articles)
             logger.info(f"[G-22] 統合完了: {len(full_text)}文字")
 
@@ -183,9 +196,14 @@ class G22TextAIProcessor:
             logger.info("")
             logger.info("[G-22] ========== 抽出結果詳細 ==========")
 
+            topic_sections = result.get('topic_sections', [])
             calendar_events = result.get('calendar_events', [])
             tasks = result.get('tasks', [])
             notices = result.get('notices', [])
+
+            logger.info(f"topic_sections: {len(topic_sections)}件")
+            for i, sec in enumerate(topic_sections, 1):
+                logger.info(f"  Section {i}: title={sec.get('title')} body={len(sec.get('body',''))}文字")
 
             logger.info(f"calendar_events: {len(calendar_events)}件")
             if calendar_events:
@@ -234,6 +252,7 @@ class G22TextAIProcessor:
 
             result = {
                 'success': True,
+                'topic_sections': topic_sections,
                 'calendar_events': calendar_events,
                 'tasks': tasks,
                 'notices': notices,
@@ -244,15 +263,21 @@ class G22TextAIProcessor:
             if self.document_id:
                 try:
                     db = DatabaseClient(use_service_role=True)
-                    ai_extracted = {
-                        'calendar_events': calendar_events,
-                        'tasks': tasks,
-                        'notices': notices
+                    update_data = {
+                        'g22_ai_extracted': {
+                            'calendar_events': calendar_events,
+                            'tasks': tasks,
+                            'notices': notices
+                        }
                     }
-                    db.client.table('Rawdata_FILE_AND_MAIL').update({
-                        'g22_ai_extracted': ai_extracted
-                    }).eq('id', self.document_id).execute()
-                    logger.info(f"[G-22] ✓ g22_ai_extracted を Supabase に保存: イベント{len(calendar_events)}件, タスク{len(tasks)}件, 注意事項{len(notices)}件")
+                    # topic_sections が得られた場合、g21_articles を AI 出力で上書き
+                    if topic_sections:
+                        topic_articles = [{'title': s.get('title', ''), 'body': s.get('body', '')} for s in topic_sections]
+                        update_data['g21_articles'] = topic_articles
+                        logger.info(f"[G-22] ✓ g21_articles を AI トピック版で上書き: {len(topic_articles)}件")
+
+                    db.client.table('Rawdata_FILE_AND_MAIL').update(update_data).eq('id', self.document_id).execute()
+                    logger.info(f"[G-22] ✓ Supabase 保存完了: イベント{len(calendar_events)}件, タスク{len(tasks)}件, 注意事項{len(notices)}件")
                 except Exception as e:
                     logger.error(f"[G-22] Supabase保存エラー: {e}")
 
@@ -308,22 +333,39 @@ class G22TextAIProcessor:
             context_info = f"\n**年度情報**: テキストから年度を推定してください。不明な場合は{current_year}年を使用してください。\n"
 
         return f"""
-あなたは学校通信から重要な情報を抽出する専門家です。
+あなたは学校通信の情報を整理する専門家です。
 {context_info}
-以下のテキストから、以下の情報を抽出し、JSON形式で返してください：
+以下は G-21 が生成した全 articles です。各 article には「# ラベル」が付いており、
+ラベルの意味は以下の通りです：
+  - 送信者 / メール / 送信日時 / 件名 / 本文 → メール由来のフィールド
+  - 段落N → PDF添付ファイルの地の文（段落単位）
 
-1. **予定・スケジュール**: 日付（YYYY-MM-DD形式）、時間、イベント名、場所
-   - 日付は必ずISO 8601形式（YYYY-MM-DD）で出力してください
-   - 「1/15」のような表記は、年度ヒントを参考に完全な日付に変換してください
-2. **タスク**: 提出物、準備物、持ち物
-3. **注意事項**: 重要な連絡、変更点
+この全データを使って、以下の JSON を返してください：
 
-[テキスト]
+1. **topic_sections**: 全データを内容のまとまりごとにグループ化してください。
+   - 各セクションに適切な日本語タイトルをつける（例：「メール情報」「運動会について」「持ち物」）
+   - ラベルの異なるデータ（メール情報 vs PDF地の文）を適切に分類すること
+   - 全 articles のデータをカバーすること（省略しない）
+
+2. **calendar_events**: 日付（YYYY-MM-DD形式）、時間、イベント名、場所
+   - 「1/15」のような表記は年度ヒントを参考に完全な日付に変換すること
+
+3. **tasks**: 提出物、準備物、持ち物
+
+4. **notices**: 重要な連絡、変更点
+
+[全 articles]
 {text}
 
 出力形式:
 ```json
 {{
+  "topic_sections": [
+    {{
+      "title": "運動会について",
+      "body": "今年の運動会は..."
+    }}
+  ],
   "calendar_events": [
     {{
       "date": "2024-01-15",
@@ -352,6 +394,7 @@ class G22TextAIProcessor:
 - テキストに記載されていない情報は絶対に作らないこと
 - 抽出できない場合は空の配列を返すこと
 - 日付は可能な限り YYYY-MM-DD 形式に変換すること
+- topic_sections は必ず全文をカバーすること（省略・要約しない）
 """
 
     def _parse_response(self, raw_text: str) -> Dict[str, Any]:
@@ -384,6 +427,7 @@ class G22TextAIProcessor:
             logger.warning(f"[G-22] JSONパースエラー: {e}")
             # パースできない場合は空の結果を返す
             return {
+                'topic_sections': [],
                 'calendar_events': [],
                 'tasks': [],
                 'notices': []
@@ -394,6 +438,7 @@ class G22TextAIProcessor:
         return {
             'success': False,
             'error': error_message,
+            'topic_sections': [],
             'calendar_events': [],
             'tasks': [],
             'notices': [],

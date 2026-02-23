@@ -35,22 +35,36 @@ class B90ResultMerger:
     def merge(
         self,
         raw_results: List[Dict[str, Any]],
+        log_file=None,
+        original_pdf_path: Optional[str] = None,
+        total_pages: int = 0,
     ) -> Dict[str, Any]:
         """
         複数 B プロセッサの生結果リストを単一の stage_b_result にマージ
 
         Args:
             raw_results: B プロセッサの生結果リスト
+            log_file: 個別ログファイルパス（Noneなら共有ロガーのみ）
 
         Returns:
             F1 が読める統合 stage_b_result
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[B-90]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+
         logger.info("=" * 70)
         logger.info(f"[B-90] Result Merger 開始: {len(raw_results)}件")
 
         all_logical_blocks: List[Dict] = []
         all_structured_tables: List[Dict] = []
-        purged_pdf_path: Optional[str] = None
+        purged_sources: List[Dict] = []  # {'path': str, 'pages': List[int]}
         source_types: List[str] = []
         success_count = 0
 
@@ -77,10 +91,13 @@ class B90ResultMerger:
             logger.info(f"[B-90]   structured_tables: {len(tables)}件")
             all_structured_tables.extend(tables)
 
-            # purged_pdf_path は最初のものを採用
-            if not purged_pdf_path and result.get('purged_pdf_path'):
-                purged_pdf_path = result['purged_pdf_path']
-                logger.info(f"[B-90]   purged_pdf_path 採用: {Path(purged_pdf_path).name}")
+            # purged PDF を pages と共に収集（後でページ順マージ）
+            if result.get('purged_pdf_path'):
+                purged_sources.append({
+                    'path': result['purged_pdf_path'],
+                    'pages': source_pages,
+                })
+                logger.info(f"[B-90]   purged PDF 登録: {Path(result['purged_pdf_path']).name} pages={source_pages}")
 
         # ページ番号 → Y座標 順にソート
         all_logical_blocks.sort(key=lambda b: (
@@ -88,12 +105,26 @@ class B90ResultMerger:
             b.get('bbox', [0, 0, 0, 0])[1] if b.get('bbox') else 0
         ))
 
+        # purged PDF をページ順にマージ
+        if len(purged_sources) > 1:
+            merged_purged = self._merge_purged_pdfs(purged_sources, original_pdf_path, total_pages)
+        elif purged_sources:
+            merged_purged = purged_sources[0]['path']
+        else:
+            merged_purged = ''
+
         logger.info(f"[B-90] マージ完了:")
         logger.info(f"  ├─ 成功プロセッサ: {success_count}/{len(raw_results)}")
         logger.info(f"  ├─ logical_blocks: {len(all_logical_blocks)}件")
         logger.info(f"  ├─ structured_tables: {len(all_structured_tables)}件")
-        logger.info(f"  └─ source_types: {source_types}")
+        logger.info(f"  ├─ source_types: {source_types}")
+        logger.info(f"  └─ purged PDF: {Path(merged_purged).name if merged_purged else 'なし'}")
+        for idx, block in enumerate(all_logical_blocks):
+            logger.info(f"[B-90] block{idx} (page={block.get('page')}): {block.get('text', '')}")
         logger.info("=" * 70)
+
+        if _sink_id is not None:
+            logger.remove(_sink_id)
 
         if success_count == 0:
             return {
@@ -109,9 +140,77 @@ class B90ResultMerger:
             'processor_name': 'B90_MERGED',
             'logical_blocks': all_logical_blocks,
             'structured_tables': all_structured_tables,
-            'purged_pdf_path': purged_pdf_path or '',
+            'purged_pdf_path': merged_purged,
             'b_source_types': source_types,
         }
+
+    # ------------------------------------------------------------------
+    # purged PDF マージ
+    # ------------------------------------------------------------------
+
+    def _merge_purged_pdfs(
+        self,
+        purged_sources: List[Dict],
+        original_pdf_path: Optional[str],
+        total_pages: int,
+    ) -> str:
+        """
+        各プロセッサの purged サブPDF を元のページ順にマージする。
+
+        purged_sources[i]['pages'] = 元PDFでのページ番号リスト（0始まり）
+        サブPDF内のページ順は pages[0]→0, pages[1]→1, ... に対応する。
+        """
+        try:
+            import fitz
+
+            # page_num → (sub_pdf_path, sub_pdf_page_index)
+            page_map: Dict = {}
+            for source in purged_sources:
+                for sub_idx, orig_page in enumerate(source['pages']):
+                    page_map[orig_page] = (source['path'], sub_idx)
+
+            # 総ページ数を決定
+            if not total_pages:
+                total_pages = max(page_map.keys()) + 1 if page_map else 0
+
+            logger.info(f"[B-90] purged PDF マージ開始: {total_pages}ページ")
+
+            # ソースPDFをキャッシュ（同じファイルを何度も開かない）
+            open_docs: Dict[str, Any] = {}
+            for source in purged_sources:
+                p = source['path']
+                if p not in open_docs:
+                    open_docs[p] = fitz.open(p)
+
+            orig_doc = fitz.open(original_pdf_path) if original_pdf_path else None
+
+            merged = fitz.open()
+            for page_num in range(total_pages):
+                if page_num in page_map:
+                    sub_path, sub_idx = page_map[page_num]
+                    src = open_docs[sub_path]
+                    merged.insert_pdf(src, from_page=sub_idx, to_page=sub_idx)
+                    logger.info(f"[B-90]   ページ{page_num + 1}: {Path(sub_path).name}[{sub_idx}]")
+                elif orig_doc and page_num < len(orig_doc):
+                    merged.insert_pdf(orig_doc, from_page=page_num, to_page=page_num)
+                    logger.info(f"[B-90]   ページ{page_num + 1}: 元PDF（未処理ページ）")
+
+            for doc in open_docs.values():
+                doc.close()
+            if orig_doc:
+                orig_doc.close()
+
+            first_path = purged_sources[0]['path']
+            merged_path = Path(first_path).parent / "b90_merged_purged.pdf"
+            merged.save(str(merged_path))
+            merged.close()
+
+            logger.info(f"[B-90] マージ済み purged PDF: {merged_path.name}")
+            return str(merged_path)
+
+        except Exception as e:
+            logger.error(f"[B-90] purged PDF マージ失敗: {e}", exc_info=True)
+            return purged_sources[0]['path'] if purged_sources else ''
 
     # ------------------------------------------------------------------
     # 正規化ヘルパー

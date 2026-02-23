@@ -1,0 +1,5 @@
+{
+  "is_structured": false,
+  "error": "GATE_BLOCKED: GATE_CONDITION_FAILED avg_words_per_line<1.0 (actual=0.60)",
+  "processor_name": "B1_CONTROLLER"
+}

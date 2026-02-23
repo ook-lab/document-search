@@ -36,7 +36,7 @@ class E25ParagraphGrouper:
     def group(
         self,
         stage_b_result: Dict[str, Any],
-        stage_d_result: Dict[str, Any]
+        stage_d_result: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         単語を段落にグループ化
@@ -117,6 +117,8 @@ class E25ParagraphGrouper:
                 all_paragraphs.append(paragraph)
 
             logger.info(f"[E-25] 段落化完了: {len(all_paragraphs)}段落")
+            for para_idx, para in enumerate(all_paragraphs):
+                logger.info(f"[E-25]   段落{para_idx}: {para.get('text')}")
 
             logger.info("")
             logger.info(f"[E-25] 段落グループ化完了: {len(all_paragraphs)}段落")

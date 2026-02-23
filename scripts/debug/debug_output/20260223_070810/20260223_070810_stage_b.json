@@ -1,0 +1,11 @@
+{
+  "is_structured": false,
+  "error": "Ghostscriptが見つかりません（gs / gswin64c / gswin32c）",
+  "text_with_tags": "",
+  "logical_blocks": [],
+  "structured_tables": [],
+  "tags": {},
+  "all_words": [],
+  "purged_pdf_path": "",
+  "processor_name": "B61_PDF_WORD_LTSC"
+}

@@ -1,0 +1,146 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "SCAN",
+    "confidence": "LOW",
+    "reason": "判定不能 (Creator: , Producer: Microsoft: Print To PDF)",
+    "raw_metadata": {
+      "Author": "*q •d\u0000",
+      "CreationDate": "D:20251118155321+09'00'",
+      "ModDate": "D:20251118155321+09'00'",
+      "Producer": "Microsoft: Print To PDF",
+      "Title": "Microsoft Word - é2¢«ˆá\b12\b÷ˆ\u000f\u0015\t.doc"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 595.32001,
+      "height": 841.92004,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01567019444443,
+      "height": 297.01068077777774,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 6.5,
+      "avg_words_per_page": 92.0,
+      "avg_x_std": 153.26494967165704,
+      "avg_words_per_line": 0.9350509930220074,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 7,
+          "words": 74,
+          "chars": 1400,
+          "x_std": 153.63527578635075,
+          "lines": 81,
+          "words_per_line": 0.9135802469135802
+        },
+        {
+          "page": 1,
+          "images": 6,
+          "words": 110,
+          "chars": 2161,
+          "x_std": 152.89462355696332,
+          "lines": 115,
+          "words_per_line": 0.9565217391304348
+        }
+      ]
+    }
+  },
+  "origin_app": "SCAN",
+  "document_type": "SCAN",
+  "confidence": "LOW",
+  "reason": "判定不能 (Creator: , Producer: Microsoft: Print To PDF)",
+  "raw_metadata": {
+    "Author": "*q •d\u0000",
+    "CreationDate": "D:20251118155321+09'00'",
+    "ModDate": "D:20251118155321+09'00'",
+    "Producer": "Microsoft: Print To PDF",
+    "Title": "Microsoft Word - é2¢«ˆá\b12\b÷ˆ\u000f\u0015\t.doc"
+  },
+  "page_type_map": {
+    "0": "UNKNOWN",
+    "1": "UNKNOWN"
+  },
+  "type_groups": {
+    "UNKNOWN": [
+      0,
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "LOW",
+    "1": "LOW"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 595.32001,
+    "height": 841.92004,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01567019444443,
+    "height": 297.01068077777774,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 6.5,
+    "avg_words_per_page": 92.0,
+    "avg_x_std": 153.26494967165704,
+    "avg_words_per_line": 0.9350509930220074,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 7,
+        "words": 74,
+        "chars": 1400,
+        "x_std": 153.63527578635075,
+        "lines": 81,
+        "words_per_line": 0.9135802469135802
+      },
+      {
+        "page": 1,
+        "images": 6,
+        "words": 110,
+        "chars": 2161,
+        "x_std": 152.89462355696332,
+        "lines": 115,
+        "words_per_line": 0.9565217391304348
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "LOW_CONFIDENCE",
+    "block_reason": "confidence!=HIGH のため遮断（confidence=LOW）",
+    "evidence": {
+      "origin_app": "SCAN",
+      "layout_profile": "FIXED",
+      "confidence": "LOW"
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "LOW_CONFIDENCE",
+    "block_reason": "confidence!=HIGH のため遮断（confidence=LOW）",
+    "evidence": {
+      "origin_app": "SCAN",
+      "layout_profile": "FIXED",
+      "confidence": "LOW"
+    },
+    "policy_version": "A5.v1"
+  }
+}

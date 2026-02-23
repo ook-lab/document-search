@@ -13,12 +13,14 @@ from loguru import logger
 class B12GoogleSheetsProcessor:
     """B-12: Google Sheets Processor（Google Spreadsheet由来PDF専用）"""
 
-    def process(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
+    def process(self, file_path: Path, masked_pages=None, log_file=None) -> Dict[str, Any]:
         """
         Google Sheets由来PDFから構造化データを抽出
 
         Args:
             file_path: PDFファイルパス
+            masked_pages: スキップするページ番号リスト（0始まり）
+            log_file: 個別ログファイルパス（Noneなら共有ロガーのみ）
 
         Returns:
             {
@@ -30,6 +32,22 @@ class B12GoogleSheetsProcessor:
                 'purged_image_path': str
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[B-12]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._process_impl(file_path, masked_pages)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _process_impl(self, file_path: Path, masked_pages=None) -> Dict[str, Any]:
         logger.info(f"[B-12] Google Sheets処理開始: {file_path.name}")
 
         try:
@@ -83,6 +101,9 @@ class B12GoogleSheetsProcessor:
                 }
 
                 logger.info(f"[B-12] 抽出完了: 表={len(all_tables)}, 単語（削除対象）={len(all_words)}")
+                for t_idx, table in enumerate(all_tables):
+                    for row_idx, row in enumerate(table.get('data', [])):
+                        logger.info(f"[B-12] table{t_idx} 行{row_idx}: {row}")
 
                 purged_pdf_path = self._purge_extracted_text(file_path, all_words, all_tables)
                 logger.info(f"[B-12] テキスト削除完了: {purged_pdf_path}")
@@ -126,9 +147,9 @@ class B12GoogleSheetsProcessor:
             col_count = len(data[0]) if data else 0
 
             logger.info(f"[B-12] Table {idx} (Page {page_num}): {row_count}行×{col_count}列")
-            if data and len(data) > 0:
-                first_row_sample = str(data[0][:min(3, len(data[0]))])[:100]
-                logger.debug(f"[B-12] Table {idx} 1行目サンプル: {first_row_sample}")
+            if data:
+                for row_idx, row in enumerate(data):
+                    logger.info(f"[B-12] Table {idx} 行{row_idx}: {row}")
 
             tables.append({
                 'page': page_num,

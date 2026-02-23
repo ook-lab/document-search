@@ -1,0 +1,229 @@
+# ==============================================================
+# Stage A 判定ルール定義（唯一の設定ファイル）
+#
+# ここを変更すれば TypeAnalyzer・Gatekeeper 両方に反映される。
+# コードを触る必要はない。
+# ==============================================================
+
+
+# ──────────────────────────────────────
+# A-1. Creator 照合パターン（誰が作ったか・主要判定・HIGH）
+#      Creator = 文書を作成したアプリケーション
+#      上から順に照合し、最初に一致した種別を採用する
+# ──────────────────────────────────────
+creator_patterns:
+  GOODNOTES:
+    - "goodnotes"
+    - "good.*notes"
+
+  GOOGLE_DOCS:
+    - "google.*docs"
+    - "google docs renderer"
+
+  GOOGLE_SHEETS:
+    - "google.*sheets"
+
+  WORD_LTSC:
+    - "microsoft.*word.*ltsc"
+    - "word.*ltsc"
+
+  WORD_2019:
+    - "microsoft.*word.*2019"
+    - "word.*2019"
+
+  WORD:
+    - "microsoft.*word"
+    - "winword"
+
+  POWERPOINT:
+    - "microsoft.*powerpoint"
+    - "powerpoint"
+
+  ILLUSTRATOR:
+    - "adobe.*illustrator"
+    - "illustrator"
+
+  INDESIGN:
+    - "adobe.*indesign"
+    - "indesign"
+
+  EXCEL:
+    - "microsoft.*excel"
+    - "excel"
+
+  CANVA:
+    - "canva"
+
+  ACROBAT_PDFMAKER:
+    # Word/Excel等をAcrobatアドイン経由でPDF化したもの
+    # ACROBAT より先に照合すること（pdfmakerを優先させる）
+    - "acrobat.*pdfmaker"
+    - "pdfmaker"
+
+  ACROBAT:
+    # Acrobat本体で生成/再保存（元ファイル種別は不明）
+    # "adobe.*acrobat" にすることで ACROBAT_PDFMAKER と衝突しない
+    - "adobe.*acrobat"
+
+  STUDYAID:
+    # Studyaid D.B. 教材作成システム
+    - "studyaid"
+
+  SCAN:
+    # スキャナはCreatorにメーカー名を入れる場合がある
+    - "ricoh"
+    - "canon"
+    - "xerox"
+    - "epson"
+    - "hp.*scanner"
+    - "konica.*minolta"
+    - "scan"
+    - "scanner"
+
+  # 不一致 → Producer照合へ
+
+
+# ──────────────────────────────────────
+# A-2. Producer 照合パターン（どう変換したか・補助判定）
+#      Producer = PDFへの変換ツール
+#      Creator が不明/空の場合のみ参照する
+#      Creator で判定できた場合はここを見ない
+# ──────────────────────────────────────
+producer_patterns:
+  GOOGLE_DOCS:
+    # Google Docs でエクスポートしたPDF（Creator が空になる）
+    - "google docs renderer"
+    - "skia.*google"
+    - "google.*renderer"
+
+  GOOGLE_SHEETS:
+    # Google Sheets でエクスポートしたPDF
+    - "google sheets"
+    - "google.*spreadsheet"
+
+  SCAN:
+    # スキャナはProducerにメーカー名を入れることが多い
+    - "ricoh"
+    - "canon"
+    - "xerox"
+    - "epson"
+    - "hp.*scanner"
+    - "konica.*minolta"
+    - "scan"
+    - "scanner"
+
+  IOS_QUARTZ:
+    # iPhone/iPad の共有→PDF / プリント→PDF 系
+    # Creator が空でも Producer で特定可能
+    - "quartz pdfcontext"
+
+  WEB_PDF:
+    # ウェブPDF生成ライブラリ（TCPDF/wkhtmltopdf/mPDF/FPDF/dompdf/ReportLab等）
+    # Creator が空で Producer にライブラリ名が入る
+    - "tcpdf"
+    - "wkhtmltopdf"
+    - "mpdf"
+    - "fpdf"
+    - "dompdf"
+    - "reportlab"
+    - "snappy"
+    - "prince"
+
+  CANVA:
+    # Canva（ブラウザベース）はCreatorが空になる場合がある
+    - "canva"
+
+  GOODNOTES:
+    # GoodNotesはCreatorをセットするが念のため
+    - "goodnotes"
+    - "good.*notes"
+
+  STUDYAID:
+    # Studyaid D.B. 教材作成システム
+    - "studyaid"
+
+  # Producer だけ見てWORD/EXCEL/POWERPOINT等と判定しない。
+  # "Microsoft: Print To PDF" はWord/Excel/PPT共通 → 根拠にならない。
+  # Adobe系（ILLUSTRATOR/INDESIGN/ACROBAT）もProducer="Adobe PDF Library"共通 → 根拠にならない。
+
+
+# ──────────────────────────────────────
+# B. ページフォント照合パターン
+#    対象: 各ページの fontname（subset prefix 除去後、小文字化）
+#    上から順に照合し、最初に一致した種別を採用する
+#    文字数 < cover_char_threshold のページは COVER 確定
+# ──────────────────────────────────────
+page_font_patterns:
+  # COVER 分類は廃止。
+  # SCAN = chars=0 かつ images>0（テキスト選択不可が唯一の根拠）
+  # 完全空白ページ（chars=0, images=0）は特別扱いしない。B に渡して何も出ないだけ。
+
+  REPORT:
+    # WINJr 帳票システム固有フォント
+    - "wing"
+
+  DTP:
+    # Illustrator / InDesign 標準フォント
+    - "kozmin"
+    - "kozgo"
+    - "minionpro"
+    - "myriad"
+    - "midashi"
+
+  # 上記いずれにも一致しない場合はコードで UNKNOWN を返す（根拠なし = 判定しない）
+
+
+# ──────────────────────────────────────
+# C. Gatekeeper 通行条件
+# ──────────────────────────────────────
+gatekeeper:
+  policy_version: "A5.v2"
+
+  # C-1. 許可する (origin_app, layout_profile) の組み合わせ
+  #      ここにない組み合わせは全て BLOCK（deny by default）
+  allowed_combinations:
+    - [WORD_LTSC,   FLOW]
+    - [WORD_LTSC,   FIXED]
+    - [WORD_2019,   FLOW]
+    - [WORD_2019,   FIXED]
+    - [WORD,        FLOW]
+    - [WORD,        FIXED]
+    - [GOOGLE_DOCS, FLOW]
+    - [GOOGLE_DOCS, FIXED]
+    - [REPORT,      FLOW]
+    - [REPORT,      FIXED]
+    - [ILLUSTRATOR, FLOW]
+    - [ILLUSTRATOR, FIXED]
+    - [INDESIGN,    FLOW]
+    - [INDESIGN,    FIXED]
+    - [MIXED,       FLOW]
+    - [MIXED,       FIXED]
+    - [EXCEL,        FLOW]
+    - [EXCEL,        FIXED]
+    - [GOOGLE_SHEETS, FLOW]
+    - [GOOGLE_SHEETS, FIXED]
+    - [GOODNOTES,        FLOW]
+    - [GOODNOTES,        FIXED]
+    - [POWERPOINT,       FLOW]
+    - [POWERPOINT,       FIXED]
+    - [ACROBAT_PDFMAKER, FLOW]
+    - [ACROBAT_PDFMAKER, FIXED]
+    - [CANVA,            FLOW]
+    - [CANVA,            FIXED]
+    - [STUDYAID,         FLOW]
+    - [STUDYAID,         FIXED]
+    - [IOS_QUARTZ,       FLOW]
+    - [IOS_QUARTZ,       FIXED]
+    - [ACROBAT,          FLOW]
+    - [ACROBAT,          FIXED]
+    - [WEB_PDF,          FLOW]
+    - [WEB_PDF,          FIXED]
+    # SCAN/UNKNOWN はここに含まない。
+    #   SCAN    → B80_SCAN_OCR は未実装スタブ。実装完了まで BLOCK。
+    #   UNKNOWN → 推論エンジン未実装。InferenceEngine 実装後に解禁する。
+
+  # C-2. 閾値チェックは廃止
+  #      数値閾値は全て根拠がないため削除。
+  #      Gatekeeper は confidence + allowed_combinations のみで判定する。
+
+

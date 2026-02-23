@@ -60,7 +60,7 @@ class F3SmartDateNormalizer:
         self,
         events: List[Dict[str, Any]],
         year_context: Optional[int] = None,
-        merge_result: Optional[Dict[str, Any]] = None
+        merge_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         チェーンパターン用: イベントを正規化して次のステージへ
@@ -74,10 +74,12 @@ class F3SmartDateNormalizer:
             F-5の結果（チェーン経由）またはF-3の結果
         """
         # イベントの正規化（表データとテキストも渡す）
+        display_sent_at = merge_result.get('display_sent_at') if merge_result else None
         norm_result = self.normalize_dates(
             events=events,
             year_context=year_context,
-            merge_result=merge_result
+            merge_result=merge_result,
+            display_sent_at=display_sent_at,
         )
 
         if not norm_result.get('success'):
@@ -104,7 +106,8 @@ class F3SmartDateNormalizer:
         events: List[Dict[str, Any]],
         year_context: Optional[int] = None,
         reference_date: Optional[str] = None,
-        merge_result: Optional[Dict[str, Any]] = None
+        merge_result: Optional[Dict[str, Any]] = None,
+        display_sent_at=None,
     ) -> Dict[str, Any]:
         """
         イベントリストの日付を正規化
@@ -139,21 +142,25 @@ class F3SmartDateNormalizer:
         logger.info(f"[F-3] 日付正規化開始: {len(events)}件")
 
         try:
-            # 基準日を決定
+            # 基準日を決定（display_sent_at があればそちらを優先）
             if reference_date is None:
-                reference_date = datetime.now().strftime('%Y-%m-%d')
+                if display_sent_at:
+                    # タイムゾーン付き文字列の場合は日付部分だけ取り出す
+                    reference_date = str(display_sent_at)[:10]
+                else:
+                    reference_date = datetime.now().strftime('%Y-%m-%d')
 
             # ★表データとテキストを取得（年度推定に使用）
             tables = merge_result.get('tables', []) if merge_result else []
             raw_text = merge_result.get('raw_integrated_text', '') if merge_result else ''
 
-            # ★修正: year_contextがNoneでもAIに推定させる
             # プロンプトを構築
-            prompt = self._build_prompt(events, year_context, reference_date, tables, raw_text)
+            prompt = self._build_prompt(events, year_context, reference_date, tables, raw_text, display_sent_at)
 
             logger.info(f"[F-3] モデル: {self.model_name}")
             logger.info(f"[F-3] 年度ヒント: {year_context if year_context else 'なし（AIが推定）'}")
-            logger.info(f"[F-3] 基準日: {reference_date}")
+            logger.info(f"[F-3] 基準日（送信日ベース）: {reference_date}")
+            logger.info(f"[F-3] display_sent_at: {display_sent_at or '未設定'}")
             logger.info(f"[F-3] 年度推定用データ: 表{len(tables)}個, テキスト{len(raw_text)}文字")
 
             # プロンプト全文をログ出力
@@ -235,7 +242,8 @@ class F3SmartDateNormalizer:
         year_context: Optional[int],
         reference_date: str,
         tables: Optional[List[Dict[str, Any]]] = None,
-        raw_text: Optional[str] = None
+        raw_text: Optional[str] = None,
+        display_sent_at=None,
     ) -> str:
         """
         プロンプトを構築
@@ -252,20 +260,23 @@ class F3SmartDateNormalizer:
         """
         prompt_parts = []
 
-        # ★修正: year_contextの有無でプロンプトを変更
+        # year_contextの有無でプロンプトを変更
+        sent_at_line = f"- 送信日時（Supabase）: {display_sent_at}" if display_sent_at else ""
         if year_context:
             # 年度ヒントがある場合
             context_info = f"""
 **コンテキスト:**
 - 年度ヒント: {year_context}年
 - 基準日: {reference_date}
+{sent_at_line}
 """
         else:
             # 年度ヒントがない場合
             context_info = f"""
 **コンテキスト:**
 - 基準日: {reference_date}
-- 年度情報: 不明（以下の情報から推定してください）
+{sent_at_line}
+- 年度情報: 不明（以下のルールと情報から推定してください）
 """
 
         # ★年度推定のための追加情報
@@ -291,16 +302,32 @@ class F3SmartDateNormalizer:
             if year_hints:
                 year_hints_section = "\n\n**年度推定のための参考情報:**\n" + "\n\n".join(year_hints)
 
+        # 最近傍年ルール（display_sent_at がある場合に追加）
+        closest_year_rule = ""
+        if display_sent_at and not year_context:
+            sent_date_str = str(display_sent_at)[:10]
+            closest_year_rule = f"""
+**★最重要：年が不明な場合の年度決定ルール（送信日最近傍）**
+- 年が書かれていない日付（例: "1/4"、"3月5日"）は、送信日 {sent_date_str} に最も近い日付になる年を選んでください
+- 送信日の前後それぞれの年（送信年-1、送信年、送信年+1）で候補日を作り、送信日との日数差が最小になる年を採用します
+- 例: 送信日=2025-12-25、日付="1/4"
+    → 2025-01-04: |2025-12-25 - 2025-01-04| = 355日
+    → 2026-01-04: |2025-12-25 - 2026-01-04| = 10日  ← 最も近い → 2026年を採用
+    → 2024-01-04: |2025-12-25 - 2024-01-04| = 721日
+- 曜日の整合性も確認し、合わない場合はさらに近い年を探してください
+"""
+
         # ベースプロンプト
         prompt_parts.append(f"""
 あなたは曖昧な日付表現を ISO 8601 形式に変換する専門家です。
 
 {context_info}{year_hints_section}
-
+{closest_year_rule}
 **タスク:**
 1. **年度の推定**: テキストや表から年度情報を推定してください
    - 例: "2025年度"、"令和7年"、"2025/1/16 発行"、表中の日付パターン
    - ★表データとテキストの両方を確認し、年情報を見つけてください
+   - ★年が書かれていない場合は上記「送信日最近傍ルール」を使ってください
 2. **曜日の検証**: 日付に曜日が付いている場合（例: "1/15（月）"）、変換後の日付が実際にその曜日か確認してください
    - 曜日が合わない場合は、正しい年を再推定してください
    - 例: "1/15（月）" → 2025-01-15が月曜日でない場合、2024-01-15や2026-01-15など、月曜日になる年を探してください

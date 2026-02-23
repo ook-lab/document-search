@@ -1,0 +1,109 @@
+{
+  "success": true,
+  "is_structured": true,
+  "processor_name": "B90_MERGED",
+  "logical_blocks": [
+    {
+      "page": 0,
+      "bbox": [
+        307.3945,
+        80.17259999999999,
+        411.8665,
+        92.17259999999999
+      ],
+      "text": "塾内報　2025年度",
+      "merged_count": 1,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        329.7632,
+        236.00829999999996,
+        387.2278,
+        263.9683
+      ],
+      "text": "５ vvooll   小小",
+      "merged_count": 3,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        337.0806,
+        236.00829999999996,
+        365.0406,
+        263.9683
+      ],
+      "text": "５",
+      "merged_count": 1,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        385.583,
+        237.6585,
+        418.50050000000005,
+        272.6585
+      ],
+      "text": "1100",
+      "merged_count": 1,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        346.9629,
+        609.8341,
+        560.1127,
+        639.8025
+      ],
+      "text": "119月日実施 公開組分けテスト 成績優秀者",
+      "merged_count": 2,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        358.1172,
+        662.8004,
+        557.7492000000001,
+        690.8004
+      ],
+      "text": "当冊子に掲載されている成績データは2025年11月16日 の成績です。後日得点訂正により順位が変動する可能 時点性がございます。その旨ご了承ください。",
+      "merged_count": 3,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        358.1172,
+        702.8004,
+        557.4052000000001,
+        720.8004
+      ],
+      "text": "実名掲載につきましては、入塾時に必要書類をご提出いた だいた方のみ掲載しております。",
+      "merged_count": 2,
+      "_source": "DTP"
+    },
+    {
+      "page": 0,
+      "bbox": [
+        358.1172,
+        732.8004,
+        557.4052000000001,
+        750.8004
+      ],
+      "text": "早稲田アカデミーを通して各種テストを申し込み、ご受験 いただいた方を掲載しております。",
+      "merged_count": 2,
+      "_source": "DTP"
+    }
+  ],
+  "structured_tables": [],
+  "purged_pdf_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260218_133429\\purged\\b30_20251217_050917_小５WINJrvol10_9F096DCA_purged.pdf",
+  "b_source_types": [
+    "DTP",
+    "REPORT"
+  ]
+}

@@ -31,7 +31,7 @@ class D9CellIdentifier:
 
     def identify(
         self,
-        grid_result: Dict[str, Any]
+        grid_result: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         格子解析結果からセル座標を特定
@@ -76,9 +76,9 @@ class D9CellIdentifier:
         logger.info(f"  ├─ X座標数: {len(x_coords)}")
         logger.info(f"  └─ Y座標数: {len(y_coords)}")
 
-        # 座標リストをログ出力（最初の10個まで）
-        logger.debug(f"[D-9] X座標リスト（最初10個）: {[f'{x:.3f}' for x in x_coords[:10]]}")
-        logger.debug(f"[D-9] Y座標リスト（最初10個）: {[f'{y:.3f}' for y in y_coords[:10]]}")
+        # 座標リストをログ出力（全件）
+        logger.info(f"[D-9] X座標リスト 全件: {[f'{x:.3f}' for x in x_coords]}")
+        logger.info(f"[D-9] Y座標リスト 全件: {[f'{y:.3f}' for y in y_coords]}")
 
         # セルを生成
         cells = self._generate_cells(x_coords, y_coords)
@@ -88,13 +88,12 @@ class D9CellIdentifier:
 
         logger.info(f"[D-9] セル特定完了: {len(cells)}個")
 
-        # セルのサンプルを詳細ログ
+        # セルの全件ログ
         if cells:
-            sample = cells[:5]
-            logger.debug(f"[D-9] セルサンプル（最初5個）:")
-            for cell in sample:
+            logger.info(f"[D-9] セル 全件:")
+            for cell in cells:
                 bbox = cell.get('bbox', [])
-                logger.debug(f"  {cell.get('cell_id')}: bbox=[{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}], row={cell.get('row')}, col={cell.get('col')}")
+                logger.info(f"  {cell.get('cell_id')}: bbox=[{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}], row={cell.get('row')}, col={cell.get('col')}")
 
         return {
             'cells': cells,

@@ -60,7 +60,7 @@ class E30TableStructureExtractor:
         cell_map: Optional[List[Dict]] = None,
         page_index: Optional[int] = None,
         table_index: Optional[int] = None,
-        d10_table: Optional[Dict[str, Any]] = None
+        d10_table: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         表画像からセル構造（bbox/row/col）を抽出する。
@@ -153,13 +153,13 @@ class E30TableStructureExtractor:
 
             logger.info(f"[E-30] パース結果: {n_rows}行 × {n_cols}列, {len(cells)}セル")
 
-            # セル構造のサンプル出力
+            # セル構造全件出力
             if cells:
-                logger.info("[E-30] セル構造サンプル（最初の5セル）:")
-                for idx, cell in enumerate(cells[:5]):
+                logger.info("[E-30] セル構造全件:")
+                for idx, cell in enumerate(cells):
                     logger.info(f"  ├─ R{cell.get('row')}C{cell.get('col')}: "
                               f"bbox=({cell.get('x0'):.3f},{cell.get('y0'):.3f})-({cell.get('x1'):.3f},{cell.get('y1'):.3f}), "
-                              f"span={cell.get('rowspan')}x{cell.get('colspan')}")
+                              f"span={cell.get('rowspan')}x{cell.get('colspan')}, text='{cell.get('text', '')}')")
 
             tokens_used = (len(prompt) + len(raw_text)) // 4
 

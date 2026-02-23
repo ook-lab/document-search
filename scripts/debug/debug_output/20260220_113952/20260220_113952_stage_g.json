@@ -1,0 +1,37 @@
+{
+  "success": true,
+  "ui_data": {
+    "document_info": {
+      "document_type": "WORD",
+      "year_context": null
+    },
+    "sections": [],
+    "tables": [],
+    "timeline": [],
+    "actions": [],
+    "notices": [],
+    "metadata": {
+      "section_count": 0,
+      "table_count": 0,
+      "event_count": 0,
+      "task_count": 0,
+      "notice_count": 0
+    },
+    "g11_structured_tables": [],
+    "g21_articles": []
+  },
+  "final_metadata": {
+    "g11_output": [],
+    "g12_output": [],
+    "g21_output": [],
+    "g22_output": {
+      "calendar_events": [],
+      "tasks": [],
+      "notices": []
+    }
+  },
+  "metadata": {
+    "stage": "G",
+    "conversion_count": 0
+  }
+}

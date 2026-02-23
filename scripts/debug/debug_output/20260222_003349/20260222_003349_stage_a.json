@@ -1,0 +1,217 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "WORD",
+    "confidence": "HIGH",
+    "reason": "ページフォント解析: WORD (4ページ)",
+    "raw_metadata": {
+      "CreationDate": "D:20251125133408+09'00'",
+      "ModDate": "D:20251125133408+09'00'"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 5,
+    "dimensions": {
+      "width": 595.32,
+      "height": 841.92,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01566666666668,
+      "height": 297.0106666666666,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 105.4,
+      "avg_words_per_page": 134.0,
+      "avg_x_std": 136.609493955773,
+      "avg_words_per_line": 1.5748289458289457,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 2,
+          "words": 46,
+          "chars": 1430,
+          "x_std": 143.42678169109385,
+          "lines": 48,
+          "words_per_line": 0.9583333333333334
+        },
+        {
+          "page": 1,
+          "images": 0,
+          "words": 205,
+          "chars": 2105,
+          "x_std": 150.7683855179542,
+          "lines": 74,
+          "words_per_line": 2.77027027027027
+        },
+        {
+          "page": 2,
+          "images": 525,
+          "words": 106,
+          "chars": 972,
+          "x_std": 132.13024902843722,
+          "lines": 84,
+          "words_per_line": 1.2619047619047619
+        },
+        {
+          "page": 3,
+          "images": 0,
+          "words": 89,
+          "chars": 972,
+          "x_std": 130.52546183688708,
+          "lines": 75,
+          "words_per_line": 1.1866666666666668
+        },
+        {
+          "page": 4,
+          "images": 0,
+          "words": 224,
+          "chars": 1307,
+          "x_std": 126.1965917044926,
+          "lines": 132,
+          "words_per_line": 1.696969696969697
+        }
+      ]
+    }
+  },
+  "origin_app": "WORD",
+  "document_type": "WORD",
+  "confidence": "HIGH",
+  "reason": "ページフォント解析: WORD (4ページ)",
+  "raw_metadata": {
+    "CreationDate": "D:20251125133408+09'00'",
+    "ModDate": "D:20251125133408+09'00'"
+  },
+  "page_type_map": {
+    "0": "WORD",
+    "1": "WORD",
+    "2": "WORD",
+    "3": "UNKNOWN",
+    "4": "WORD"
+  },
+  "type_groups": {
+    "WORD": [
+      0,
+      1,
+      2,
+      4
+    ],
+    "UNKNOWN": [
+      3
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH",
+    "2": "HIGH",
+    "3": "LOW",
+    "4": "HIGH"
+  },
+  "page_count": 5,
+  "dimensions": {
+    "width": 595.32,
+    "height": 841.92,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01566666666668,
+    "height": 297.0106666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 105.4,
+    "avg_words_per_page": 134.0,
+    "avg_x_std": 136.609493955773,
+    "avg_words_per_line": 1.5748289458289457,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 2,
+        "words": 46,
+        "chars": 1430,
+        "x_std": 143.42678169109385,
+        "lines": 48,
+        "words_per_line": 0.9583333333333334
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 205,
+        "chars": 2105,
+        "x_std": 150.7683855179542,
+        "lines": 74,
+        "words_per_line": 2.77027027027027
+      },
+      {
+        "page": 2,
+        "images": 525,
+        "words": 106,
+        "chars": 972,
+        "x_std": 132.13024902843722,
+        "lines": 84,
+        "words_per_line": 1.2619047619047619
+      },
+      {
+        "page": 3,
+        "images": 0,
+        "words": 89,
+        "chars": 972,
+        "x_std": 130.52546183688708,
+        "lines": 75,
+        "words_per_line": 1.1866666666666668
+      },
+      {
+        "page": 4,
+        "images": 0,
+        "words": 224,
+        "chars": 1307,
+        "x_std": 126.1965917044926,
+        "lines": 132,
+        "words_per_line": 1.696969696969697
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "GATE_CONDITION_FAILED",
+    "block_reason": "avg_images_per_page>10 (actual=131.8)",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 131.75,
+      "avg_words_per_page": 145.25,
+      "avg_x_std": 138.13050198549448,
+      "probe_ok": true,
+      "avg_chars_per_page": 1357.2,
+      "avg_vectors_per_page": 342.8
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "GATE_CONDITION_FAILED",
+    "block_reason": "avg_images_per_page>10 (actual=131.8)",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 131.75,
+      "avg_words_per_page": 145.25,
+      "avg_x_std": 138.13050198549448,
+      "probe_ok": true,
+      "avg_chars_per_page": 1357.2,
+      "avg_vectors_per_page": 342.8
+    },
+    "policy_version": "A5.v1"
+  }
+}

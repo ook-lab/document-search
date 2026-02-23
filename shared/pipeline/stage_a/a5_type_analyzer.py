@@ -10,7 +10,8 @@ PDFのメタデータ（Creator, Producer）を解析し、以下のタイプを
 - EXCEL: Microsoft Excel 由来
 - REPORT: WINJr等の帳票出力システム由来
 - DTP: Illustrator等の DTP ツール由来
-- SCAN: スキャナ/複合機由来、またはメタデータが空
+- SCAN: スキャナ/複合機由来（Ricoh, Canon, Xerox 等のスキャナキーワード一致）
+- UNKNOWN: 判定不能（メタデータなし、またはどのパターンにも一致しない）
 
 ページ別解析（page_type_map / type_groups）:
 - 全ページのフォントを解析してページ単位の種別を判定
@@ -22,81 +23,37 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from loguru import logger
 import re
+import yaml
+
+# 判定ルール定義ファイル（唯一の設定場所）
+_RULES_FILE = Path(__file__).parent / 'type_rules.yaml'
+
+
+def _load_rules() -> dict:
+    with open(_RULES_FILE, encoding='utf-8') as f:
+        return yaml.safe_load(f)
 
 
 class A5TypeAnalyzer:
-    """A-5: Document Type Analyzer（書類種類判断）"""
+    """A-5: Document Type Analyzer（書類種類判断）
 
-    # キーワードパターン（大文字小文字を無視）
-    GOODNOTES_KEYWORDS = [
-        r'goodnotes',
-        r'good.*notes',
-    ]
+    判定ルールは type_rules.yaml で一元管理。
+    パターン追加・変更はそのファイルのみ編集すればよい。
+    """
 
-    GOOGLE_DOCS_KEYWORDS = [
-        r'google.*docs',
-        r'google docs renderer',
-    ]
+    def __init__(self):
+        rules = _load_rules()
+        page = rules.get('page_font_patterns', {})
 
-    GOOGLE_SHEETS_KEYWORDS = [
-        r'google.*sheets',
-    ]
+        # Creator照合パターン（主要判定）: {app_name: [patterns], ...} 順序保持
+        self.CREATOR_PATTERNS = rules.get('creator_patterns', {})
 
-    WORD_KEYWORDS = [
-        r'microsoft.*word',
-        r'word',
-        r'winword',
-    ]
+        # Producer照合パターン（補助判定・Creator不明時のみ使用）
+        self.PRODUCER_PATTERNS = rules.get('producer_patterns', {})
 
-    INDESIGN_KEYWORDS = [
-        r'adobe.*indesign',
-        r'indesign',
-    ]
-
-    EXCEL_KEYWORDS = [
-        r'microsoft.*excel',
-        r'excel',
-    ]
-
-    SCAN_KEYWORDS = [
-        r'scan',
-        r'scanner',
-        r'ricoh',
-        r'canon',
-        r'xerox',
-        r'epson',
-        r'hp.*scanner',
-        r'konica.*minolta',
-    ]
-
-    # ページ別フォント分類パターン（優先順位順）
-    # フォント名は subset prefix（例: BCDEEE+）を除いた後の名前で照合
-    PAGE_FONT_REPORT = [
-        r'wing',              # DFMincho-UB-WING-RKSJ-H 等（WINJr 帳票システム）
-    ]
-    PAGE_FONT_DTP = [
-        r'kozmin',            # KozMinPro / KozMinPr6N（Illustrator/InDesign）
-        r'kozgo',             # KozGoPro
-        r'minionpro',         # MinionPro（Illustrator）
-        r'myriad',            # MyriadPro（Illustrator）
-        r'midashi',           # 見出し系DTPフォント
-    ]
-    PAGE_FONT_WORD = [
-        r'ms-pgothic',        # MS Pゴシック
-        r'ms-gothic',         # MS ゴシック
-        r'ms-pmincho',        # MS P明朝
-        r'ms-mincho',         # MS 明朝
-        r'meiryo',            # メイリオ
-        r'yu\s*gothic',       # 游ゴシック
-        r'yu\s*mincho',       # 游明朝
-        r'calibri',           # Calibri（Word 標準欧文フォント）
-        r'times\s*new\s*roman',
-        r'arial',
-        r'cambria',
-    ]
-
-    # ページをカバー（表紙/裏表紙）とみなす文字数閾値
-    COVER_CHAR_THRESHOLD = 150
+        # ページフォント照合パターン（固有フォントのみ）
+        self.PAGE_FONT_REPORT = page.get('REPORT', [])
+        self.PAGE_FONT_DTP    = page.get('DTP', [])
 
     def analyze(self, file_path: Path) -> Dict[str, Any]:
         """
@@ -107,28 +64,30 @@ class A5TypeAnalyzer:
 
         Returns:
             {
-                'document_type': str,  # GOODNOTES, WORD, INDESIGN, EXCEL, SCAN
+                'document_type': str,  # GOODNOTES, WORD, INDESIGN, EXCEL, SCAN, UNKNOWN
                 'raw_metadata': dict,  # 取得した全メタデータ
                 'confidence': str,     # HIGH, MEDIUM, LOW
                 'reason': str          # 判定理由
             }
         """
-        logger.info(f"[A-2 TypeAnalyzer] 書類種類判断開始: {file_path.name}")
+        logger.info(f"[A-5 TypeAnalyzer] 書類種類判断開始: {file_path.name}")
 
         # メタデータを取得
         metadata = self._extract_metadata(file_path)
 
         if not metadata:
-            logger.warning("[A-2 TypeAnalyzer] メタデータが取得できませんでした → SCAN判定")
+            logger.warning("[A-5 TypeAnalyzer] メタデータが取得できませんでした → UNKNOWN判定")
             return {
-                'document_type': 'SCAN',
+                'document_type': 'UNKNOWN',
                 'raw_metadata': {},
-                'confidence': 'HIGH',
-                'reason': 'メタデータなし'
+                'confidence': 'LOW',
+                'reason': 'メタデータなし',
+                'meta_match_detail': None,
+                'page_font_detail': {},
             }
 
         # 完全なメタデータをログ出力
-        logger.info("[A-2 TypeAnalyzer] 取得したメタデータ（全項目）:")
+        logger.info("[A-5 TypeAnalyzer] 取得したメタデータ（全項目）:")
         import json
         for key, value in metadata.items():
             logger.info(f"  ├─ {key}: {json.dumps(value, ensure_ascii=False) if not isinstance(value, str) else value}")
@@ -137,15 +96,18 @@ class A5TypeAnalyzer:
         creator = metadata.get('Creator', '').strip()
         producer = metadata.get('Producer', '').strip()
 
-        logger.info("[A-2 TypeAnalyzer] 判定用キーフィールド:")
+        logger.info("[A-5 TypeAnalyzer] 判定用キーフィールド:")
         logger.info(f"  ├─ Creator: '{creator}'")
         logger.info(f"  └─ Producer: '{producer}'")
 
-        # メタデータ判定を実行
-        meta_type, meta_confidence, meta_reason = self._classify_document(creator, producer)
+        # メタデータ判定を実行（照合詳細も取得）
+        meta_type, meta_confidence, meta_reason, meta_match_detail = self._classify_document(creator, producer)
 
         # ページ別フォント解析（常時実行）
-        page_type_map = self._analyze_pages(file_path)
+        # meta_type を渡してフォールスルー種別を最初から正しく設定する
+        page_type_map, page_confidence_map, page_font_detail = self._analyze_pages(
+            file_path, meta_type=meta_type, meta_confidence=meta_confidence
+        )
         type_groups = self._group_pages_by_type(page_type_map)
 
         # ページ解析でより正確な判定が得られれば上書き
@@ -153,17 +115,27 @@ class A5TypeAnalyzer:
             meta_type, meta_confidence, meta_reason, type_groups
         )
 
-        logger.info(f"[A-2 TypeAnalyzer] 最終判定結果: {doc_type} (信頼度: {confidence})")
-        logger.info(f"[A-2 TypeAnalyzer] 判定理由: {reason}")
-        logger.info(f"[A-2 TypeAnalyzer] ページ種別: { {t: len(p) for t, p in type_groups.items()} }")
+        low_conf_count = sum(1 for c in page_confidence_map.values() if c == 'LOW')
+        logger.info(f"[A-5 TypeAnalyzer] 最終判定結果: {doc_type} (信頼度: {confidence})")
+        logger.info(f"[A-5 TypeAnalyzer] 判定理由: {reason}")
+        logger.info(f"[A-5 TypeAnalyzer] ページ種別: { {t: len(p) for t, p in type_groups.items()} }")
+        logger.info(
+            f"[A-5 TypeAnalyzer] ページ別信頼度: HIGH={len(page_confidence_map) - low_conf_count}, "
+            f"LOW={low_conf_count} (LOW → Stage B スキップ, Stage E OCR)"
+        )
 
         return {
             'document_type': doc_type,
             'raw_metadata': metadata,
             'confidence': confidence,
             'reason': reason,
-            'page_type_map': page_type_map,   # {page_idx: type_str}
-            'type_groups': type_groups,        # {type_str: [page_idx, ...]}
+            'page_type_map': page_type_map,              # {page_idx: type_str}
+            'type_groups': type_groups,                  # {type_str: [page_idx, ...]}
+            'page_confidence_map': page_confidence_map,  # {page_idx: 'HIGH'|'LOW'}
+            'meta_match_detail': meta_match_detail,      # Creator/Producerの照合過程
+            'page_font_detail': {                        # ページ別フォント詳細
+                str(k): v for k, v in page_font_detail.items()
+            },
         }
 
     def _extract_metadata(self, file_path: Path) -> Dict[str, Any]:
@@ -181,140 +153,190 @@ class A5TypeAnalyzer:
         # pdfplumberで取得を試行
         try:
             import pdfplumber
-            logger.info(f"[A-2 TypeAnalyzer] pdfplumberでメタデータ取得を試行...")
+            logger.info(f"[A-5 TypeAnalyzer] pdfplumberでメタデータ取得を試行...")
             with pdfplumber.open(str(file_path)) as pdf:
                 metadata = pdf.metadata or {}
-                logger.info(f"[A-2 TypeAnalyzer] pdfplumberでメタデータ取得成功: {len(metadata)}項目")
+                logger.info(f"[A-5 TypeAnalyzer] pdfplumberでメタデータ取得成功: {len(metadata)}項目")
                 return metadata
         except Exception as e:
-            logger.warning(f"[A-2 TypeAnalyzer] pdfplumber取得失敗: {e}")
+            logger.warning(f"[A-5 TypeAnalyzer] pdfplumber取得失敗: {e}")
 
         # PyMuPDFで取得を試行
         try:
             import fitz
-            logger.info(f"[A-2 TypeAnalyzer] PyMuPDFでメタデータ取得を試行...")
+            logger.info(f"[A-5 TypeAnalyzer] PyMuPDFでメタデータ取得を試行...")
             doc = fitz.open(str(file_path))
             metadata = doc.metadata or {}
             doc.close()
-            logger.info(f"[A-2 TypeAnalyzer] PyMuPDFでメタデータ取得成功: {len(metadata)}項目")
+            logger.info(f"[A-5 TypeAnalyzer] PyMuPDFでメタデータ取得成功: {len(metadata)}項目")
             return metadata
         except Exception as e:
-            logger.warning(f"[A-2 TypeAnalyzer] PyMuPDF取得失敗: {e}", exc_info=True)
+            logger.warning(f"[A-5 TypeAnalyzer] PyMuPDF取得失敗: {e}", exc_info=True)
 
-        logger.error("[A-2 TypeAnalyzer] すべてのメタデータ取得方法が失敗しました")
+        logger.error("[A-5 TypeAnalyzer] すべてのメタデータ取得方法が失敗しました")
         return {}
 
     def _classify_document(
         self,
         creator: str,
         producer: str
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, dict]:
         """
-        Creator/Producerから書類種類を判定
+        Creator / Producer を別々に照合して書類種類を判定。
 
-        Args:
-            creator: Creator フィールド
-            producer: Producer フィールド
+        優先順位:
+          1. Creator 照合（HIGH）  ← 誰が作ったか。これが判定の主軸。
+          2. Producer 照合（HIGH） ← Creator が空の場合のみ参照。
+          3. 両方空 / 不一致 → UNKNOWN LOW
 
-        Returns:
-            (document_type, confidence, reason)
+        Creator で判定できた場合は Producer を見ない。
         """
-        # 大文字小文字を無視するために正規化
         creator_lower = creator.lower()
         producer_lower = producer.lower()
-        combined = f"{creator_lower} {producer_lower}"
 
-        logger.info("[A-2 TypeAnalyzer] パターンマッチング開始:")
-        logger.info(f"  ├─ 検索対象: '{combined}'")
+        def _match(text: str, patterns: list) -> str | None:
+            for p in patterns:
+                if re.search(p, text, re.IGNORECASE):
+                    return p
+            return None
 
-        # GOODNOTES判定（最優先：特化型のため）
-        logger.debug("  ├─ GOODNOTES パターンチェック...")
-        for pattern in self.GOODNOTES_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ GOODNOTES 一致: パターン '{pattern}'")
-                return 'GOODNOTES', 'HIGH', f'キーワード一致: {pattern}'
+        # ── Step 1: Creator 照合 ──────────────────────────
+        logger.info("[A-5 TypeAnalyzer] Creator照合:")
+        logger.info(f"  ├─ Creator: '{creator}'")
+        creator_results = []
+        for app_name, patterns in self.CREATOR_PATTERNS.items():
+            hit = _match(creator_lower, patterns)
+            creator_results.append({'app': app_name, 'matched': hit is not None, 'matched_pattern': hit})
+            if hit:
+                logger.info(f"  ✓ Creator → {app_name} ('{hit}')")
+                return app_name, 'HIGH', f'Creator一致: {hit}', {
+                    'creator': creator, 'producer': producer,
+                    'decided_by': 'creator',
+                    'creator_results': creator_results,
+                    'producer_results': [],
+                }
+        logger.info("  ✗ Creator: 不一致")
 
-        # GOOGLE_DOCS判定
-        logger.debug("  ├─ GOOGLE_DOCS パターンチェック...")
-        for pattern in self.GOOGLE_DOCS_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ GOOGLE_DOCS 一致: パターン '{pattern}'")
-                return 'GOOGLE_DOCS', 'HIGH', f'キーワード一致: {pattern}'
+        # ── Step 2: Producer 照合（Creator 不明時のみ） ───
+        logger.info("[A-5 TypeAnalyzer] Producer照合（補助）:")
+        logger.info(f"  ├─ Producer: '{producer}'")
+        producer_results = []
+        for app_name, patterns in self.PRODUCER_PATTERNS.items():
+            hit = _match(producer_lower, patterns)
+            producer_results.append({'app': app_name, 'matched': hit is not None, 'matched_pattern': hit})
+            if hit:
+                logger.info(f"  ✓ Producer → {app_name} ('{hit}')")
+                return app_name, 'HIGH', f'Producer一致: {hit}', {
+                    'creator': creator, 'producer': producer,
+                    'decided_by': 'producer',
+                    'creator_results': creator_results,
+                    'producer_results': producer_results,
+                }
+        logger.info("  ✗ Producer: 不一致")
 
-        # GOOGLE_SHEETS判定
-        logger.debug("  ├─ GOOGLE_SHEETS パターンチェック...")
-        for pattern in self.GOOGLE_SHEETS_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ GOOGLE_SHEETS 一致: パターン '{pattern}'")
-                return 'GOOGLE_SHEETS', 'HIGH', f'キーワード一致: {pattern}'
-
-        # WORD判定
-        logger.debug("  ├─ WORD パターンチェック...")
-        for pattern in self.WORD_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ WORD 一致: パターン '{pattern}'")
-                return 'WORD', 'HIGH', f'キーワード一致: {pattern}'
-
-        # INDESIGN判定
-        logger.debug("  ├─ INDESIGN パターンチェック...")
-        for pattern in self.INDESIGN_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ INDESIGN 一致: パターン '{pattern}'")
-                return 'INDESIGN', 'HIGH', f'キーワード一致: {pattern}'
-
-        # EXCEL判定
-        logger.debug("  ├─ EXCEL パターンチェック...")
-        for pattern in self.EXCEL_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ EXCEL 一致: パターン '{pattern}'")
-                return 'EXCEL', 'HIGH', f'キーワード一致: {pattern}'
-
-        # SCAN判定
-        logger.debug("  ├─ SCAN パターンチェック...")
-        for pattern in self.SCAN_KEYWORDS:
-            if re.search(pattern, combined, re.IGNORECASE):
-                logger.info(f"  ✓ SCAN 一致: パターン '{pattern}'")
-                return 'SCAN', 'HIGH', f'スキャナキーワード一致: {pattern}'
-
-        # メタデータが空の場合はSCAN
+        # ── Step 3: 判定不能 ──────────────────────────────
+        match_detail = {
+            'creator': creator, 'producer': producer,
+            'decided_by': None,
+            'creator_results': creator_results,
+            'producer_results': producer_results,
+        }
         if not creator and not producer:
-            logger.warning("  ✗ すべてのパターン不一致: Creator/Producer が空 → SCAN（HIGH）")
-            return 'SCAN', 'HIGH', 'Creator/Producer が空'
+            logger.warning("  ✗ Creator/Producer ともに空 → UNKNOWN")
+            return 'UNKNOWN', 'LOW', 'Creator/Producer が空', match_detail
 
-        # 判定不能の場合はSCANとして扱う（安全側に倒す）
-        logger.warning(f"  ✗ すべてのパターン不一致: Creator='{creator}', Producer='{producer}' → SCAN（LOW）")
-        return 'SCAN', 'LOW', f'判定不能 (Creator: {creator}, Producer: {producer})'
+        logger.warning(f"  ✗ 判定不能: Creator='{creator}', Producer='{producer}' → UNKNOWN")
+        return 'UNKNOWN', 'LOW', f'判定不能 (Creator={creator}, Producer={producer})', match_detail
 
     # ------------------------------------------------------------------
     # ページ別解析
     # ------------------------------------------------------------------
 
-    def _analyze_pages(self, file_path: Path) -> Dict[int, str]:
+    def _analyze_pages(
+        self, file_path: Path, meta_type: str, meta_confidence: str
+    ) -> tuple[Dict[int, str], Dict[int, str], Dict[int, dict]]:
         """
-        全ページのフォントを解析してページ別タイプを返す
+        全ページのフォントを解析してページ別タイプと信頼度を返す
 
         Returns:
-            {page_idx(0始まり): type_str}
-            type_str: REPORT / WORD / DTP / COVER / UNKNOWN
+            page_type_map:       {page_idx(0始まり): type_str}
+                                 type_str: REPORT / WORD / DTP / COVER / UNKNOWN
+            page_confidence_map: {page_idx(0始まり): confidence_str}
+                                 confidence_str: HIGH / LOW
+                                 - HIGH: フォントパターン一致 or COVER確定
+                                 - LOW:  フォントパターン不一致（UNKNOWN）→ Stage E OCR へ
+            page_font_detail:    {page_idx: {
+                                     'char_count': int,
+                                     'fonts': [str, ...],        # 検出された全フォント名（実値）
+                                     'matched_type': str,
+                                     'matched_font': str|None,   # 一致したフォント名
+                                     'matched_pattern': str|None # 一致したパターン
+                                 }}
         """
-        result: Dict[int, str] = {}
+        page_type_map: Dict[int, str] = {}
+        page_confidence_map: Dict[int, str] = {}
+        page_font_detail: Dict[int, dict] = {}
         try:
             import pdfplumber
+            # SCAN/REPORT/DTP 以外のフォールスルー種別を決定
+            # Creator確定(HIGH)かつWORD系以外 → そのmeta_typeを使う
+            # それ以外 → 'WORD'（テキスト選択可なら最も可能性が高い）
+            _word_family = frozenset({'WORD', 'WORD_LTSC', 'WORD_2019'})
+            if meta_confidence == 'HIGH' and meta_type not in _word_family and meta_type in self._AUTHORITATIVE_META_TYPES:
+                fallback_type = meta_type  # Creator確定（ILLUSTRATOR, INDESIGN 等）
+            elif meta_type in _word_family:
+                fallback_type = meta_type  # Creator確定=WORD/WORD_LTSC/WORD_2019
+            else:
+                fallback_type = 'UNKNOWN'  # Creator不明 → 根拠なし
+
             with pdfplumber.open(str(file_path)) as pdf:
                 for i, page in enumerate(pdf.pages):
-                    result[i] = self._classify_page(page)
+                    ptype, conf, matched_font, matched_pattern, detected_fonts = self._classify_page(page, fallback_type)
+                    page_type_map[i] = ptype
+                    page_confidence_map[i] = conf
+                    page_font_detail[i] = {
+                        'fonts': sorted(detected_fonts),
+                        'matched_type': ptype,
+                        'matched_font': matched_font,
+                        'matched_pattern': matched_pattern,
+                    }
+                    # 根拠を明示ログ出力
+                    if matched_font:
+                        logger.debug(
+                            f"[A-5 TypeAnalyzer] Page {i}: type={ptype}, confidence={conf}"
+                            f" ← font='{matched_font}' matched pattern='{matched_pattern}'"
+                        )
+                    else:
+                        logger.debug(
+                            f"[A-5 TypeAnalyzer] Page {i}: type={ptype}, confidence={conf}"
+                            f" ← fonts={sorted(detected_fonts)} / {matched_pattern or 'no font pattern matched'}"
+                        )
         except Exception as e:
-            logger.warning(f"[A-2 TypeAnalyzer] ページ別解析失敗: {e}")
-        return result
+            logger.warning(f"[A-5 TypeAnalyzer] ページ別解析失敗: {e}")
+        return page_type_map, page_confidence_map, page_font_detail
 
-    def _classify_page(self, page) -> str:
-        """1ページのフォントから種別を判定"""
+    def _classify_page(self, page, fallback_type: str) -> tuple[str, str, object, object, set]:
+        """
+        1ページのフォントから種別と信頼度を判定
+
+        Returns:
+            (type_str, confidence_str, matched_font, matched_pattern, detected_fonts)
+            - HIGH: 種別を確定的に判断できた（フォントパターン一致 or 表紙確定）
+            - LOW:  判断できなかった（UNKNOWN）→ Stage B スキップ、Stage E OCR
+            - detected_fonts: このページで検出された全フォント名（subset prefix除去後）
+        """
         chars = page.chars or []
         char_count = len(chars)
+        images = page.images or []
+        image_count = len(images)
 
-        # 文字数が極端に少ない → カバーページ（COVER）
-        if char_count < self.COVER_CHAR_THRESHOLD:
-            return 'COVER'
+        # テキスト選択不可（chars=0）+ 画像あり → スキャンページ
+        # ※ chars が少ないからスキャンではない。選択可能テキストが皆無であることが根拠。
+        if char_count == 0 and image_count > 0:
+            return 'SCAN', 'HIGH', None, f'chars=0, images={image_count} → SCAN', set()
+
+        # chars=0, images=0 → 完全空白ページ。WORD として渡しても何も抽出されないだけ。
+        # 特別な分類名は不要。
 
         # フォント名収集（subset prefix を除去）
         fonts: set[str] = set()
@@ -324,23 +346,21 @@ class A5TypeAnalyzer:
                 fn = fn.split('+', 1)[1]
             fonts.add(fn.lower())
 
-        # 優先順位順にチェック
+        # 固有フォントが明確に種別を指す場合のみフォント名を根拠にする
+        # REPORT: WINJr帳票専用フォント（wing系）→ 確実
         for font in fonts:
             for pattern in self.PAGE_FONT_REPORT:
                 if re.search(pattern, font, re.IGNORECASE):
-                    return 'REPORT'
+                    return 'REPORT', 'HIGH', font, pattern, fonts
 
+        # DTP: Illustrator/InDesign専用フォント（kozmin/kozgo等）→ 確実
         for font in fonts:
             for pattern in self.PAGE_FONT_DTP:
                 if re.search(pattern, font, re.IGNORECASE):
-                    return 'DTP'
+                    return 'DTP', 'HIGH', font, pattern, fonts
 
-        for font in fonts:
-            for pattern in self.PAGE_FONT_WORD:
-                if re.search(pattern, font, re.IGNORECASE):
-                    return 'WORD'
-
-        return 'UNKNOWN'
+        # SCAN/REPORT/DTP いずれにも該当しない → Creator確定種別を使う
+        return fallback_type, 'HIGH', None, f'selectable text → {fallback_type} (fonts={sorted(fonts)})', fonts
 
     def _group_pages_by_type(self, page_type_map: Dict[int, str]) -> Dict[str, List[int]]:
         """page_type_map を type → [page_idx, ...] に変換"""
@@ -352,6 +372,16 @@ class A5TypeAnalyzer:
             pages.sort()
         return groups
 
+    # Creator/Producer メタデータで確定した権威ある種別
+    # これらはページフォント解析による上書きを行わない
+    # ただし SCANページ混在は例外（MIXED に格上げ）
+    _AUTHORITATIVE_META_TYPES = frozenset({
+        'GOODNOTES', 'GOOGLE_DOCS', 'GOOGLE_SHEETS',
+        'WORD', 'WORD_LTSC', 'WORD_2019', 'EXCEL', 'ILLUSTRATOR', 'INDESIGN',
+        'POWERPOINT', 'ACROBAT_PDFMAKER',
+        'CANVA', 'ACROBAT', 'IOS_QUARTZ', 'STUDYAID',
+    })
+
     def _determine_final_type(
         self,
         meta_type: str,
@@ -362,16 +392,45 @@ class A5TypeAnalyzer:
         """
         メタデータ判定 + ページ別解析を統合して最終種別を決定
 
-        ページ解析で明確な種別が分かれば HIGH として上書きする。
+        優先順位:
+        1. Creator/Producer が権威ある種別を確定（ILLUSTRATOR, INDESIGN, WORD 等）
+           → ページフォント解析は上書きしない
+           （例: Creator=Adobe Illustrator なら KozMin を検出しても DTP に変えない）
+           ★ ただし SCANページ（テキスト選択不可）が混在する場合は MIXED に格上げ
+        2. メタデータが不確定（UNKNOWN/SCAN）→ ページフォント解析で補完
+        3. ページ種別が複数 → MIXED
         """
-        # COVER / UNKNOWN のみは「コンテンツなし」としてメタデータ判定を使う
         content_types = {t: p for t, p in type_groups.items()
-                         if t not in ('COVER', 'UNKNOWN')}
+                         if t != 'UNKNOWN'}
 
         if not content_types:
             # コンテンツページが検出されなかった → メタデータ判定をそのまま使用
             return meta_type, meta_confidence, meta_reason
 
+        # Creator/Producer で確定した権威ある種別はページフォントで上書きしない
+        # ★ ただし SCAN/REPORT ページ混在は例外 → MIXED
+        #    SCAN:   テキスト選択不可 → B80が必要（未実装のため今は BLOCK になる）
+        #    REPORT: WINGフォント確定 → B42が必要。Creator種別と異なるプロセッサが必須
+        if meta_type in self._AUTHORITATIVE_META_TYPES and meta_confidence == 'HIGH':
+            _FORCE_MIXED = frozenset({'SCAN', 'REPORT'})
+            force_mixed = {t for t in content_types if t in _FORCE_MIXED and t != meta_type}
+            if force_mixed:
+                forced = sorted(force_mixed)
+                type_counts = ', '.join(f'{t}={len(content_types[t])}p' for t in forced)
+                total = sum(len(p) for p in content_types.values())
+                reason = (
+                    f'Creator確定({meta_type}) + {"/".join(forced)}ページ混在 → MIXED '
+                    f'({type_counts} / 全{total}p)'
+                )
+                logger.info(f"[A-5 TypeAnalyzer] Creator確定だが{'/'.join(forced)}混在 → MIXED: {reason}")
+                return 'MIXED', 'HIGH', reason
+            logger.info(
+                f"[A-5 TypeAnalyzer] メタデータ優先: {meta_type}"
+                f" （ページフォント解析={list(content_types.keys())} による上書きなし）"
+            )
+            return meta_type, meta_confidence, meta_reason
+
+        # メタデータが不確定（SCAN等）→ ページフォント解析で補完
         if len(content_types) == 1:
             # コンテンツ種別が1種類 → そのタイプを HIGH で確定
             ptype = list(content_types.keys())[0]
@@ -382,5 +441,5 @@ class A5TypeAnalyzer:
         # 複数種別 → MIXED（B1 が type_groups を見て複数プロセッサを走らせる）
         summary = ', '.join(f'{t}:{len(p)}p' for t, p in sorted(content_types.items()))
         reason = f'ページ混在: {summary}'
-        logger.info(f"[A-2 TypeAnalyzer] 混在文書検出: {reason}")
+        logger.info(f"[A-5 TypeAnalyzer] 混在文書検出: {reason}")
         return 'MIXED', 'HIGH', reason

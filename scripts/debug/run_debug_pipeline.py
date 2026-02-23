@@ -144,6 +144,58 @@ class DebugPipeline:
         # Stage G: G1Controller（G11/G12/G21/G22 含む全処理）
         self._g_controller = G1ControllerFull(api_key=_gemini_key)
 
+        # ログ出力設定: 各ステージのログを個別ファイルに出力（起動時に一括設定）
+        _log_dir = self.output_dir  # ROOT直下に出力
+        self._log_sinks = []
+        for _prefix, _filename in [
+            ("[A-3]",  "a3_entry_point.log"),
+            ("[A-5]",  "a5_type_analyzer.log"),
+            ("[A-6]",  "a6_dimension_measurer.log"),
+            ("[B-1]",  "b1_controller.log"),
+            ("[B-3]",  "b3_pdf_word.log"),
+            ("[B-4]",  "b4_pdf_excel.log"),
+            ("[B-5]",  "b5_pdf_ppt.log"),
+            ("[B-11]", "b11_google_docs.log"),
+            ("[B-12]", "b12_google_sheets.log"),
+            ("[B-14]", "b14_goodnotes.log"),
+            ("[B-30]", "b30_illustrator.log"),
+            ("[B-42]", "b42_multi_column.log"),
+            ("[B-90]", "b90_result_merger.log"),
+            ("[D-1]",  "d1_controller.log"),
+            ("[D-3]",  "d3_vector.log"),
+            ("[D-5]",  "d5_raster.log"),
+            ("[D-8]",  "d8_grid.log"),
+            ("[D-9]",  "d9_cell.log"),
+            ("[D-10]", "d10_slicer.log"),
+            ("[E-1]",  "e1_controller.log"),
+            ("[E-5]",  "e5_visualizer.log"),
+            ("[E-20]", "e20_vision_ocr.log"),
+            ("[E-21]", "e21_context.log"),
+            ("[E-30]", "e30_table_struct.log"),
+            ("[E-31]", "e31_table_ocr.log"),
+            ("[E-32]", "e32_cell_merger.log"),
+            ("[E-37]", "e37_embedded.log"),
+            ("[E-40]", "e40_ssot.log"),
+            ("[F-1]",  "f1_merger.log"),
+            ("[F-3]",  "f3_normalizer.log"),
+            ("[F-5]",  "f5_table_joiner.log"),
+            ("[G-1]",  "g1_controller.log"),
+            ("[G-3]",  "g3_block_arranger.log"),
+            ("[G-5]",  "g5_noise_eliminator.log"),
+            ("[G-11]", "g11_table_structurer.log"),
+            ("[G-12]", "g12_table_ai_processor.log"),
+            ("[G-21]", "g21_text_structurer.log"),
+            ("[G-22]", "g22_text_ai_processor.log"),
+        ]:
+            sid = logger.add(
+                str(_log_dir / _filename),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r, p=_prefix: p in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+            self._log_sinks.append(sid)
+
         logger.info(f"DebugPipeline initialized: uuid={uuid}, output_dir={self.output_dir}")
 
     # ════════════════════════════════════════
@@ -198,6 +250,12 @@ class DebugPipeline:
         fp = self._get_filename(stage_name)
         self._save_json(fp, data)
         logger.info(f"[Stage {stage_name}] 結果を保存: {fp}")
+        cb = getattr(self, '_on_stage_complete', None)
+        if cb:
+            try:
+                cb(stage_name, str(fp))
+            except Exception as e:
+                logger.warning(f"[Drive] stage_complete callback エラー: {e}")
         return fp
 
     def load_stage(self, stage_name: str) -> Optional[Dict[str, Any]]:
@@ -301,11 +359,15 @@ class DebugPipeline:
         end: Optional[str] = None,
         target: Optional[str] = None,
         mode: str = "all",
-        force: bool = False
+        force: bool = False,
+        on_stage_complete=None,
     ) -> Dict[str, Any]:
         start_time = time.time()
         active_list = self._determine_active_substages(start, end, target, mode)
         active_set = set(active_list)
+
+        # ステージ完了コールバックを一時的に保存（save_stage() から呼ばれる）
+        self._on_stage_complete = on_stage_complete
 
         logger.info("=" * 60)
         logger.info(f"Debug Pipeline Start: {self.uuid}")
@@ -335,6 +397,8 @@ class DebugPipeline:
         except Exception as e:
             logger.error(f"パイプラインエラー: {e}", exc_info=True)
             errors.append(str(e))
+        finally:
+            self._on_stage_complete = None
 
         elapsed = time.time() - start_time
         logger.info("=" * 60)
@@ -364,8 +428,8 @@ class DebugPipeline:
             if not pdf_path:
                 raise FileNotFoundError("Stage A にはPDFファイルが必要です")
             result = self._stage_a.process(pdf_path)
-            self.save_stage("A", result)
             self.save_substage("A3", result)
+            self.save_stage("A", result)
             ctx["A"] = result
         else:
             ctx["A"] = cached
@@ -403,7 +467,8 @@ class DebugPipeline:
                 }
             b1 = self._stage_b.process(
                 file_path=pdf_path,
-                a_result=a_result
+                a_result=a_result,
+                log_dir=self.output_dir,
             )
             self.save_substage("B1", b1)
         ctx["B1"] = b1
@@ -494,12 +559,12 @@ class DebugPipeline:
         total_pages = len(doc)
         logger.info(f"[Stage D] ページ数: {total_pages}")
         for page_idx in range(total_pages):
-            page_img_path = self.output_dir / f"purged_page_{page_idx}.png"
+            page_img_path = self.output_dir / f"d1_purged_page_{page_idx}.png"
             if not page_img_path.exists():
                 page = doc.load_page(page_idx)
                 pix = page.get_pixmap(dpi=150)
                 pix.save(str(page_img_path))
-                logger.info(f"[PNG生成] purged_page_{page_idx}.png 完了")
+                logger.info(f"[PNG生成] d1_purged_page_{page_idx}.png 完了")
         doc.close()
         # ────────────────────────────────────────────────────────────────
 
@@ -507,23 +572,24 @@ class DebugPipeline:
         from shared.pipeline.stage_d import D1Controller
         d1 = D1Controller()
 
-        # サブステージ個別実行かどうかを判定
-        is_substage_mode = any(s in active_set for s in ("D3", "D5", "D8", "D9", "D10"))
+        # 全Dサブステージが揃っているかで分岐（揃っている→マルチページ、部分→シングルページデバッグ）
+        all_d_substages_active = {"D3", "D5", "D8", "D9", "D10"} <= active_set
 
-        if not is_substage_mode or not ({"D3","D5","D8","D9","D10"} <= active_set):
+        if all_d_substages_active:
             # D1 Controller でマルチページ一括処理
             logger.info(f"[Stage D] D1 Controller マルチページ実行: {len(content_pages)}ページ")
             all_d_results = []
             for page_idx, page_num in enumerate(content_pages):
                 page_output_dir = self.output_dir / f"page_{page_num}"
                 page_output_dir.mkdir(parents=True, exist_ok=True)
-                purged_image_path = self.output_dir / f"purged_page_{page_num}.png"
+                purged_image_path = self.output_dir / f"d1_purged_page_{page_num}.png"
                 logger.info(f"[Stage D] ページ {page_num+1} 実行中... 画像: {purged_image_path.name}")
                 d_result = d1.process(
                     pdf_path=Path(purged_pdf_path),
                     purged_image_path=purged_image_path,
                     page_num=page_num,
-                    output_dir=page_output_dir
+                    output_dir=page_output_dir,
+                    log_dir=self.output_dir,
                 )
                 if d_result and d_result.get('success'):
                     all_d_results.append(d_result)
@@ -539,7 +605,7 @@ class DebugPipeline:
 
         # ─── サブステージ個別実行（デバッグ用: ページ0のみ）─────────────
         page_num = content_pages[0] if content_pages else 0
-        purged_image_path = self.output_dir / f"purged_page_{page_num}.png"
+        purged_image_path = self.output_dir / f"d1_purged_page_{page_num}.png"
         logger.info(f"[Stage D] サブステージモード: ページ{page_num+1}のみ処理")
 
         # D3: ベクトル罫線抽出
@@ -659,7 +725,7 @@ class DebugPipeline:
                 stage_a_result=ctx.get("A") or self.load_stage("A"),
                 stage_b_result=ctx.get("B") or self.load_stage("B"),
                 stage_d_result=ctx.get("D") or self.load_stage("D"),
-                stage_e_result=ctx.get("E") or self.load_stage("E")
+                stage_e_result=ctx.get("E") or self.load_stage("E"),
             )
             self.save_substage("F1", f1)
         ctx["F1"] = f1

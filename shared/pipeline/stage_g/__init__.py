@@ -45,12 +45,13 @@ class G1Controller:
         self.block_arranger = G3BlockArranger(next_stage=noise_eliminator)
         self.table_reproducer = G1TableReproducer()
 
-    def process(self, f5_result):
+    def process(self, f5_result, log_dir=None):
         """
         Stage G 処理実行（チェーン開始）
 
         Args:
             f5_result: F-5の結果（直前ステージのみ）
+            log_dir: ログディレクトリ（オプション）
 
         Returns:
             最終UI用データ（チェーン経由）
@@ -77,7 +78,8 @@ class G1Controller:
             'tasks': f5_result.get('tasks', []),
             'notices': f5_result.get('notices', []),
             'document_info': f5_result.get('document_info', {}),
-            'conversion_count': table_result.get('conversion_count', 0)
+            'conversion_count': table_result.get('conversion_count', 0),
+            'display_fields': f5_result.get('display_fields'),
         }
 
         logger.info(f"[G-1] 処理完了: 表変換 {g1_result['conversion_count']}個")
@@ -105,9 +107,17 @@ class G1Controller:
         # ★G-21の結果（articles）をui_dataに含める
         text_metadata = text_result_chain.get('metadata', {})
         articles = text_metadata.get('articles', [])
-        if articles:
-            ui_data['g21_articles'] = articles
-            logger.info(f"[G-1] ✓ G-21 articlesをui_dataに追加: {len(articles)}件")
+
+        # G-22のtopic_sectionsがあればそちらをg21_outputとして使う（AIグループ化済み）
+        topic_sections = text_result_chain.get('topic_sections', [])
+        g21_output = (
+            [{'title': s.get('title', ''), 'body': s.get('body', '')} for s in topic_sections]
+            if topic_sections else articles
+        )
+
+        if g21_output:
+            ui_data['g21_articles'] = g21_output
+            logger.info(f"[G-1] ✓ G-21 articlesをui_dataに追加: {len(g21_output)}件 (topic_sections使用: {bool(topic_sections)})")
 
         # ★G-22の結果（AI抽出）をui_dataに反映
         if text_result_chain.get('success'):
@@ -121,11 +131,11 @@ class G1Controller:
         final_metadata = {
             'g11_output': structured_tables,
             'g12_output': ui_data['tables'],  # ★変換後のデータを使用
-            'g21_output': articles,
+            'g21_output': g21_output,          # G22のtopic_sections優先、なければG21暫定
             'g22_output': {
                 'calendar_events': text_result_chain.get('calendar_events', []),
                 'tasks': text_result_chain.get('tasks', []),
-                'notices': text_result_chain.get('notices', [])
+                'notices': text_result_chain.get('notices', []),
             }
         }
 

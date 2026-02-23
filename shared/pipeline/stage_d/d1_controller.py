@@ -45,7 +45,8 @@ class D1Controller:
         output_dir: Optional[Path] = None,
         b_structured_tables: Optional[List[Dict[str, Any]]] = None,
         page_width_pt: Optional[float] = None,
-        page_height_pt: Optional[float] = None
+        page_height_pt: Optional[float] = None,
+        log_dir: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
         Stage D 視覚構造解析を実行
@@ -78,6 +79,21 @@ class D1Controller:
                 }
             }
         """
+        return self._process_impl(
+            pdf_path, purged_image_path, page_num, output_dir,
+            b_structured_tables, page_width_pt, page_height_pt,
+        )
+
+    def _process_impl(
+        self,
+        pdf_path: Path,
+        purged_image_path: Optional[Path],
+        page_num: int,
+        output_dir: Optional[Path],
+        b_structured_tables: Optional[List[Dict[str, Any]]],
+        page_width_pt: Optional[float],
+        page_height_pt: Optional[float],
+    ) -> Dict[str, Any]:
         logger.info("=" * 60)
         logger.info("[D-1] Stage D 視覚構造解析開始")
         logger.info(f"  ├─ PDF: {pdf_path.name}")
@@ -101,7 +117,9 @@ class D1Controller:
 
             # D-3: ベクトル罫線抽出
             logger.info("\n[D-1] ステップ1: ベクトル罫線抽出（D-3）")
-            vector_result = self.d3_vector.extract(pdf_path, page_num)
+            vector_result = self.d3_vector.extract(
+                pdf_path, page_num,
+            )
 
             # D-3結果のサマリー
             logger.info("[D-1] D-3結果サマリー:")
@@ -110,14 +128,17 @@ class D1Controller:
             logger.info(f"  ├─ 合計線: {len(vector_result.get('all_lines', []))}本")
             logger.info(f"  └─ ページサイズ: {vector_result.get('page_size', (0, 0))}")
             if vector_result.get('all_lines'):
-                sample_lines = vector_result['all_lines'][:3]
-                logger.debug(f"[D-1] ベクトル線サンプル（最初3本）: {sample_lines}")
+                logger.info(f"[D-1] ベクトル線 全件:")
+                for line_idx, line in enumerate(vector_result['all_lines']):
+                    logger.info(f"[D-1]   線{line_idx}: {line}")
 
             # D-5: ラスター罫線検出（画像がある場合のみ）
             raster_result = None
             if purged_image_path and purged_image_path.exists():
                 logger.info("\n[D-1] ステップ2: ラスター罫線検出（D-5）")
-                raster_result = self.d5_raster.detect(purged_image_path)
+                raster_result = self.d5_raster.detect(
+                    purged_image_path,
+                )
 
                 # D-5結果のサマリー
                 logger.info("[D-1] D-5結果サマリー:")
@@ -126,8 +147,9 @@ class D1Controller:
                 logger.info(f"  ├─ 合計線: {len(raster_result.get('all_lines', []))}本")
                 logger.info(f"  └─ 画像サイズ: {raster_result.get('image_size', (0, 0))}")
                 if raster_result.get('all_lines'):
-                    sample_lines = raster_result['all_lines'][:3]
-                    logger.debug(f"[D-1] ラスター線サンプル（最初3本）: {sample_lines}")
+                    logger.info(f"[D-1] ラスター線 全件:")
+                    for line_idx, line in enumerate(raster_result['all_lines']):
+                        logger.info(f"[D-1]   線{line_idx}: {line}")
             else:
                 logger.info("\n[D-1] ステップ2: ラスター罫線検出（スキップ: 画像なし）")
 
@@ -137,7 +159,7 @@ class D1Controller:
                 vector_result,
                 raster_result,
                 pdf_path=str(pdf_path),
-                page_index=page_num
+                page_index=page_num,
             )
 
             # D-8結果のサマリー
@@ -148,15 +170,18 @@ class D1Controller:
             logger.info(f"  ├─ 統合水平線: {len(unified_lines.get('horizontal', []))}本")
             logger.info(f"  └─ 統合垂直線: {len(unified_lines.get('vertical', []))}本")
             if grid_result.get('intersections'):
-                sample_intersections = grid_result['intersections'][:5]
-                logger.debug(f"[D-1] 交点サンプル（最初5個）: {sample_intersections}")
+                logger.info(f"[D-1] 交点 全件:")
+                for pt_idx, pt in enumerate(grid_result['intersections']):
+                    logger.info(f"[D-1]   交点{pt_idx}: {pt}")
             if grid_result.get('table_regions'):
                 for region in grid_result['table_regions']:
                     logger.info(f"[D-1] 表領域 {region.get('table_id')}: bbox={region.get('bbox')}, 交点={region.get('intersection_count')}")
 
             # D-9: セル特定
             logger.info("\n[D-1] ステップ4: セル特定（D-9）")
-            cell_result = self.d9_cell.identify(grid_result)
+            cell_result = self.d9_cell.identify(
+                grid_result,
+            )
 
             # D-9結果のサマリー
             logger.info("[D-1] D-9結果サマリー:")
@@ -165,10 +190,9 @@ class D1Controller:
             logger.info(f"  ├─ 行数: {grid_info.get('rows', 0)}")
             logger.info(f"  └─ 列数: {grid_info.get('cols', 0)}")
             if cell_result.get('cells'):
-                sample_cells = cell_result['cells'][:5]
-                logger.debug(f"[D-1] セルサンプル（最初5個）:")
-                for cell in sample_cells:
-                    logger.debug(f"  {cell.get('cell_id')}: bbox={cell.get('bbox')}")
+                logger.info(f"[D-1] セル 全件:")
+                for cell_idx, cell in enumerate(cell_result['cells']):
+                    logger.info(f"[D-1]   セル{cell_idx}: {cell.get('cell_id')} bbox={cell.get('bbox')}")
 
             # B/D 重複排除（D-10実行前に行い、無駄な画像生成を防ぐ）
             if (b_structured_tables is not None
@@ -188,7 +212,7 @@ class D1Controller:
                     purged_image_path,
                     grid_result,
                     cell_result,
-                    output_dir
+                    output_dir,
                 )
 
                 # D-10結果のサマリー

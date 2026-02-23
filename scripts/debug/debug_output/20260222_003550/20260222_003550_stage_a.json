@@ -1,0 +1,142 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "SCAN",
+    "confidence": "HIGH",
+    "reason": "Creator/Producer が空",
+    "raw_metadata": {
+      "CreationDate": "D:20251218191130+09'00'",
+      "ModDate": "D:20251218191130+09'00'"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 595.32,
+      "height": 841.92,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01566666666668,
+      "height": 297.0106666666666,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 17.5,
+      "avg_words_per_page": 86.5,
+      "avg_x_std": 66.30113949106321,
+      "avg_words_per_line": 0.6178571428571429,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 34,
+          "words": 173,
+          "chars": 1626,
+          "x_std": 132.60227898212642,
+          "lines": 140,
+          "words_per_line": 1.2357142857142858
+        },
+        {
+          "page": 1,
+          "images": 1,
+          "words": 0,
+          "chars": 1,
+          "x_std": 0,
+          "lines": 1,
+          "words_per_line": 0.0
+        }
+      ]
+    }
+  },
+  "origin_app": "SCAN",
+  "document_type": "SCAN",
+  "confidence": "HIGH",
+  "reason": "Creator/Producer が空",
+  "raw_metadata": {
+    "CreationDate": "D:20251218191130+09'00'",
+    "ModDate": "D:20251218191130+09'00'"
+  },
+  "page_type_map": {
+    "0": "UNKNOWN",
+    "1": "COVER"
+  },
+  "type_groups": {
+    "UNKNOWN": [
+      0
+    ],
+    "COVER": [
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "LOW",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 595.32,
+    "height": 841.92,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01566666666668,
+    "height": 297.0106666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 17.5,
+    "avg_words_per_page": 86.5,
+    "avg_x_std": 66.30113949106321,
+    "avg_words_per_line": 0.6178571428571429,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 34,
+        "words": 173,
+        "chars": 1626,
+        "x_std": 132.60227898212642,
+        "lines": 140,
+        "words_per_line": 1.2357142857142858
+      },
+      {
+        "page": 1,
+        "images": 1,
+        "words": 0,
+        "chars": 1,
+        "x_std": 0,
+        "lines": 1,
+        "words_per_line": 0.0
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "NOT_ALLOWLISTED",
+    "block_reason": "allowlist外（origin_app=SCAN, layout_profile=FIXED）",
+    "evidence": {
+      "origin_app": "SCAN",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH"
+    },
+    "policy_version": "A5.v1"
+  },
+  "gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "NOT_ALLOWLISTED",
+    "block_reason": "allowlist外（origin_app=SCAN, layout_profile=FIXED）",
+    "evidence": {
+      "origin_app": "SCAN",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH"
+    },
+    "policy_version": "A5.v1"
+  }
+}

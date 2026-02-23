@@ -127,6 +127,8 @@ class E37EmbeddedCellAssigner:
             f"[E-37] 割当完了（監査）: embedded={len(embedded_candidates)} / empty={empty_count}"
             f" / total={len(cells)}"
         )
+        for row_idx, cand in enumerate(embedded_candidates):
+            logger.info(f"[E-37]   行{row_idx}: {cand}")
 
         return {
             'success': True,

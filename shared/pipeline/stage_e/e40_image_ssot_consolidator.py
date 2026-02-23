@@ -139,6 +139,8 @@ class E40ImageSsotConsolidator:
             f"[E-40] 正本化完了: filled={filled_count} / empty={empty_count}"
             f" / total={len(cells_out)}"
         )
+        for row_idx, cell in enumerate(cells_out):
+            logger.info(f"[E-40]   行{row_idx}: {cell}")
 
         table_ssot = {
             'origin_uid': origin_uid,

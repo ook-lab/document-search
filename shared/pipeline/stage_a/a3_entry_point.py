@@ -145,6 +145,8 @@ class A3EntryPoint:
                 # ページ別型解析（B1 の MIXED マルチプロセッサ処理に使用）
                 'page_type_map': type_result.get('page_type_map', {}),
                 'type_groups': type_result.get('type_groups', {}),
+                # ページ別信頼度（HIGH: Stage B, LOW: Stage B スキップ → Stage E OCR）
+                'page_confidence_map': type_result.get('page_confidence_map', {}),
 
                 'page_count': dimension_result['page_count'],
                 'dimensions': dimension_result['dimensions'],
@@ -222,6 +224,51 @@ class A3EntryPoint:
                 'metrics': {}
             }
 
+        # PyMuPDF でページごとの詳細情報を事前取得（フォント・画像詳細）
+        fitz_pages = {}
+        try:
+            import fitz
+            fitz_doc = fitz.open(str(file_path))
+            for i, fpage in enumerate(fitz_doc):
+                # フォント情報: (xref, ext, type, basefont, name, encoding, referencer)
+                raw_fonts = fpage.get_fonts(full=True)
+                fonts = []
+                for f in raw_fonts:
+                    name = f[3] or f[4] or ''   # basefont or name
+                    ftype = f[2]                 # Type1 / TrueType / CIDFont等
+                    encoding = f[5] or ''
+                    # 埋め込み有無: xref > 0 かつ Type1/TrueType/CIDFont
+                    embedded = (f[0] > 0)
+                    # ToUnicode: PyMuPDF単体では直接取れないがencodingで推測
+                    has_toUnicode = bool(encoding and encoding not in ('StandardEncoding', 'MacRomanEncoding', ''))
+                    fonts.append({
+                        'name': name,
+                        'type': ftype,
+                        'encoding': encoding,
+                        'embedded': embedded,
+                        'has_toUnicode': has_toUnicode,
+                    })
+
+                # 画像情報: (xref, smask, width, height, bpc, colorspace, ...)
+                raw_images = fpage.get_images(full=True)
+                images_detail = []
+                for img in raw_images:
+                    images_detail.append({
+                        'width': img[2],
+                        'height': img[3],
+                        'bpc': img[4],           # bits per component
+                        'colorspace': img[5],    # DeviceRGB / DeviceGray / DeviceCMYK等
+                        'filter': img[8] or '',  # DCTDecode(JPEG) / FlateDecode等
+                    })
+
+                fitz_pages[i] = {
+                    'fonts': fonts,
+                    'images_detail': images_detail,
+                }
+            fitz_doc.close()
+        except Exception as e:
+            logger.warning(f"[A-4] PyMuPDF 詳細情報取得失敗（スキップ）: {e}")
+
         try:
             with pdfplumber.open(str(file_path)) as pdf:
                 page_metrics = []
@@ -239,6 +286,9 @@ class A3EntryPoint:
                     chars = page.chars
                     char_count = len(chars)
 
+                    # テキスト選択可否
+                    has_selectable_text = char_count > 0
+
                     # X座標の分散（文字の横方向ばらつき）
                     if chars:
                         x_coords = [char['x0'] for char in chars]
@@ -255,14 +305,32 @@ class A3EntryPoint:
                         line_count = 0
                         words_per_line = 0
 
+                    # ベクター線数（罫線・枠・図形）
+                    vector_count = (
+                        len(getattr(page, 'lines', []) or []) +
+                        len(getattr(page, 'rects', []) or []) +
+                        len(getattr(page, 'curves', []) or [])
+                    )
+
+                    # PyMuPDF から取得した詳細情報をマージ
+                    fitz_info = fitz_pages.get(page_num, {})
+
                     page_metrics.append({
                         'page': page_num,
+                        # テキスト系
                         'images': image_count,
                         'words': word_count,
                         'chars': char_count,
+                        'has_selectable_text': has_selectable_text,
                         'x_std': x_std,
                         'lines': line_count,
-                        'words_per_line': words_per_line
+                        'words_per_line': words_per_line,
+                        # ベクター
+                        'vector_count': vector_count,
+                        # フォント詳細（PyMuPDF）
+                        'fonts': fitz_info.get('fonts', []),
+                        # 画像詳細（PyMuPDF）
+                        'images_detail': fitz_info.get('images_detail', []),
                     })
 
                 # 全ページ平均

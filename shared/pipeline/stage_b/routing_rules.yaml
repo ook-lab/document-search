@@ -1,0 +1,83 @@
+# ==============================================================
+# Stage B ルーティングルール定義（唯一の設定ファイル）
+#
+# ここを変更すれば b1_controller.py に反映される。
+# コードを触る必要はない。
+#
+# 判定の優先順位:
+#   1. priority_routes  （特化型：拡張子より優先）
+#   2. native_routes    （Nativeファイル：拡張子ベース）
+#   3. pdf_routes       （PDF：origin_app ベース）
+# ==============================================================
+
+
+# ──────────────────────────────────────
+# 1. 特化型プロセッサ（ファイル拡張子より優先）
+#    origin_app がここに一致した時点で確定する
+# ──────────────────────────────────────
+priority_routes:
+  GOODNOTES: B14_GOODNOTES
+  REPORT:    B42_MULTICOLUMN
+
+
+# ──────────────────────────────────────
+# 2. Native ファイル（拡張子ベース）
+#    priority_routes に一致しなかった場合に評価する
+# ──────────────────────────────────────
+native_routes:
+  .docx: B6_NATIVE_WORD
+  .xlsx: B7_NATIVE_EXCEL
+  .pptx: B8_NATIVE_PPT
+
+
+# ──────────────────────────────────────
+# 3. PDF ルーティング（origin_app ベース）
+#    拡張子が .pdf かつ priority_routes 不一致の場合に評価する
+# ──────────────────────────────────────
+pdf_routes:
+  WORD_LTSC:        B61_PDF_WORD_LTSC
+  WORD_2019:        B62_PDF_WORD_2019
+  WORD:             B3_PDF_WORD
+  EXCEL:            B4_PDF_EXCEL
+  POWERPOINT:       B5_PDF_PPT
+  PPT:              B5_PDF_PPT
+  ACROBAT_PDFMAKER: B3_PDF_WORD       # Word→Acrobat PDFMaker経由 → WordプロセッサでOK
+  GOOGLE_DOCS:      B11_GOOGLE_DOCS
+  GOOGLE_SHEETS:    B12_GOOGLE_SHEETS
+  ILLUSTRATOR:      B30_ILLUSTRATOR
+  INDESIGN:         B31_INDESIGN
+  SCAN:             BLOCK   # B80(OCR)未実装。実装完了まで処理停止。
+  UNKNOWN:          BLOCK   # 推論エンジン未実装。InferenceEngine 実装後に解禁する。
+  DTP:              BLOCK   # Creator確定不可。Gatekeeperでも弾かれるため二重防衛。
+  CANVA:            B16_CANVA
+  STUDYAID:         B17_STUDYAID
+  IOS_QUARTZ:       B18_IOS_QUARTZ
+  WEB_PDF:          B19_PDF_WEB
+  ACROBAT:          B39_ACROBAT
+  # MIXED はここに書かない。
+  #   MIXED → B1 が type_groups を見て mixed_type_routes でページ分割処理する
+
+
+# ──────────────────────────────────────
+# 4. MIXED 文書内ページ種別ルーティング
+#    type_groups 内の各ページ種別に対応するプロセッサを指定する
+#    B1 の MIXED スプリット処理がこのマップを参照する
+# ──────────────────────────────────────
+mixed_type_routes:
+  REPORT:           B42_MULTICOLUMN
+  ILLUSTRATOR:      B30_ILLUSTRATOR
+  INDESIGN:         B31_INDESIGN
+  WORD_LTSC:        B61_PDF_WORD_LTSC
+  WORD_2019:        B62_PDF_WORD_2019
+  WORD:             B3_PDF_WORD
+  EXCEL:            B4_PDF_EXCEL
+  POWERPOINT:       B5_PDF_PPT
+  ACROBAT_PDFMAKER: B3_PDF_WORD
+  GOOGLE_DOCS:      B11_GOOGLE_DOCS
+  GOOGLE_SHEETS:    B12_GOOGLE_SHEETS
+  GOODNOTES:        B14_GOODNOTES
+  SCAN:             BLOCK   # B80未実装。MIXEDのSCANページも処理停止（スキップ）。
+  UNKNOWN:          BLOCK   # 判定不能ページも処理停止（スキップ）。
+  # DTP は含まない:
+  #   KozMin 等フォントは Illustrator/InDesign 両方で使用するため確定不可
+  #   メタデータで ILLUSTRATOR が確定済みの場合のみ B30 で処理（B1コード側で対応）

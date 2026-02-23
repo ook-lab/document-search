@@ -24,7 +24,7 @@ class F5LogicalTableJoiner:
 
     def join(
         self,
-        merge_result: Dict[str, Any]
+        merge_result: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
         チェーンパターン用: merge_resultから表を結合して統合結果を返す
@@ -37,17 +37,10 @@ class F5LogicalTableJoiner:
         """
         tables = merge_result.get('tables', [])
 
-        # 表を結合
         join_result = self.join_tables(tables)
-
-        if not join_result.get('success'):
-            logger.warning(f"[F-5] 表結合失敗: {join_result.get('error')}")
-            consolidated_tables = tables
-            join_count = 0
-        else:
-            consolidated_tables = join_result['joined_tables']
-            join_count = join_result['join_count']
-            logger.info(f"[F-5] 表結合: {join_count}個")
+        consolidated_tables = join_result['joined_tables']
+        join_count = join_result['join_count']
+        logger.info(f"[F-5] 表結合: {join_count}個")
 
         # merge_resultを更新して返す
         merge_result['consolidated_tables'] = consolidated_tables
@@ -62,7 +55,8 @@ class F5LogicalTableJoiner:
             'consolidated_tables': consolidated_tables,
             'raw_integrated_text': merge_result.get('raw_integrated_text', ''),
             'non_table_text': merge_result.get('non_table_text', ''),
-            'metadata': merge_result.get('metadata', {})
+            'metadata': merge_result.get('metadata', {}),
+            'display_fields': merge_result.get('display_fields'),
         }
 
         logger.info("=" * 60)
@@ -78,7 +72,7 @@ class F5LogicalTableJoiner:
 
     def join_tables(
         self,
-        tables: List[Dict[str, Any]]
+        tables: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """
         表データを結合
@@ -128,114 +122,104 @@ class F5LogicalTableJoiner:
             logger.info(f"    ├─ size: {data_size}")
             logger.info(f"    └─ keys: {list(table.keys())}")
 
-        try:
-            # 同一ソースの表をグループ化
-            source_groups = self._group_by_source(tables)
+        # 同一ソースの表をグループ化
+        source_groups = self._group_by_source(tables)
 
-            logger.info("")
-            logger.info("[F-5] グループ化結果:")
-            for source, table_list in source_groups.items():
-                logger.info(f"  {source}: {len(table_list)}個の表")
-                for idx, table in enumerate(table_list, 1):
-                    table_id = table.get('table_id', 'Unknown')
-                    logger.info(f"    └─ Table {idx}: {table_id}")
+        logger.info("")
+        logger.info("[F-5] グループ化結果:")
+        for source, table_list in source_groups.items():
+            logger.info(f"  {source}: {len(table_list)}個の表")
+            for idx, table in enumerate(table_list, 1):
+                table_id = table.get('table_id', 'Unknown')
+                logger.info(f"    └─ Table {idx}: {table_id}")
 
-            # 各グループを結合
-            joined_tables = []
-            join_count = 0
+        # 各グループを結合
+        joined_tables = []
+        join_count = 0
 
-            logger.info("")
-            logger.info("[F-5] グループ別処理:")
-            for source, table_list in source_groups.items():
-                if len(table_list) == 1:
-                    # 単一の表はそのまま
-                    logger.info(f"  {source}: 1個のみ → そのまま通過")
-                    joined_tables.append(table_list[0])
-                elif source in ('stage_b', 'stage_b_excel', 'stage_e'):
-                    # 既知ソース: カラム構造が同じ表のみ結合
-                    logger.info(f"  {source}: {len(table_list)}個の表を検証中...")
+        logger.info("")
+        logger.info("[F-5] グループ別処理:")
+        for source, table_list in source_groups.items():
+            if len(table_list) == 1:
+                # 単一の表はそのまま
+                logger.info(f"  {source}: 1個のみ → そのまま通過")
+                joined_tables.append(table_list[0])
+            elif source in ('stage_b', 'stage_b_excel', 'stage_e'):
+                # 既知ソース: カラム構造が同じ表のみ結合
+                logger.info(f"  {source}: {len(table_list)}個の表を検証中...")
 
-                    # カラム構造の類似性チェック
-                    if self._tables_are_compatible(table_list):
-                        logger.info(f"  {source}: カラム構造が一致 → 結合開始")
+                # カラム構造の類似性チェック
+                if self._tables_are_compatible(table_list):
+                    logger.info(f"  {source}: カラム構造が一致 → 結合開始")
 
-                        # 結合前の各表の詳細
-                        total_rows_before = 0
-                        for idx, table in enumerate(table_list, 1):
-                            if 'data' in table:
-                                data = table.get('data', [])
-                                row_count = len(data) if isinstance(data, list) else 0
-                                total_rows_before += row_count
-                                logger.info(f"    ├─ Table {idx}: {row_count}行")
-                            elif 'markdown' in table:
-                                markdown = table.get('markdown', '')
-                                line_count = len(markdown.split('\n'))
-                                logger.info(f"    ├─ Table {idx}: {line_count}行")
+                    # 結合前の各表の詳細
+                    total_rows_before = 0
+                    for idx, table in enumerate(table_list, 1):
+                        if 'data' in table:
+                            data = table.get('data', [])
+                            row_count = len(data) if isinstance(data, list) else 0
+                            total_rows_before += row_count
+                            logger.info(f"    ├─ Table {idx}: {row_count}行")
+                        elif 'markdown' in table:
+                            markdown = table.get('markdown', '')
+                            line_count = len(markdown.split('\n'))
+                            logger.info(f"    ├─ Table {idx}: {line_count}行")
 
-                        joined = self._join_table_group(table_list)
-                        if joined:
-                            # 結合後の詳細
-                            if 'data' in joined:
-                                total_rows_after = len(joined.get('data', []))
-                                logger.info(f"    └─ 結合後: {total_rows_after}行 (結合前合計: {total_rows_before}行)")
+                    joined = self._join_table_group(table_list)
+                    if joined:
+                        # 結合後の詳細
+                        if 'data' in joined:
+                            total_rows_after = len(joined.get('data', []))
+                            logger.info(f"    └─ 結合後: {total_rows_after}行 (結合前合計: {total_rows_before}行)")
 
-                            joined_tables.append(joined)
-                            join_count += len(table_list) - 1
-                        else:
-                            logger.warning(f"  {source}: 結合失敗 → 個別に保持")
-                            joined_tables.extend(table_list)
+                        joined_tables.append(joined)
+                        join_count += len(table_list) - 1
                     else:
-                        logger.info(f"  {source}: カラム構造が異なる → 個別に保持")
+                        logger.warning(f"  {source}: 結合失敗 → 個別に保持")
                         joined_tables.extend(table_list)
                 else:
-                    # 未知ソース: 結合せず個別にそのまま通過
-                    logger.info(f"  {source}: 未知ソース {len(table_list)}個 → そのまま通過")
+                    logger.info(f"  {source}: カラム構造が異なる → 個別に保持")
                     joined_tables.extend(table_list)
+            else:
+                # 未知ソース: 結合せず個別にそのまま通過
+                logger.info(f"  {source}: 未知ソース {len(table_list)}個 → そのまま通過")
+                joined_tables.extend(table_list)
 
-            # 最終結果のサマリー
-            logger.info("")
-            logger.info("[F-5] 結合完了サマリー:")
-            logger.info(f"  ├─ 結合前: {len(tables)}個")
-            logger.info(f"  ├─ 結合後: {len(joined_tables)}個")
-            logger.info(f"  └─ 結合数: {join_count}個")
+        # 最終結果のサマリー
+        logger.info("")
+        logger.info("[F-5] 結合完了サマリー:")
+        logger.info(f"  ├─ 結合前: {len(tables)}個")
+        logger.info(f"  ├─ 結合後: {len(joined_tables)}個")
+        logger.info(f"  └─ 結合数: {join_count}個")
 
-            # 結合後の各表の詳細
-            logger.info("")
-            logger.info("[F-5] 結合後の表詳細:")
-            total_rows = 0
-            for idx, table in enumerate(joined_tables, 1):
-                table_id = table.get('table_id', 'Unknown')
-                if 'data' in table:
-                    data = table.get('data', [])
-                    row_count = len(data) if isinstance(data, list) else 0
-                    total_rows += row_count
-                    logger.info(f"  Table {idx} ({table_id}): {row_count}行")
-                elif 'markdown' in table:
-                    markdown = table.get('markdown', '')
-                    line_count = len(markdown.split('\n'))
-                    logger.info(f"  Table {idx} ({table_id}): {line_count}行")
-                else:
-                    logger.info(f"  Table {idx} ({table_id}): データなし")
+        # 結合後の各表の詳細
+        logger.info("")
+        logger.info("[F-5] 結合後の表詳細:")
+        total_rows = 0
+        for idx, table in enumerate(joined_tables, 1):
+            table_id = table.get('table_id', 'Unknown')
+            if 'data' in table:
+                data = table.get('data', [])
+                row_count = len(data) if isinstance(data, list) else 0
+                total_rows += row_count
+                logger.info(f"  Table {idx} ({table_id}): {row_count}行")
+            elif 'markdown' in table:
+                markdown = table.get('markdown', '')
+                line_count = len(markdown.split('\n'))
+                logger.info(f"  Table {idx} ({table_id}): {line_count}行")
+            else:
+                logger.info(f"  Table {idx} ({table_id}): データなし")
 
-            if total_rows > 0:
-                logger.info(f"[F-5] 総行数: {total_rows}行")
+        if total_rows > 0:
+            logger.info(f"[F-5] 総行数: {total_rows}行")
 
-            logger.info("=" * 50)
+        logger.info("=" * 50)
 
-            return {
-                'success': True,
-                'joined_tables': joined_tables,
-                'join_count': join_count
-            }
-
-        except Exception as e:
-            logger.error(f"[F-5] 結合エラー: {e}", exc_info=True)
-            return {
-                'success': False,
-                'error': str(e),
-                'joined_tables': tables,  # エラー時は元のまま
-                'join_count': 0
-            }
+        return {
+            'success': True,
+            'joined_tables': joined_tables,
+            'join_count': join_count
+        }
 
     def _tables_are_compatible(
         self,
@@ -387,10 +371,9 @@ class F5LogicalTableJoiner:
             logger.info(f"    ├─ data len: {len(data) if isinstance(data, list) else 'N/A'}")
 
             if isinstance(data, list):
-                # サンプルデータをログ出力
                 if data:
-                    logger.info(f"    ├─ サンプル行（先頭3行）:")
-                    for sample_idx, row in enumerate(data[:3], 1):
+                    logger.info(f"    ├─ 全行データ:")
+                    for sample_idx, row in enumerate(data, 1):
                         logger.info(f"    │   Row {sample_idx}: {row}")
 
                 logger.info(f"    └─ all_data に {len(data)}行を extend")
@@ -401,10 +384,9 @@ class F5LogicalTableJoiner:
         logger.info("")
         logger.info(f"[F-5] 結合完了: all_data = {len(all_data)}行")
 
-        # 結合後のサンプルデータ
         if all_data:
-            logger.info(f"[F-5] 結合後のサンプル（先頭5行）:")
-            for idx, row in enumerate(all_data[:5], 1):
+            logger.info(f"[F-5] 結合後の全行データ:")
+            for idx, row in enumerate(all_data, 1):
                 logger.info(f"  Row {idx}: {row}")
 
         joined_result = {
@@ -469,10 +451,9 @@ class F5LogicalTableJoiner:
         logger.info("")
         logger.info(f"[F-5] 結合完了: 最終 markdown = {len(joined_markdown)}文字, {len(joined_markdown.split(chr(10)))}行")
 
-        # サンプル出力
         if joined_markdown:
-            logger.info(f"[F-5] 結合後のサンプル（先頭10行）:")
-            for idx, line in enumerate(joined_markdown.split('\n')[:10], 1):
+            logger.info(f"[F-5] 結合後の全行データ:")
+            for idx, line in enumerate(joined_markdown.split('\n'), 1):
                 logger.info(f"  Line {idx}: {line}")
 
         joined_result = {

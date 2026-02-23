@@ -34,7 +34,9 @@ class G21TextStructurer:
         timeline: List[Dict[str, Any]],
         actions: List[Dict[str, Any]],
         notices: List[Dict[str, Any]],
-        year_context: Optional[int] = None
+        year_context: Optional[int] = None,
+        log_file=None,
+        display_fields: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         sections を metadata.articles 形式に構造化
@@ -45,6 +47,7 @@ class G21TextStructurer:
             actions: タスク
             notices: 注意事項
             year_context: 年度コンテキスト（G-22に渡す）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -52,6 +55,31 @@ class G21TextStructurer:
                 'metadata': dict  # articles, calendar_events, tasks, notices
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-21]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._structure_impl(sections, timeline, actions, notices, year_context, display_fields)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _structure_impl(
+        self,
+        sections: List[Dict[str, Any]],
+        timeline: List[Dict[str, Any]],
+        actions: List[Dict[str, Any]],
+        notices: List[Dict[str, Any]],
+        year_context: Optional[int] = None,
+        display_fields: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """structure() の実装本体"""
         logger.info("[G-21] ========================================")
         logger.info("[G-21] テキストの構造化開始")
         logger.info("[G-21] ========================================")
@@ -73,29 +101,44 @@ class G21TextStructurer:
                     section_type = section.get('type', 'unknown')
                     label = section.get('label', '(ラベルなし)')
                     content = section.get('content', '')
-                    content_sample = content[:100] + '...' if len(content) > 100 else content
 
                     logger.info(f"Section {i}:")
                     logger.info(f"  type: {section_type}")
                     logger.info(f"  label: {label}")
                     logger.info(f"  content length: {len(content)}文字")
-                    logger.info(f"  content sample: {content_sample}")
+                    logger.info(f"  content: {content}")
                     logger.info("")
                 logger.info("=" * 60)
 
-            # sections から type='text' のブロックを抽出して articles に変換
-            logger.info("")
-            logger.info("[G-21] type='text' のセクションから articles を生成中...")
             articles = []
+
+            # ─────────────────────────────────────────────────────
+            # ① display_* フィールドを個別 article として先頭に追加
+            #    投稿文・添付テキストとは混ぜない
+            # ─────────────────────────────────────────────────────
+            logger.info("")
+            logger.info("[G-21] display_* フィールドから articles を生成中...")
+            DISPLAY_FIELD_ORDER = ['送信者', 'メール', '送信日時', '件名', '本文']
+            if display_fields:
+                for label in DISPLAY_FIELD_ORDER:
+                    value = display_fields.get(label)
+                    if value:
+                        articles.append({'title': label, 'body': str(value)})
+                        logger.info(f"  ✓ display_fields['{label}'] → article: {len(str(value))}文字")
+            else:
+                logger.info("  (display_fields なし)")
+
+            # ─────────────────────────────────────────────────────
+            # ② sections から type='text' のブロックを添付テキスト article として追加
+            # ─────────────────────────────────────────────────────
+            logger.info("")
+            logger.info("[G-21] type='text' のセクションから添付テキスト articles を生成中...")
             for i, section in enumerate(sections, 1):
                 if section.get('type') == 'text':
                     body = section.get('content', '')
-                    if body and body.strip():  # 空でない場合のみ追加
+                    if body and body.strip():
                         title = section.get('label')
-                        articles.append({
-                            'title': title,
-                            'body': body
-                        })
+                        articles.append({'title': title, 'body': body})
                         logger.info(f"  ✓ Section {i} を article に変換: title='{title}', body={len(body)}文字")
 
             logger.info(f"[G-21] articles 生成完了: {len(articles)}件")
@@ -166,7 +209,10 @@ class G21TextStructurer:
                     result['calendar_events'] = g22_result.get('calendar_events', [])
                     result['tasks'] = g22_result.get('tasks', [])
                     result['notices'] = g22_result.get('notices', [])
-                    logger.info(f"[G-21] ✓ G-22の結果をマージ: イベント{len(result['calendar_events'])}件, タスク{len(result['tasks'])}件")
+                    # G-22のtopic_sectionsをresultに追加（後段ステージへの伝達用）
+                    if g22_result.get('topic_sections'):
+                        result['topic_sections'] = g22_result['topic_sections']
+                    logger.info(f"[G-21] ✓ G-22の結果をマージ: イベント{len(result['calendar_events'])}件, タスク{len(result['tasks'])}件, topic_sections{len(result.get('topic_sections', []))}件")
 
             return result
 

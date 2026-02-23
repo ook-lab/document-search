@@ -1,0 +1,310 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "WORD",
+    "confidence": "HIGH",
+    "reason": "Creator一致: microsoft.*word",
+    "raw_metadata": {
+      "Author": "洗足学園小学校",
+      "Creator": "Microsoft® Word 2019",
+      "CreationDate": "D:20260105134030+09'00'",
+      "ModDate": "D:20260105134030+09'00'",
+      "Producer": "Microsoft® Word 2019"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 515.88,
+      "height": 728.52,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 181.99099999999999,
+      "height": 257.0056666666666,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 1.5,
+      "avg_words_per_page": 68.5,
+      "avg_x_std": 123.06911646105893,
+      "avg_words_per_line": 1.477104532839963,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 3,
+          "words": 85,
+          "chars": 1032,
+          "has_selectable_text": true,
+          "x_std": 124.8046675758658,
+          "lines": 46,
+          "words_per_line": 1.8478260869565217,
+          "vector_count": 12,
+          "fonts": [
+            {
+              "name": "BCDEEE+Century",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+HGMaruGothicMPRO",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDGEE+HGMaruGothicMPRO",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDHEE+MS-PGothic",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": [
+            {
+              "width": 427,
+              "height": 150,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 494,
+              "height": 141,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 299,
+              "height": 93,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "FlateDecode"
+            }
+          ]
+        },
+        {
+          "page": 1,
+          "images": 0,
+          "words": 52,
+          "chars": 1087,
+          "has_selectable_text": true,
+          "x_std": 121.33356534625204,
+          "lines": 47,
+          "words_per_line": 1.1063829787234043,
+          "vector_count": 5,
+          "fonts": [
+            {
+              "name": "BCDGEE+HGMaruGothicMPRO",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+HGMaruGothicMPRO",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": []
+        }
+      ]
+    }
+  },
+  "origin_app": "WORD",
+  "document_type": "WORD",
+  "confidence": "HIGH",
+  "reason": "Creator一致: microsoft.*word",
+  "raw_metadata": {
+    "Author": "洗足学園小学校",
+    "Creator": "Microsoft® Word 2019",
+    "CreationDate": "D:20260105134030+09'00'",
+    "ModDate": "D:20260105134030+09'00'",
+    "Producer": "Microsoft® Word 2019"
+  },
+  "page_type_map": {
+    "0": "WORD",
+    "1": "WORD"
+  },
+  "type_groups": {
+    "WORD": [
+      0,
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 515.88,
+    "height": 728.52,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 181.99099999999999,
+    "height": 257.0056666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 1.5,
+    "avg_words_per_page": 68.5,
+    "avg_x_std": 123.06911646105893,
+    "avg_words_per_line": 1.477104532839963,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 3,
+        "words": 85,
+        "chars": 1032,
+        "has_selectable_text": true,
+        "x_std": 124.8046675758658,
+        "lines": 46,
+        "words_per_line": 1.8478260869565217,
+        "vector_count": 12,
+        "fonts": [
+          {
+            "name": "BCDEEE+Century",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+HGMaruGothicMPRO",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDGEE+HGMaruGothicMPRO",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDHEE+MS-PGothic",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": [
+          {
+            "width": 427,
+            "height": 150,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 494,
+            "height": 141,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 299,
+            "height": 93,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "FlateDecode"
+          }
+        ]
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 52,
+        "chars": 1087,
+        "has_selectable_text": true,
+        "x_std": 121.33356534625204,
+        "lines": 47,
+        "words_per_line": 1.1063829787234043,
+        "vector_count": 5,
+        "fonts": [
+          {
+            "name": "BCDGEE+HGMaruGothicMPRO",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+HGMaruGothicMPRO",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": []
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.5,
+      "avg_words_per_page": 68.5,
+      "avg_x_std": 123.06911646105893,
+      "probe_ok": true,
+      "avg_chars_per_page": 1059.5,
+      "avg_vectors_per_page": 8.5
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.5,
+      "avg_words_per_page": 68.5,
+      "avg_x_std": 123.06911646105893,
+      "probe_ok": true,
+      "avg_chars_per_page": 1059.5,
+      "avg_vectors_per_page": 8.5
+    },
+    "policy_version": "A5.v2"
+  }
+}

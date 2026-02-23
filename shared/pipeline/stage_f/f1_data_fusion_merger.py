@@ -36,7 +36,9 @@ class F1DataFusionMerger:
         stage_b_result: Optional[Dict[str, Any]] = None,
         stage_d_result: Optional[Dict[str, Any]] = None,
         stage_e_result: Optional[Dict[str, Any]] = None,
-        e40_table_ssot: Optional[List[Dict[str, Any]]] = None
+        e40_table_ssot: Optional[List[Dict[str, Any]]] = None,
+        log_dir=None,
+        rawdata_record: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         各ステージの結果を統合
@@ -46,6 +48,8 @@ class F1DataFusionMerger:
             stage_b_result: Stage B の結果（デジタル抽出）
             stage_d_result: Stage D の結果（視覚構造）
             stage_e_result: Stage E の結果（視覚抽出）
+            e40_table_ssot: E40 の結果リスト
+            log_dir: ログディレクトリ（オプション）
 
         Returns:
             {
@@ -59,18 +63,39 @@ class F1DataFusionMerger:
                 'metadata': dict            # メタデータ
             }
         """
+        return self._merge_impl(
+            stage_a_result, stage_b_result, stage_d_result, stage_e_result,
+            e40_table_ssot, rawdata_record=rawdata_record
+        )
+
+    def _merge_impl(
+        self,
+        stage_a_result: Optional[Dict[str, Any]] = None,
+        stage_b_result: Optional[Dict[str, Any]] = None,
+        stage_d_result: Optional[Dict[str, Any]] = None,
+        stage_e_result: Optional[Dict[str, Any]] = None,
+        e40_table_ssot: Optional[List[Dict[str, Any]]] = None,
+        rawdata_record: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """merge() の実装本体"""
         logger.info("[F-1] データ統合開始")
 
         try:
             # ドキュメント情報を構築
             document_info = self._build_document_info(stage_a_result, stage_b_result)
 
-            # テキストを座標順に統合
-            raw_text = self._merge_text(stage_b_result, stage_e_result)
+            # B+E 由来の本文テキストを座標順に統合
+            body_text = self._merge_text(stage_b_result, stage_e_result, rawdata_record)
 
-            # 表を除いたテキスト（G-21用）
-            # 座標順統合されたテキストを使用（B+Eの統合）
-            non_table_text = raw_text
+            # raw_integrated_text: display_* ヘッダー（ラベル付き）+ 本文（全情報を保持）
+            if rawdata_record:
+                header = self._build_display_header(rawdata_record)
+                raw_text = (header + '\n\n' + body_text) if (header and body_text) else (header or body_text)
+            else:
+                raw_text = body_text
+
+            # non_table_text: 本文のみ（G3 の段落分割に渡す。display_* を段落に混ぜない）
+            non_table_text = body_text
 
             # イベント・タスク・注意事項を抽出
             events, tasks, notices = self._extract_structured_content(stage_e_result)
@@ -99,6 +124,21 @@ class F1DataFusionMerger:
             logger.info(raw_text if raw_text else "（テキストなし）")
             logger.info("=" * 80)
 
+            # display_* フィールドを個別ブロックとして G21 に渡すための辞書
+            display_fields = None
+            if rawdata_record:
+                display_fields = {
+                    '送信者':       rawdata_record.get('display_sender'),
+                    'メール':       rawdata_record.get('display_sender_email'),
+                    '送信日時':     rawdata_record.get('display_sent_at'),
+                    '件名':         rawdata_record.get('display_subject'),
+                    '本文':         rawdata_record.get('display_post_text'),
+                }
+                # 値が空のキーは除去
+                display_fields = {k: v for k, v in display_fields.items() if v}
+                if not display_fields:
+                    display_fields = None
+
             result = {
                 'success': True,
                 'document_info': document_info,
@@ -108,7 +148,9 @@ class F1DataFusionMerger:
                 'tasks': tasks,
                 'notices': notices,
                 'tables': tables,
-                'metadata': metadata
+                'metadata': metadata,
+                'display_sent_at': rawdata_record.get('display_sent_at') if rawdata_record else None,
+                'display_fields': display_fields,
             }
 
             # ★チェーン: 次のステージ（F-3）を呼び出す
@@ -117,7 +159,7 @@ class F1DataFusionMerger:
                 return self.next_stage.normalize(
                     events=events,
                     year_context=document_info.get('year_context'),
-                    merge_result=result
+                    merge_result=result,
                 )
 
             return result
@@ -172,10 +214,28 @@ class F1DataFusionMerger:
         raw_response = non_table.get('raw_response', '')
         return raw_response.strip()
 
+    def _build_display_header(self, rawdata_record: Dict[str, Any]) -> str:
+        """
+        Rawdata_FILE_AND_MAIL の display_* フィールドをテキスト先頭に付与するヘッダーを生成。
+        各フィールドは属性ラベル付きで出力する。値が空の場合はそのフィールドをスキップ。
+        """
+        fields = [
+            ('送信者',     rawdata_record.get('display_sender')),
+            ('メール',     rawdata_record.get('display_sender_email')),
+            ('送信日時',   rawdata_record.get('display_sent_at')),
+            ('件名',       rawdata_record.get('display_subject')),
+            ('本文前テキスト', rawdata_record.get('display_post_text')),
+        ]
+        lines = [f"[{label}] {value}" for label, value in fields if value]
+        if not lines:
+            return ''
+        return '\n'.join(lines)
+
     def _merge_text(
         self,
         stage_b_result: Optional[Dict[str, Any]],
-        stage_e_result: Optional[Dict[str, Any]]
+        stage_e_result: Optional[Dict[str, Any]],
+        rawdata_record: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         テキストを座標順に統合
@@ -278,17 +338,16 @@ class F1DataFusionMerger:
         logger.info(f"  ├─ Stage E（視覚抽出）: {stage_e_count} ブロック")
         logger.info(f"  └─ 合計: {len(blocks)} ブロック")
 
-        # ソート後のブロックサンプルをログ出力
+        # ソート後のブロック全件をログ出力
         logger.info("-" * 80)
-        logger.info("[F-1] 座標順ソート結果（最初の5ブロック）:")
+        logger.info("[F-1] 座標順ソート結果 全ブロック:")
         logger.info("-" * 80)
-        for idx, block in enumerate(blocks[:5], 1):
-            preview = block['text'][:100].replace('\n', ' ') + ('...' if len(block['text']) > 100 else '')
+        for idx, block in enumerate(blocks, 1):
             logger.info(f"  Block #{idx} [page={block['page']}, y={block['y0']:.3f}, x={block['x0']:.3f}]")
-            logger.info(f"    source={block['source']}: 「{preview}」")
+            logger.info(f"    source={block['source']}: 「{block['text']}」")
         logger.info("=" * 80)
 
-        # テキストを結合
+        # B+E 由来の本文テキストのみを返す（display_* は display_fields として別経路で渡す）
         text_parts = [b['text'] for b in blocks]
         return '\n\n'.join(text_parts)
 

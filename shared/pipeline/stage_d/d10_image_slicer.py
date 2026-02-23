@@ -50,7 +50,7 @@ class D10ImageSlicer:
         image_path: Path,
         grid_result: Dict[str, Any],
         cell_result: Dict[str, Any],
-        output_dir: Path
+        output_dir: Path,
     ) -> Dict[str, Any]:
         """
         画像を表領域と非表領域に分割
@@ -178,7 +178,7 @@ class D10ImageSlicer:
                 x1 = int(bbox[2] * width)
                 y1 = int(bbox[3] * height)
 
-                logger.debug(f"[D-10] 白塗り {table_region['table_id']}: ({x0}, {y0}) - ({x1}, {y1})")
+                logger.info(f"[D-10] 白塗り {table_region['table_id']}: ({x0}, {y0}) - ({x1}, {y1})")
 
                 # 白塗り
                 non_table_image[y0:y1, x0:x1] = 255

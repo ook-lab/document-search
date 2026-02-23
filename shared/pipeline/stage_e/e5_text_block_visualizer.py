@@ -51,7 +51,7 @@ class E5TextBlockVisualizer:
     def detect_blocks(
         self,
         image_path: Path,
-        ocr_text: Optional[str] = None
+        ocr_text: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         画像からテキストブロックを検出

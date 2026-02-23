@@ -121,21 +121,17 @@ class B14GoodnotesProcessor:
                 logger.info(f"[B-14] 論理ブロック総数: {len(logical_blocks)}個")
                 logger.info(f"[B-14] 削除対象単語総数: {len(all_words)}個")
 
-                # デジタルテキストのサンプル出力
+                # デジタルテキスト全文出力
                 if digital_texts:
                     combined_text = ''.join([t.get('text', '') for t in digital_texts])
-                    sample_text = combined_text[:200] if len(combined_text) > 200 else combined_text
-                    logger.info(f"[B-14] デジタルテキストサンプル（先頭200文字）:")
-                    logger.info(f"[B-14]   「{sample_text}」")
+                    logger.info(f"[B-14] デジタルテキスト全文:")
+                    logger.info(f"[B-14]   「{combined_text}」")
                 else:
                     logger.warning(f"[B-14] デジタルテキストが抽出されませんでした")
 
-                # 論理ブロックのサンプル
-                if logical_blocks:
-                    first_block = logical_blocks[0]
-                    block_text = first_block.get('text', '')[:100]
-                    logger.info(f"[B-14] 論理ブロックサンプル（1個目、先頭100文字）:")
-                    logger.info(f"[B-14]   「{block_text}」")
+                # 論理ブロック全件
+                for idx, block in enumerate(logical_blocks):
+                    logger.info(f"[B-14] block{idx} (page={block.get('page')}): {block.get('text', '')}")
 
                 # purged PDF 生成
                 logger.info(f"[B-14] ========== テキスト削除処理開始 ==========")

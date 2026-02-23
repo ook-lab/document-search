@@ -29,13 +29,15 @@ class G3BlockArranger:
 
     def arrange(
         self,
-        g1_result: Dict[str, Any]
+        g1_result: Dict[str, Any],
+        log_file=None,
     ) -> Dict[str, Any]:
         """
         テキストを意味的なブロックに整理
 
         Args:
             g1_result: G-1の処理結果（直前ステージのみ）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -48,11 +50,32 @@ class G3BlockArranger:
                 'ui_tables': list
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-3]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._arrange_impl(g1_result)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _arrange_impl(
+        self,
+        g1_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """arrange() の実装本体"""
         logger.info("[G-3] ブロック整頓開始")
 
         try:
             # ★G-1の結果から必要なデータを取得（直前ステージのみ）
             raw_text = g1_result.get('raw_text', '')
+            logger.info(f"[G-3] raw_text 全文({len(raw_text)}文字):\n{raw_text if raw_text else '（空）'}")
             events = g1_result.get('events', [])
             tasks = g1_result.get('tasks', [])
             notices = g1_result.get('notices', [])
@@ -107,6 +130,8 @@ class G3BlockArranger:
             blocks.sort(key=lambda b: b.get('display_order', 999))
 
             logger.info(f"[G-3] 整頓完了: {len(blocks)}ブロック")
+            for block_idx, block in enumerate(blocks):
+                logger.info(f"[G-3]   ブロック{block_idx}: type={block.get('type')} content={block.get('content')}")
 
             result = {
                 'success': True,
@@ -117,7 +142,8 @@ class G3BlockArranger:
                 'tasks': tasks,
                 'notices': notices,
                 'document_info': document_info,
-                'ui_tables': ui_tables
+                'ui_tables': ui_tables,
+                'display_fields': g1_result.get('display_fields'),
             }
 
             # ★チェーン: 次のステージ（G-5）を呼び出す
@@ -141,36 +167,37 @@ class G3BlockArranger:
         text: str
     ) -> List[str]:
         """
-        テキストを段落に分割
+        テキストを空行で段落に分割し、JSON blob を除去して返す。
 
-        Args:
-            text: 全文テキスト
-
-        Returns:
-            段落リスト
+        トピックごとのグループ化は G-22 の AI が担当する。
+        ルールベースの見出し判定・統合は行わない。
         """
-        # 改行で分割
+        # Step1: 空行で段落分割（区切りを保つ）
         lines = text.split('\n')
-
-        paragraphs = []
-        current_para = []
-
+        raw_paragraphs: List[str] = []
+        current: List[str] = []
         for line in lines:
-            line = line.strip()
-
-            if not line:
-                # 空行で段落を区切る
-                if current_para:
-                    paragraphs.append('\n'.join(current_para))
-                    current_para = []
+            stripped = line.strip()
+            if not stripped:
+                if current:
+                    raw_paragraphs.append('\n'.join(current))
+                    current = []
             else:
-                current_para.append(line)
+                current.append(stripped)
+        if current:
+            raw_paragraphs.append('\n'.join(current))
 
-        # 最後の段落
-        if current_para:
-            paragraphs.append('\n'.join(current_para))
+        # Step2: JSON blob を除去（OCR の bbox/blocks 出力がテキストに混入する場合）
+        def is_json_blob(p: str) -> bool:
+            t = p.strip()
+            if t.startswith('{') or t.startswith('[{'):
+                return True
+            if '"bbox"' in t or ('"blocks"' in t and '"text"' in t):
+                return True
+            return False
 
-        return paragraphs
+        clean = [p for p in raw_paragraphs if not is_json_blob(p)]
+        return clean
 
     def _classify_block_type(
         self,

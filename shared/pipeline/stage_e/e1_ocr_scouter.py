@@ -149,6 +149,7 @@ class E1OcrScouter:
             if include_words:
                 logger.info(f"  ├─ 単語数: {len(words)}")
             logger.info(f"  └─ スキップ: {should_skip}")
+            logger.info(f"[E-1] 抽出テキスト全文=『{text}』")
 
             result = {
                 'char_count': char_count,
@@ -298,9 +299,8 @@ class E1OcrScouter:
 
                 # 抽出テキスト（ログ確認用）
                 extracted_text = ' '.join(words)
-                preview = extracted_text[:120] + ('...' if len(extracted_text) > 120 else '')
                 logger.info(f"[E-1] page={page_idx} status=ok words={words_count} chars={chars_count}")
-                logger.info(f"[E-1] page={page_idx} text=『{preview}』")
+                logger.info(f"[E-1] page={page_idx} text全文=『{extracted_text}』")
 
                 per_page.append({
                     'page': page_idx,

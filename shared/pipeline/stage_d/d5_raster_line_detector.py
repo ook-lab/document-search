@@ -49,7 +49,7 @@ class D5RasterLineDetector:
 
     def detect(
         self,
-        image_path: Path
+        image_path: Path,
     ) -> Dict[str, Any]:
         """
         画像ファイルから罫線を検出
@@ -107,28 +107,25 @@ class D5RasterLineDetector:
             horizontal_lines = self._detect_horizontal_lines(binary, width, height)
             logger.info(f"[D-5] モルフォロジー水平線検出: {len(horizontal_lines)}本")
             if horizontal_lines:
-                sample = horizontal_lines[:3]
-                logger.debug(f"[D-5] 水平線サンプル（最初3本）:")
-                for i, line in enumerate(sample, 1):
-                    logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
+                logger.info(f"[D-5] 水平線 全件:")
+                for i, line in enumerate(horizontal_lines, 1):
+                    logger.info(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
 
             # 垂直線検出
             vertical_lines = self._detect_vertical_lines(binary, width, height)
             logger.info(f"[D-5] モルフォロジー垂直線検出: {len(vertical_lines)}本")
             if vertical_lines:
-                sample = vertical_lines[:3]
-                logger.debug(f"[D-5] 垂直線サンプル（最初3本）:")
-                for i, line in enumerate(sample, 1):
-                    logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
+                logger.info(f"[D-5] 垂直線 全件:")
+                for i, line in enumerate(vertical_lines, 1):
+                    logger.info(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
 
             # HoughLinesP で補完的に検出
             hough_lines = self._detect_hough_lines(binary, width, height)
             logger.info(f"[D-5] Hough Lines検出: {len(hough_lines)}本")
             if hough_lines:
-                sample = hough_lines[:3]
-                logger.debug(f"[D-5] Hough線サンプル（最初3本）:")
-                for i, line in enumerate(sample, 1):
-                    logger.debug(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
+                logger.info(f"[D-5] Hough線 全件:")
+                for i, line in enumerate(hough_lines, 1):
+                    logger.info(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, type={line.get('type')}")
 
             # 波線フィルタ（装飾線を除外）
             all_detected = horizontal_lines + vertical_lines + hough_lines

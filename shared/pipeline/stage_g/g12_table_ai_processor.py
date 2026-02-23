@@ -61,13 +61,14 @@ class G12TableAIProcessor:
     # エントリーポイント
     # =========================================================================
 
-    def process(self, structured_tables: List[Dict[str, Any]], year_context: Optional[int] = None) -> Dict[str, Any]:
+    def process(self, structured_tables: List[Dict[str, Any]], year_context: Optional[int] = None, log_file=None) -> Dict[str, Any]:
         """
         G-11の表データをAI理解に基づいて再構造化する。
 
         Args:
             structured_tables: G-11出力 [{'headers': list, 'rows': list, 'table_id': str}, ...]
             year_context: 年度コンテキスト（日付推定に使用）
+            log_file: ログファイルパス（オプション）
 
         Returns:
             {
@@ -77,6 +78,23 @@ class G12TableAIProcessor:
                 'tokens_used': int
             }
         """
+        _sink_id = None
+        if log_file:
+            _sink_id = logger.add(
+                str(log_file),
+                format="{time:HH:mm:ss} | {level:<5} | {message}",
+                filter=lambda r: "[G-12]" in r["message"],
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        try:
+            return self._process_impl(structured_tables, year_context)
+        finally:
+            if _sink_id is not None:
+                logger.remove(_sink_id)
+
+    def _process_impl(self, structured_tables: List[Dict[str, Any]], year_context: Optional[int] = None) -> Dict[str, Any]:
+        """process() の実装本体"""
         logger.info("[G-12] ========== AI処理開始 ==========")
         logger.info(f"[G-12] モデル: {self.model_name}")
         logger.info(f"[G-12] 年度コンテキスト: {year_context if year_context else 'なし（AIが推定）'}")
@@ -165,6 +183,10 @@ class G12TableAIProcessor:
 
         if not full:
             return {'table_type': 'empty', 'sections': []}, 0
+
+        logger.info(f"[G-12] 入力データ全行:")
+        for row_idx, row in enumerate(full):
+            logger.info(f"[G-12]   行{row_idx}: {row}")
 
         # Step 0.5: 自動列名のみの行を除外（Row0汚染対策）
         import re

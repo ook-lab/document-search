@@ -1,0 +1,77 @@
+{
+  "success": true,
+  "page_index": 0,
+  "tables": [],
+  "non_table_image_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260222_003657\\page_0\\d10_background.png",
+  "metadata": {
+    "original_size": [
+      1242,
+      1755
+    ]
+  },
+  "debug": {
+    "vector_lines": {
+      "horizontal_lines": [],
+      "vertical_lines": [],
+      "all_lines": [],
+      "page_size": [
+        596,
+        842
+      ]
+    },
+    "raster_lines": {
+      "horizontal_lines": [
+        {
+          "x0": 0.16505636070853463,
+          "y0": 0.8763532763532763,
+          "x1": 0.48711755233494364,
+          "y1": 0.8763532763532763,
+          "type": "horizontal_morph"
+        }
+      ],
+      "vertical_lines": [],
+      "all_lines": [
+        {
+          "x0": 0.16505636070853463,
+          "y0": 0.8763532763532763,
+          "x1": 0.48711755233494364,
+          "y1": 0.8763532763532763,
+          "type": "horizontal_morph"
+        }
+      ],
+      "image_size": [
+        1242,
+        1755
+      ]
+    },
+    "grid_result": {
+      "page_index": 0,
+      "intersections": [],
+      "table_regions": [],
+      "unified_lines": {
+        "horizontal": [
+          {
+            "x0": 0.16505636070853463,
+            "y0": 0.8763532763532763,
+            "x1": 0.48711755233494364,
+            "y1": 0.8763532763532763,
+            "type": "horizontal_morph"
+          }
+        ],
+        "vertical": []
+      }
+    },
+    "cell_result": {
+      "cells": [],
+      "grid_info": {
+        "rows": 0,
+        "cols": 0,
+        "x_coords": [],
+        "y_coords": []
+      }
+    }
+  },
+  "non_table_image_paths": [
+    "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260222_003657\\page_0\\d10_background.png"
+  ]
+}
