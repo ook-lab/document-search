@@ -1,0 +1,210 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "extracted_content": {
+      "text": "6年間大切に保管しましょう。\n\n2025年4月発行\n東洋英和女学院 中学部・高等部\n情報システム課\n\n個人アカウント情報と注意\n\n大久保 絵麻 さん\n\nあなたのカウント情報は、以下となります。\n\n利用者 ID\n25030okubo\n\nパスワード\nQuel691! (変更不可)\n\nGoogle アカウント\n(Gmail のメールアドレス)\n25030okubo@kaede.toyoeiwa.ac.jp\n\n(文字はすべて半角英数です。パスワードは、英字3文字、数字4つ、「!」の順となります。英字は先頭のみ大文字です。)\n\n※上記の利用者 ID およびパスワードは、以下のサービスのログイン時に利用します。\n・PC教室の PC … [利用者 ID と パスワード]\n・Chromebook … [利用者 ID と パスワード]\n・Google/Chrome … [Google アカウント と パスワード]\n・MetaMoJi … [学校 ID:MC724685 と 利用者 ID と パスワード]\n・Microsoft365 (5台まで) … [Google アカウント と パスワード]\n・Adobe*1 (2台まで) … [Google アカウント と パスワード]\n\n*1:Adobe へのログインは、学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従って\nください。手順を間違えると個人の契約になり、請求が発生します。\n\n<注意>\n\n1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。\n\n以上"
+    },
+    "blocks": [
+      {
+        "text": "6年間大切に保管しましょう。",
+        "bbox": [
+          38.0,
+          33.0,
+          317.0,
+          55.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "2025年4月発行\n東洋英和女学院 中学部・高等部\n情報システム課",
+        "bbox": [
+          666.0,
+          66.0,
+          940.0,
+          133.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "個人アカウント情報と注意",
+        "bbox": [
+          339.0,
+          162.0,
+          656.0,
+          184.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "大久保 絵麻 さん",
+        "bbox": [
+          49.0,
+          218.0,
+          223.0,
+          239.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "あなたのカウント情報は、以下となります。",
+        "bbox": [
+          49.0,
+          295.0,
+          413.0,
+          313.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "利用者 ID\n25030okubo",
+        "bbox": [
+          46.0,
+          333.0,
+          319.0,
+          378.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "パスワード\nQuel691! (変更不可)",
+        "bbox": [
+          46.0,
+          385.0,
+          323.0,
+          432.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "Google アカウント\n(Gmail のメールアドレス)\n25030okubo@kaede.toyoeiwa.ac.jp",
+        "bbox": [
+          46.0,
+          441.0,
+          942.0,
+          475.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "(文字はすべて半角英数です。パスワードは、英字3文字、数字4つ、「!」の順となります。英字は先頭のみ大文字です。)",
+        "bbox": [
+          48.0,
+          472.0,
+          940.0,
+          495.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "※上記の利用者 ID およびパスワードは、以下のサービスのログイン時に利用します。\n・PC教室の PC … [利用者 ID と パスワード]\n・Chromebook … [利用者 ID と パスワード]\n・Google/Chrome … [Google アカウント と パスワード]\n・MetaMoJi … [学校 ID:MC724685 と 利用者 ID と パスワード]\n・Microsoft365 (5台まで) … [Google アカウント と パスワード]\n・Adobe*1 (2台まで) … [Google アカウント と パスワード]",
+        "bbox": [
+          46.0,
+          516.0,
+          873.0,
+          665.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "*1:Adobe へのログインは、学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従って\nください。手順を間違えると個人の契約になり、請求が発生します。",
+        "bbox": [
+          74.0,
+          694.0,
+          892.0,
+          733.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "<注意>",
+        "bbox": [
+          71.0,
+          783.0,
+          168.0,
+          802.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。",
+        "bbox": [
+          74.0,
+          814.0,
+          920.0,
+          921.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "以上",
+        "bbox": [
+          907.0,
+          949.0,
+          939.0,
+          966.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      }
+    ],
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"6年間大切に保管しましょう。\",\n      \"bbox\": [\n        38,\n        33,\n        317,\n        55\n      ]\n    },\n    {\n      \"text\": \"2025年4月発行\\n東洋英和女学院 中学部・高等部\\n情報システム課\",\n      \"bbox\": [\n        666,\n        66,\n        940,\n        133\n      ]\n    },\n    {\n      \"text\": \"個人アカウント情報と注意\",\n      \"bbox\": [\n        339,\n        162,\n        656,\n        184\n      ]\n    },\n    {\n      \"text\": \"大久保 絵麻 さん\",\n      \"bbox\": [\n        49,\n        218,\n        223,\n        239\n      ]\n    },\n    {\n      \"text\": \"あなたのカウント情報は、以下となります。\",\n      \"bbox\": [\n        49,\n        295,\n        413,\n        313\n      ]\n    },\n    {\n      \"text\": \"利用者 ID\\n25030okubo\",\n      \"bbox\": [\n        46,\n        333,\n        319,\n        378\n      ]\n    },\n    {\n      \"text\": \"パスワード\\nQuel691! (変更不可)\",\n      \"bbox\": [\n        46,\n        385,\n        323,\n        432\n      ]\n    },\n    {\n      \"text\": \"Google アカウント\\n(Gmail のメールアドレス)\\n25030okubo@kaede.toyoeiwa.ac.jp\",\n      \"bbox\": [\n        46,\n        441,\n        942,\n        475\n      ]\n    },\n    {\n      \"text\": \"(文字はすべて半角英数です。パスワードは、英字3文字、数字4つ、「!」の順となります。英字は先頭のみ大文字です。)\",\n      \"bbox\": [\n        48,\n        472,\n        940,\n        495\n      ]\n    },\n    {\n      \"text\": \"※上記の利用者 ID およびパスワードは、以下のサービスのログイン時に利用します。\\n・PC教室の PC … [利用者 ID と パスワード]\\n・Chromebook … [利用者 ID と パスワード]\\n・Google/Chrome … [Google アカウント と パスワード]\\n・MetaMoJi … [学校 ID:MC724685 と 利用者 ID と パスワード]\\n・Microsoft365 (5台まで) … [Google アカウント と パスワード]\\n・Adobe*1 (2台まで) … [Google アカウント と パスワード]\",\n      \"bbox\": [\n        46,\n        516,\n        873,\n        665\n      ]\n    },\n    {\n      \"text\": \"*1:Adobe へのログインは、学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従って\\nください。手順を間違えると個人の契約になり、請求が発生します。\",\n      \"bbox\": [\n        74,\n        694,\n        892,\n        733\n      ]\n    },\n    {\n      \"text\": \"<注意>\",\n      \"bbox\": [\n        71,\n        783,\n        168,\n        802\n      ]\n    },\n    {\n      \"text\": \"1. 紛失しないように大切に保管してください。\\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\\n3. 個人情報です。他人に見せることのないようにしてください。\\n4. 学校で指示されたサイト以外での使用は、控えてください。\\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。\",\n      \"bbox\": [\n        74,\n        814,\n        920,\n        921\n      ]\n    },\n    {\n      \"text\": \"以上\",\n      \"bbox\": [\n        907,\n        949,\n        939,\n        966\n      ]\n    }\n  ]\n}\n```",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 1069,
+    "route": "E21_VISION+E22",
+    "vision_text_used": true,
+    "role": "NON_TABLE_FINAL_TEXT",
+    "priority": 100,
+    "is_final_non_table": true
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 1069,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

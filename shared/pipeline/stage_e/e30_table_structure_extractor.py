@@ -105,10 +105,10 @@ class E30TableStructureExtractor:
         else:
             table_id = "E30_Unknown"
 
-        logger.info("=" * 80)
+        logger.info("[E-30] " + "=" * 80)
         logger.info(f"[E-30] 構造抽出開始: {image_path.name} table_id={table_id}")
         logger.info(f"[E-30] page_index={page_index}, table_index={table_index}")
-        logger.info("=" * 80)
+        logger.info("[E-30] " + "=" * 80)
 
         try:
             with open(image_path, 'rb') as f:
@@ -130,7 +130,7 @@ class E30TableStructureExtractor:
                 logger.info(f"[E-30] Stage D ヒント: なし")
 
             logger.info("[E-30] ===== AI プロンプト全文 =====")
-            logger.info(prompt)
+            logger.info(f"[E-30] {prompt}")
             logger.info("[E-30] ===== プロンプト終了 =====")
 
             logger.info("[E-30] Gemini API 呼び出し開始...")
@@ -146,7 +146,7 @@ class E30TableStructureExtractor:
             raw_text = response.text
             logger.info(f"[E-30] レスポンス長: {len(raw_text)}文字")
             logger.info("[E-30] ===== AI レスポンス全文 =====")
-            logger.info(raw_text)
+            logger.info(f"[E-30] {raw_text}")
             logger.info("[E-30] ===== レスポンス終了 =====")
 
             cells, n_rows, n_cols = self._parse_structure_response(raw_text, cell_map)
@@ -157,18 +157,18 @@ class E30TableStructureExtractor:
             if cells:
                 logger.info("[E-30] セル構造全件:")
                 for idx, cell in enumerate(cells):
-                    logger.info(f"  ├─ R{cell.get('row')}C{cell.get('col')}: "
+                    logger.info(f"[E-30]   ├─ R{cell.get('row')}C{cell.get('col')}: "
                               f"bbox=({cell.get('x0'):.3f},{cell.get('y0'):.3f})-({cell.get('x1'):.3f},{cell.get('y1'):.3f}), "
                               f"span={cell.get('rowspan')}x{cell.get('colspan')}, text='{cell.get('text', '')}')")
 
             tokens_used = (len(prompt) + len(raw_text)) // 4
 
-            logger.info("=" * 80)
+            logger.info("[E-30] " + "=" * 80)
             logger.info(f"[E-30] 構造抽出完了: {n_rows}行 × {n_cols}列, {len(cells)}セル")
-            logger.info(f"  ├─ モデル: {self.model_name}")
-            logger.info(f"  ├─ トークン: 約{tokens_used}")
-            logger.info(f"  └─ route: E30_STRUCTURE_ONLY")
-            logger.info("=" * 80)
+            logger.info(f"[E-30]   ├─ モデル: {self.model_name}")
+            logger.info(f"[E-30]   ├─ トークン: 約{tokens_used}")
+            logger.info(f"[E-30]   └─ route: E30_STRUCTURE_ONLY")
+            logger.info("[E-30] " + "=" * 80)
 
             struct_result = {
                 'success': True,

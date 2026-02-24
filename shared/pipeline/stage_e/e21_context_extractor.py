@@ -19,6 +19,7 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 import base64
 import json
+import re
 
 from .coordinate_matcher import CoordinateMatcher
 
@@ -136,10 +137,11 @@ class E21ContextExtractor:
         vision_text_used = bool(vision_text and vision_text.strip())
         route = "E21_VISION+E22" if vision_text_used else "E22_IMAGE_ONLY"
 
-        logger.info("=" * 80)
+        logger.info("[E-21] " + "=" * 80)
         logger.info(f"[E-21] 文脈抽出開始: {image_path.name}")
         logger.info(f"[E-21] route={route}, page={page}")
-        logger.info("=" * 80)
+        logger.info(f"[E-21] code_path={__file__}")
+        logger.info("[E-21] " + "=" * 80)
 
         try:
             # 画像を読み込み
@@ -153,33 +155,36 @@ class E21ContextExtractor:
 
             logger.info(f"[E-21] モデル: {self.model_name}")
             logger.info(f"[E-21] プロンプト長: {len(prompt)}文字")
+            logger.info(f"[E-21] prompt_head={prompt[:200].replace(chr(10), '\\\\n')}")
             logger.info("[E-21] ===== AI プロンプト全文 =====")
-            logger.info(prompt)
+            logger.info(f"[E-21] {prompt}")
             logger.info("[E-21] ===== プロンプト終了 =====")
 
             # 入力情報のサマリー
             logger.info("[E-21] 入力情報サマリー:")
-            logger.info(f"  ├─ block_hint: {'あり' if block_hint else 'なし'} ({len(block_hint or '')}文字)")
-            logger.info(f"  ├─ vision_text: {'あり' if vision_text else 'なし'} ({len(vision_text or '')}文字)")
-            logger.info(f"  ├─ anchor_text: {'あり' if anchor_text else 'なし'} ({len(anchor_text or '')}文字)")
-            logger.info(f"  └─ words: {len(words) if words else 0}個")
+            logger.info(f"[E-21]   ├─ block_hint: {'あり' if block_hint else 'なし'} ({len(block_hint or '')}文字)")
+            logger.info(f"[E-21]   ├─ vision_text: {'あり' if vision_text else 'なし'} ({len(vision_text or '')}文字)")
+            logger.info(f"[E-21]   ├─ anchor_text: {'あり' if anchor_text else 'なし'} ({len(anchor_text or '')}文字)")
+            logger.info(f"[E-21]   └─ words: {len(words) if words else 0}個")
 
             # Gemini に送信
             logger.info("[E-21] Gemini API 呼び出し開始...")
-            response = self.model.generate_content([
-                prompt,
-                {
-                    'mime_type': 'image/png',
-                    'data': image_data
-                }
-            ])
+            try:
+                import google.generativeai as genai_mod
+                gen_config = genai_mod.GenerationConfig(max_output_tokens=8192)
+            except Exception:
+                gen_config = None
+            response = self.model.generate_content(
+                [prompt, {'mime_type': 'image/png', 'data': image_data}],
+                generation_config=gen_config,
+            )
             logger.info("[E-21] Gemini API 呼び出し完了")
 
             # レスポンスをパース
             raw_text = response.text
             logger.info(f"[E-21] レスポンス長: {len(raw_text)}文字")
             logger.info("[E-21] ===== AI レスポンス全文 =====")
-            logger.info(raw_text)
+            logger.info(f"[E-21] {raw_text}")
             logger.info("[E-21] ===== レスポンス終了 =====")
 
             # JSON部分を抽出（```json ... ``` で囲まれている場合）
@@ -189,28 +194,35 @@ class E21ContextExtractor:
 
             logger.info("[E-21] パース結果:")
             import json
-            logger.info(json.dumps(parsed_result, ensure_ascii=False, indent=2))
+            logger.info(f"[E-21] {json.dumps(parsed_result, ensure_ascii=False, indent=2)}")
 
             # 座標付きブロック全件
             logger.info(f"[E-21] 座標付きブロック数: {len(blocks)}")
             if blocks:
+                text_lens = [len(b.get('text', '')) for b in blocks]
+                text_lens_sorted = sorted(text_lens)
+                mid = len(text_lens_sorted) // 2
+                median = text_lens_sorted[mid] if text_lens_sorted else 0
+                logger.info(
+                    f"[E-21] ブロックテキスト長: min={min(text_lens)} median={median} max={max(text_lens)}"
+                )
                 logger.info("[E-21] ブロック全件:")
                 for idx, block in enumerate(blocks, 1):
                     text = block.get('text', '')
                     bbox = block.get('bbox', [])
-                    logger.info(f"  Block {idx}: bbox={bbox}, text='{text}'")
+                    logger.info(f"[E-21]   Block {idx}: bbox={bbox}, text='{text}'")
 
             # トークン数を概算（文字数 / 4）
             tokens_used = (len(prompt) + len(raw_text)) // 4
 
-            logger.info("=" * 80)
+            logger.info("[E-21] " + "=" * 80)
             logger.info(f"[E-21] 抽出完了")
-            logger.info(f"  ├─ モデル: {self.model_name}")
-            logger.info(f"  ├─ route: {route}")
-            logger.info(f"  ├─ トークン: 約{tokens_used}")
-            logger.info(f"  ├─ 抽出テキスト長: {len(extracted_content.get('text', ''))}文字")
-            logger.info(f"  └─ 座標付きブロック: {len(blocks)}個")
-            logger.info("=" * 80)
+            logger.info(f"[E-21]   ├─ モデル: {self.model_name}")
+            logger.info(f"[E-21]   ├─ route: {route}")
+            logger.info(f"[E-21]   ├─ トークン: 約{tokens_used}")
+            logger.info(f"[E-21]   ├─ 抽出テキスト長: {len(extracted_content.get('text', ''))}文字")
+            logger.info(f"[E-21]   └─ 座標付きブロック: {len(blocks)}個")
+            logger.info("[E-21] " + "=" * 80)
 
             # ページ番号を各ブロックに追加
             for block in blocks:
@@ -260,30 +272,37 @@ class E21ContextExtractor:
 
         # ベースプロンプト（座標付きテキスト抽出）
         prompt_parts.append("""
-添付された画像のテキストをすべて抽出し、各テキストブロックの座標を含めて返してください。
+添付された画像から、テキストを「読みやすい意味まとまり」で抽出してください。
 
-**重要な指示:**
-- 読み順（上から下、左から右）を忠実に再現
-- レイアウトや構造をそのまま保持
-- 画像に記載されていない情報は絶対に作らないこと（捏造禁止）
-- 読めない箇所は [[判読不能]] と明記すること
-- 参考OCRは文字の補助として使い、画像の内容・順序・見出し階層を優先すること
-- **各テキストブロックの座標を正確に指定すること**
+【最重要：ブロック分割ポリシー】
+- blocks の数合わせは禁止。できるだけ大きくまとめる。
+- 目安は 3〜最大でも10 ブロック。内容が少ない場合は 1〜2 ブロックでも可。
+- 見出し／本文／枠付き注意／図表内テキスト（吹き出し等）は、分ける。
+- 折り返し改行（同じ段落内の改行）は「結合」する。改行＝分割にしないこと。
+- 原則として「1〜2行しかない本文ブロック」を量産しない（見出し・短い注意書き等の例外を除く）。
+- ただし 1文字・1単語の細切れは厳禁（意味のあるまとまりとしてまとめる）。
+- 迷った場合は「分割しない」ことを優先する。                        
 
-**座標について:**
-- 画像の左上を(0, 0)とするピクセル座標
-- bbox形式: [x, y, width, height]
-- x: 左端からの距離、y: 上端からの距離
-- width: ブロックの幅、height: ブロックの高さ
+【抽出ルール】
+- 画像に実在しないテキストを生成しないこと。
+- 装飾罫線・模様・枠線など本文でない要素は無視すること。
+- 読み順（上→下、左→右）を守ること。
+- 読めない箇所は [[判読不能]] とすること。
+- 句読点や記号は可能な限り保持すること。
 
-**出力形式（JSON）:**
+【座標ルール】
+- 画像の左上を (0, 0) とするピクセル座標。
+- bbox 形式は必ず xyxy: [x0, y0, x1, y1]
+  - x1 > x0, y1 > y0 を必ず満たすこと。
+  - width/height 形式（[x, y, w, h]）は禁止。
+
+【出力形式（JSON のみ。説明文不要）】
 ```json
 {
   "blocks": [
     {
-      "text": "抽出されたテキスト",
-      "bbox": [x, y, width, height],
-      "type": "paragraph"
+      "text": "意味まとまりのテキスト（段落内の折り返しは結合してよい）",
+      "bbox": [x0, y0, x1, y1]
     }
   ]
 }
@@ -292,17 +311,22 @@ class E21ContextExtractor:
 
         # Vision OCR テキストを注入（あれば）
         if vision_text and vision_text.strip():
+            # 改行を空白に正規化（改行だらけのテキストがモデルの分割判断に影響するため）
+            vision_text_norm = re.sub(r"\s*\n+\s*", " ", vision_text).strip()[:3000]
             prompt_parts.append("\n---\n")
-            prompt_parts.append("**参考OCR（Vision）:**\n")
-            prompt_parts.append("（以下は Vision API によるOCR結果です。誤認識を含む場合があります。画像が正本です。）\n")
-            prompt_parts.append(vision_text.strip()[:3000])  # 過大なテキストを制限
+            prompt_parts.append("【参考OCR（文字認識結果）】\n")
+            prompt_parts.append("※以下は参考情報です。改行構造は無視してください。ブロック分割の根拠にしないこと。画像が正本です。\n")
+            prompt_parts.append(vision_text_norm)
             prompt_parts.append("\n")
 
         # PDF由来テキストを注入（あれば）
         if anchor_text and anchor_text.strip():
+            # 改行を空白に正規化
+            anchor_text_norm = re.sub(r"\s*\n+\s*", " ", anchor_text).strip()[:2000]
             prompt_parts.append("\n---\n")
-            prompt_parts.append("**参考テキスト（PDF抽出）:**\n")
-            prompt_parts.append(anchor_text.strip()[:2000])
+            prompt_parts.append("【参考テキスト（PDF抽出）】\n")
+            prompt_parts.append("※以下は参考情報です。改行構造は無視してください。ブロック分割の根拠にしないこと。\n")
+            prompt_parts.append(anchor_text_norm)
             prompt_parts.append("\n")
 
         # ブロックヒントを追加
@@ -314,7 +338,8 @@ class E21ContextExtractor:
 
     def _parse_response(self, raw_text: str) -> Dict[str, Any]:
         """
-        レスポンスをパースして座標付きブロックを抽出
+        レスポンスをパースして座標付きブロックを抽出。
+        Gemini がトークン上限で途中切断した場合も部分パースで救出する。
 
         Args:
             raw_text: Geminiの生レスポンス
@@ -322,51 +347,59 @@ class E21ContextExtractor:
         Returns:
             {
                 'text': str,  # 全テキスト（後方互換性）
-                'blocks': [{'text': str, 'bbox': [x, y, w, h], 'type': 'paragraph'}]
+                'blocks': [{'text': str, 'bbox': [x0, y0, x1, y1]}]
             }
         """
         import json
 
+        # コードブロックから JSON 文字列を取り出す
+        if '```json' in raw_text:
+            start = raw_text.find('```json') + 7
+            end = raw_text.find('```', start)
+            json_str = raw_text[start:end].strip() if end > start else raw_text[start:].strip()
+        elif '```' in raw_text:
+            start = raw_text.find('```') + 3
+            end = raw_text.find('```', start)
+            json_str = raw_text[start:end].strip() if end > start else raw_text[start:].strip()
+        else:
+            json_str = raw_text.strip()
+
+        parsed = None
+
+        # ① フル parse
         try:
-            # ```json ... ``` で囲まれている場合
-            if '```json' in raw_text:
-                start = raw_text.find('```json') + 7
-                end = raw_text.find('```', start)
-                json_str = raw_text[start:end].strip()
-                parsed = json.loads(json_str)
-            # ``` ... ``` で囲まれている場合
-            elif '```' in raw_text:
-                start = raw_text.find('```') + 3
-                end = raw_text.find('```', start)
-                json_str = raw_text[start:end].strip()
-                parsed = json.loads(json_str)
-            # JSON部分のみの場合
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            # ② 途中切断 → 最後の完全エントリまでで閉じて再試行
+            logger.warning(f"[E-21] JSONパースエラー（切断検出）: {e}")
+            last_complete = json_str.rfind('},')
+            if last_complete > 10:
+                try:
+                    partial = json_str[:last_complete + 1] + ']}'
+                    parsed = json.loads(partial)
+                    logger.warning(
+                        f"[E-21] 部分パース成功: {last_complete}/{len(json_str)}文字 "
+                        f"(切断率 {100*(len(json_str)-last_complete)/len(json_str):.1f}%)"
+                    )
+                except json.JSONDecodeError as e2:
+                    logger.warning(f"[E-21] 部分パースも失敗: {e2}")
             else:
-                parsed = json.loads(raw_text)
+                logger.warning(f"[E-21] 有効なエントリが見つからず。blocks=[]")
 
-            blocks = parsed.get('blocks', [])
+        if parsed is None:
+            return {'text': '', 'blocks': []}
 
-            # bboxを [x, y, w, h] から [x0, y0, x1, y1] に変換
-            for block in blocks:
-                if 'bbox' in block and len(block['bbox']) == 4:
-                    x, y, w, h = block['bbox']
-                    block['bbox'] = [x, y, x + w, y + h]  # [x0, y0, x1, y1]
+        blocks = parsed.get('blocks', [])
 
-            # 全テキストを生成（後方互換性）
-            full_text = '\n\n'.join([block.get('text', '') for block in blocks])
+        # bbox は Gemini が出力した [x0, y0, x1, y1]（xyxy）のまま返す
 
-            return {
-                'text': full_text,
-                'blocks': blocks
-            }
+        # 全テキストを生成（後方互換性）
+        full_text = '\n\n'.join([block.get('text', '') for block in blocks if block.get('text', '').strip()])
 
-        except Exception as e:
-            logger.warning(f"[E-21] JSONパースエラー: {e}")
-            # パース失敗時はプレーンテキストとして扱う
-            return {
-                'text': raw_text.strip(),
-                'blocks': []
-            }
+        return {
+            'text': full_text,
+            'blocks': blocks
+        }
 
     def _enrich_with_coordinates(
         self,

@@ -24,9 +24,28 @@ except ImportError:
     VISION_AVAILABLE = False
     logger.warning("[E-20] google-cloud-vision がインストールされていません（E-21 は画像のみで動作）")
 
+try:
+    from PIL import Image as _PilImage
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    logger.warning("[E-20] Pillow (PIL) がインストールされていません（画像px寸法ログはスキップ）")
+
 
 class E20NonTableVisionOcr:
     """E-20: 非表領域 Vision OCR（条件付き実行）"""
+
+    @staticmethod
+    def _log_image_px_size(image_path: Path) -> None:
+        """画像のpx寸法をログ出力（img→pdf再投影の前提データ）"""
+        if not PIL_AVAILABLE:
+            return
+        try:
+            with _PilImage.open(image_path) as im:
+                w, h = im.size
+            logger.info(f"[E-20] 画像px寸法: {w} x {h} px")
+        except Exception as e:
+            logger.warning(f"[E-20] 画像px寸法取得に失敗: {e}")
 
     def extract_text(self, image_path: Path) -> str:
         """
@@ -53,6 +72,7 @@ class E20NonTableVisionOcr:
                 content = f.read()
 
             logger.info(f"[E-20] 画像サイズ: {len(content)} bytes")
+            self._log_image_px_size(image_path)
 
             image = gcloud_vision.Image(content=content)
 
@@ -131,6 +151,7 @@ class E20NonTableVisionOcr:
                 content = f.read()
 
             logger.info(f"[E-20] 画像サイズ: {len(content)} bytes")
+            self._log_image_px_size(image_path)
 
             image = gcloud_vision.Image(content=content)
 

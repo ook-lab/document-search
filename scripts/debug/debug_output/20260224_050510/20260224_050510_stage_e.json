@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "non_table_content": {},
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 0,
+    "models_used": []
+  }
+}

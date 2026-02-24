@@ -33,6 +33,7 @@ from .e5_text_block_visualizer import E5TextBlockVisualizer
 from .e16_line_eraser import E16LineEraser
 from .e20_non_table_vision_ocr import E20NonTableVisionOcr
 from .e21_context_extractor import E21ContextExtractor
+from .e25_paragraph_grouper import E25ParagraphGrouper
 from .e30_table_structure_extractor import E30TableStructureExtractor
 from .e31_table_vision_ocr import E31TableVisionOcr
 from .e32_table_cell_merger import E32TableCellMerger
@@ -60,6 +61,7 @@ class E1Controller:
         self.line_eraser = E16LineEraser()
         self.non_table_vision_ocr = E20NonTableVisionOcr()
         self.context_extractor = E21ContextExtractor(api_key=gemini_api_key)
+        self.coordinate_fitter = E25ParagraphGrouper()
 
         # 表処理チェーン: E30 → E31 → E32（E32 で止まる。E40 は controller が呼ぶ）
         e32 = E32TableCellMerger()                         # ★ next_stage なし
@@ -126,6 +128,7 @@ class E1Controller:
             return image_path
 
         img_h, img_w = img.shape[:2]
+        logger.info(f"[E-1] 元画像px寸法: {img_w} x {img_h} px  ({image_path.name})")
 
         # words の bbox を union
         x1 = min(w['bbox'][0] for w in words)
@@ -243,18 +246,41 @@ class E1Controller:
                         non_table_path,
                         output_dir=Path(output_dir) if output_dir else None,
                     )
+                # Tesseract テキストを参照として Gemini に渡す（座標なし・順序あり）
+                tesseract_text = ' '.join(
+                    w.get('text', '') for w in words if w.get('text', '').strip()
+                ) if words else ''
+                logger.info(f"[E-1] 非表[{img_idx}]: Tesseract参照テキスト {len(tesseract_text)}文字 → E21へ渡す")
+
+                # E21: Gemini で意味段落を抽出（座標は近似）
                 page_ntc = self.context_extractor.extract(
                     e21_input_path,
                     page=page + img_idx,
                     words=words,
                     blocks=[],
                     block_hint='',
-                    vision_text=None,
+                    vision_text=tesseract_text,
                 )
                 total_tokens += int(page_ntc.get('tokens_used', 0))
                 m = page_ntc.get('model_used')
                 if m and m not in models_used:
                     models_used.append(m)
+
+                # E25: Tesseract words で座標をフィッティング
+                e21_blocks = page_ntc.get('blocks', [])
+                fitted_blocks = self.coordinate_fitter.fit(
+                    e21_blocks=e21_blocks,
+                    tesseract_words=words,
+                    page=page + img_idx,
+                )
+                logger.info(
+                    f"[E-1] 非表[{img_idx}]: E25 座標フィッティング完了"
+                    f" ({len(fitted_blocks)}段落)"
+                )
+                # E25 フィッティング済みブロックで上書き
+                page_ntc = dict(page_ntc)
+                page_ntc['blocks'] = fitted_blocks
+
                 all_non_table_results.append(page_ntc)
             else:
                 logger.info(f"[E-1] 非表[{img_idx}]: char_count=0 → スキップ")
@@ -264,7 +290,7 @@ class E1Controller:
             non_table_content = all_non_table_results[0]
         elif len(all_non_table_results) > 1:
             merged = {'success': True}
-            for key in ('schedule', 'tasks', 'notices', 'events', 'items'):
+            for key in ('schedule', 'tasks', 'notices', 'events', 'items', 'blocks'):
                 combined = []
                 for r in all_non_table_results:
                     v = r.get(key)
@@ -272,6 +298,10 @@ class E1Controller:
                         combined.extend(v)
                 if combined:
                     merged[key] = combined
+            # raw_response は最後のページ分を保持（参照用）
+            last = all_non_table_results[-1]
+            if last.get('raw_response'):
+                merged['raw_response'] = last['raw_response']
             non_table_content = merged
         else:
             logger.info("[E-1] 非表領域: 全画像スキップ")

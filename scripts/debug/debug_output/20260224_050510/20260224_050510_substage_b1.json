@@ -1,0 +1,5 @@
+{
+  "is_structured": false,
+  "error": "GATE_BLOCKED: NOT_ALLOWLISTED allowlist外（origin_app=SCAN, layout_profile=FLOW）",
+  "processor_name": "B1_CONTROLLER"
+}

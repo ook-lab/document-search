@@ -46,7 +46,7 @@ pdf_routes:
   GOOGLE_SHEETS:    B12_GOOGLE_SHEETS
   ILLUSTRATOR:      B30_ILLUSTRATOR
   INDESIGN:         B31_INDESIGN
-  SCAN:             BLOCK   # B80(OCR)未実装。実装完了まで処理停止。
+  SCAN:             B80_SCAN_OCR   # B80(OCR)未実装のためスタブが is_structured=False を返し失敗になる
   UNKNOWN:          BLOCK   # 推論エンジン未実装。InferenceEngine 実装後に解禁する。
   DTP:              BLOCK   # Creator確定不可。Gatekeeperでも弾かれるため二重防衛。
   CANVA:            B16_CANVA
@@ -76,7 +76,7 @@ mixed_type_routes:
   GOOGLE_DOCS:      B11_GOOGLE_DOCS
   GOOGLE_SHEETS:    B12_GOOGLE_SHEETS
   GOODNOTES:        B14_GOODNOTES
-  SCAN:             BLOCK   # B80未実装。MIXEDのSCANページも処理停止（スキップ）。
+  SCAN:             B80_SCAN_OCR   # B80未実装のためスタブが is_structured=False を返し失敗になる
   UNKNOWN:          BLOCK   # 判定不能ページも処理停止（スキップ）。
   # DTP は含まない:
   #   KozMin 等フォントは Illustrator/InDesign 両方で使用するため確定不可

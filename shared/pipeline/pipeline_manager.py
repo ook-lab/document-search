@@ -1058,6 +1058,54 @@ class PipelineManager:
             except Exception as e:
                 logger.warning(f"[Stage A] 結果のDB保存エラー（処理は継続）: {e}")
 
+            # classify_results / classify_page_details への記録（本番パイプラインのみ）
+            try:
+                raw_meta = stage_a_result.get('raw_metadata') or {}
+                classify_row = {
+                    'filename':   file_name or '',
+                    'rawdata_id': document_id,
+                    'creator':    raw_meta.get('Creator') or None,
+                    'producer':   raw_meta.get('Producer') or None,
+                    'pdf_title':  raw_meta.get('Title') or None,
+                    'raw_meta':   raw_meta,
+                    'verdict':    stage_a_result.get('origin_app') or stage_a_result.get('document_type') or '',
+                    'reason':     stage_a_result.get('reason') or None,
+                    'page_count': stage_a_result.get('page_count') or 0,
+                    'error_msg':  None,
+                }
+                res = self.db.client.table('classify_results').insert(classify_row).execute()
+                if res.data:
+                    classify_result_id = res.data[0]['id']
+                    per_page = (
+                        stage_a_result.get('a4_layout', {}).get('layout_metrics', {}).get('per_page', [])
+                        or stage_a_result.get('layout_metrics', {}).get('per_page', [])
+                    )
+                    page_type_map = stage_a_result.get('page_type_map', {})
+                    if per_page:
+                        page_rows = []
+                        for p in per_page:
+                            page_idx = p.get('page', 0)  # 0-based
+                            images_detail = p.get('images_detail', []) or []
+                            page_rows.append({
+                                'result_id':           classify_result_id,
+                                'page_num':            page_idx + 1,  # 1-based
+                                'verdict':             page_type_map.get(page_idx, '') or '',
+                                'reason':              None,
+                                'chars':               p.get('chars'),
+                                'images':              p.get('images'),
+                                'vectors':             p.get('vector_count'),
+                                'has_selectable_text': p.get('has_selectable_text'),
+                                'x0_std':              p.get('x_std'),
+                                'fonts':               [f.get('name', '') for f in (p.get('fonts') or []) if isinstance(f, dict)],
+                                'wing_fonts':          [],
+                                'colorspaces':         list({d.get('colorspace', '') for d in images_detail if d.get('colorspace')}),
+                                'filters':             list({d.get('filter', '') for d in images_detail if d.get('filter')}),
+                            })
+                        self.db.client.table('classify_page_details').insert(page_rows).execute()
+                    logger.info(f"[Stage A] classify_results 保存完了: {classify_row['filename']}")
+            except Exception as e:
+                logger.warning(f"[Stage A] classify_results 保存エラー（処理は継続）: {e}")
+
             # Stage B: Format-Specific Physical Structuring
             self._update_document_progress(document_id, 0.40, '物理構造抽出')
             logger.info("[Stage B] 物理構造抽出開始")

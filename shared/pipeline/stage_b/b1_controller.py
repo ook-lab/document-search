@@ -284,11 +284,19 @@ class B1Controller:
                     processor_name = "B30_ILLUSTRATOR"
                     logger.info(f"[B-1]   {ptype} → メタデータ確定済みB30_ILLUSTRATORで処理")
                 else:
-                    logger.warning(f"[B-1]   {ptype} → 対応プロセッサなし → スキップ")
-                    continue
+                    logger.warning(f"[B-1]   {ptype} → 対応プロセッサなし → MIXED中断（中途半端な抽出防止）")
+                    return {
+                        'is_structured': False,
+                        'error': f'MIXED 処理中断: {ptype} に対応するプロセッサが存在しません。未処理ページが残るため全体を失敗とします。',
+                        'processor_name': 'B1_CONTROLLER',
+                    }
             if processor_name not in allowed:
-                logger.warning(f"[B-1]   {ptype} → {processor_name} がallowlist外 → スキップ")
-                continue
+                logger.warning(f"[B-1]   {ptype} → {processor_name} がallowlist外 → MIXED中断（中途半端な抽出防止）")
+                return {
+                    'is_structured': False,
+                    'error': f'MIXED 処理中断: {ptype}({processor_name}) がallowlist外です。未処理ページが残るため全体を失敗とします。',
+                    'processor_name': 'B1_CONTROLLER',
+                }
 
             # B1 でページをスプリット（マスクではなく分断して渡す）
             source_pages = sorted(page_indices)

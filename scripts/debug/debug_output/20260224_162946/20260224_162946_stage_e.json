@@ -1,0 +1,395 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "blocks": [
+      {
+        "text": "東洋英和女学院中高部の行事ボランティア\n「父親有志の会」",
+        "bbox": [
+          42.0,
+          37.0,
+          612.0,
+          142.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "野尻湖オープニングキャンプの動画",
+        "bbox": [
+          732.0,
+          189.0,
+          968.0,
+          204.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "父親有志の会 2025年度の主な活動予定（参加自由）",
+        "bbox": [
+          107.0,
+          485.0,
+          939.0,
+          515.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "※これらは例年の活動です、本年度の父親有志の\n会活動は学院と相談して決定いたします",
+        "bbox": [
+          124.0,
+          524.0,
+          473.0,
+          556.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇入学式での活動PR（4月上旬）",
+        "bbox": [
+          107.0,
+          569.0,
+          442.0,
+          594.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇父親有志の会活動説明会(5月上旬)",
+        "bbox": [
+          107.0,
+          605.0,
+          478.0,
+          632.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇後援会総会・2次会(7月上旬)",
+        "bbox": [
+          106.0,
+          642.0,
+          445.0,
+          669.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇野尻オープニングキャンプ(7月中旬)",
+        "bbox": [
+          107.0,
+          679.0,
+          507.0,
+          706.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "⇒学院から5月上旬に募集案内が届きます",
+        "bbox": [
+          136.0,
+          713.0,
+          460.0,
+          730.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇楓祭(文化祭) 警備(10月中旬)",
+        "bbox": [
+          107.0,
+          749.0,
+          460.0,
+          776.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "⇒学院から9月ごろ募集案内が届きます",
+        "bbox": [
+          138.0,
+          784.0,
+          457.0,
+          800.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇クリスマス音楽会 混声合唱(12月上旬)",
+        "bbox": [
+          108.0,
+          821.0,
+          540.0,
+          847.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "⇒学院から9月ごろ募集案内が届きます",
+        "bbox": [
+          138.0,
+          856.0,
+          456.0,
+          873.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "◇父親有志の会 新年会(2月上旬)",
+        "bbox": [
+          108.0,
+          892.0,
+          504.0,
+          919.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "sewayaku@toriizaka.jp",
+        "bbox": [
+          660.0,
+          666.0,
+          831.0,
+          679.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "sewayaku@toriizaka.jp",
+        "bbox": [
+          944.0,
+          680.0,
+          968.0,
+          766.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "《楓父による自主活動》",
+        "bbox": [
+          674.0,
+          841.0,
+          875.0,
+          859.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "高3卒業式後の謝恩会に父親合唱として\n参加できます。",
+        "bbox": [
+          675.0,
+          873.0,
+          931.0,
+          908.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "お申し込み、お問い合わせ先",
+        "bbox": [
+          724.0,
+          925.0,
+          931.0,
+          942.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "sewayaku@toriizaka.jp",
+        "bbox": [
+          758.0,
+          951.0,
+          931.0,
+          967.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "お父さん募集\n中！",
+        "bbox": [
+          17.0,
+          22.0,
+          176.0,
+          739.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "クリスマスメッセージ会での混声合唱(高1生徒・音楽選択)との晴れ舞台。本番前、土日の練習数回でご一緒に！",
+        "bbox": [
+          46.0,
+          937.0,
+          327.0,
+          980.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "東洋英和女学院中高部の行事ボランティア\n「父親有志の会」",
+        "bbox": [
+          357.0,
+          361.0,
+          465.0,
+          825.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "行事ごと、参加自由\n現役&OG等の父親\n会費はなし",
+        "bbox": [
+          487.0,
+          264.0,
+          570.0,
+          416.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "学院要請の行事へのボランティア活動を\n行う父親有志たちによる自主活動です。\n各活動に際しては、事前に説明会が開催\nされるので、初めての方でも安心して参加\nできます。無理のない範囲で、ご都合の\nかなうイベントに協力する形です。\n「有志の会」から発展した活動サークルも\nたくさんあります。",
+        "bbox": [
+          598.0,
+          263.0,
+          728.0,
+          605.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "《楓祭での警備、巡回活動》\n10月の楓祭(文化祭)に、学院内を巡回\nするボランティア。休憩時には楓祭見学も\nできます。写真は打合せ時の様子。",
+        "bbox": [
+          644.0,
+          647.0,
+          728.0,
+          949.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "お申し込み、お問い合わせ先\nsewayaku@toriizaka.jp\n・メールには、お嬢様の学年・お名前、お父様のお名前を\nお書き添えください。\n・連絡はメール配信が原則で、登録アドレスは\nボランティア活動のみに用います。\n・外部へ非公開のほか、父親有志の会世話役\n(中心メンバー)連絡係限りとし、会員間でも共有しません。",
+        "bbox": [
+          783.0,
+          96.0,
+          958.0,
+          591.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "《野尻湖キャンプの開設準備》\n7月の中2夏期学校前に、2泊3日で野尻\n湖のキャンプサイト開設の準備。作業後は、\nヨットやカヤックなど自然体験プログラムも！",
+        "bbox": [
+          866.0,
+          648.0,
+          940.0,
+          949.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "※これらは例年の活動です。本年度の父親有志\nの会活動は学院と相談して決定いたします",
+        "bbox": [
+          947.0,
+          591.0,
+          978.0,
+          978.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      }
+    ],
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"お父さん募集\\n中！\",\n      \"bbox\": [17, 22, 176, 739]\n    },\n    {\n      \"text\": \"クリスマスメッセージ会での混声合唱(高1生徒・音楽選択)との晴れ舞台。本番前、土日の練習数回でご一緒に！\",\n      \"bbox\": [46, 937, 327, 980]\n    },\n    {\n      \"text\": \"東洋英和女学院中高部の行事ボランティア\\n「父親有志の会」\",\n      \"bbox\": [357, 361, 465, 825]\n    },\n    {\n      \"text\": \"行事ごと、参加自由\\n現役&OG等の父親\\n会費はなし\",\n      \"bbox\": [487, 264, 570, 416]\n    },\n    {\n      \"text\": \"学院要請の行事へのボランティア活動を\\n行う父親有志たちによる自主活動です。\\n各活動に際しては、事前に説明会が開催\\nされるので、初めての方でも安心して参加\\nできます。無理のない範囲で、ご都合の\\nかなうイベントに協力する形です。\\n「有志の会」から発展した活動サークルも\\nたくさんあります。\",\n      \"bbox\": [598, 263, 728, 605]\n    },\n    {\n      \"text\": \"《楓祭での警備、巡回活動》\\n10月の楓祭(文化祭)に、学院内を巡回\\nするボランティア。休憩時には楓祭見学も\\nできます。写真は打合せ時の様子。\",\n      \"bbox\": [644, 647, 728, 949]\n    },\n    {\n      \"text\": \"お申し込み、お問い合わせ先\\nsewayaku@toriizaka.jp\\n・メールには、お嬢様の学年・お名前、お父様のお名前を\\nお書き添えください。\\n・連絡はメール配信が原則で、登録アドレスは\\nボランティア活動のみに用います。\\n・外部へ非公開のほか、父親有志の会世話役\\n(中心メンバー)連絡係限りとし、会員間でも共有しません。\",\n      \"bbox\": [783, 96, 958, 591]\n    },\n    {\n      \"text\": \"《野尻湖キャンプの開設準備》\\n7月の中2夏期学校前に、2泊3日で野尻\\n湖のキャンプサイト開設の準備。作業後は、\\nヨットやカヤックなど自然体験プログラムも！\",\n      \"bbox\": [866, 648, 940, 949]\n    },\n    {\n      \"text\": \"※これらは例年の活動です。本年度の父親有志\\nの会活動は学院と相談して決定いたします\",\n      \"bbox\": [947, 591, 978, 978]\n    }\n  ]\n}\n```"
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 1492,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

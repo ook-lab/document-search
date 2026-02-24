@@ -218,9 +218,12 @@ gatekeeper:
     - [ACROBAT,          FIXED]
     - [WEB_PDF,          FLOW]
     - [WEB_PDF,          FIXED]
-    # SCAN/UNKNOWN はここに含まない。
-    #   SCAN    → B80_SCAN_OCR は未実装スタブ。実装完了まで BLOCK。
+    - [SCAN,         FLOW]
+    - [SCAN,         FIXED]
+    # UNKNOWN はここに含まない。
     #   UNKNOWN → 推論エンジン未実装。InferenceEngine 実装後に解禁する。
+    # SCAN は B80_SCAN_OCR（実装済み）で処理。
+    #   本番ブロックは B1Controller.PRODUCTION_ALLOWED_PROCESSORS で担保。
 
   # C-2. 閾値チェックは廃止
   #      数値閾値は全て根拠がないため削除。

@@ -1,0 +1,210 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "extracted_content": {
+      "text": "6 年間 大 切 に 保管 し まし ょ う 。\n\n2025 年 4 月 発行\n東洋 英和 女学院 中学 部 ・ 高等 部\n情報 システム 課\n\n個人 アカ ウン ト 情報 と 注意\n\n大 久保 絵 麻 さん\n\nあなた の アカ ウン ト 情報 は 、 以下 と な り ます 。\n\n利 用 者 ID\n25030okubo\n\nパス ワ ー ド\nQue 1691! (変更 不可 )\n\nGoogle アカ ウン ト\n(Gmail の メー ル ア ドル ス )\n25030okubo@kaede.+oyoeiwa.qc.jp\n\n(文字 は すべ て 半角 英 数 で す 。 パ スワ ー ド は 、 英 字 3 文字 、 数 字 4 つ 、「 ! 」 の 順 と な り ます 。 英 字 は 先頭 の み 大 文字 で す 。)\n\n※ 上 記 の 利用 者 ID お よび パス ワー ド は 、 以下 の サ ービス の ログ イン 時 に 利用 し ます 。\n\n・PC 教室 の PC ・・・ [利 用 者 ID と パス ワー ド ]\n・Chromebook ・・・ [利用 者 ID と パス ワー ド ]\n・Google/Chrome ・・・ [Google アカ ウン ト と パス ワー ド ]\n・ Meta Mo Ji ・・・ [学校 ID:MC724685 と 利用 者 ID と パス ワ ー ド ]\n・Microsoft365 (5 台 まで ) ・・・ [Google アカ ウン ト と パス ワー ド ]\n・Adobe*1 (2 台 まで ) ・・・ [Google アカ ウン ト と パス ワー ド ]\n\n*1:Adobe へ の ログ イン は 、 学年 の Classroom に アッ プ さ れ て いる 「Adobe ログ イン の 仕方 」 の プリ ント の 手順 に 従っ て\nください 。 手 順 を 間違え る と 個人 の 契約 に な り 、 請 求 が 発生 し ます 。\n\n<注意 >\n1. 紛失 し な いよ うに 大 切 に 保管 し て くだ さい 。\n2. 万 が 一 この 用 紙 を 紛失 し た 場合 は 、 速 や か に 担任 の 先生 に 報告 し て くだ さい 。\n3. 個人 情報 で す 。 他人 に 見せ する こと の な いよ う に し て くだ さい 。\n4. 学校 で 指示 され た サイ ト 以 外 で の 使用 は 、 控 え て くだ さい 。\n5. 管理 上 、 中 高 部 が 必要 だ と 判断 し た 場合 は 、 管理 者 が ログイン さ せ て い た だ きま す 。\n\n以上"
+    },
+    "blocks": [
+      {
+        "text": "6 年間 大 切 に 保管 し まし ょ う 。",
+        "bbox": [
+          37.0,
+          34.0,
+          359.0,
+          49.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "2025 年 4 月 発行\n東洋 英和 女学院 中学 部 ・ 高等 部\n情報 システム 課",
+        "bbox": [
+          666.0,
+          63.0,
+          945.0,
+          127.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "個人 アカ ウン ト 情報 と 注意",
+        "bbox": [
+          344.0,
+          159.0,
+          651.0,
+          185.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "大 久保 絵 麻 さん",
+        "bbox": [
+          47.0,
+          215.0,
+          222.0,
+          237.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "あなた の アカ ウン ト 情報 は 、 以下 と な り ます 。",
+        "bbox": [
+          47.0,
+          292.0,
+          412.0,
+          309.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "利 用 者 ID\n25030okubo",
+        "bbox": [
+          51.0,
+          342.0,
+          415.0,
+          363.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "パス ワ ー ド\nQue 1691! (変更 不可 )",
+        "bbox": [
+          49.0,
+          383.0,
+          419.0,
+          405.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "Google アカ ウン ト\n(Gmail の メー ル ア ドル ス )\n25030okubo@kaede.+oyoeiwa.qc.jp",
+        "bbox": [
+          50.0,
+          422.0,
+          927.0,
+          452.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "(文字 は すべ て 半角 英 数 で す 。 パ スワ ー ド は 、 英 字 3 文字 、 数 字 4 つ 、「 ! 」 の 順 と な り ます 。 英 字 は 先頭 の み 大 文字 で す 。)",
+        "bbox": [
+          47.0,
+          462.0,
+          949.0,
+          484.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "※ 上 記 の 利用 者 ID お よび パス ワー ド は 、 以下 の サ ービス の ログ イン 時 に 利用 し ます 。",
+        "bbox": [
+          43.0,
+          515.0,
+          716.0,
+          533.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "・PC 教室 の PC ・・・ [利 用 者 ID と パス ワー ド ]\n・Chromebook ・・・ [利用 者 ID と パス ワー ド ]\n・Google/Chrome ・・・ [Google アカ ウン ト と パス ワー ド ]\n・ Meta Mo Ji ・・・ [学校 ID:MC724685 と 利用 者 ID と パス ワ ー ド ]\n・Microsoft365 (5 台 まで ) ・・・ [Google アカ ウン ト と パス ワー ド ]\n・Adobe*1 (2 台 まで ) ・・・ [Google アカ ウン ト と パス ワー ド ]",
+        "bbox": [
+          59.0,
+          544.0,
+          712.0,
+          669.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "*1:Adobe へ の ログ イン は 、 学年 の Classroom に アッ プ さ れ て いる 「Adobe ログ イン の 仕方 」 の プリ ント の 手順 に 従っ て\nください 。 手 順 を 間違え る と 個人 の 契約 に な り 、 請 求 が 発生 し ます 。",
+        "bbox": [
+          72.0,
+          699.0,
+          926.0,
+          741.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "<注意 >\n1. 紛失 し な いよ うに 大 切 に 保管 し て くだ さい 。\n2. 万 が 一 この 用 紙 を 紛失 し た 場合 は 、 速 や か に 担任 の 先生 に 報告 し て くだ さい 。\n3. 個人 情報 で す 。 他人 に 見せ する こと の な いよ う に し て くだ さい 。\n4. 学校 で 指示 され た サイ ト 以 外 で の 使用 は 、 控 え て くだ さい 。\n5. 管理 上 、 中 高 部 が 必要 だ と 判断 し た 場合 は 、 管理 者 が ログイン さ せ て い た だ きま す 。",
+        "bbox": [
+          57.0,
+          774.0,
+          784.0,
+          911.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "以上",
+        "bbox": [
+          911.0,
+          950.0,
+          948.0,
+          964.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      }
+    ],
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"6 年間 大 切 に 保管 し まし ょ う 。\",\n      \"bbox\": [37, 34, 359, 49]\n    },\n    {\n      \"text\": \"2025 年 4 月 発行\\n東洋 英和 女学院 中学 部 ・ 高等 部\\n情報 システム 課\",\n      \"bbox\": [666, 63, 945, 127]\n    },\n    {\n      \"text\": \"個人 アカ ウン ト 情報 と 注意\",\n      \"bbox\": [344, 159, 651, 185]\n    },\n    {\n      \"text\": \"大 久保 絵 麻 さん\",\n      \"bbox\": [47, 215, 222, 237]\n    },\n    {\n      \"text\": \"あなた の アカ ウン ト 情報 は 、 以下 と な り ます 。\",\n      \"bbox\": [47, 292, 412, 309]\n    },\n    {\n      \"text\": \"利 用 者 ID\\n25030okubo\",\n      \"bbox\": [51, 342, 415, 363]\n    },\n    {\n      \"text\": \"パス ワ ー ド\\nQue 1691! (変更 不可 )\",\n      \"bbox\": [49, 383, 419, 405]\n    },\n    {\n      \"text\": \"Google アカ ウン ト\\n(Gmail の メー ル ア ドル ス )\\n25030okubo@kaede.+oyoeiwa.qc.jp\",\n      \"bbox\": [50, 422, 927, 452]\n    },\n    {\n      \"text\": \"(文字 は すべ て 半角 英 数 で す 。 パ スワ ー ド は 、 英 字 3 文字 、 数 字 4 つ 、「 ! 」 の 順 と な り ます 。 英 字 は 先頭 の み 大 文字 で す 。)\",\n      \"bbox\": [47, 462, 949, 484]\n    },\n    {\n      \"text\": \"※ 上 記 の 利用 者 ID お よび パス ワー ド は 、 以下 の サ ービス の ログ イン 時 に 利用 し ます 。\",\n      \"bbox\": [43, 515, 716, 533]\n    },\n    {\n      \"text\": \"・PC 教室 の PC ・・・ [利 用 者 ID と パス ワー ド ]\\n・Chromebook ・・・ [利用 者 ID と パス ワー ド ]\\n・Google/Chrome ・・・ [Google アカ ウン ト と パス ワー ド ]\\n・ Meta Mo Ji ・・・ [学校 ID:MC724685 と 利用 者 ID と パス ワ ー ド ]\\n・Microsoft365 (5 台 まで ) ・・・ [Google アカ ウン ト と パス ワー ド ]\\n・Adobe*1 (2 台 まで ) ・・・ [Google アカ ウン ト と パス ワー ド ]\",\n      \"bbox\": [59, 544, 712, 669]\n    },\n    {\n      \"text\": \"*1:Adobe へ の ログ イン は 、 学年 の Classroom に アッ プ さ れ て いる 「Adobe ログ イン の 仕方 」 の プリ ント の 手順 に 従っ て\\nください 。 手 順 を 間違え る と 個人 の 契約 に な り 、 請 求 が 発生 し ます 。\",\n      \"bbox\": [72, 699, 926, 741]\n    },\n    {\n      \"text\": \"<注意 >\\n1. 紛失 し な いよ うに 大 切 に 保管 し て くだ さい 。\\n2. 万 が 一 この 用 紙 を 紛失 し た 場合 は 、 速 や か に 担任 の 先生 に 報告 し て くだ さい 。\\n3. 個人 情報 で す 。 他人 に 見せ する こと の な いよ う に し て くだ さい 。\\n4. 学校 で 指示 され た サイ ト 以 外 で の 使用 は 、 控 え て くだ さい 。\\n5. 管理 上 、 中 高 部 が 必要 だ と 判断 し た 場合 は 、 管理 者 が ログイン さ せ て い た だ きま す 。\",\n      \"bbox\": [57, 774, 784, 911]\n    },\n    {\n      \"text\": \"以上\",\n      \"bbox\": [911, 950, 948, 964]\n    }\n  ]\n}\n```",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 1013,
+    "route": "E21_VISION+E22",
+    "vision_text_used": true,
+    "role": "NON_TABLE_FINAL_TEXT",
+    "priority": 100,
+    "is_final_non_table": true
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 1013,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

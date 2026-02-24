@@ -86,13 +86,13 @@ class G21TextStructurer:
 
         try:
             # 入力データのサマリーをログ出力
-            logger.info("")
+            logger.info("[G-21]")
             logger.info("[G-21] ========== 入力データ詳細 ==========")
-            logger.info(f"sections: {len(sections)}件")
-            logger.info(f"timeline: {len(timeline)}件")
-            logger.info(f"actions: {len(actions)}件")
-            logger.info(f"notices: {len(notices)}件")
-            logger.info("")
+            logger.info(f"[G-21] sections: {len(sections)}件")
+            logger.info(f"[G-21] timeline: {len(timeline)}件")
+            logger.info(f"[G-21] actions: {len(actions)}件")
+            logger.info(f"[G-21] notices: {len(notices)}件")
+            logger.info("[G-21]")
 
             # 各 section の詳細をログ出力
             if sections:
@@ -102,13 +102,13 @@ class G21TextStructurer:
                     label = section.get('label', '(ラベルなし)')
                     content = section.get('content', '')
 
-                    logger.info(f"Section {i}:")
-                    logger.info(f"  type: {section_type}")
-                    logger.info(f"  label: {label}")
-                    logger.info(f"  content length: {len(content)}文字")
-                    logger.info(f"  content: {content}")
-                    logger.info("")
-                logger.info("=" * 60)
+                    logger.info(f"[G-21] Section {i}:")
+                    logger.info(f"[G-21]   type: {section_type}")
+                    logger.info(f"[G-21]   label: {label}")
+                    logger.info(f"[G-21]   content length: {len(content)}文字")
+                    logger.info(f"[G-21]   content: {content}")
+                    logger.info("[G-21]")
+                logger.info("[G-21] " + "=" * 60)
 
             articles = []
 
@@ -116,7 +116,7 @@ class G21TextStructurer:
             # ① display_* フィールドを個別 article として先頭に追加
             #    投稿文・添付テキストとは混ぜない
             # ─────────────────────────────────────────────────────
-            logger.info("")
+            logger.info("[G-21]")
             logger.info("[G-21] display_* フィールドから articles を生成中...")
             DISPLAY_FIELD_ORDER = ['送信者', 'メール', '送信日時', '件名', '本文']
             if display_fields:
@@ -124,14 +124,14 @@ class G21TextStructurer:
                     value = display_fields.get(label)
                     if value:
                         articles.append({'title': label, 'body': str(value)})
-                        logger.info(f"  ✓ display_fields['{label}'] → article: {len(str(value))}文字")
+                        logger.info(f"[G-21]   ✓ display_fields['{label}'] → article: {len(str(value))}文字")
             else:
-                logger.info("  (display_fields なし)")
+                logger.info("[G-21]   (display_fields なし)")
 
             # ─────────────────────────────────────────────────────
             # ② sections から type='text' のブロックを添付テキスト article として追加
             # ─────────────────────────────────────────────────────
-            logger.info("")
+            logger.info("[G-21]")
             logger.info("[G-21] type='text' のセクションから添付テキスト articles を生成中...")
             for i, section in enumerate(sections, 1):
                 if section.get('type') == 'text':
@@ -139,7 +139,7 @@ class G21TextStructurer:
                     if body and body.strip():
                         title = section.get('label')
                         articles.append({'title': title, 'body': body})
-                        logger.info(f"  ✓ Section {i} を article に変換: title='{title}', body={len(body)}文字")
+                        logger.info(f"[G-21]   ✓ Section {i} を article に変換: title='{title}', body={len(body)}文字")
 
             logger.info(f"[G-21] articles 生成完了: {len(articles)}件")
 
@@ -152,32 +152,32 @@ class G21TextStructurer:
             }
 
             # 生成された articles の詳細をログ出力
-            logger.info("")
+            logger.info("[G-21]")
             logger.info("[G-21] ========== 生成された articles ==========")
             if articles:
                 for i, article in enumerate(articles, 1):
                     title = article.get('title', '(タイトルなし)')
                     body = article.get('body', '')
-                    logger.info(f"Article {i}:")
-                    logger.info(f"  title: {title}")
-                    logger.info(f"  body length: {len(body)}文字")
-                    logger.info(f"  body:")
-                    logger.info(f"    {body}")
-                    logger.info("")
+                    logger.info(f"[G-21] Article {i}:")
+                    logger.info(f"[G-21]   title: {title}")
+                    logger.info(f"[G-21]   body length: {len(body)}文字")
+                    logger.info(f"[G-21]   body:")
+                    logger.info(f"[G-21]     {body}")
+                    logger.info("[G-21]")
             else:
-                logger.info("(articles なし)")
-            logger.info("=" * 60)
+                logger.info("[G-21] (articles なし)")
+            logger.info("[G-21] " + "=" * 60)
 
             # 最終メタデータのサマリー
-            logger.info("")
+            logger.info("[G-21]")
             logger.info("[G-21] ========== 最終メタデータサマリー ==========")
-            logger.info(f"  ├─ articles: {len(articles)}件")
-            logger.info(f"  ├─ calendar_events: {len(timeline)}件")
-            logger.info(f"  ├─ tasks: {len(actions)}件")
-            logger.info(f"  └─ notices: {len(notices)}件")
-            logger.info("=" * 60)
+            logger.info(f"[G-21]   ├─ articles: {len(articles)}件")
+            logger.info(f"[G-21]   ├─ calendar_events: {len(timeline)}件")
+            logger.info(f"[G-21]   ├─ tasks: {len(actions)}件")
+            logger.info(f"[G-21]   └─ notices: {len(notices)}件")
+            logger.info("[G-21] " + "=" * 60)
 
-            logger.info("")
+            logger.info("[G-21]")
             logger.info("[G-21] ========================================")
             logger.info("[G-21] 構造化完了")
             logger.info("[G-21] ========================================")

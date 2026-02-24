@@ -64,7 +64,7 @@ class E40ImageSsotConsolidator:
         page_index = d10_table.get('page_index', 0)
         cell_map = d10_table.get('cell_map', [])
 
-        logger.info("=" * 80)
+        logger.info("[E-40] " + "=" * 80)
         logger.info(f"[E-40] SSOT正本化: origin_uid={origin_uid} canonical_id={canonical_id}")
         logger.info(f"[E-40] D10 cell_map={len(cell_map)}セル")
 

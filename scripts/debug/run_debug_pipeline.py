@@ -145,52 +145,56 @@ class DebugPipeline:
         self._g_controller = G1ControllerFull(api_key=_gemini_key)
 
         # ログ出力設定: 各ステージのログを個別ファイルに出力（起動時に一括設定）
+        # フィルタはモジュール名ベース（"[X-NN]" プレフィックスの有無に関わらず全行を捕捉）
         _log_dir = self.output_dir  # ROOT直下に出力
         self._log_sinks = []
-        for _prefix, _filename in [
-            ("[A-3]",  "a3_entry_point.log"),
-            ("[A-5]",  "a5_type_analyzer.log"),
-            ("[A-6]",  "a6_dimension_measurer.log"),
-            ("[B-1]",  "b1_controller.log"),
-            ("[B-3]",  "b3_pdf_word.log"),
-            ("[B-4]",  "b4_pdf_excel.log"),
-            ("[B-5]",  "b5_pdf_ppt.log"),
-            ("[B-11]", "b11_google_docs.log"),
-            ("[B-12]", "b12_google_sheets.log"),
-            ("[B-14]", "b14_goodnotes.log"),
-            ("[B-30]", "b30_illustrator.log"),
-            ("[B-42]", "b42_multi_column.log"),
-            ("[B-90]", "b90_result_merger.log"),
-            ("[D-1]",  "d1_controller.log"),
-            ("[D-3]",  "d3_vector.log"),
-            ("[D-5]",  "d5_raster.log"),
-            ("[D-8]",  "d8_grid.log"),
-            ("[D-9]",  "d9_cell.log"),
-            ("[D-10]", "d10_slicer.log"),
-            ("[E-1]",  "e1_controller.log"),
-            ("[E-5]",  "e5_visualizer.log"),
-            ("[E-20]", "e20_vision_ocr.log"),
-            ("[E-21]", "e21_context.log"),
-            ("[E-30]", "e30_table_struct.log"),
-            ("[E-31]", "e31_table_ocr.log"),
-            ("[E-32]", "e32_cell_merger.log"),
-            ("[E-37]", "e37_embedded.log"),
-            ("[E-40]", "e40_ssot.log"),
-            ("[F-1]",  "f1_merger.log"),
-            ("[F-3]",  "f3_normalizer.log"),
-            ("[F-5]",  "f5_table_joiner.log"),
-            ("[G-1]",  "g1_controller.log"),
-            ("[G-3]",  "g3_block_arranger.log"),
-            ("[G-5]",  "g5_noise_eliminator.log"),
-            ("[G-11]", "g11_table_structurer.log"),
-            ("[G-12]", "g12_table_ai_processor.log"),
-            ("[G-21]", "g21_text_structurer.log"),
-            ("[G-22]", "g22_text_ai_processor.log"),
+        # (_module_substring, _filename):
+        #   record["name"] に _module_substring が含まれるログを _filename に書き込む
+        for _mod, _filename in [
+            ("a3_entry_point",           "a3_entry_point.log"),
+            ("a5_",                      "a5_type_analyzer.log"),   # a5_type_analyzer + a5_gatekeeper
+            ("a6_dimension_measurer",    "a6_dimension_measurer.log"),
+            ("b1_controller",            "b1_controller.log"),
+            ("b3_pdf_word",              "b3_pdf_word.log"),
+            ("b4_pdf_excel",             "b4_pdf_excel.log"),
+            ("b5_pdf_ppt",               "b5_pdf_ppt.log"),
+            ("b11_google_docs",          "b11_google_docs.log"),
+            ("b12_google_sheets",        "b12_google_sheets.log"),
+            ("b14_goodnotes",            "b14_goodnotes.log"),
+            ("b30_illustrator",          "b30_illustrator.log"),
+            ("b42_multicolumn",          "b42_multi_column.log"),
+            ("b90_result_merger",        "b90_result_merger.log"),
+            ("stage_d.d1_controller",    "d1_controller.log"),
+            ("d3_vector_line_extractor", "d3_vector.log"),
+            ("d5_raster_line_detector",  "d5_raster.log"),
+            ("d8_grid_analyzer",         "d8_grid.log"),
+            ("d9_cell_identifier",       "d9_cell.log"),
+            ("d10_image_slicer",         "d10_slicer.log"),
+            ("stage_e.e1_",              "e1_controller.log"),      # e1_controller + e1_ocr_scouter
+            ("e5_text_block_visualizer", "e5_visualizer.log"),
+            ("e20_non_table_vision_ocr", "e20_vision_ocr.log"),
+            ("e21_context_extractor",    "e21_context.log"),
+            ("e25_paragraph_grouper",    "e25_coord_fitter.log"),
+            ("e30_table_structure",      "e30_table_struct.log"),
+            ("e31_table_vision_ocr",     "e31_table_ocr.log"),
+            ("e32_cell_candidate",       "e32_cell_merger.log"),
+            ("e37_embedded_cell",        "e37_embedded.log"),
+            ("e40_image_ssot",           "e40_ssot.log"),
+            ("f1_data_fusion_merger",    "f1_merger.log"),
+            ("f3_smart_date_normalizer", "f3_normalizer.log"),
+            ("f5_logical_table_joiner",  "f5_table_joiner.log"),
+            ("stage_g.g1_controller",    "g1_controller.log"),
+            ("g3_block_arranger",        "g3_block_arranger.log"),
+            ("g5_noise_eliminator",      "g5_noise_eliminator.log"),
+            ("g11_table_structurer",     "g11_table_structurer.log"),
+            ("g12_table_ai_processor",   "g12_table_ai_processor.log"),
+            ("g21_text_structurer",      "g21_text_structurer.log"),
+            ("g22_text_ai_processor",    "g22_text_ai_processor.log"),
         ]:
             sid = logger.add(
                 str(_log_dir / _filename),
                 format="{time:HH:mm:ss} | {level:<5} | {message}",
-                filter=lambda r, p=_prefix: p in r["message"],
+                filter=lambda r, m=_mod: m in (r["name"] or ""),
                 level="DEBUG",
                 encoding="utf-8",
             )
@@ -382,6 +386,14 @@ class DebugPipeline:
         try:
             self._exec_stage_a(ctx, active_set, force, pdf_path)
             self._exec_stage_b(ctx, active_set, force, pdf_path)
+
+            # Stage B が失敗した場合は後続ステージを実行しない
+            # （D は B の purged 画像が必要、E は D の画像が必要）
+            if 'B1' in active_set:
+                _b = ctx.get("B") or {}
+                if not _b.get('is_structured', False):
+                    raise ValueError(f"Stage B 失敗 → 後続ステージ中断: {_b.get('error', '不明')}")
+
             self._exec_stage_d(ctx, active_set, force)
             self._exec_stage_e(ctx, active_set, force)
             self._exec_stage_f(ctx, active_set, force)

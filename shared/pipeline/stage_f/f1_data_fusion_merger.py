@@ -112,17 +112,17 @@ class F1DataFusionMerger:
             )
 
             logger.info("[F-1] 統合完了:")
-            logger.info(f"  ├─ イベント: {len(events)}件")
-            logger.info(f"  ├─ タスク: {len(tasks)}件")
-            logger.info(f"  ├─ 注意事項: {len(notices)}件")
-            logger.info(f"  └─ 表: {len(tables)}個")
+            logger.info(f"[F-1]   ├─ イベント: {len(events)}件")
+            logger.info(f"[F-1]   ├─ タスク: {len(tasks)}件")
+            logger.info(f"[F-1]   ├─ 注意事項: {len(notices)}件")
+            logger.info(f"[F-1]   └─ 表: {len(tables)}個")
 
             # 統合テキスト全文をログ出力
-            logger.info("=" * 80)
+            logger.info("[F-1] " + "=" * 80)
             logger.info("[F-1] 統合テキスト全文:")
-            logger.info("=" * 80)
-            logger.info(raw_text if raw_text else "（テキストなし）")
-            logger.info("=" * 80)
+            logger.info("[F-1] " + "=" * 80)
+            logger.info(f"[F-1] {raw_text if raw_text else '（テキストなし）'}")
+            logger.info("[F-1] " + "=" * 80)
 
             # display_* フィールドを個別ブロックとして G21 に渡すための辞書
             display_fields = None
@@ -313,17 +313,23 @@ class F1DataFusionMerger:
             non_table = stage_e_result.get('non_table_content', {})
             if non_table.get('success'):
                 page = non_table.get('page', 0)
-                raw_response = non_table.get('raw_response', '').strip()
 
-                if raw_response:
-                    # E-20の結果は1つのブロックとして扱う
-                    # 座標は non_table_content に含まれる可能性がある
+                # E-21 の座標付きブロックを使用（raw_response は JSON なので絶対に使わない）
+                e21_blocks = non_table.get('blocks', [])
+                for b in e21_blocks:
+                    text = (b.get('text') or '').strip()
+                    if not text:
+                        continue
+                    bbox = b.get('bbox', [])
+                    # bbox = [x0, y0, x1, y1]
+                    x0 = float(bbox[0]) if len(bbox) >= 1 else 0.0
+                    y0 = float(bbox[1]) if len(bbox) >= 2 else 0.0
                     blocks.append({
                         'page': page,
-                        'y0': 0,  # 非表領域は通常ページ上部
-                        'x0': 0,
-                        'text': raw_response,
-                        'source': 'stage_e'
+                        'y0': y0,
+                        'x0': x0,
+                        'text': text,
+                        'source': 'stage_e',
                     })
                     stage_e_count += 1
 
@@ -331,21 +337,21 @@ class F1DataFusionMerger:
         blocks.sort(key=lambda b: (b['page'], b['y0'], b['x0']))
 
         # 統合詳細をログ出力
-        logger.info("=" * 80)
+        logger.info("[F-1] " + "=" * 80)
         logger.info("[F-1] Stage B と Stage E の座標順統合:")
-        logger.info("=" * 80)
-        logger.info(f"  ├─ Stage B（デジタル抽出）: {stage_b_count} ブロック")
-        logger.info(f"  ├─ Stage E（視覚抽出）: {stage_e_count} ブロック")
-        logger.info(f"  └─ 合計: {len(blocks)} ブロック")
+        logger.info("[F-1] " + "=" * 80)
+        logger.info(f"[F-1]   ├─ Stage B（デジタル抽出）: {stage_b_count} ブロック")
+        logger.info(f"[F-1]   ├─ Stage E（視覚抽出）: {stage_e_count} ブロック")
+        logger.info(f"[F-1]   └─ 合計: {len(blocks)} ブロック")
 
         # ソート後のブロック全件をログ出力
-        logger.info("-" * 80)
+        logger.info("[F-1] " + "-" * 80)
         logger.info("[F-1] 座標順ソート結果 全ブロック:")
-        logger.info("-" * 80)
+        logger.info("[F-1] " + "-" * 80)
         for idx, block in enumerate(blocks, 1):
-            logger.info(f"  Block #{idx} [page={block['page']}, y={block['y0']:.3f}, x={block['x0']:.3f}]")
-            logger.info(f"    source={block['source']}: 「{block['text']}」")
-        logger.info("=" * 80)
+            logger.info(f"[F-1]   Block #{idx} [page={block['page']}, y={block['y0']:.3f}, x={block['x0']:.3f}]")
+            logger.info(f"[F-1]     source={block['source']}: 「{block['text']}」")
+        logger.info("[F-1] " + "=" * 80)
 
         # B+E 由来の本文テキストのみを返す（display_* は display_fields として別経路で渡す）
         text_parts = [b['text'] for b in blocks]

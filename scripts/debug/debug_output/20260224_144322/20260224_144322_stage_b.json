@@ -1,0 +1,12 @@
+{
+  "is_structured": true,
+  "purged_pdf_path": "C:\\Users\\ookub\\document-management-system\\scripts\\debug\\debug_output\\20260224_144322\\purged\\b80_相談室だより2602_purged.pdf",
+  "logical_blocks": [],
+  "structured_tables": [],
+  "text_with_tags": "",
+  "tags": {
+    "is_scan": true,
+    "processor": "B80_SCAN_OCR"
+  },
+  "processor_name": "B80_SCAN_OCR"
+}

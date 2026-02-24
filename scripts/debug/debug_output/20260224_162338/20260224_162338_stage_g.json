@@ -1,0 +1,180 @@
+{
+  "success": true,
+  "ui_data": {
+    "document_info": {
+      "document_type": "SCAN",
+      "year_context": null
+    },
+    "sections": [
+      {
+        "block_id": "B1",
+        "type": "text",
+        "label": "段落1",
+        "content": "6年間大切に保管しましょう。",
+        "display_order": 10
+      },
+      {
+        "block_id": "B2",
+        "type": "text",
+        "label": "段落2",
+        "content": "2025年4月発行\n東洋英和女学院 中学部・高等部\n情報システム課",
+        "display_order": 11
+      },
+      {
+        "block_id": "B3",
+        "type": "text",
+        "label": "段落3",
+        "content": "個人アカウント情報と注意",
+        "display_order": 12
+      },
+      {
+        "block_id": "B4",
+        "type": "text",
+        "label": "段落4",
+        "content": "大久保 絵麻 さん",
+        "display_order": 13
+      },
+      {
+        "block_id": "B5",
+        "type": "text",
+        "label": "段落5",
+        "content": "あなたのカウント情報は、以下となります。",
+        "display_order": 14
+      },
+      {
+        "block_id": "B6",
+        "type": "text",
+        "label": "段落6",
+        "content": "利用者 ID\n25030okubo",
+        "display_order": 15
+      },
+      {
+        "block_id": "B7",
+        "type": "text",
+        "label": "段落7",
+        "content": "パスワード\nQuel691! (変更不可)",
+        "display_order": 16
+      },
+      {
+        "block_id": "B8",
+        "type": "text",
+        "label": "段落8",
+        "content": "Google アカウント\n(Gmail のメールアドレス)\n25030okubo@kaede.toyoeiwa.ac.jp",
+        "display_order": 17
+      },
+      {
+        "block_id": "B9",
+        "type": "text",
+        "label": "段落9",
+        "content": "(文字はすべて半角英数です。パスワードは、英字3文字、数字4つ、「!」の順となります。英字は先頭のみ大文字です。)",
+        "display_order": 18
+      },
+      {
+        "block_id": "B10",
+        "type": "text",
+        "label": "段落10",
+        "content": "※上記の利用者 ID およびパスワードは、以下のサービスのログイン時に利用します。\n・PC教室の PC … [利用者 ID と パスワード]\n・Chromebook … [利用者 ID と パスワード]\n・Google/Chrome … [Google アカウント と パスワード]\n・MetaMoJi … [学校 ID:MC724685 と 利用者 ID と パスワード]\n・Microsoft365 (5台まで) … [Google アカウント と パスワード]\n・Adobe*1 (2台まで) … [Google アカウント と パスワード]",
+        "display_order": 19
+      },
+      {
+        "block_id": "B11",
+        "type": "text",
+        "label": "段落11",
+        "content": "*1:Adobe へのログインは、学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従って\nください。手順を間違えると個人の契約になり、請求が発生します。",
+        "display_order": 20
+      },
+      {
+        "block_id": "B12",
+        "type": "text",
+        "label": "段落12",
+        "content": "<注意>",
+        "display_order": 21
+      },
+      {
+        "block_id": "B13",
+        "type": "text",
+        "label": "段落13",
+        "content": "1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。",
+        "display_order": 22
+      },
+      {
+        "block_id": "B14",
+        "type": "text",
+        "label": "段落14",
+        "content": "以上",
+        "display_order": 23
+      }
+    ],
+    "tables": [],
+    "timeline": [],
+    "actions": [],
+    "notices": [
+      {
+        "category": "個人アカウント情報",
+        "content": "利用者 ID: 25030okubo\nパスワード: Quel691! (変更不可)\nGoogle アカウント: 25030okubo@kaede.toyoeiwa.ac.jp\n(パスワードは英字3文字、数字4つ、「!」の順、英字は先頭のみ大文字)"
+      },
+      {
+        "category": "利用サービス",
+        "content": "PC教室の PC, Chromebook, Google/Chrome, MetaMoJi, Microsoft365 (5台まで), Adobe (2台まで)"
+      },
+      {
+        "category": "Adobe利用に関する注意",
+        "content": "学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従ってください。手順を間違えると個人の契約になり、請求が発生します。"
+      },
+      {
+        "category": "アカウント情報保管に関する注意",
+        "content": "1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。"
+      }
+    ],
+    "metadata": {
+      "section_count": 14,
+      "table_count": 0,
+      "event_count": 0,
+      "task_count": 0,
+      "notice_count": 0
+    },
+    "g11_structured_tables": [],
+    "g21_articles": [
+      {
+        "title": "個人アカウント情報と注意",
+        "body": "6年間大切に保管しましょう。\n\n2025年4月発行\n東洋英和女学院 中学部・高等部\n情報システム課\n\n個人アカウント情報と注意\n\n大久保 絵麻 さん\n\nあなたのカウント情報は、以下となります。\n\n利用者 ID\n25030okubo\n\nパスワード\nQuel691! (変更不可)\n\nGoogle アカウント\n(Gmail のメールアドレス)\n25030okubo@kaede.toyoeiwa.ac.jp\n\n(文字はすべて半角英数です。パスワードは、英字3文字、数字4つ、「!」の順となります。英字は先頭のみ大文字です。)\n\n※上記の利用者 ID およびパスワードは、以下のサービスのログイン時に利用します。\n・PC教室の PC … [利用者 ID と パスワード]\n・Chromebook … [利用者 ID と パスワード]\n・Google/Chrome … [Google アカウント と パスワード]\n・MetaMoJi … [学校 ID:MC724685 と 利用者 ID と パスワード]\n・Microsoft365 (5台まで) … [Google アカウント と パスワード]\n・Adobe*1 (2台まで) … [Google アカウント と パスワード]\n\n*1:Adobe へのログインは、学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従って\nください。手順を間違えると個人の契約になり、請求が発生します。\n\n<注意>\n\n1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。\n\n以上"
+      }
+    ]
+  },
+  "final_metadata": {
+    "g11_output": [],
+    "g12_output": [],
+    "g21_output": [
+      {
+        "title": "個人アカウント情報と注意",
+        "body": "6年間大切に保管しましょう。\n\n2025年4月発行\n東洋英和女学院 中学部・高等部\n情報システム課\n\n個人アカウント情報と注意\n\n大久保 絵麻 さん\n\nあなたのカウント情報は、以下となります。\n\n利用者 ID\n25030okubo\n\nパスワード\nQuel691! (変更不可)\n\nGoogle アカウント\n(Gmail のメールアドレス)\n25030okubo@kaede.toyoeiwa.ac.jp\n\n(文字はすべて半角英数です。パスワードは、英字3文字、数字4つ、「!」の順となります。英字は先頭のみ大文字です。)\n\n※上記の利用者 ID およびパスワードは、以下のサービスのログイン時に利用します。\n・PC教室の PC … [利用者 ID と パスワード]\n・Chromebook … [利用者 ID と パスワード]\n・Google/Chrome … [Google アカウント と パスワード]\n・MetaMoJi … [学校 ID:MC724685 と 利用者 ID と パスワード]\n・Microsoft365 (5台まで) … [Google アカウント と パスワード]\n・Adobe*1 (2台まで) … [Google アカウント と パスワード]\n\n*1:Adobe へのログインは、学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従って\nください。手順を間違えると個人の契約になり、請求が発生します。\n\n<注意>\n\n1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。\n\n以上"
+      }
+    ],
+    "g22_output": {
+      "calendar_events": [],
+      "tasks": [],
+      "notices": [
+        {
+          "category": "個人アカウント情報",
+          "content": "利用者 ID: 25030okubo\nパスワード: Quel691! (変更不可)\nGoogle アカウント: 25030okubo@kaede.toyoeiwa.ac.jp\n(パスワードは英字3文字、数字4つ、「!」の順、英字は先頭のみ大文字)"
+        },
+        {
+          "category": "利用サービス",
+          "content": "PC教室の PC, Chromebook, Google/Chrome, MetaMoJi, Microsoft365 (5台まで), Adobe (2台まで)"
+        },
+        {
+          "category": "Adobe利用に関する注意",
+          "content": "学年の Classroom にアップされている「Adobe ログインの仕方」のプリントの手順に従ってください。手順を間違えると個人の契約になり、請求が発生します。"
+        },
+        {
+          "category": "アカウント情報保管に関する注意",
+          "content": "1. 紛失しないように大切に保管してください。\n2. 万が一この用紙を紛失した場合は、速やかに担任の先生に報告してください。\n3. 個人情報です。他人に見せることのないようにしてください。\n4. 学校で指示されたサイト以外での使用は、控えてください。\n5. 管理上、中高部が必要だと判断した場合は、管理者がログインさせていただきます。"
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "stage": "G",
+    "conversion_count": 0
+  }
+}

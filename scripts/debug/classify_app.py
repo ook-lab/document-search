@@ -560,7 +560,6 @@ def classify():
     for f in files:
         data = f.read()
         result = analyze_pdf_bytes(data, f.filename)
-        _save_to_supabase(result)
         results.append(result)
 
     return jsonify(results)

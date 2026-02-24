@@ -1,0 +1,490 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "extracted_content": {
+      "text": "相談室だより\n\n2026 (令和8)年2月 (No.4)\n\nスクールカウンセラー (SC) 塩谷洋子\n\n開室日時 平月~金曜日 8:40~17:00\n\nメール shiotani.yoko@kaede.toyeiwa.ac.jp\n\n自動車の\n\n性能を全開\n\nにすると!\n\nほ\nど\nほ\nど\n\nしおたにようこ\n\nこんにちは。 スクールカウンセラー (SC) の塩谷洋子です。 年明けが遠い昔のように感じる\n\nこの頃、みなさんはお変わりありませんでしたか? 今回は「ほどほど」について。\n\n以前、私は牧師の妻として教会に住んでいたことがあります。「ほどほど」を知らず、頑張る\n\nことしか知らなかった私は、誰に頼まれた訳でもないのに「いい牧師の妻」を演じようとしてい\n\nました(なれるはずもないのに・・)。幸い、その後、「ほどほど」でもいいこと、「ほどほど」\n\nが自分にとっても、まわりにとってもよいことが分かり、力が抜けて楽になりました。\n\nみなさんは「ほどほど」でいられてるでしょうか? 頑張ることはとても大事です。しかし、\n\n「いつも、ずっと頑張り続ける」のは無理ですね。「ほどほど」とは「適度、度を越さないこと」\n\nです。やり過ぎない、抱え込み過ぎないことと言い換えてもいいでしょう。自分が「ほどほど」\n\nなのかどうか気づくには、心や体に耳を傾けてみる必要がありそうです。お腹が痛い、イライ\n\nラする、やる気が出ない、眠れない、ボーッとするなどなど、いつもと違う自分だったら「適度\n\nじゃない。無理していますよ〜」サインかもしれません。もしもそうだったら一旦、スロー\n\nダウン。「ダメじゃないか」と自分を責めず、休息し、リセットしてください。\n\nリセットの方法の一つに「ひとりの時間を作る」というのもありそうです。あのイエスも群衆\n\nから離れて「ひとり人里離れた所に退かれた」(マタイ 14:14)、「祈るためにひとり山にお\n\n登りになった」(マタイ 14:23)とあります。各自のリセット方法でよいので無理をせず、\n\n「ほどほど」をめざし、自分も、まわりも大切にできたらいいですね。\n\n話したいこと、いっしょに考えてみたいことがある人は予約してください。予約はメール(1参照)や申込\n\n用紙(相談室前にある)でも可能です。ドアが「開放中」となっていますれば、予約はいりませんのでお入りください。\n\n保護者の方々のご予約、お問合せ等はメール、または電話(代表番号)をご利用ください。\n\nイラスト:しおたになおや (SCのパートナー)\n\nうさお・・・きみはすごい。\n\n性能を出しなさい・・・。"
+    },
+    "blocks": [
+      {
+        "text": "相談室だより",
+        "bbox": [
+          319.0,
+          167.0,
+          608.0,
+          354.0
+        ],
+        "type": "title",
+        "page": 0,
+        "matched_words": 1,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=1/1"
+      },
+      {
+        "text": "2026 (令和8)年2月 (No.4)",
+        "bbox": [
+          630.0,
+          77.0,
+          1064.0,
+          290.0
+        ],
+        "type": "header",
+        "page": 0,
+        "matched_words": 2,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=2/2"
+      },
+      {
+        "text": "スクールカウンセラー (SC) 塩谷洋子",
+        "bbox": [
+          922.0,
+          282.0,
+          1175.0,
+          433.0
+        ],
+        "type": "header",
+        "page": 0,
+        "matched_words": 11,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=11/11"
+      },
+      {
+        "text": "開室日時 平月~金曜日 8:40~17:00",
+        "bbox": [
+          814.0,
+          301.0,
+          964.0,
+          407.0
+        ],
+        "type": "header",
+        "page": 0,
+        "matched_words": 6,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=6/6"
+      },
+      {
+        "text": "メール shiotani.yoko@kaede.toyeiwa.ac.jp",
+        "bbox": [
+          635.0,
+          300.0,
+          1079.0,
+          555.0
+        ],
+        "type": "header",
+        "page": 0,
+        "matched_words": 14,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=14/14"
+      },
+      {
+        "text": "自動車の",
+        "bbox": [
+          53.0,
+          252.0,
+          249.0,
+          523.0
+        ],
+        "type": "illustration_caption",
+        "page": 0,
+        "bbox_source": "e21_approx",
+        "matched_words": 0,
+        "debug_note": "no_words_in_or_near_bbox(margin=40.0)"
+      },
+      {
+        "text": "性能を全開",
+        "bbox": [
+          58.0,
+          272.0,
+          274.0,
+          567.0
+        ],
+        "type": "illustration_caption",
+        "page": 0,
+        "bbox_source": "e21_approx",
+        "matched_words": 0,
+        "debug_note": "no_words_in_or_near_bbox(margin=40.0)"
+      },
+      {
+        "text": "にすると!",
+        "bbox": [
+          84.0,
+          450.0,
+          256.0,
+          654.0
+        ],
+        "type": "illustration_caption",
+        "page": 0,
+        "matched_words": 9,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=9/9"
+      },
+      {
+        "text": "ほ\nど\nほ\nど",
+        "bbox": [
+          537.0,
+          333.0,
+          736.0,
+          445.0
+        ],
+        "type": "title",
+        "page": 0,
+        "matched_words": 9,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=9/9"
+      },
+      {
+        "text": "しおたにようこ",
+        "bbox": [
+          647.0,
+          486.0,
+          1009.0,
+          667.0
+        ],
+        "type": "sub_header",
+        "page": 0,
+        "matched_words": 19,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=19/19"
+      },
+      {
+        "text": "こんにちは。 スクールカウンセラー (SC) の塩谷洋子です。 年明けが遠い昔のように感じる",
+        "bbox": [
+          473.0,
+          492.0,
+          709.0,
+          622.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 3,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=3/3"
+      },
+      {
+        "text": "この頃、みなさんはお変わりありませんでしたか? 今回は「ほどほど」について。",
+        "bbox": [
+          113.0,
+          551.0,
+          474.0,
+          765.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 24,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=24/24"
+      },
+      {
+        "text": "以前、私は牧師の妻として教会に住んでいたことがあります。「ほどほど」を知らず、頑張る",
+        "bbox": [
+          470.0,
+          590.0,
+          632.0,
+          656.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 9,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=9/9"
+      },
+      {
+        "text": "ことしか知らなかった私は、誰に頼まれた訳でもないのに「いい牧師の妻」を演じようとしてい",
+        "bbox": [
+          87.0,
+          455.0,
+          977.0,
+          934.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "bbox_source": "e21_approx",
+        "matched_words": 0,
+        "debug_note": "no_words_in_or_near_bbox(margin=40.0)"
+      },
+      {
+        "text": "ました(なれるはずもないのに・・)。幸い、その後、「ほどほど」でもいいこと、「ほどほど」",
+        "bbox": [
+          504.0,
+          698.0,
+          708.0,
+          779.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 15,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=15/15"
+      },
+      {
+        "text": "が自分にとっても、まわりにとってもよいことが分かり、力が抜けて楽になりました。",
+        "bbox": [
+          111.0,
+          698.0,
+          518.0,
+          852.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 44,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=44/44"
+      },
+      {
+        "text": "みなさんは「ほどほど」でいられてるでしょうか? 頑張ることはとても大事です。しかし、",
+        "bbox": [
+          705.0,
+          584.0,
+          1124.0,
+          958.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 86,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=86/86"
+      },
+      {
+        "text": "「いつも、ずっと頑張り続ける」のは無理ですね。「ほどほど」とは「適度、度を越さないこと」",
+        "bbox": [
+          485.0,
+          774.0,
+          728.0,
+          852.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 18,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=18/18"
+      },
+      {
+        "text": "です。やり過ぎない、抱え込み過ぎないことと言い換えてもいいでしょう。自分が「ほどほど」",
+        "bbox": [
+          87.0,
+          574.0,
+          982.0,
+          1174.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "bbox_source": "e21_approx",
+        "matched_words": 0,
+        "debug_note": "no_words_in_or_near_bbox(margin=40.0)"
+      },
+      {
+        "text": "なのかどうか気づくには、心や体に耳を傾けてみる必要がありそうです。お腹が痛い、イライ",
+        "bbox": [
+          419.0,
+          886.0,
+          681.0,
+          929.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 9,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=9/9"
+      },
+      {
+        "text": "ラする、やる気が出ない、眠れない、ボーッとするなどなど、いつもと違う自分だったら「適度",
+        "bbox": [
+          466.0,
+          924.0,
+          732.0,
+          967.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 9,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=9/9"
+      },
+      {
+        "text": "じゃない。無理していますよ〜」サインかもしれません。もしもそうだったら一旦、スロー",
+        "bbox": [
+          509.0,
+          973.0,
+          746.0,
+          1042.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 14,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=14/14"
+      },
+      {
+        "text": "ダウン。「ダメじゃないか」と自分を責めず、休息し、リセットしてください。",
+        "bbox": [
+          112.0,
+          896.0,
+          515.0,
+          1078.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 61,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=61/61"
+      },
+      {
+        "text": "リセットの方法の一つに「ひとりの時間を作る」というのもありそうです。あのイエスも群衆",
+        "bbox": [
+          745.0,
+          886.0,
+          1116.0,
+          1221.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 80,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=80/80"
+      },
+      {
+        "text": "から離れて「ひとり人里離れた所に退かれた」(マタイ 14:14)、「祈るためにひとり山にお",
+        "bbox": [
+          462.0,
+          1035.0,
+          755.0,
+          1116.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 21,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=21/21"
+      },
+      {
+        "text": "登りになった」(マタイ 14:23)とあります。各自のリセット方法でよいので無理をせず、",
+        "bbox": [
+          488.0,
+          1111.0,
+          748.0,
+          1153.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 10,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=10/10"
+      },
+      {
+        "text": "「ほどほど」をめざし、自分も、まわりも大切にできたらいいですね。",
+        "bbox": [
+          110.0,
+          1045.0,
+          489.0,
+          1265.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 54,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=54/54"
+      },
+      {
+        "text": "話したいこと、いっしょに考えてみたいことがある人は予約してください。予約はメール(1参照)や申込",
+        "bbox": [
+          458.0,
+          1186.0,
+          651.0,
+          1228.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 7,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=7/7"
+      },
+      {
+        "text": "用紙(相談室前にある)でも可能です。ドアが「開放中」となっていますれば、予約はいりませんのでお入りください。",
+        "bbox": [
+          442.0,
+          1223.0,
+          600.0,
+          1331.0
+        ],
+        "type": "paragraph",
+        "page": 0,
+        "matched_words": 11,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=11/11"
+      },
+      {
+        "text": "保護者の方々のご予約、お問合せ等はメール、または電話(代表番号)をご利用ください。",
+        "bbox": [
+          107.0,
+          1223.0,
+          568.0,
+          1714.0
+        ],
+        "type": "information",
+        "page": 0,
+        "matched_words": 47,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=47/47"
+      },
+      {
+        "text": "イラスト:しおたになおや (SCのパートナー)",
+        "bbox": [
+          749.0,
+          1200.0,
+          1107.0,
+          1614.0
+        ],
+        "type": "illustration_caption",
+        "page": 0,
+        "matched_words": 41,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=41/41"
+      },
+      {
+        "text": "うさお・・・きみはすごい。",
+        "bbox": [
+          593.0,
+          1198.0,
+          860.0,
+          1340.0
+        ],
+        "type": "illustration_caption",
+        "page": 0,
+        "matched_words": 24,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=24/24"
+      },
+      {
+        "text": "性能を出しなさい・・・。",
+        "bbox": [
+          500.0,
+          1312.0,
+          873.0,
+          1697.0
+        ],
+        "type": "illustration_caption",
+        "page": 0,
+        "matched_words": 30,
+        "bbox_source": "e25_spatial",
+        "debug_note": "spatial(margin=40.0) in_box=30/30"
+      }
+    ],
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"相談室だより\",\n      \"bbox\": [82, 84, 471, 166],\n      \"type\": \"title\"\n    },\n    {\n      \"text\": \"2026 (令和8)年2月 (No.4)\",\n      \"bbox\": [516, 158, 811, 179],\n      \"type\": \"header\"\n    },\n    {\n      \"text\": \"スクールカウンセラー (SC) 塩谷洋子\",\n      \"bbox\": [515, 184, 822, 207],\n      \"type\": \"header\"\n    },\n    {\n      \"text\": \"開室日時 平月~金曜日 8:40~17:00\",\n      \"bbox\": [470, 214, 811, 237],\n      \"type\": \"header\"\n    },\n    {\n      \"text\": \"メール shiotani.yoko@kaede.toyeiwa.ac.jp\",\n      \"bbox\": [418, 242, 814, 265],\n      \"type\": \"header\"\n    },\n    {\n      \"text\": \"自動車の\",\n      \"bbox\": [53, 252, 196, 271],\n      \"type\": \"illustration_caption\"\n    },\n    {\n      \"text\": \"性能を全開\",\n      \"bbox\": [58, 272, 216, 295],\n      \"type\": \"illustration_caption\"\n    },\n    {\n      \"text\": \"にすると!\",\n      \"bbox\": [58, 294, 178, 312],\n      \"type\": \"illustration_caption\"\n    },\n    {\n      \"text\": \"ほ\\nど\\nほ\\nど\",\n      \"bbox\": [404, 271, 533, 355],\n      \"type\": \"title\"\n    },\n    {\n      \"text\": \"しおたにようこ\",\n      \"bbox\": [472, 338, 538, 355],\n      \"type\": \"sub_header\"\n    },\n    {\n      \"text\": \"こんにちは。 スクールカウンセラー (SC) の塩谷洋子です。 年明けが遠い昔のように感じる\",\n      \"bbox\": [58, 364, 890, 388],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"この頃、みなさんはお変わりありませんでしたか? 今回は「ほどほど」について。\",\n      \"bbox\": [63, 392, 700, 414],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"以前、私は牧師の妻として教会に住んでいたことがあります。「ほどほど」を知らず、頑張る\",\n      \"bbox\": [88, 432, 889, 454],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"ことしか知らなかった私は、誰に頼まれた訳でもないのに「いい牧師の妻」を演じようとしてい\",\n      \"bbox\": [87, 455, 890, 479],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"ました(なれるはずもないのに・・)。幸い、その後、「ほどほど」でもいいこと、「ほどほど」\",\n      \"bbox\": [88, 478, 891, 503],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"が自分にとっても、まわりにとってもよいことが分かり、力が抜けて楽になりました。\",\n      \"bbox\": [89, 502, 749, 523],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"みなさんは「ほどほど」でいられてるでしょうか? 頑張ることはとても大事です。しかし、\",\n      \"bbox\": [454, 528, 894, 552],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"「いつも、ずっと頑張り続ける」のは無理ですね。「ほどほど」とは「適度、度を越さないこと」\",\n      \"bbox\": [90, 551, 896, 576],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"です。やり過ぎない、抱え込み過ぎないことと言い換えてもいいでしょう。自分が「ほどほど」\",\n      \"bbox\": [87, 574, 895, 600],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"なのかどうか気づくには、心や体に耳を傾けてみる必要がありそうです。お腹が痛い、イライ\",\n      \"bbox\": [87, 597, 898, 622],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"ラする、やる気が出ない、眠れない、ボーッとするなどなど、いつもと違う自分だったら「適度\",\n      \"bbox\": [86, 621, 896, 645],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"じゃない。無理していますよ〜」サインかもしれません。もしもそうだったら一旦、スロー\",\n      \"bbox\": [87, 642, 895, 668],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"ダウン。「ダメじゃないか」と自分を責めず、休息し、リセットしてください。\",\n      \"bbox\": [89, 664, 762, 690],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"リセットの方法の一つに「ひとりの時間を作る」というのもありそうです。あのイエスも群衆\",\n      \"bbox\": [511, 697, 894, 720],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"から離れて「ひとり人里離れた所に退かれた」(マタイ 14:14)、「祈るためにひとり山にお\",\n      \"bbox\": [92, 719, 895, 743],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"登りになった」(マタイ 14:23)とあります。各自のリセット方法でよいので無理をせず、\",\n      \"bbox\": [91, 741, 897, 766],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"「ほどほど」をめざし、自分も、まわりも大切にできたらいいですね。\",\n      \"bbox\": [89, 764, 717, 788],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"話したいこと、いっしょに考えてみたいことがある人は予約してください。予約はメール(1参照)や申込\",\n      \"bbox\": [63, 798, 894, 821],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"用紙(相談室前にある)でも可能です。ドアが「開放中」となっていますれば、予約はいりませんのでお入りください。\",\n      \"bbox\": [59, 820, 894, 846],\n      \"type\": \"paragraph\"\n    },\n    {\n      \"text\": \"保護者の方々のご予約、お問合せ等はメール、または電話(代表番号)をご利用ください。\",\n      \"bbox\": [78, 864, 774, 886],\n      \"type\": \"information\"\n    },\n    {\n      \"text\": \"イラスト:しおたになおや (SCのパートナー)\",\n      \"bbox\": [595, 878, 857, 895],\n      \"type\": \"illustration_caption\"\n    },\n    {\n      \"text\": \"うさお・・・きみはすごい。\",\n      \"bbox\": [398, 883, 604, 901],\n      \"type\": \"illustration_caption\"\n    },\n    {\n      \"text\": \"性能を出しなさい・・・。\",\n      \"bbox\": [406, 901, 604, 918],\n      \"type\": \"illustration_caption\"\n    }\n  ]\n}\n```",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 1659,
+    "route": "E21_VISION+E22",
+    "vision_text_used": true,
+    "role": "NON_TABLE_FINAL_TEXT",
+    "priority": 100,
+    "is_final_non_table": true
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 1659,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

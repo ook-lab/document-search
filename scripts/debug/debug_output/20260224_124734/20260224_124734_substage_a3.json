@@ -1,0 +1,161 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "SCAN",
+    "confidence": "HIGH",
+    "reason": "ページフォント解析: SCAN (1ページ)",
+    "raw_metadata": {
+      "Producer": "Epson Scan 2",
+      "CreationDate": "D:20260212092710+09'00'",
+      "ModDate": "D:20260212092710+09'00'"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 1,
+    "dimensions": {
+      "width": 595.0,
+      "height": 841.0,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 209.90277777777777,
+      "height": 296.6861111111111,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FLOW",
+    "layout_metrics": {
+      "avg_images_per_page": 1.0,
+      "avg_words_per_page": 0.0,
+      "avg_x_std": 0.0,
+      "avg_words_per_line": 0.0,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 1,
+          "words": 0,
+          "chars": 0,
+          "has_selectable_text": false,
+          "x_std": 0,
+          "lines": 0,
+          "words_per_line": 0,
+          "vector_count": 0,
+          "fonts": [],
+          "images_detail": [
+            {
+              "width": 4962,
+              "height": 7013,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "origin_app": "SCAN",
+  "document_type": "SCAN",
+  "confidence": "HIGH",
+  "reason": "ページフォント解析: SCAN (1ページ)",
+  "raw_metadata": {
+    "Producer": "Epson Scan 2",
+    "CreationDate": "D:20260212092710+09'00'",
+    "ModDate": "D:20260212092710+09'00'"
+  },
+  "page_type_map": {
+    "0": "SCAN"
+  },
+  "type_groups": {
+    "SCAN": [
+      0
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH"
+  },
+  "page_count": 1,
+  "dimensions": {
+    "width": 595.0,
+    "height": 841.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 209.90277777777777,
+    "height": 296.6861111111111,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FLOW",
+  "layout_metrics": {
+    "avg_images_per_page": 1.0,
+    "avg_words_per_page": 0.0,
+    "avg_x_std": 0.0,
+    "avg_words_per_line": 0.0,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 1,
+        "words": 0,
+        "chars": 0,
+        "has_selectable_text": false,
+        "x_std": 0,
+        "lines": 0,
+        "words_per_line": 0,
+        "vector_count": 0,
+        "fonts": [],
+        "images_detail": [
+          {
+            "width": 4962,
+            "height": 7013,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          }
+        ]
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B80_SCAN_OCR"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（SCAN+FLOW + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "SCAN",
+      "layout_profile": "FLOW",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.0,
+      "avg_words_per_page": 0.0,
+      "avg_x_std": 0.0,
+      "probe_ok": true,
+      "avg_chars_per_page": 0.0,
+      "avg_vectors_per_page": 0.0
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B80_SCAN_OCR"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（SCAN+FLOW + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "SCAN",
+      "layout_profile": "FLOW",
+      "confidence": "HIGH",
+      "avg_images_per_page": 1.0,
+      "avg_words_per_page": 0.0,
+      "avg_x_std": 0.0,
+      "probe_ok": true,
+      "avg_chars_per_page": 0.0,
+      "avg_vectors_per_page": 0.0
+    },
+    "policy_version": "A5.v2"
+  }
+}

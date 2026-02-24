@@ -277,11 +277,10 @@ class A5Gatekeeper:
             reason_suffix = f"ACROBAT_PDFMAKER+{layout_profile}"
             logger.info(f"  ├─ origin_app=ACROBAT_PDFMAKER → B3_PDF_WORD")
         elif origin_app == "MIXED":
-            # B80_SCAN_OCR は含まない: B80 は未実装スタブ。
-            # MIXED 内の SCAN ページは B1 が routing_rules.yaml の BLOCK 設定でスキップする。
             allowed_procs = ["B3_PDF_WORD", "B61_PDF_WORD_LTSC", "B62_PDF_WORD_2019",
                              "B4_PDF_EXCEL", "B5_PDF_PPT", "B30_ILLUSTRATOR", "B31_INDESIGN",
-                             "B42_MULTICOLUMN", "B11_GOOGLE_DOCS", "B12_GOOGLE_SHEETS"]
+                             "B42_MULTICOLUMN", "B11_GOOGLE_DOCS", "B12_GOOGLE_SHEETS",
+                             "B80_SCAN_OCR"]
             reason_suffix = f"MIXED+{layout_profile}"
             logger.info(f"  ├─ origin_app=MIXED → 全プロセッサ許可（B1 が type_groups で選択）")
         elif origin_app == "CANVA":
@@ -301,17 +300,11 @@ class A5Gatekeeper:
             reason_suffix = f"ACROBAT+{layout_profile}"
             logger.info(f"  ├─ origin_app=ACROBAT → B39_ACROBAT")
         elif origin_app == "SCAN":
-            # B80未実装 → BLOCK（allowed_combinations に含まれていないため通常ここには到達しない）
-            d = GatekeeperDecision(
-                decision="BLOCK",
-                allowed_processors=[],
-                block_code="SCAN_NOT_IMPLEMENTED",
-                block_reason="origin_app=SCAN: B80_SCAN_OCR は未実装スタブ。OCR実装完了まで処理停止。",
-                evidence={"origin_app": origin_app, "layout_profile": layout_profile},
-                policy_version=self.POLICY_VERSION,
-            )
-            logger.warning(f"[A-5 Gatekeeper] ✗ BLOCK: {d.block_reason}")
-            return asdict(d)
+            # B80_SCAN_OCR（実装済み）でスキャン文書を処理。
+            # 本番ブロックは B1Controller.PRODUCTION_ALLOWED_PROCESSORS で担保。
+            allowed_procs = ["B80_SCAN_OCR"]
+            reason_suffix = f"SCAN+{layout_profile}"
+            logger.info(f"  ├─ origin_app=SCAN → B80_SCAN_OCR")
         elif origin_app == "UNKNOWN":
             # 推論エンジン未実装 → BLOCK（allowed_combinations に含まれていないため通常ここには到達しない）
             d = GatekeeperDecision(
