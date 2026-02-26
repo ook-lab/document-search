@@ -164,6 +164,102 @@ def get_workspaces():
         return safe_error_response(e)
 
 
+@app.route('/internal/classifications', methods=['GET'])
+def get_classifications():
+    """分類（origin_app）の一覧を取得
+
+    【責務】
+    - 検索UIの分類フィルタ用ドロップダウン向け
+    - ワークスペース指定で絞り込み可能
+
+    【パラメータ】
+    - workspace: 絞り込むワークスペース（省略時は全体）
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        workspace = request.args.get('workspace', '')
+
+        query = db.client.table('Rawdata_FILE_AND_MAIL').select('origin_app')
+
+        if workspace and workspace != 'all':
+            query = query.eq('workspace', workspace)
+
+        result = query.execute()
+
+        classifications = set()
+        for row in result.data or []:
+            origin_app = row.get('origin_app')
+            if origin_app:
+                classifications.add(origin_app)
+
+        return jsonify({
+            'success': True,
+            'classifications': sorted(list(classifications))
+        })
+
+    except Exception as e:
+        logger.error(f"分類一覧取得エラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/search', methods=['GET'])
+def search_documents():
+    """ドキュメント検索
+
+    【責務】
+    - ワークスペース + 分類（origin_app） + ステータス + キーワードで絞り込み
+    - 検索結果からキューへの追加に使用
+
+    【パラメータ】
+    - workspace: ワークスペース（省略時は全体）
+    - classification: 分類（origin_app）（省略時は全体）
+    - status: 処理ステータス（省略時は全体）
+    - q: キーワード（title / file_name の部分一致）
+    - limit: 取得件数上限（デフォルト100、最大500）
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        workspace = request.args.get('workspace', '')
+        classification = request.args.get('classification', '')
+        status = request.args.get('status', '')
+        q = request.args.get('q', '').strip()
+        exclude_text_only = request.args.get('exclude_text_only', '') == 'true'
+        limit = min(int(request.args.get('limit', 100)), 500)
+
+        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, title, file_name, workspace, origin_app, processing_status, doc_type, created_at, updated_at'
+        )
+
+        if workspace and workspace != 'all':
+            query = query.eq('workspace', workspace)
+        if exclude_text_only:
+            query = query.not_.is_('file_url', 'null')
+        if classification and classification != 'all':
+            if classification == 'text_only':
+                query = query.is_('file_url', 'null')
+            elif classification == 'unclassified':
+                query = query.not_.is_('file_url', 'null').is_('origin_app', 'null')
+            else:
+                query = query.eq('origin_app', classification)
+        if status and status != 'all':
+            query = query.eq('processing_status', status)
+        if q:
+            query = query.ilike('title', f'%{q}%')
+
+        result = query.order('created_at', desc=True).limit(limit).execute()
+        documents = result.data or []
+
+        return jsonify({
+            'success': True,
+            'documents': documents,
+            'count': len(documents)
+        })
+
+    except Exception as e:
+        logger.error(f"ドキュメント検索エラー: {e}")
+        return safe_error_response(e)
+
+
 # ========== 処理監視ダッシュボード ==========
 
 @app.route('/internal/dashboard', methods=['GET'])
@@ -835,9 +931,151 @@ def get_failed_documents():
         return safe_error_response(e)
 
 
+@app.route('/internal/classify-documents', methods=['POST'])
+def classify_documents():
+    """選択したドキュメントを分類して origin_app を Supabase に書き込む
+
+    【責務】
+    - doc_ids で指定したドキュメントを Google Drive からダウンロード
+    - Stage A（A3EntryPoint）で分類を実行
+    - origin_app / origin_confidence / layout_profile / pdf_creator / pdf_producer を更新
+
+    【パラメータ】
+    - doc_ids: 分類するドキュメントIDの配列（最大20件）
+    """
+    import re as _re
+    import tempfile
+
+    try:
+        db = DatabaseClient(use_service_role=True)
+        data = request.get_json() or {}
+        doc_ids = data.get('doc_ids', [])
+
+        if not doc_ids:
+            return jsonify({'success': False, 'error': 'doc_ids が必要です'}), 400
+        if len(doc_ids) > 20:
+            return jsonify({'success': False, 'error': '一度に処理できるのは20件までです'}), 400
+
+        # ドキュメント情報を取得
+        fetch_result = db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, file_name, file_url, title'
+        ).in_('id', doc_ids).execute()
+
+        if not fetch_result.data:
+            return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
+
+        # Stage A と Google Drive コネクタをインポート
+        from shared.pipeline.stage_a.a3_entry_point import A3EntryPoint
+        from shared.common.connectors.google_drive import GoogleDriveConnector
+
+        drive = GoogleDriveConnector()
+        a3 = A3EntryPoint()
+        results = []
+
+        for doc in fetch_result.data:
+            doc_id = doc['id']
+            file_name = doc.get('file_name') or doc.get('title') or 'unknown.pdf'
+            file_url = doc.get('file_url', '')
+
+            try:
+                # file_url から Google Drive ファイルID を抽出
+                match = _re.search(r'/d/([a-zA-Z0-9_-]+)', file_url)
+                if not match:
+                    results.append({
+                        'id': doc_id, 'file_name': file_name,
+                        'success': False, 'error': 'file_url から Drive ファイルIDを取得できません'
+                    })
+                    continue
+
+                drive_file_id = match.group(1)
+
+                # 一時ディレクトリにダウンロードして Stage A で分類
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    local_path = drive.download_file(drive_file_id, file_name, tmp_dir)
+
+                    if not local_path:
+                        results.append({
+                            'id': doc_id, 'file_name': file_name,
+                            'success': False, 'error': 'Google Drive からのダウンロード失敗'
+                        })
+                        continue
+
+                    a_result = a3.process(Path(local_path))
+
+                if not a_result.get('success', True):
+                    results.append({
+                        'id': doc_id, 'file_name': file_name,
+                        'success': False, 'error': a_result.get('error', '分類失敗')
+                    })
+                    continue
+
+                origin_app = a_result.get('origin_app', '')
+                confidence = a_result.get('confidence', '')
+                layout_profile = a_result.get('layout_profile', '')
+                reason = a_result.get('reason', '')
+
+                update_data = {
+                    'origin_app': origin_app or None,
+                    'origin_confidence': confidence or None,
+                    'layout_profile': layout_profile or None,
+                }
+
+                # raw_metadata から Creator / Producer を取得
+                raw_meta = (a_result.get('a2_type') or {}).get('raw_metadata') or \
+                           a_result.get('raw_metadata') or {}
+                creator = raw_meta.get('Creator') or raw_meta.get('creator') or ''
+                producer = raw_meta.get('Producer') or raw_meta.get('producer') or ''
+                if creator:
+                    update_data['pdf_creator'] = creator
+                if producer:
+                    update_data['pdf_producer'] = producer
+
+                db.client.table('Rawdata_FILE_AND_MAIL').update(update_data).eq('id', doc_id).execute()
+                logger.info(f"[classify] {file_name}: {origin_app} ({confidence})")
+
+                results.append({
+                    'id': doc_id, 'file_name': file_name,
+                    'success': True,
+                    'origin_app': origin_app,
+                    'confidence': confidence,
+                    'layout_profile': layout_profile,
+                    'reason': reason,
+                })
+
+            except Exception as e:
+                logger.error(f"分類エラー ({doc_id}): {e}")
+                error_str = str(e)
+                is_404 = ('File not found' in error_str or '404' in error_str
+                          or 'not found' in error_str.lower())
+                if is_404:
+                    try:
+                        db.client.table('Rawdata_FILE_AND_MAIL').update(
+                            {'origin_app': 'file_not_found'}
+                        ).eq('id', doc_id).execute()
+                        logger.info(f"[classify] {file_name}: file_not_found (Drive 404) → DB保存")
+                    except Exception as ue:
+                        logger.error(f"file_not_found 保存エラー: {ue}")
+                results.append({
+                    'id': doc_id, 'file_name': file_name,
+                    'success': False, 'error': error_str,
+                    'origin_app': 'file_not_found' if is_404 else None,
+                })
+
+        success_count = sum(1 for r in results if r.get('success'))
+        return jsonify({
+            'success': True,
+            'message': f'{success_count}/{len(results)} 件の分類が完了しました',
+            'results': results
+        })
+
+    except Exception as e:
+        logger.error(f"classify-documents エラー: {e}")
+        return safe_error_response(e)
+
+
 @app.route('/internal/run-requests', methods=['POST'])
 def create_run_request():
-    """キューに追加: pending → queued（新方式）
+    """キューに追加: → queued（新方式）
 
     【新方式】
     - ops_requests/run_executions は使わない
@@ -847,8 +1085,12 @@ def create_run_request():
     【パラメータ】
     - limit / max_items: 追加件数（デフォルト10、上限100）
     - workspace: 対象ワークスペース（省略時は全体）
-    - doc_ids: 特定ドキュメントID配列（省略時は自動選択）
+    - doc_ids: 特定ドキュメントID（配列 or カンマ区切り文字列、省略時は自動選択）
     - doc_id: 特定ドキュメント1件（doc_ids優先）
+
+    【doc_ids 指定時の特別ルール】
+    - ステータスを問わず pending にリセットしてからキューに追加する
+    - completed / failed の再処理に使用
     """
     try:
         db = DatabaseClient(use_service_role=True)
@@ -858,21 +1100,28 @@ def create_run_request():
         limit = min(int(data.get('limit', data.get('max_items', 10))), 100)
         workspace = data.get('workspace') or 'all'
 
-        # doc_ids 配列優先、なければ doc_id を配列に
+        # doc_ids: 配列・カンマ区切り文字列・単一 doc_id をすべて受け付ける
         doc_ids = data.get('doc_ids')
+        if isinstance(doc_ids, str):
+            doc_ids = [d.strip() for d in doc_ids.split(',') if d.strip()]
         if not doc_ids and data.get('doc_id'):
             doc_ids = [data.get('doc_id')]
 
         # enqueue_documents RPC を呼び出し
         if doc_ids:
-            # 特定ドキュメント指定
+            # 特定ドキュメント指定: ステータスを問わず pending にリセットしてからキューに追加
+            db.client.table('Rawdata_FILE_AND_MAIL').update({
+                'processing_status': 'pending'
+            }).in_('id', doc_ids).execute()
+            logger.info(f"[run-requests] {len(doc_ids)}件を pending にリセット: {doc_ids}")
+
             result = db.client.rpc('enqueue_documents', {
                 'p_workspace': workspace,
                 'p_limit': len(doc_ids),
                 'p_doc_ids': doc_ids
             }).execute()
         else:
-            # 自動選択
+            # 自動選択（pending のみ対象）
             result = db.client.rpc('enqueue_documents', {
                 'p_workspace': workspace,
                 'p_limit': limit,
@@ -899,6 +1148,228 @@ def create_run_request():
 
     except Exception as e:
         logger.error(f"RUN 要求作成エラー: {e}")
+        return safe_error_response(e)
+
+
+# ========== G ステージ再処理 ==========
+
+@app.route('/internal/reprocess-g', methods=['POST'])
+def reprocess_g():
+    """G17 または G22 から再処理（Stage J/K も更新）
+
+    【責務】
+    - DBに保存済みの中間データを使って指定ステージから再実行
+    - G22: g21_articles → G22 → g22_ai_extracted 更新 → J/K 更新
+    - G17: g14_reconstructed_tables → G17 → g17_table_analyses 更新 → J/K 更新
+
+    【パラメータ】
+    - doc_id: 対象ドキュメントID
+    - start_stage: 'G17' または 'G22'
+    """
+    import json as _json
+    import os as _os
+
+    try:
+        db = DatabaseClient(use_service_role=True)
+        data = request.get_json() or {}
+        doc_id = data.get('doc_id')
+        start_stage = data.get('start_stage', 'G22')
+
+        if not doc_id:
+            return jsonify({'success': False, 'error': 'doc_id が必要です'}), 400
+        if start_stage not in ('G17', 'G22'):
+            return jsonify({'success': False, 'error': 'start_stage は G17 または G22 を指定してください'}), 400
+
+        # ドキュメント情報と保存済み中間データを取得
+        fetch_result = db.client.table('Rawdata_FILE_AND_MAIL').select(
+            'id, file_name, title, doc_type, display_subject, display_post_text, '
+            'display_sender, display_sent_at, classroom_sender_email, owner_id, '
+            'g14_reconstructed_tables, g21_articles, g17_table_analyses, g22_ai_extracted, '
+            'stage_g_structured_data'
+        ).eq('id', doc_id).execute()
+
+        if not fetch_result.data:
+            return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
+
+        doc = fetch_result.data[0]
+        gemini_key = _os.getenv('GEMINI_API_KEY') or _os.getenv('GOOGLE_API_KEY')
+
+        def _parse_json_col(val):
+            if val is None:
+                return None
+            if isinstance(val, str):
+                return _json.loads(val)
+            return val  # 既に dict/list の場合
+
+        # ===== G22 再処理 =====
+        if start_stage == 'G22':
+            g21_raw = doc.get('g21_articles')
+            if not g21_raw:
+                return jsonify({
+                    'success': False,
+                    'error': 'g21_articles が保存されていません（G22 再処理には G21 の出力が必要です）'
+                }), 400
+
+            articles = _parse_json_col(g21_raw) or []
+
+            from shared.pipeline.stage_g.g22_text_ai_processor import G22TextAIProcessor
+            g22 = G22TextAIProcessor(document_id=doc_id, api_key=gemini_key)
+            g22_result = g22.process(articles)
+
+            if not g22_result.get('success'):
+                return jsonify({'success': False, 'error': f'G22 処理失敗: {g22_result.get("error", "不明")}'}), 500
+
+            # g22_ai_extracted を更新
+            db.client.table('Rawdata_FILE_AND_MAIL').update({
+                'g22_ai_extracted': _json.dumps(g22_result, ensure_ascii=False)
+            }).eq('id', doc_id).execute()
+
+            # stage_g_structured_data の timeline/actions/notices を更新
+            try:
+                ui_data = _parse_json_col(doc.get('stage_g_structured_data')) or {}
+                ui_data['timeline'] = g22_result.get('calendar_events', [])
+                ui_data['actions'] = g22_result.get('tasks', [])
+                ui_data['notices'] = g22_result.get('notices', [])
+                db.client.table('Rawdata_FILE_AND_MAIL').update(
+                    {'stage_g_structured_data': ui_data}
+                ).eq('id', doc_id).execute()
+            except Exception as e:
+                logger.warning(f'stage_g_structured_data 更新エラー（継続）: {e}')
+
+            g17_output = _parse_json_col(doc.get('g17_table_analyses')) or []
+            g21_output = articles
+            g22_output = g22_result
+
+        # ===== G17 再処理 =====
+        else:
+            g14_raw = doc.get('g14_reconstructed_tables')
+            if not g14_raw:
+                return jsonify({
+                    'success': False,
+                    'error': 'g14_reconstructed_tables が保存されていません（G17 再処理には G14 の出力が必要です）'
+                }), 400
+
+            g14_data = _parse_json_col(g14_raw) or []
+
+            from shared.pipeline.stage_g.g17_table_ai_processor import G17TableAIProcessor
+            g17 = G17TableAIProcessor(document_id=doc_id, api_key=gemini_key)
+            g17_result = g17.process(g14_data)
+
+            if not g17_result.get('success'):
+                return jsonify({'success': False, 'error': f'G17 処理失敗: {g17_result.get("error", "不明")}'}), 500
+
+            g17_output = g17_result.get('table_analyses', [])
+
+            # g17_table_analyses を更新
+            db.client.table('Rawdata_FILE_AND_MAIL').update({
+                'g17_table_analyses': _json.dumps(g17_output, ensure_ascii=False)
+            }).eq('id', doc_id).execute()
+
+            # stage_g_structured_data の tables を更新
+            try:
+                ui_data = _parse_json_col(doc.get('stage_g_structured_data')) or {}
+                ui_data['tables'] = g17_output
+                db.client.table('Rawdata_FILE_AND_MAIL').update(
+                    {'stage_g_structured_data': ui_data}
+                ).eq('id', doc_id).execute()
+            except Exception as e:
+                logger.warning(f'stage_g_structured_data 更新エラー（継続）: {e}')
+
+            g21_output = _parse_json_col(doc.get('g21_articles')) or []
+            g22_output = _parse_json_col(doc.get('g22_ai_extracted')) or {}
+
+        # ===== Stage J: チャンク生成 =====
+        from shared.common.processing.metadata_chunker import MetadataChunker
+        file_name = doc.get('file_name') or doc.get('title') or 'unknown'
+
+        document_data = {
+            'file_name': file_name,
+            'doc_type': doc.get('doc_type'),
+            'display_subject': doc.get('display_subject'),
+            'display_post_text': doc.get('display_post_text'),
+            'display_sender': doc.get('display_sender'),
+            'display_sent_at': doc.get('display_sent_at'),
+            'classroom_sender_email': doc.get('classroom_sender_email'),
+            'text_blocks': [
+                {'title': a.get('title', ''), 'content': a.get('body', '')}
+                for a in g21_output
+                if a.get('body', '').strip()
+            ],
+            'structured_tables': [
+                {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
+                for t in g17_output
+                if t.get('rows')
+            ],
+            'calendar_events': [
+                {'event_date': e.get('date', ''), 'event_time': e.get('time', ''), 'event_name': e.get('event', ''), 'location': e.get('location', '')}
+                for e in g22_output.get('calendar_events', [])
+            ],
+            'tasks': [
+                {'task_name': t.get('item', ''), 'deadline': t.get('deadline', ''), 'description': t.get('description', '')}
+                for t in g22_output.get('tasks', [])
+            ],
+            'notices': [
+                {'category': n.get('category', ''), 'content': n.get('content', '')}
+                for n in g22_output.get('notices', [])
+            ],
+        }
+
+        all_chunks = MetadataChunker().create_metadata_chunks(document_data)
+        logger.info(f'[reprocess-g] {start_stage} 全チャンク生成: {len(all_chunks)}件')
+
+        # ステージ由来のチャンクタイプのみに絞り込む
+        if start_stage == 'G17':
+            new_chunks = [c for c in all_chunks if c.get('chunk_type', '').startswith('table_')]
+            delete_filter = lambda q: q.like('chunk_type', 'table_%')
+        else:  # G22
+            new_chunks = [c for c in all_chunks if c.get('chunk_type', '').startswith(
+                ('calendar_event_', 'task_', 'notice_')
+            )]
+            delete_filter = lambda q: q.or_(
+                'chunk_type.like.calendar_event_%,chunk_type.like.task_%,chunk_type.like.notice_%'
+            )
+
+        logger.info(f'[reprocess-g] {start_stage} 対象チャンク: {len(new_chunks)}件')
+
+        # 対象チャンクタイプのみ削除
+        try:
+            q = db.client.table('10_ix_search_index').delete().eq('document_id', doc_id)
+            delete_filter(q).execute()
+        except Exception as e:
+            logger.warning(f'既存チャンク削除エラー（継続）: {e}')
+
+        if not new_chunks:
+            logger.info(f'[reprocess-g] {start_stage} 対象チャンクなし、スキップ')
+            return jsonify({
+                'success': True,
+                'message': f'{start_stage} から再処理完了（チャンクなし）',
+                'doc_id': doc_id,
+                'chunks_saved': 0,
+                'start_stage': start_stage,
+            })
+
+        # ===== Stage K: Embedding =====
+        from shared.ai.llm_client.llm_client import LLMClient
+        from shared.pipeline.stage_k_embedding import StageKEmbedding
+
+        llm_client = LLMClient()
+        stage_k = StageKEmbedding(llm_client=llm_client, db_client=db)
+        k_result = stage_k.embed_and_save(doc_id, new_chunks)
+
+        if not k_result.get('success'):
+            return jsonify({'success': False, 'error': f'Stage K 失敗: {k_result}'}), 500
+
+        logger.info(f'[reprocess-g] 完了: {start_stage} → {doc_id} ({k_result.get("saved_count", 0)} chunks)')
+        return jsonify({
+            'success': True,
+            'message': f'{start_stage} から再処理完了',
+            'doc_id': doc_id,
+            'chunks_saved': k_result.get('saved_count', 0),
+            'start_stage': start_stage,
+        })
+
+    except Exception as e:
+        logger.error(f'reprocess-g エラー: {e}')
         return safe_error_response(e)
 
 

@@ -14,15 +14,16 @@ import os
 import sys
 import re
 import json
-import hashlib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from loguru import logger
 
-# プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent.parent.parent
+# プロジェクトルートと data-ingestion をパスに追加
+root_dir = Path(__file__).parent.parent.parent.parent
+ingestion_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
+sys.path.insert(0, str(ingestion_dir))
 
 # .envファイルを読み込む
 from dotenv import load_dotenv
@@ -66,22 +67,22 @@ class WasedaNoticeIngestionPipeline:
         logger.info(f"WasedaNoticeIngestionPipeline初期化完了")
         logger.info(f"  - PDF folder: {self.pdf_folder_id}")
 
-    async def fetch_html_with_browser(self) -> Optional[str]:
+    async def fetch_html_with_browser(self) -> List[str]:
         """
-        ブラウザ自動化を使用してHTMLを取得
+        ブラウザ自動化を使用して全ページのHTMLを取得
 
         Returns:
-            HTMLコンテンツ、失敗時はNone
+            各ページのHTMLリスト、失敗時は空リスト
         """
         try:
             browser = WasedaAcademyBrowser(headless=True)
-            html_content, _ = await browser.run_automated_session()
-            return html_content
+            html_pages, _ = await browser.run_automated_session()
+            return html_pages if html_pages else []
         except Exception as e:
             logger.error(f"ブラウザ自動化エラー: {e}", exc_info=True)
-            return None
+            return []
 
-    def extract_notice_data(self, html_content: str) -> List[Dict[str, Any]]:
+    def extract_notice_data(self, html_content) -> List[Dict[str, Any]]:
         """
         HTMLコンテンツからお知らせデータを抽出する
         データはwindow.appPropsというJavaScript変数内のJSONとして埋め込まれている
@@ -92,26 +93,36 @@ class WasedaNoticeIngestionPipeline:
         Returns:
             お知らせデータのリスト
         """
-        match = re.search(r'window\.appProps\s*=\s*(\{.*?\});', html_content, re.DOTALL)
+        # リスト（複数ページ）でも単一文字列でも受け付ける
+        pages = html_content if isinstance(html_content, list) else [html_content]
 
-        if not match:
-            logger.warning("HTMLからwindow.appPropsが見つかりませんでした")
-            return []
+        all_notices = []
+        seen_ids = set()
+        for i, page_html in enumerate(pages, 1):
+            match = re.search(r'window\.appProps\s*=\s*(\{.*?\});', page_html, re.DOTALL)
+            if not match:
+                logger.warning(f"p={i}: window.appPropsが見つかりませんでした")
+                continue
+            try:
+                app_props = json.loads(match.group(1))
+                notices = app_props['page']['noticeList']['_0']['notices']
+                new_count = 0
+                for n in notices:
+                    nid = n.get('id')
+                    if nid and nid not in seen_ids:
+                        seen_ids.add(nid)
+                        all_notices.append(n)
+                        new_count += 1
+                logger.info(f"  [p={i}] {new_count}件")
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.error(f"p={i} JSONパースエラー: {e}")
 
-        json_string = match.group(1)
-
-        try:
-            app_props = json.loads(json_string)
-            notices = app_props['page']['noticeList']['_0']['notices']
-            logger.info(f"お知らせを{len(notices)}件抽出しました")
-            return notices
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.error(f"JSONパースエラー: {e}")
-            return []
+        logger.info(f"お知らせを合計{len(all_notices)}件抽出しました")
+        return all_notices
 
     async def check_existing_notices(self, notice_ids: List[str]) -> set:
         """
-        Supabaseで既存のお知らせIDをチェック
+        Supabaseで既存のお知らせIDをチェック（file_id カラムで照合）
 
         Args:
             notice_ids: チェックするお知らせIDのリスト
@@ -120,21 +131,11 @@ class WasedaNoticeIngestionPipeline:
             既に存在するお知らせIDのセット
         """
         try:
-            # Rawdata_FILE_AND_MAIL テーブルで source_type='waseda_academy_online' のドキュメントを取得
-            result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('metadata').eq(
-                'source_type', 'waseda_academy_online'
+            result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('file_id').in_(
+                'file_id', notice_ids
             ).execute()
 
-            # metadata->notice_id を抽出
-            existing_ids = set()
-            if result.data:
-                for doc in result.data:
-                    metadata = doc.get('metadata', {})
-                    if isinstance(metadata, dict):
-                        notice_id = metadata.get('notice_id')
-                        if notice_id:
-                            existing_ids.add(notice_id)
-
+            existing_ids = {doc['file_id'] for doc in (result.data or []) if doc.get('file_id')}
             logger.info(f"既存のお知らせ: {len(existing_ids)}件")
             return existing_ids
 
@@ -180,14 +181,7 @@ class WasedaNoticeIngestionPipeline:
         Returns:
             DriveのファイルID、失敗時はNone
         """
-        # 安全なファイル名を生成
-        safe_title = "".join(c for c in pdf_title if c.isalnum() or c in (' ', '-', '_', '　')).strip()
-        if not safe_title:
-            safe_title = "waseda_notice"
-
-        # タイムスタンプ付きファイル名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_name = f"{timestamp}_{safe_title}_{notice_id[:8]}.pdf"
+        file_name = f"{pdf_title}.pdf"
 
         # Driveにアップロード
         file_id = self.drive.upload_file(
@@ -237,10 +231,47 @@ class WasedaNoticeIngestionPipeline:
 
             logger.info(f"お知らせ処理開始: {title}")
 
-            # PDFリンクがあるか確認
+            # 日付を datetime に変換（フォーマット: 2025.12.16）
+            sent_at = None
+            if date:
+                try:
+                    sent_at = datetime.strptime(date, '%Y.%m.%d').isoformat()
+                except ValueError:
+                    logger.warning(f"日付のパースに失敗: {date}")
+
+            # PDFリンクがない場合はテキストのみレコードとして保存
             pdfs = notice.get('pdfs', [])
             if not pdfs:
-                logger.info(f"PDFリンクなし、スキップ: {title}")
+                logger.info(f"PDFリンクなし、テキストのみで登録: {title}")
+                metadata = {
+                    'notice_title': title,
+                    'notice_date': date,
+                    'notice_source': source.get('label', '不明'),
+                    'notice_category': category.get('label', 'その他'),
+                    'notice_message': message,
+                }
+                doc_data = {
+                    'file_id': notice_id,
+                    'doc_type': '早稲アカオンライン',
+                    'workspace': 'waseda_academy',
+                    'person': ['育哉'],
+                    'organization': ['早稲田アカデミー'],
+                    'metadata': metadata,
+                    'processing_status': 'pending',
+                    'display_subject': title,
+                    'display_sent_at': sent_at,
+                    'display_sender': source.get('label', '不明'),
+                    'display_post_text': message,
+                    'owner_id': self.owner_id
+                }
+                try:
+                    doc_result = await self.db.insert_document('Rawdata_FILE_AND_MAIL', doc_data)
+                    if doc_result:
+                        result['document_ids'].append(doc_result.get('id'))
+                        logger.info(f"テキストのみ保存完了: {title}")
+                except Exception as db_error:
+                    logger.error(f"Supabase保存エラー（テキストのみ）: {db_error}")
+                    result['error'] = str(db_error)
                 result['success'] = True
                 return result
 
@@ -267,15 +298,7 @@ class WasedaNoticeIngestionPipeline:
 
                 result['pdf_file_ids'].append(file_id)
 
-                # 3. 日付を datetime に変換（フォーマット: 2025.12.16）
-                sent_at = None
-                if date:
-                    try:
-                        sent_at = datetime.strptime(date, '%Y.%m.%d').isoformat()
-                    except ValueError:
-                        logger.warning(f"日付のパースに失敗: {date}")
-
-                # 4. メタデータ準備
+                # 3. メタデータ準備
                 # 完全なPDF URLを構築
                 if pdf_url.startswith('http'):
                     full_pdf_url = pdf_url
@@ -285,7 +308,6 @@ class WasedaNoticeIngestionPipeline:
                     full_pdf_url = f"{self.base_url}/{pdf_url}"
 
                 metadata = {
-                    'notice_id': notice_id,
                     'notice_title': title,
                     'notice_date': date,
                     'notice_source': source.get('label', '不明'),
@@ -297,23 +319,15 @@ class WasedaNoticeIngestionPipeline:
 
                 # 5. Supabaseに基本情報のみ保存
                 doc_data = {
-                    'source_type': 'waseda_academy_online',
-                    'source_id': file_id,
-                    'source_url': f"https://drive.google.com/file/d/{file_id}/view",
-                    'file_name': actual_file_name,  # 拡張子付きのファイル名を使用
-                    'file_type': 'pdf',
+                    'file_url': f"https://drive.google.com/file/d/{file_id}/view",
+                    'file_id': notice_id,
+                    'file_name': actual_file_name,
                     'doc_type': '早稲アカオンライン',  # 固定値
                     'workspace': 'waseda_academy',
                     'person': ['育哉'],  # 担当者（配列形式）
                     'organization': ['早稲田アカデミー'],  # 組織（配列形式）
-                    'attachment_text': '',  # 空（process_queued_documents.py で抽出）
-                    'summary': '',  # 空（process_queued_documents.py で生成）
-                    'tags': [category.get('label', 'その他')],
-                    'document_date': date,
                     'metadata': metadata,
-                    'content_hash': hashlib.sha256(pdf_data).hexdigest(),
-                    'processing_status': 'pending',  # PDF処理待ち
-                    'processing_stage': 'waseda_notice_downloaded',
+                    'processing_status': 'pending',
                     # 表示用フィールド
                     'display_subject': title,
                     'display_sent_at': sent_at,
@@ -360,19 +374,19 @@ async def main():
     html_content = None
 
     if use_browser:
-        # ブラウザ自動化でHTMLを取得
-        logger.info("ブラウザ自動化モード: ログイン → HTML取得")
+        # ブラウザ自動化で全ページHTMLを取得
+        logger.info("ブラウザ自動化モード: ログイン → 全ページHTML取得")
         html_content = await pipeline.fetch_html_with_browser()
 
         if not html_content:
             logger.error("HTMLの取得に失敗しました")
             return
 
-        # HTMLを一時ファイルに保存（デバッグ用）
+        # 1ページ目をデバッグ用に保存
         temp_html_file = Path(__file__).parent.parent.parent / "waseda_notice_page.html"
         with open(temp_html_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        logger.info(f"取得したHTMLを保存: {temp_html_file}")
+            f.write(html_content[0])
+        logger.info(f"取得したHTMLを保存（1ページ目）: {temp_html_file}")
     else:
         # ローカルHTMLファイルから読み込み（デバッグ用）
         html_file = Path(__file__).parent.parent.parent / "pasted_content.txt"

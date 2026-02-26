@@ -248,12 +248,12 @@ class PipelineManager:
             if result.data and len(result.data) > 0:
                 doc = result.data[0]
 
-                # source_url補完: dequeue RPCが古いバージョンの場合の対策
-                if 'source_url' not in doc or doc.get('source_url') is None:
-                    補完_result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('source_url').eq('id', doc['id']).execute()
+                # file_url補完: dequeue RPCが古いバージョンの場合の対策
+                if 'file_url' not in doc or doc.get('file_url') is None:
+                    補完_result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('file_url').eq('id', doc['id']).execute()
                     if 補完_result.data and len(補完_result.data) > 0:
-                        doc['source_url'] = 補完_result.data[0].get('source_url')
-                        logger.info(f"[Lease] source_url補完完了: {doc.get('source_url')}")
+                        doc['file_url'] = 補完_result.data[0].get('file_url')
+                        logger.info(f"[Lease] file_url補完完了: {doc.get('file_url')}")
 
                 logger.info(f"[Lease] Dequeued: id={doc['id']}, owner={self.owner}, lease_until={doc.get('lease_until')}")
                 return doc
@@ -469,12 +469,12 @@ class PipelineManager:
 
     def get_document_by_id(self, doc_id: str) -> Dict[str, Any] | None:
         """IDでドキュメントを取得"""
-        # source_url を含む必要なカラムを明示的に列挙（* は source_url を含まない問題がある）
+        # file_url を含む必要なカラムを明示的に列挙（* は file_url を含まない問題がある）
         result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
             'id, file_name, title, workspace, doc_type, processing_status, '
-            'source_id, source_url, screenshot_url, file_type, '
+            'source_url, file_url, screenshot_url, '
             'display_subject, display_post_text, '
-            'display_sender, display_sender_email, display_type, display_sent_at, '
+            'display_sender, display_sender_email, display_sent_at, '
             'owner_id, lease_owner, lease_until'
         ).eq('id', doc_id).execute()
         return result.data[0] if result.data else None
@@ -496,12 +496,12 @@ class PipelineManager:
             logger.warning(f"実行拒否: {policy_result.deny_code} - {policy_result.deny_reason}")
             return False
 
-        # source_url を確実に取得するため、ここで直接クエリ
+        # file_url を確実に取得するため、ここで直接クエリ
         result = self.db.client.table('Rawdata_FILE_AND_MAIL').select(
             'id, file_name, title, workspace, doc_type, processing_status, '
-            'source_id, source_url, screenshot_url, file_type, '
+            'source_url, file_url, screenshot_url, '
             'display_subject, display_post_text, '
-            'display_sender, display_sender_email, display_type, display_sent_at, '
+            'display_sender, display_sender_email, display_sent_at, '
             'owner_id, lease_owner, lease_until'
         ).eq('id', doc_id).execute()
 
@@ -604,8 +604,13 @@ class PipelineManager:
         all_tables = []
         non_table_image_paths = []
 
-        for dr in d_results:
-            all_tables.extend(dr.get('tables', []) or [])
+        for page_idx, dr in enumerate(d_results):
+            page_index = dr.get('page_index', page_idx)
+            for table in (dr.get('tables', []) or []):
+                t = dict(table)
+                # ページ番号をtable_idに付与して一意化（例: D1 → P0_D1）
+                t['table_id'] = f"P{page_index}_{t.get('table_id', 'D1')}"
+                all_tables.append(t)
             img = dr.get('non_table_image_path')
             if img:
                 non_table_image_paths.append(img)
@@ -725,8 +730,8 @@ class PipelineManager:
                 self._mark_as_processing(document_id)
                 logger.info(f"ドキュメント情報: file_name={file_name}, title={title}")
 
-                # source_urlまたはsource_idがあれば添付ファイルあり
-                has_attachment = doc.get('source_url') or doc.get('source_id')
+                # file_urlがあれば添付ファイルあり
+                has_attachment = doc.get('file_url')
 
                 if has_attachment:
                     result = await self._process_with_attachment(doc, preserve_workspace, progress_callback)
@@ -839,7 +844,8 @@ class PipelineManager:
                 'stage_g_structured_data': ui_data,
                 'metadata': final_metadata,
                 'g11_structured_tables': json.dumps(final_metadata.get('g11_output', []), ensure_ascii=False) if final_metadata.get('g11_output') else None,
-                'g12_table_analyses': json.dumps(final_metadata.get('g12_output', []), ensure_ascii=False) if final_metadata.get('g12_output') else None,
+                'g14_reconstructed_tables': json.dumps(final_metadata.get('g14_output', []), ensure_ascii=False) if final_metadata.get('g14_output') else None,
+                'g17_table_analyses': json.dumps(final_metadata.get('g17_output', []), ensure_ascii=False) if final_metadata.get('g17_output') else None,
                 'g21_articles': json.dumps(final_metadata.get('g21_output', []), ensure_ascii=False) if final_metadata.get('g21_output') else None,
                 'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None,
             }).eq('id', document_id).execute()
@@ -861,7 +867,6 @@ class PipelineManager:
             'display_subject': doc.get('display_subject'),
             'display_post_text': doc.get('display_post_text'),
             'display_sender': doc.get('display_sender'),
-            'display_type': doc.get('display_type'),
             'display_sent_at': doc.get('display_sent_at'),
             'classroom_sender_email': doc.get('classroom_sender_email'),
             # G21: articles → text_blocks（title/body → title/content）
@@ -870,10 +875,10 @@ class PipelineManager:
                 for a in final_metadata.get('g21_output', [])
                 if a.get('body', '').strip()
             ],
-            # G12: table analyses → structured_tables（description → table_title）
+            # G17: table analyses → structured_tables（description → table_title）
             'structured_tables': [
                 {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
-                for t in final_metadata.get('g12_output', [])
+                for t in final_metadata.get('g17_output', [])
                 if t.get('rows')
             ],
             # G22: calendar_events（date/time/event → event_date/event_time/event_name）
@@ -934,35 +939,20 @@ class PipelineManager:
         document_id = doc['id']
         file_name = doc.get('file_name', 'unknown')
 
-        # source_urlからファイルIDを抽出（優先）、なければsource_idを使用
+        # file_urlからファイルIDを抽出
         drive_file_id = None
-        source_url = doc.get('source_url')
-        source_id = doc.get('source_id')
-        logger.debug(f"[DEBUG] doc keys: {list(doc.keys())}")
-        logger.debug(f"[DEBUG] source_url: {source_url}")
-        logger.debug(f"[DEBUG] source_id: {source_id}")
-        if source_url:
-            # URLからファイルIDを抽出: https://drive.google.com/file/d/{FILE_ID}/view?...
-            match = re.search(r'/d/([a-zA-Z0-9_-]+)', source_url)
+        file_url = doc.get('file_url')
+        logger.debug(f"[DEBUG] file_url: {file_url}")
+        if file_url:
+            match = re.search(r'/d/([a-zA-Z0-9_-]+)', file_url)
             if match:
                 drive_file_id = match.group(1)
-                logger.info(f"[source_url] ファイルID抽出: {drive_file_id}")
+                logger.info(f"[file_url] ファイルID抽出: {drive_file_id}")
             else:
-                logger.warning(f"[source_url] 正規表現マッチ失敗: {source_url}")
-
-        # source_urlからIDが取れなければsource_idにフォールバック
-        if not drive_file_id:
-            source_id = doc.get('source_id')
-            if source_id:
-                # source_id が "{数字}:drive:{file_id}" フォーマットの場合、file_id を抽出
-                if ':drive:' in source_id:
-                    drive_file_id = source_id.split(':drive:')[-1]
-                    logger.info(f"[source_id] ファイルID抽出: {drive_file_id}")
-                else:
-                    drive_file_id = source_id
+                logger.warning(f"[file_url] 正規表現マッチ失敗: {file_url}")
 
         if not drive_file_id:
-            return {'success': False, 'error': 'source_urlまたはsource_idがありません'}
+            return {'success': False, 'error': 'file_url からファイルIDを取得できません'}
 
         file_extension = Path(file_name).suffix.lower()
         if file_extension in self.VIDEO_EXTENSIONS:
@@ -1246,7 +1236,8 @@ class PipelineManager:
                 logger.info("")
                 logger.info("[Pipeline Manager] ========== DB保存前の final_metadata ==========")
                 logger.info(f"  g11_output: {len(final_metadata.get('g11_output', []))}個")
-                logger.info(f"  g12_output: {len(final_metadata.get('g12_output', []))}個")
+                logger.info(f"  g14_output: {len(final_metadata.get('g14_output', []))}個")
+                logger.info(f"  g17_output: {len(final_metadata.get('g17_output', []))}個")
                 logger.info(f"  g21_output: {len(final_metadata.get('g21_output', []))}件")
                 logger.info(f"  g22_output: {type(final_metadata.get('g22_output', {}))}")
                 logger.info("=" * 70)
@@ -1255,14 +1246,16 @@ class PipelineManager:
                     'stage_g_structured_data': ui_data,  # JSONB - dict をそのまま渡す
                     'metadata': final_metadata,  # JSONB - dict をそのまま渡す
                     'g11_structured_tables': json.dumps(final_metadata.get('g11_output', []), ensure_ascii=False) if final_metadata.get('g11_output') else None,
-                    'g12_table_analyses': json.dumps(final_metadata.get('g12_output', []), ensure_ascii=False) if final_metadata.get('g12_output') else None,
+                    'g14_reconstructed_tables': json.dumps(final_metadata.get('g14_output', []), ensure_ascii=False) if final_metadata.get('g14_output') else None,
+                    'g17_table_analyses': json.dumps(final_metadata.get('g17_output', []), ensure_ascii=False) if final_metadata.get('g17_output') else None,
                     'g21_articles': json.dumps(final_metadata.get('g21_output', []), ensure_ascii=False) if final_metadata.get('g21_output') else None,
                     'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None
                 }).eq('id', document_id).execute()
                 logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
-                logger.info(f"[Stage G] G-11/G-12/G-21/G-22 を個別カラムに保存")
+                logger.info(f"[Stage G] G-11/G-14/G-17/G-21/G-22 を個別カラムに保存")
                 logger.info(f"  ├─ G-11: {len(final_metadata.get('g11_output', []))}表")
-                logger.info(f"  ├─ G-12: {len(final_metadata.get('g12_output', []))}表")
+                logger.info(f"  ├─ G-14: {len(final_metadata.get('g14_output', []))}表")
+                logger.info(f"  ├─ G-17: {len(final_metadata.get('g17_output', []))}表")
                 logger.info(f"  ├─ G-21: {len(final_metadata.get('g21_output', []))}記事")
                 logger.info(f"  └─ G-22: {len(final_metadata.get('g22_output', {}).get('calendar_events', []))}イベント")
             except Exception as e:
@@ -1291,7 +1284,6 @@ class PipelineManager:
                 'display_subject': doc.get('display_subject'),
                 'display_post_text': doc.get('display_post_text'),
                 'display_sender': doc.get('display_sender'),
-                'display_type': doc.get('display_type'),
                 'display_sent_at': doc.get('display_sent_at'),
                 'classroom_sender_email': doc.get('classroom_sender_email'),
                 # G21: articles → text_blocks（title/body → title/content）
@@ -1300,10 +1292,10 @@ class PipelineManager:
                     for a in final_metadata.get('g21_output', [])
                     if a.get('body', '').strip()
                 ],
-                # G12: table analyses → structured_tables（description → table_title）
+                # G17: table analyses → structured_tables（description → table_title）
                 'structured_tables': [
                     {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
-                    for t in final_metadata.get('g12_output', [])
+                    for t in final_metadata.get('g17_output', [])
                     if t.get('rows')
                 ],
                 # G22: calendar_events（date/time/event → event_date/event_time/event_name）
@@ -1357,14 +1349,23 @@ class PipelineManager:
         finally:
             # ============================================
             # P0-2: temp削除は最後に1回だけ（doc_temp_dir 全体を削除）
+            # GC後リトライ: fitz/pdfplumber がPDFを開いたままGC待ちの場合に
+            # WinError 5（アクセス拒否）が発生するため、gc.collect() で解放してから再試行する
             # ============================================
             import shutil
+            import gc
             if doc_temp_dir.exists():
                 try:
                     shutil.rmtree(doc_temp_dir)
                     logger.info(f"[P0] doc固有temp削除完了: {doc_temp_dir}")
                 except Exception as cleanup_error:
-                    logger.warning(f"[P0] temp削除失敗（無視して続行）: {cleanup_error}")
+                    # GC後にリトライ（ファイルロック解放待ち）
+                    gc.collect()
+                    try:
+                        shutil.rmtree(doc_temp_dir)
+                        logger.info(f"[P0] doc固有temp削除完了（GCリトライ成功）: {doc_temp_dir}")
+                    except Exception as retry_error:
+                        logger.warning(f"[P0] temp削除失敗（無視して続行）: {retry_error}")
 
     async def run_batch(
         self,
@@ -1655,8 +1656,8 @@ class PipelineManager:
                 # _mark_as_processing は不要（dequeue で既に設定済み）
                 logger.info(f"ドキュメント情報: file_name={file_name}, title={title}")
 
-                # source_urlまたはsource_idがあれば添付ファイルあり
-                has_attachment = doc.get('source_url') or doc.get('source_id')
+                # file_urlがあれば添付ファイルあり
+                has_attachment = doc.get('file_url')
 
                 if has_attachment:
                     result = await self._process_with_attachment(doc, preserve_workspace)

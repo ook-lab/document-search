@@ -144,34 +144,69 @@ class WasedaAcademyBrowser:
             logger.error(f"ログインエラー: {e}", exc_info=True)
             return False
 
-    async def get_notice_page_html(self, page: Page) -> Optional[str]:
+    async def get_notice_page_html(self, page: Page, page_num: int = 1) -> Optional[str]:
         """
         お知らせページのHTMLを取得
 
         Args:
             page: Playwrightのページオブジェクト
+            page_num: ページ番号（1始まり）
 
         Returns:
             HTMLコンテンツ、失敗時はNone
         """
         try:
-            logger.info("お知らせページにアクセス中...")
-            await page.goto(f"{self.base_url}/notice", wait_until="networkidle")
+            url = f"{self.base_url}/notice?filter%5BisRead%5D=all&p={page_num}"
+            logger.info(f"お知らせページにアクセス中（p={page_num}）...")
+            await page.goto(url, wait_until="networkidle")
 
-            # window.appPropsが存在するまで待機
             await page.wait_for_function(
                 "typeof window.appProps !== 'undefined'",
                 timeout=10000
             )
 
-            # HTMLを取得
             html_content = await page.content()
             logger.info(f"HTMLを取得しました（{len(html_content)} bytes）")
             return html_content
 
         except Exception as e:
-            logger.error(f"お知らせページ取得エラー: {e}", exc_info=True)
+            logger.error(f"お知らせページ取得エラー（p={page_num}）: {e}", exc_info=True)
             return None
+
+    async def get_all_notice_pages_html(self, page: Page, max_pages: int = 20) -> list[str]:
+        """
+        全ページのお知らせHTMLをまとめて取得
+
+        Args:
+            page: Playwrightのページオブジェクト
+            max_pages: 最大ページ数（無限ループ防止）
+
+        Returns:
+            各ページのHTMLリスト
+        """
+        import re as _re, json as _json
+
+        all_html = []
+        for page_num in range(1, max_pages + 1):
+            html = await self.get_notice_page_html(page, page_num)
+            if not html:
+                break
+            all_html.append(html)
+
+            # noticeList._0.notices が空なら最終ページ
+            m = _re.search(r'window\.appProps\s*=\s*(\{.*?\});', html, _re.DOTALL)
+            if not m:
+                break
+            try:
+                notices = _json.loads(m.group(1))['page']['noticeList']['_0']['notices']
+                if not notices:
+                    all_html.pop()  # 空ページは除外
+                    break
+            except (KeyError, Exception):
+                break
+
+        logger.info(f"合計 {len(all_html)} ページ取得しました")
+        return all_html
 
     async def download_pdf(
         self,
@@ -256,11 +291,12 @@ class WasedaAcademyBrowser:
                     logger.error("ログインに失敗しました")
                     return None, {}
 
-                # お知らせページのHTMLを取得
-                html_content = await self.get_notice_page_html(page)
-                if not html_content:
+                # 全ページのHTMLを取得
+                all_html = await self.get_all_notice_pages_html(page)
+                if not all_html:
                     logger.error("HTMLの取得に失敗しました")
                     return None, {}
+                html_content = all_html  # リストで返す
 
                 logger.info("✓ 自動化セッション完了")
 

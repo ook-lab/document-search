@@ -194,9 +194,9 @@ class GmailIngestionPipeline:
             既に存在するメッセージIDのセット
         """
         try:
-            # Rawdata_FILE_AND_MAIL テーブルで source_type='gmail' のドキュメントを取得
+            # Rawdata_FILE_AND_MAIL テーブルで doc_type が一致するドキュメントを取得
             result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('metadata').eq(
-                'source_type', 'gmail'
+                'doc_type', self.config['import_settings']['doc_type']
             ).execute()
 
             # metadata->message_id を抽出
@@ -550,12 +550,10 @@ class GmailIngestionPipeline:
                 timestamp = message_id[:10]
 
                 email_doc_data = {
-                    'source_type': 'gmail',
-                    'source_id': email_html_file_id,  # HTML（表示用・永続）
-                    'source_url': f"https://drive.google.com/file/d/{email_html_file_id}/view",
+                    'file_url': f"https://drive.google.com/file/d/{email_html_file_id}/view",
+                    'file_id': email_html_file_id,
                     'screenshot_url': f"https://drive.google.com/file/d/{email_png_file_id}/view",  # PNG（OCR用・一時）
                     'file_name': f"{timestamp}_{safe_subject}.html",  # HTML拡張子
-                    'file_type': 'html',  # HTMLとして保存
                     'doc_type': self.config['import_settings']['doc_type'],
                     'workspace': self.config['import_settings']['workspace'],
                     'person': self.config['import_settings']['person'],
@@ -569,7 +567,6 @@ class GmailIngestionPipeline:
                     'processing_status': 'pending',
                     'processing_stage': 'gmail_html',
                     # 表示用フィールド
-                    'display_type': 'Email',
                     'display_subject': subject,
                     'display_sent_at': sent_at,
                     'display_sender': sender_name,
@@ -594,11 +591,9 @@ class GmailIngestionPipeline:
                 # 添付ファイルがある場合：各添付ファイルごとにレコードを作成
                 for att_info in attachment_info_list:
                     doc_data = {
-                        'source_type': 'gmail',
-                        'source_id': att_info['drive_file_id'],
-                        'source_url': f"https://drive.google.com/file/d/{att_info['drive_file_id']}/view",
+                        'file_url': f"https://drive.google.com/file/d/{att_info['drive_file_id']}/view",
+                        'file_id': att_info['drive_file_id'],
                         'file_name': att_info['filename'],
-                        'file_type': Path(att_info['filename']).suffix.lower().replace('.', ''),
                         'doc_type': self.config['import_settings']['doc_type'],
                         'workspace': self.config['import_settings']['workspace'],
                         'person': self.config['import_settings']['person'],
@@ -612,7 +607,6 @@ class GmailIngestionPipeline:
                         'processing_status': 'pending',
                         'processing_stage': 'gmail_attachment_downloaded',
                         # 表示用フィールド
-                        'display_type': 'Email',
                         'display_subject': subject,
                         'display_sent_at': sent_at,
                         'display_sender': sender_name,

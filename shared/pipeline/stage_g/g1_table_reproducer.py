@@ -323,7 +323,7 @@ class G1TableReproducer:
                 # ★重要: columns/headers が提供されていない場合、
                 # data[0]をヘッダーと推測するのは危険（AIなしでは判定不可能）
                 # → 仮のヘッダー（Col1, Col2, ...）を生成し、全てのdataをデータ行として渡す
-                # → G-12のAIが正しくヘッダーを判定する
+                # → G-17のAIが正しくヘッダーを判定する
 
                 existing_columns = table.get('columns') or table.get('headers')
 

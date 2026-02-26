@@ -8,6 +8,7 @@ Document Review App (独立アプリ版)
 - データフレームによる表形式編集
 - JSON差分表示
 """
+import re
 import sys
 from pathlib import Path
 
@@ -186,15 +187,6 @@ def pdf_review_ui():
         help="ワークスペースでフィルタリング"
     )
 
-    # ファイルタイプフィルタ
-    file_type_options = ["全て", "pdf", "email", "text", "markdown", "csv", "json"]
-    file_type_filter = st.sidebar.selectbox(
-        "ファイルタイプ",
-        options=file_type_options,
-        index=0,
-        help="ファイルタイプでフィルタリング"
-    )
-
     # レビューステータスフィルタ
     review_status_options = ["全て", "未確認", "確認済み"]
     review_status_filter = st.sidebar.selectbox(
@@ -251,9 +243,6 @@ def pdf_review_ui():
         # Workspaceフィルタの値を変換（"全て"の場合はNone）
         workspace_value = workspace_filter if workspace_filter != "全て" else None
 
-        # ファイルタイプフィルタの値を変換（"全て"の場合はNone）
-        file_type_value = file_type_filter if file_type_filter != "全て" else None
-
         # レビューステータスフィルタの値を変換
         if review_status_filter == "確認済み":
             review_status_value = "reviewed"
@@ -266,7 +255,6 @@ def pdf_review_ui():
             limit=limit,
             search_query=search_query if search_query else None,
             workspace=workspace_value,
-            file_type=file_type_value,
             review_status=review_status_value,
             exclude_workspace='gmail'  # Gmailワークスペースを除外
         )
@@ -372,7 +360,8 @@ def pdf_review_ui():
                         for idx in selected_indices:
                             doc = documents[idx]
                             doc_id = doc.get('id')
-                            file_id = doc.get('drive_file_id') or doc.get('source_id')
+                            _m = re.search(r'/d/([a-zA-Z0-9_-]+)', doc.get('file_url') or '')
+                            file_id = _m.group(1) if _m else None
 
                             # Google Driveから削除
                             if file_id:
@@ -430,9 +419,8 @@ def pdf_review_ui():
     logger.info(f"file_name: {selected_doc.get('file_name')}")
 
     # 先にドキュメント情報を取得（st.rerun()の前に）
-    drive_file_id = selected_doc.get('drive_file_id')
-    source_id = selected_doc.get('source_id')
-    file_id = drive_file_id or source_id
+    _m = re.search(r'/d/([a-zA-Z0-9_-]+)', selected_doc.get('file_url') or '')
+    file_id = _m.group(1) if _m else None
     file_name = selected_doc.get('file_name') or 'unknown'
     doc_type = selected_doc.get('doc_type', '')
 

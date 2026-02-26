@@ -19,8 +19,10 @@ const DocState = {
 // =============================================================================
 
 const FIELD_NAME_MAP = {
-    // Stage G 出力（G-11/G-12/G-21/G-22）
+    // Stage G 出力（G-11/G-14/G-17/G-21/G-22）
     "g11_output": "📊 G-11（表・生データ）",
+    "g14_output": "📊 G-14（再構成表）",
+    "g17_output": "🤖 G-17（表・AI構造化）",
     "g12_output": "🤖 G-12（表・AI構造化）",
     "g21_output": "📝 G-21（テキスト・生データ）",
     "g22_output": "🤖 G-22（テキスト・AI抽出）",
@@ -76,6 +78,8 @@ function detectStructuredFields(metadata) {
             key === "special_events" ||
             // Stage G 出力
             key === "g11_output" ||
+            key === "g14_output" ||
+            key === "g17_output" ||
             key === "g12_output" ||
             key === "g21_output" ||
             key === "g22_output"
@@ -254,6 +258,16 @@ function renderStructuredTable(key, data, label) {
         });
         html += '</div>';
         return html || `<div class="empty-state"><p>${label}のデータがありません</p></div>`;
+    }
+
+    // g17_output の特別処理（AI構造化テーブル: G12と同形式）
+    if (key === 'g17_output' && Array.isArray(data)) {
+        return renderG12Output(key, data, label);
+    }
+
+    // g14_output の特別処理（再構成表: sub_tables形式）
+    if (key === 'g14_output' && Array.isArray(data)) {
+        return renderG14Output(key, data, label);
     }
 
     // g12_output の特別処理（AI構造化テーブル）
@@ -989,6 +1003,52 @@ function renderGenericTableData(tableData, refIds, index) {
 // G12 AI構造化テーブルのレンダリング
 // =============================================================================
 
+/**
+ * G-14 の再構成表（sub_tables形式）を表示する
+ * data: [{table_id, sub_tables: [{data: List[List], group_name, split_axis}]}]
+ */
+function renderG14Output(key, data, label) {
+    let html = '<div class="g12-output-container">';
+
+    data.forEach((entry, entryIdx) => {
+        const tableId = entry.table_id || `表 ${entryIdx + 1}`;
+        const subTables = entry.sub_tables || [];
+
+        html += '<div class="structured-table-section">';
+        html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <h4 class="table-title" style="margin:0;">${escapeHtml(tableId)}</h4>
+            <span class="table-type-badge">${subTables.length}サブテーブル</span>
+        </div>`;
+
+        subTables.forEach((sub, subIdx) => {
+            const groupName = sub.group_name || '';
+            const splitAxis = sub.split_axis || 'none';
+            const subData = sub.data || [];
+
+            const subLabel = groupName
+                ? `${escapeHtml(groupName)}（分割軸: ${escapeHtml(splitAxis)}）`
+                : `ブロック ${subIdx + 1}（分割軸: ${escapeHtml(splitAxis)}）`;
+
+            html += `<div style="margin-bottom:12px;">
+                <h5 style="margin:0 0 6px 0;font-size:0.95em;color:#444;border-left:3px solid #667eea;padding-left:8px;">${subLabel}</h5>
+            `;
+            html += renderG11LayoutTable([], subData);
+            html += '</div>';
+        });
+
+        html += '</div>';
+    });
+
+    html += '</div>';
+    html += `
+        <details class="json-edit-details">
+            <summary>🔧 JSONを編集</summary>
+            <textarea class="json-editor" data-field="${key}" rows="10">${JSON.stringify(data, null, 2)}</textarea>
+        </details>
+    `;
+    return html;
+}
+
 function renderG12Output(key, data, label) {
     let html = '<div class="g12-output-container">';
 
@@ -1071,7 +1131,7 @@ function renderG11LayoutTable(headers, rows) {
         return '<p class="no-data">データなし</p>';
     }
 
-    let html = '<div class="table-wrapper"><table class="data-table">';
+    let html = '<div class="table-wrapper"><table class="data-table layout-table">';
 
     if (headerRows.length > 0) {
         html += '<thead>';

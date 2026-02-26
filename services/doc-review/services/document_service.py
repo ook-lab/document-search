@@ -29,7 +29,6 @@ def get_documents_with_review_status(
     db_client,
     limit: int = 50,
     workspace: Optional[str] = None,
-    file_type: Optional[str] = None,
     review_status: Optional[str] = None,
     search_query: Optional[str] = None,
     exclude_workspace: Optional[str] = None,
@@ -48,7 +47,6 @@ def get_documents_with_review_status(
         db_client: DatabaseClient インスタンス
         limit: 取得件数上限
         workspace: ワークスペースフィルタ
-        file_type: ファイルタイプフィルタ
         review_status: 'reviewed', 'pending', 'all', または None
         search_query: 検索クエリ（ファイル名部分一致）
         exclude_workspace: 除外するワークスペース
@@ -68,9 +66,6 @@ def get_documents_with_review_status(
 
         if exclude_workspace:
             query = query.neq('workspace', exclude_workspace)
-
-        if file_type:
-            query = query.eq('file_type', file_type)
 
         if doc_type:
             query = query.eq('doc_type', doc_type)
@@ -237,7 +232,7 @@ def update_stage_g_result(
         db_client: DatabaseClient インスタンス
         document_id: ドキュメントID
         ui_data: Stage G の ui_data（クリーンなUI用データ）
-        final_metadata: G11/G12/G21/G22 の出力
+        final_metadata: G11/G17/G21/G22 の出力
 
     Returns:
         成功した場合 True、失敗した場合 False
@@ -253,17 +248,20 @@ def update_stage_g_result(
         # ★それぞれの結果を個別のカラムに保存
         if final_metadata:
             g11_output = final_metadata.get('g11_output', [])
-            g12_output = final_metadata.get('g12_output', [])
+            g14_output = final_metadata.get('g14_output', [])
+            g17_output = final_metadata.get('g17_output', [])
             g21_output = final_metadata.get('g21_output', [])
             g22_output = final_metadata.get('g22_output', {})
 
             update_data['g11_structured_tables'] = g11_output if g11_output else None
-            update_data['g12_table_analyses'] = g12_output if g12_output else None
+            update_data['g14_reconstructed_tables'] = g14_output if g14_output else None
+            update_data['g17_table_analyses'] = g17_output if g17_output else None
             update_data['g21_articles'] = g21_output if g21_output else None
             update_data['g22_ai_extracted'] = g22_output if g22_output else None
 
             logger.info(f"[DocumentService] G-11: {len(g11_output)}表")
-            logger.info(f"[DocumentService] G-12: {len(g12_output)}表")
+            logger.info(f"[DocumentService] G-14: {len(g14_output)}表")
+            logger.info(f"[DocumentService] G-17: {len(g17_output)}表")
             logger.info(f"[DocumentService] G-21: {len(g21_output)}記事")
             logger.info(f"[DocumentService] G-22: イベント{len(g22_output.get('calendar_events', []))}件")
 

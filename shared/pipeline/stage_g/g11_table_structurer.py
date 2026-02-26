@@ -19,7 +19,7 @@ class G11TableStructurer:
 
         Args:
             document_id: ドキュメントID（Supabase保存用）
-            next_stage: 次のステージ（G-12）のインスタンス
+            next_stage: 次のステージ（G-17）のインスタンス
         """
         self.document_id = document_id
         self.next_stage = next_stage
@@ -35,7 +35,7 @@ class G11TableStructurer:
 
         Args:
             ui_tables: Stage G の UI用表データ
-            year_context: 年度コンテキスト（G-12に渡す）
+            year_context: 年度コンテキスト（G-17に渡す）
             log_file: ログファイルパス（オプション）
 
         Returns:
@@ -173,12 +173,11 @@ class G11TableStructurer:
                 except Exception as e:
                     logger.error(f"[G-11] Supabase保存エラー: {e}")
 
-            # ★チェーン: 次のステージ（G-12）を呼び出す
+            # ★チェーン: 次のステージ（G-13）を呼び出す
             if self.next_stage:
-                logger.info("[G-11] → 次のステージ（G-12）を呼び出します")
-                g12_result = self.next_stage.process(structured_tables, year_context=year_context)
-                # G-11の結果も返す
-                result['g12_result'] = g12_result
+                logger.info("[G-11] → 次のステージ（G-13）を呼び出します")
+                g13_result = self.next_stage.process(result, year_context=year_context)
+                result['g13_result'] = g13_result
                 return result
 
             return result

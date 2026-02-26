@@ -1199,11 +1199,11 @@
             // 添付ファイル（source_urlまたはmetadataのmaterialsから）
             const attachments = [];
 
-            // source_urlがある場合（Driveファイルへのリンク）
-            if (doc.source_url) {
+            // file_urlがある場合（Driveファイルへのリンク）
+            if (doc.file_url) {
                 const fileName = doc.file_name || 'ファイル';
                 attachments.push({
-                    url: doc.source_url,
+                    url: doc.file_url,
                     name: fileName,
                     type: 'drive'
                 });
@@ -1267,11 +1267,11 @@
             // ✅ 要約があればそれを優先、なければ本文をトリミング
             const displayText = doc.summary || truncateText(doc.content || '', 200);
 
-            // ✅ source_urlがあればリンクボタンを表示（ファイル名をリンクテキストに使用）
-            const sourceUrl = doc.source_url || '';
+            // ✅ file_urlがあればリンクボタンを表示（ファイル名をリンクテキストに使用）
+            const fileUrl = doc.file_url || '';
             const fileName = doc.file_name || 'ファイルを開く';
-            const linkButton = sourceUrl ?
-                `<a href="${escapeHtml(sourceUrl)}" target="_blank" class="btn-link">📄 ${escapeHtml(fileName)}</a>` :
+            const linkButton = fileUrl ?
+                `<a href="${escapeHtml(fileUrl)}" target="_blank" class="btn-link">📄 ${escapeHtml(fileName)}</a>` :
                 '';
 
             return `

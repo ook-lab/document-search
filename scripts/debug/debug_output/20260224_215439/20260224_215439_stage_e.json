@@ -1,0 +1,41 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "extracted_content": {
+      "text": "早稲田アカデミー"
+    },
+    "blocks": [
+      {
+        "text": "早稲田アカデミー",
+        "bbox": [
+          112.0,
+          329.0,
+          784.0,
+          548.0
+        ],
+        "page": 1,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      }
+    ],
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"早稲田アカデミー\",\n      \"bbox\": [112, 329, 784, 548]\n    }\n  ]\n}\n```",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 240,
+    "route": "E21_VISION+E22",
+    "vision_text_used": true,
+    "role": "NON_TABLE_FINAL_TEXT",
+    "priority": 100,
+    "is_final_non_table": true
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 240,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}

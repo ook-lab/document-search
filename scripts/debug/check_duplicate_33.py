@@ -26,17 +26,17 @@ for idx, row in enumerate(result.data, 1):
     print(f"  created_at: {row['created_at']}")
     print(f"  status: {row['processing_status']}")
 
-    # metadata から g11_output, g12_output を確認
+    # metadata から g11_output, g17_output を確認
     metadata = row.get('metadata')
     if metadata and isinstance(metadata, dict):
         g11 = metadata.get('g11_output', 'N/A')
-        g12 = metadata.get('g12_output', 'N/A')
+        g17 = metadata.get('g17_output', 'N/A')
         if isinstance(g11, list):
             g11 = len(g11)
-        if isinstance(g12, list):
-            g12 = len(g12)
+        if isinstance(g17, list):
+            g17 = len(g17)
         print(f"  g11_output: {g11}")
-        print(f"  g12_output: {g12}")
+        print(f"  g17_output: {g17}")
     else:
         print(f"  metadata: {metadata}")
 

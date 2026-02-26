@@ -135,23 +135,23 @@ class DatabaseClient:
         """Supabase クライアントを取得（後方互換性のため）"""
         return self.client
     
-    def get_document_by_source_id(self, source_id: str) -> Optional[Dict[str, Any]]:
+    def get_document_by_file_url(self, file_url: str) -> Optional[Dict[str, Any]]:
         """
-        source_id で文書を検索
-        
+        file_url で文書を検索
+
         Args:
-            source_id: Google Drive のファイルID
-        
+            file_url: Google Drive の URL
+
         Returns:
             既存の文書レコード、存在しない場合は None
         """
         try:
-            response = self.client.table('Rawdata_FILE_AND_MAIL').select('*').eq('source_id', source_id).execute()
+            response = self.client.table('Rawdata_FILE_AND_MAIL').select('*').eq('file_url', file_url).execute()
             if response.data:
                 return response.data[0]
             return None
         except Exception as e:
-            print(f"Error getting document by source_id: {e}")
+            print(f"Error getting document by file_url: {e}")
             return None
     
     async def insert_document(self, table: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -186,7 +186,7 @@ class DatabaseClient:
         self,
         table: str,
         data: Dict[str, Any],
-        conflict_column: str = 'source_id',
+        conflict_column: str = 'id',
         force_update: bool = False,
         preserve_fields: List[str] = None
     ) -> Dict[str, Any]:
@@ -196,7 +196,7 @@ class DatabaseClient:
         Args:
             table: テーブル名
             data: 挿入・更新するデータ
-            conflict_column: 重複判定に使うカラム名（デフォルト: source_id）
+            conflict_column: 重複判定に使うカラム名（デフォルト: id）
             force_update: Trueの場合、全てのフィールドを強制的に更新（再処理時用）
             preserve_fields: force_update=Trueの時でも既存値を保持するフィールドのリスト
 
@@ -347,10 +347,10 @@ class DatabaseClient:
                 }
 
                 # ✅ Classroom表示用の追加フィールド（存在する場合のみ追加）
-                if 'source_type' in result:
-                    doc_result['source_type'] = result.get('source_type')
                 if 'source_url' in result:
                     doc_result['source_url'] = result.get('source_url')
+                if 'file_url' in result:
+                    doc_result['file_url'] = result.get('file_url')
                 if 'attachment_text' in result:
                     doc_result['attachment_text'] = result.get('attachment_text')
                 if 'created_at' in result:
@@ -365,8 +365,6 @@ class DatabaseClient:
                     doc_result['display_sent_at'] = result.get('display_sent_at')
                 if 'display_post_text' in result:
                     doc_result['display_post_text'] = result.get('display_post_text')
-                if 'display_type' in result:
-                    doc_result['display_type'] = result.get('display_type')
 
                 final_results.append(doc_result)
 
@@ -762,7 +760,6 @@ class DatabaseClient:
         limit: int = 100,
         search_query: Optional[str] = None,
         workspace: Optional[str] = None,
-        file_type: Optional[str] = None,
         review_status: Optional[str] = None,
         exclude_workspace: Optional[str] = None,
         doc_type: Optional[str] = None
@@ -777,7 +774,6 @@ class DatabaseClient:
             limit: 取得する最大件数
             search_query: 検索クエリ（IDまたはファイル名で部分一致）
             workspace: ワークスペースフィルタ（'business', 'personal', またはNone）
-            file_type: ファイルタイプフィルタ（'pdf', 'email', またはNone）
             review_status: レビューステータスフィルタ（'reviewed', 'pending', 'all', またはNone）
             exclude_workspace: 除外するワークスペース（'gmail'など）
             doc_type: ドキュメントタイプフィルタ（'DM-mail', 'JOB-mail'など）
@@ -787,10 +783,6 @@ class DatabaseClient:
         """
         try:
             query = self.client.table('Rawdata_FILE_AND_MAIL').select('*')
-
-            # File typeフィルタを適用
-            if file_type:
-                query = query.eq('file_type', file_type)
 
             # Workspaceフィルタを適用
             if workspace:
@@ -1284,23 +1276,21 @@ class DatabaseClient:
 
     def get_processed_file_ids(self) -> List[str]:
         """
-        既に処理済みのファイルIDリストを取得
+        既に処理済みのファイルIDリストを取得（file_id カラムから直接取得）
 
         Returns:
-            処理済みファイルのsource_id（Google Drive file ID）のリスト
+            処理済みファイルの Google Drive file ID のリスト
         """
         try:
-            # source_idが存在するすべてのドキュメントを取得
             response = (
                 self.client.table('Rawdata_FILE_AND_MAIL')
-                .select('source_id')
-                .not_.is_('source_id', 'null')
+                .select('file_id')
+                .not_.is_('file_id', 'null')
                 .execute()
             )
 
-            # source_idのリストを抽出
             if response.data:
-                file_ids = [doc['source_id'] for doc in response.data if doc.get('source_id')]
+                file_ids = [doc['file_id'] for doc in response.data if doc.get('file_id')]
                 print(f"Supabaseから {len(file_ids)} 件の処理済みファイルIDを取得しました")
                 return file_ids
             return []

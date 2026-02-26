@@ -409,18 +409,19 @@ class D8GridAnalyzer:
             return []
 
         # 単一の表領域として返す（複雑な場合は連結成分解析が必要）
+        # table_id は "D1"（ページプレフィックスは pipeline_manager の _merge_d_results で付与）
         table_region = {
-            'table_id': 'T1',
-            'canonical_id': 'T1',                          # 後段で使う汎用ID
+            'table_id': 'D1',
+            'canonical_id': 'D1',                          # 後段で使う汎用ID
             'source': 'stage_d',                           # 出自（B表と区別）
-            'origin_uid': f"D:P{page_index}:T1",           # 出自付き一意ID（混線防止）
+            'origin_uid': f"D:P{page_index}:D1",           # 出自付き一意ID（混線防止）
             'bbox': [x_min, y_min, x_max, y_max],
             'intersection_count': len(intersections),
             'h_line_count': len(h_lines),
             'v_line_count': len(v_lines)
         }
 
-        logger.info(f"[D-8] 表領域 T1:")
+        logger.info(f"[D-8] 表領域 D1:")
         logger.info(f"  ├─ Bbox: [{x_min:.3f}, {y_min:.3f}, {x_max:.3f}, {y_max:.3f}]")
         logger.info(f"  ├─ サイズ: {width:.3f}x{height:.3f}")
         logger.info(f"  └─ 交点数: {len(intersections)}")

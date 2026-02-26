@@ -133,7 +133,7 @@ class G5NoiseEliminator:
             if self.table_chain or self.text_chain:
                 logger.info("[G-5] → 次のステージを呼び出します（分岐）")
 
-                # 表処理チェーン（G-11 → G-12）
+                # 表処理チェーン（G-11 → G-17）
                 if self.table_chain:
                     logger.info("[G-5]   ├─ 表処理チェーン（G-11）")
                     table_result = self.table_chain.structure(ui_tables, year_context=document_info.get('year_context'))

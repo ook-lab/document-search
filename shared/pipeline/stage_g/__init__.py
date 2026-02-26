@@ -5,7 +5,7 @@ Stage F の統合データを、doc-review の UI が追加処理なしで
 「完全再現」できる形式にパッケージングする。
 
 パイプライン（チェーン）:
-G-3 → G-5 → (G-11 → G-12 & G-6 → G-21 → G-22)
+G-3 → G-5 → (G-11 → G-13 → G-14 → G-17 & G-6 → G-21 → G-22)
 
 出力:
 - UI用表データ（headers[], rows[][]）
@@ -17,7 +17,9 @@ from .g1_table_reproducer import G1TableReproducer
 from .g3_block_arranger import G3BlockArranger
 from .g5_noise_eliminator import G5NoiseEliminator
 from .g11_table_structurer import G11TableStructurer
-from .g12_table_ai_processor import G12TableAIProcessor
+from .g13_repeating_header_detector import G13RepeatingHeaderDetector
+from .g14_table_reconstructor import G14TableReconstructor
+from .g17_table_ai_processor import G17TableAIProcessor
 from .g21_text_structurer import G21TextStructurer
 from .g22_text_ai_processor import G22TextAIProcessor
 
@@ -27,7 +29,7 @@ class G1Controller:
 
     def __init__(self, document_id=None, api_key=None):
         """
-        チェーン構築: G-3 → G-5 → (G-11 → G-12 & G-6 → G-21 → G-22)
+        チェーン構築: G-3 → G-5 → (G-11 → G-13 → G-14 → G-17 & G-6 → G-21 → G-22)
 
         Args:
             document_id: ドキュメントID（Supabase保存用）
@@ -36,8 +38,10 @@ class G1Controller:
         # ★チェーンパターン: 逆順で構築
         text_ai_processor = G22TextAIProcessor(document_id=document_id, api_key=api_key)
         text_structurer = G21TextStructurer(document_id=document_id, next_stage=text_ai_processor)
-        table_ai_processor = G12TableAIProcessor(document_id=document_id, api_key=api_key)
-        table_structurer = G11TableStructurer(document_id=document_id, next_stage=table_ai_processor)
+        table_ai_processor = G17TableAIProcessor(document_id=document_id, api_key=api_key)
+        table_reconstructor = G14TableReconstructor(next_stage=table_ai_processor)
+        header_detector = G13RepeatingHeaderDetector(next_stage=table_reconstructor)
+        table_structurer = G11TableStructurer(document_id=document_id, next_stage=header_detector)
         noise_eliminator = G5NoiseEliminator(
             table_chain=table_structurer,
             text_chain=text_structurer
@@ -92,10 +96,11 @@ class G1Controller:
         table_result_chain = chain_result.get('table_result', {})
         text_result_chain = chain_result.get('text_result', {})
 
-        # ★G-12の結果（AI処理済み）をui_data.tablesに設定
-        # G-12の結果は table_result_chain['g12_result']['table_analyses'] に入っている
-        g12_result = table_result_chain.get('g12_result', {})
-        table_analyses = g12_result.get('table_analyses', [])
+        # ★G-11 → G-13 → G-14 → G-17 のチェーン結果を取得
+        g13_result = table_result_chain.get('g13_result', {})
+        g14_result = g13_result.get('g14_result', {})
+        g17_result = g14_result.get('g17_result', {})
+        table_analyses = g17_result.get('table_analyses', [])
         ui_data['tables'] = self._convert_analyses_to_ui_format(table_analyses)
 
         # ★G-11の結果（構造化済み）をui_dataに含める
@@ -130,7 +135,8 @@ class G1Controller:
 
         final_metadata = {
             'g11_output': structured_tables,
-            'g12_output': ui_data['tables'],  # ★変換後のデータを使用
+            'g14_output': g14_result.get('g14_reconstructed', []),
+            'g17_output': ui_data['tables'],  # ★変換後のデータを使用
             'g21_output': g21_output,          # G22のtopic_sections優先、なければG21暫定
             'g22_output': {
                 'calendar_events': text_result_chain.get('calendar_events', []),
@@ -151,10 +157,10 @@ class G1Controller:
         }
 
     def _convert_analyses_to_ui_format(self, table_analyses):
-        """G-12の table_analyses を UI表示用フォーマットに変換"""
+        """G-17の table_analyses を UI表示用フォーマットに変換"""
         ui_tables = []
         for analysis in table_analyses:
-            # G-12 の実際の出力: sections[0].data
+            # G-17 の実際の出力: sections[0].data
             sections = analysis.get('sections', [])
             if sections and len(sections) > 0:
                 section_data = sections[0].get('data', [])

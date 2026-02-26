@@ -8,6 +8,7 @@ REST APIエンドポイント
 - documents / emails 系: すべて認証必須
 """
 import os
+import re
 import json
 import tempfile
 from pathlib import Path
@@ -164,7 +165,6 @@ def list_documents():
 
     Query params:
         workspace: ワークスペースフィルタ
-        file_type: ファイルタイプフィルタ
         review_status: pending / reviewed / all（仮想フィールド、latest_correction_idから導出）
         search: 検索クエリ
         limit: 取得件数（デフォルト50）
@@ -174,7 +174,6 @@ def list_documents():
 
         # クエリパラメータ取得
         workspace = request.args.get('workspace')
-        file_type = request.args.get('file_type')
         review_status = request.args.get('review_status', 'pending')
         search_query = request.args.get('search')
         processing_status = request.args.get('processing_status')
@@ -183,8 +182,6 @@ def list_documents():
         # 空文字列をNoneに変換
         if workspace == '':
             workspace = None
-        if file_type == '':
-            file_type = None
         if search_query == '':
             search_query = None
         if processing_status == '':
@@ -195,7 +192,6 @@ def list_documents():
             db_client=db_client,
             limit=limit,
             workspace=workspace,
-            file_type=file_type,
             review_status=review_status,
             search_query=search_query,
             exclude_workspace='gmail',  # Gmailはメール側で処理
@@ -249,8 +245,8 @@ def get_document(doc_id: str):
                 stage_g_data = {}
         document['stage_g_structured_data'] = stage_g_data
 
-        # ★G-11/G-12/G-21/G-22 の個別結果をパース
-        for key in ['g11_structured_tables', 'g12_table_analyses', 'g21_articles', 'g22_ai_extracted']:
+        # ★G-11/G-14/G-17/G-21/G-22 の個別結果をパース
+        for key in ['g11_structured_tables', 'g14_reconstructed_tables', 'g17_table_analyses', 'g21_articles', 'g22_ai_extracted']:
             value = document.get(key)
             if isinstance(value, str):
                 try:
@@ -259,7 +255,7 @@ def get_document(doc_id: str):
                     document[key] = [] if key != 'g22_ai_extracted' else {}
 
         # ★UIが期待する形式で metadata に統合
-        # UIは metadata.g11_output, metadata.g12_output, metadata.g21_output, metadata.g22_output を探す
+        # UIは metadata.g11_output, metadata.g17_output, metadata.g21_output, metadata.g22_output を探す
         # metadata が辞書であることを保証
         if not isinstance(metadata, dict):
             metadata = {}
@@ -267,11 +263,14 @@ def get_document(doc_id: str):
         if document.get('g11_structured_tables'):
             metadata['g11_output'] = document['g11_structured_tables']
 
-        # ★G-12: 古い形式（sections形式）を新しい形式（headers/rows形式）に変換
-        if document.get('g12_table_analyses'):
-            g12_data = document['g12_table_analyses']
+        if document.get('g14_reconstructed_tables'):
+            metadata['g14_output'] = document['g14_reconstructed_tables']
+
+        # ★G-17: 古い形式（sections形式）を新しい形式（headers/rows形式）に変換
+        if document.get('g17_table_analyses'):
+            g17_data = document['g17_table_analyses']
             converted_tables = []
-            for analysis in g12_data:
+            for analysis in g17_data:
                 # 古い形式（sections[0].data）の場合は変換
                 if 'sections' in analysis and analysis['sections']:
                     section_data = analysis['sections'][0].get('data', [])
@@ -288,7 +287,7 @@ def get_document(doc_id: str):
                 else:
                     # すでに新しい形式の場合はそのまま
                     converted_tables.append(analysis)
-            metadata['g12_output'] = converted_tables
+            metadata['g17_output'] = converted_tables
         if document.get('g21_articles'):
             metadata['g21_output'] = document['g21_articles']
         if document.get('g22_ai_extracted'):
@@ -323,8 +322,9 @@ def preview_document(doc_id: str):
         if not document:
             abort(404)
 
-        # ファイルIDを取得
-        file_id = document.get('drive_file_id') or document.get('source_id')
+        # ファイルIDを file_url から取得
+        _m = re.search(r'/d/([a-zA-Z0-9_-]+)', document.get('file_url') or '')
+        file_id = _m.group(1) if _m else None
         file_name = document.get('file_name') or 'document'
 
         if not file_id:
@@ -528,7 +528,8 @@ def delete_document(doc_id: str):
             }), 404
 
         # Google Driveからも削除
-        file_id = document.get('drive_file_id') or document.get('source_id')
+        _m = re.search(r'/d/([a-zA-Z0-9_-]+)', document.get('file_url') or '')
+        file_id = _m.group(1) if _m else None
         if file_id:
             try:
                 from shared.common.connectors.google_drive import GoogleDriveConnector
@@ -707,7 +708,8 @@ def bulk_delete_documents():
                 document = db_client.get_document_by_id(doc_id)
                 if document:
                     # Driveから削除
-                    file_id = document.get('drive_file_id') or document.get('source_id')
+                    _m = re.search(r'/d/([a-zA-Z0-9_-]+)', document.get('file_url') or '')
+                    file_id = _m.group(1) if _m else None
                     if file_id:
                         try:
                             drive_connector.trash_file(file_id)

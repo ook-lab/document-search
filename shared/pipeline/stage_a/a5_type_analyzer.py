@@ -51,6 +51,9 @@ class A5TypeAnalyzer:
         # Producer照合パターン（補助判定・Creator不明時のみ使用）
         self.PRODUCER_PATTERNS = rules.get('producer_patterns', {})
 
+        # Title拡張子 + Producer 組み合わせ判定（Step 2.5）
+        self.TITLE_EXT_PATTERNS = rules.get('title_extension_patterns', [])
+
         # ページフォント照合パターン（固有フォントのみ）
         self.PAGE_FONT_REPORT = page.get('REPORT', [])
         self.PAGE_FONT_DTP    = page.get('DTP', [])
@@ -95,13 +98,15 @@ class A5TypeAnalyzer:
         # Creator と Producer を取得
         creator = metadata.get('Creator', '').strip()
         producer = metadata.get('Producer', '').strip()
+        title   = metadata.get('Title', '').strip()
 
         logger.info("[A-5 TypeAnalyzer] 判定用キーフィールド:")
         logger.info(f"  ├─ Creator: '{creator}'")
-        logger.info(f"  └─ Producer: '{producer}'")
+        logger.info(f"  ├─ Producer: '{producer}'")
+        logger.info(f"  └─ Title: '{title}'")
 
         # メタデータ判定を実行（照合詳細も取得）
-        meta_type, meta_confidence, meta_reason, meta_match_detail = self._classify_document(creator, producer)
+        meta_type, meta_confidence, meta_reason, meta_match_detail = self._classify_document(creator, producer, title)
 
         # ページ別フォント解析（常時実行）
         # meta_type を渡してフォールスルー種別を最初から正しく設定する
@@ -179,15 +184,18 @@ class A5TypeAnalyzer:
     def _classify_document(
         self,
         creator: str,
-        producer: str
+        producer: str,
+        title: str = '',
     ) -> tuple[str, str, str, dict]:
         """
-        Creator / Producer を別々に照合して書類種類を判定。
+        Creator / Producer / Title拡張子 を照合して書類種類を判定。
 
         優先順位:
-          1. Creator 照合（HIGH）  ← 誰が作ったか。これが判定の主軸。
-          2. Producer 照合（HIGH） ← Creator が空の場合のみ参照。
-          3. 両方空 / 不一致 → UNKNOWN LOW
+          1. Creator 照合（HIGH）       ← 誰が作ったか。これが判定の主軸。
+          2. Producer 照合（HIGH）      ← Creator が空の場合のみ参照。
+          2.5. Title拡張子 照合（HIGH） ← Producer だけでは確定できない場合。
+                                          Windows「Print to PDF」の元ファイル拡張子を利用。
+          3. 全て不一致 → UNKNOWN LOW
 
         Creator で判定できた場合は Producer を見ない。
         """
@@ -233,6 +241,27 @@ class A5TypeAnalyzer:
                     'producer_results': producer_results,
                 }
         logger.info("  ✗ Producer: 不一致")
+
+        # ── Step 2.5: Title拡張子 照合（Producer単独では確定できない場合） ──
+        if title:
+            title_lower = title.lower()
+            logger.info("[A-5 TypeAnalyzer] Title拡張子照合（補助）:")
+            logger.info(f"  ├─ Title: '{title}'")
+            for rule in self.TITLE_EXT_PATTERNS:
+                prod_pat = rule.get('producer_pattern', '')
+                if not re.search(prod_pat, producer_lower, re.IGNORECASE):
+                    continue
+                ext_map = rule.get('extension_map', {})
+                for ext, app_name in ext_map.items():
+                    if title_lower.endswith(ext):
+                        logger.info(f"  ✓ Title拡張子 → {app_name} (ext='{ext}')")
+                        return app_name, 'HIGH', f'Title拡張子一致: {ext} (Producer={producer})', {
+                            'creator': creator, 'producer': producer,
+                            'decided_by': 'title_extension',
+                            'creator_results': creator_results,
+                            'producer_results': producer_results,
+                        }
+            logger.info("  ✗ Title拡張子: 不一致")
 
         # ── Step 3: 判定不能 ──────────────────────────────
         match_detail = {

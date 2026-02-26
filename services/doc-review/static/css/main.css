@@ -1268,6 +1268,12 @@ body {
     text-align: center;
 }
 
+/* レイアウトテーブル（G11/G14/G17）: 縦横全セルに細い罫線 */
+.layout-table th,
+.layout-table td {
+    border: 1px solid #d0d0d0;
+}
+
 /* テーブルラッパー */
 .table-wrapper {
     overflow-x: auto;

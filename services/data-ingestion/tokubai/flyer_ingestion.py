@@ -221,7 +221,6 @@ class TokubaiFlyerIngestionPipeline:
                 # 4. Supabaseに基本情報のみ保存（Rawdata_FLYER_shopsテーブル）
                 doc_data = {
                     # 基本情報
-                    'source_type': 'flyer',
                     'workspace': 'shopping',
                     'doc_type': 'physical shop',
                     'organization': self.store_name,  # 店舗名
@@ -235,9 +234,8 @@ class TokubaiFlyerIngestionPipeline:
 
                     # ファイル情報
                     'source_id': file_id,
-                    'source_url': f"https://drive.google.com/file/d/{file_id}/view",
+                    'file_url': f"https://drive.google.com/file/d/{file_id}/view",
                     'file_name': actual_file_name,
-                    'file_type': 'image',
                     'content_hash': hashlib.sha256(image_data).hexdigest(),
 
                     # OCR・テキスト情報（後で処理）

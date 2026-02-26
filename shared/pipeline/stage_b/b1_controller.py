@@ -61,6 +61,7 @@ class B1Controller:
     # 本番環境で許可するプロセッサ（動作確認済みのものを順次追加する）
     PRODUCTION_ALLOWED_PROCESSORS: List[str] = [
         'B11_GOOGLE_DOCS',
+        'B4_PDF_EXCEL',
     ]
 
     def __init__(self):
@@ -470,6 +471,7 @@ class B1Controller:
                 kwargs['log_file'] = log_dir / f"{processor_name.lower()}.log"
             result = processor.process(file_path, **kwargs)
             result['processor_name'] = processor_name
+            result['success'] = result.get('is_structured', False)
 
             # 完全なログ出力
             logger.info(f"[B-1] {processor_name} 処理完了")

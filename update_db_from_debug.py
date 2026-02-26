@@ -54,7 +54,7 @@ print(f'UUID: {args.uuid}')
 print(f'Doc ID: {args.doc_id}')
 print(f'ui_data keys: {list(ui_data.keys())}')
 print(f'final_metadata - g11_output: {len(final_metadata.get("g11_output", []))}個')
-print(f'final_metadata - g12_output: {len(final_metadata.get("g12_output", []))}個')
+print(f'final_metadata - g17_output: {len(final_metadata.get("g17_output", []))}個')
 print(f'final_metadata - g21_output: {len(final_metadata.get("g21_output", []))}件')
 print(f'final_metadata - g22_output.calendar_events: {len(final_metadata.get("g22_output", {}).get("calendar_events", []))}件')
 
@@ -75,6 +75,6 @@ if not success:
 
 print('✅ Database updated successfully!')
 if final_metadata:
-    print('  ✅ final_metadata (g11/g12/g21/g22) saved to metadata column')
+    print('  ✅ final_metadata (g11/g17/g21/g22) saved to metadata column')
 else:
     print('  ⚠️  final_metadata なし（metadata カラム未更新）')

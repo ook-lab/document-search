@@ -69,7 +69,7 @@ from shared.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
 from shared.pipeline.stage_f.f3_smart_date_normalizer import F3SmartDateNormalizer
 from shared.pipeline.stage_f.f5_logical_table_joiner import F5LogicalTableJoiner
 
-# Stage G コントローラー（G11/G12/G21/G22 含む全処理）
+# Stage G コントローラー（G11/G17/G21/G22 含む全処理）
 from shared.pipeline.stage_g import G1Controller as G1ControllerFull
 
 
@@ -86,7 +86,7 @@ class DebugPipeline:
         "D": ["D3", "D5", "D8", "D9", "D10"],
         "E": ["E1"],
         "F": ["F1", "F3", "F5"],
-        "G": ["G1", "G3", "G5", "G11", "G12", "G21", "G22"],
+        "G": ["G1", "G3", "G5", "G11", "G17", "G21", "G22"],
     }
 
     # 全サブステージの実行順序（フラット）
@@ -96,7 +96,7 @@ class DebugPipeline:
         "D3", "D5", "D8", "D9", "D10",
         "E1",
         "F1", "F3", "F5",
-        "G1", "G3", "G5", "G11", "G12", "G21", "G22",
+        "G1", "G3", "G5", "G11", "G17", "G21", "G22",
     ]
 
     # サブステージ → 親ステージ
@@ -141,7 +141,7 @@ class DebugPipeline:
         self._f3 = F3SmartDateNormalizer(api_key=_gemini_key)
         self._f5 = F5LogicalTableJoiner()
 
-        # Stage G: G1Controller（G11/G12/G21/G22 含む全処理）
+        # Stage G: G1Controller（G11/G17/G21/G22 含む全処理）
         self._g_controller = G1ControllerFull(api_key=_gemini_key)
 
         # ログ出力設定: 各ステージのログを個別ファイルに出力（起動時に一括設定）
@@ -187,7 +187,7 @@ class DebugPipeline:
             ("g3_block_arranger",        "g3_block_arranger.log"),
             ("g5_noise_eliminator",      "g5_noise_eliminator.log"),
             ("g11_table_structurer",     "g11_table_structurer.log"),
-            ("g12_table_ai_processor",   "g12_table_ai_processor.log"),
+            ("g17_table_ai_processor",   "g17_table_ai_processor.log"),
             ("g21_text_structurer",      "g21_text_structurer.log"),
             ("g22_text_ai_processor",    "g22_text_ai_processor.log"),
         ]:
@@ -805,11 +805,11 @@ class DebugPipeline:
         ctx["F"] = stage_f
 
     # ════════════════════════════════════════
-    # Stage G（G1Controller: G1→G3→G5→G11→G12→G21→G22）
+    # Stage G（G1Controller: G1→G3→G5→G11→G17→G21→G22）
     # ════════════════════════════════════════
 
     def _exec_stage_g(self, ctx, active_set, force):
-        g_subs = {"G1", "G3", "G5", "G11", "G12", "G21", "G22", "G"}
+        g_subs = {"G1", "G3", "G5", "G11", "G17", "G21", "G22", "G"}
         if not (g_subs & active_set):
             ctx["G"] = self.load_stage("G")
             return
@@ -820,7 +820,7 @@ class DebugPipeline:
             ctx["G"] = {'success': False, 'error': 'No Stage F data'}
             return
 
-        logger.info("[Stage G] G1Controller 実行中（G1→G3→G5→G11→G12→G21→G22）...")
+        logger.info("[Stage G] G1Controller 実行中（G1→G3→G5→G11→G17→G21→G22）...")
         # ★G-1はF-5の結果のみを受け取る（直前ステージのみ）
         stage_g = self._g_controller.process(f5_result=stage_f)
         self.save_stage("G", stage_g)
@@ -837,7 +837,7 @@ class DebugPipeline:
         if stage_g.get('success') and final_metadata:
             meta_path = self.output_dir / f"{self.uuid}_final_metadata.json"
             self._save_json(meta_path, final_metadata)
-            logger.info(f"[Stage G] final_metadata（G11/G12/G21/G22）を保存: {meta_path}")
+            logger.info(f"[Stage G] final_metadata（G11/G17/G21/G22）を保存: {meta_path}")
 
 
 def main():

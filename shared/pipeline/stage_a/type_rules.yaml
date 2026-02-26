@@ -145,6 +145,25 @@ producer_patterns:
   # Producer だけ見てWORD/EXCEL/POWERPOINT等と判定しない。
   # "Microsoft: Print To PDF" はWord/Excel/PPT共通 → 根拠にならない。
   # Adobe系（ILLUSTRATOR/INDESIGN/ACROBAT）もProducer="Adobe PDF Library"共通 → 根拠にならない。
+  # ※ Producer + Title拡張子 の組み合わせ判定は title_extension_patterns セクションで行う。
+
+
+# ──────────────────────────────────────
+# A-3. Title拡張子 + Producer 組み合わせ判定
+#      Creator が空で Producer だけでは種別が確定できない場合に使用する。
+#      Windows「Print to PDF」仮想プリンタは元ファイルのパスをそのまま Title に入れる仕様のため、
+#      Title の拡張子を種別確定の根拠として使える。
+#      判定優先順位: Creator → Producer → Title拡張子（Step 2.5）
+# ──────────────────────────────────────
+title_extension_patterns:
+  - producer_pattern: "microsoft.*print|print.*to.*pdf"
+    extension_map:
+      .xlsx: EXCEL
+      .xls:  EXCEL
+      .docx: WORD
+      .doc:  WORD
+      .pptx: POWERPOINT
+      .ppt:  POWERPOINT
 
 
 # ──────────────────────────────────────

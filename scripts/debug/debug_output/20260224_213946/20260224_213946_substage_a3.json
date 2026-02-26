@@ -1,0 +1,266 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "UNKNOWN",
+    "confidence": "LOW",
+    "reason": "判定不能 (Creator=, Producer=Microsoft: Print To PDF)",
+    "raw_metadata": {
+      "Author": "šã Å_",
+      "CreationDate": "D:20251222161013+09'00'",
+      "ModDate": "D:20251222161013+09'00'",
+      "Producer": "Microsoft: Print To PDF",
+      "Title": "2025¬˜Bﬁr f5\u000fI.xls"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 595.32001,
+      "height": 841.92004,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01567019444443,
+      "height": 297.01068077777774,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 1.5,
+      "avg_words_per_page": 885.0,
+      "avg_x_std": 130.93385412581952,
+      "avg_words_per_line": 5.6694078947368425,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 0,
+          "words": 840,
+          "chars": 1408,
+          "has_selectable_text": true,
+          "x_std": 119.45874426513717,
+          "lines": 152,
+          "words_per_line": 5.526315789473684,
+          "vector_count": 559,
+          "fonts": [
+            {
+              "name": "CIDFont+F1",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "CIDFont+F2",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": []
+        },
+        {
+          "page": 1,
+          "images": 3,
+          "words": 930,
+          "chars": 1804,
+          "has_selectable_text": true,
+          "x_std": 142.40896398650187,
+          "lines": 160,
+          "words_per_line": 5.8125,
+          "vector_count": 571,
+          "fonts": [
+            {
+              "name": "CIDFont+F1",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "CIDFont+F2",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": [
+            {
+              "width": 4092,
+              "height": 178,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 4092,
+              "height": 178,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 4092,
+              "height": 177,
+              "bpc": 8,
+              "colorspace": "DeviceRGB",
+              "filter": "DCTDecode"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "origin_app": "UNKNOWN",
+  "document_type": "UNKNOWN",
+  "confidence": "LOW",
+  "reason": "判定不能 (Creator=, Producer=Microsoft: Print To PDF)",
+  "raw_metadata": {
+    "Author": "šã Å_",
+    "CreationDate": "D:20251222161013+09'00'",
+    "ModDate": "D:20251222161013+09'00'",
+    "Producer": "Microsoft: Print To PDF",
+    "Title": "2025¬˜Bﬁr f5\u000fI.xls"
+  },
+  "page_type_map": {
+    "0": "UNKNOWN",
+    "1": "UNKNOWN"
+  },
+  "type_groups": {
+    "UNKNOWN": [
+      0,
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 595.32001,
+    "height": 841.92004,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01567019444443,
+    "height": 297.01068077777774,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 1.5,
+    "avg_words_per_page": 885.0,
+    "avg_x_std": 130.93385412581952,
+    "avg_words_per_line": 5.6694078947368425,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 0,
+        "words": 840,
+        "chars": 1408,
+        "has_selectable_text": true,
+        "x_std": 119.45874426513717,
+        "lines": 152,
+        "words_per_line": 5.526315789473684,
+        "vector_count": 559,
+        "fonts": [
+          {
+            "name": "CIDFont+F1",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "CIDFont+F2",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": []
+      },
+      {
+        "page": 1,
+        "images": 3,
+        "words": 930,
+        "chars": 1804,
+        "has_selectable_text": true,
+        "x_std": 142.40896398650187,
+        "lines": 160,
+        "words_per_line": 5.8125,
+        "vector_count": 571,
+        "fonts": [
+          {
+            "name": "CIDFont+F1",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "CIDFont+F2",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": [
+          {
+            "width": 4092,
+            "height": 178,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 4092,
+            "height": 178,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 4092,
+            "height": 177,
+            "bpc": 8,
+            "colorspace": "DeviceRGB",
+            "filter": "DCTDecode"
+          }
+        ]
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "LOW_CONFIDENCE",
+    "block_reason": "confidence!=HIGH のため遮断（confidence=LOW）",
+    "evidence": {
+      "origin_app": "UNKNOWN",
+      "layout_profile": "FIXED",
+      "confidence": "LOW"
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "BLOCK",
+    "allowed_processors": [],
+    "block_code": "LOW_CONFIDENCE",
+    "block_reason": "confidence!=HIGH のため遮断（confidence=LOW）",
+    "evidence": {
+      "origin_app": "UNKNOWN",
+      "layout_profile": "FIXED",
+      "confidence": "LOW"
+    },
+    "policy_version": "A5.v2"
+  }
+}

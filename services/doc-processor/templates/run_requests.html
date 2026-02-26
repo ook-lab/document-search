@@ -539,6 +539,38 @@
             padding: 20px;
             font-size: 0.9em;
         }
+
+        .btn-reprocess {
+            border: none;
+            border-radius: 5px;
+            padding: 4px 10px;
+            font-size: 0.78em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-reprocess-g17 {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fbbf24;
+        }
+        .btn-reprocess-g17:hover:not(:disabled) {
+            background: #fbbf24;
+            color: #1c1917;
+        }
+        .btn-reprocess-g22 {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #34d399;
+        }
+        .btn-reprocess-g22:hover:not(:disabled) {
+            background: #34d399;
+            color: #022c22;
+        }
+        .btn-reprocess:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -648,8 +680,79 @@
                 </button>
             </div>
 
+            <!-- ドキュメント検索 -->
+            <h2 style="margin-bottom: 20px; color: #1f2937; margin-top: 40px;">🔍 ドキュメント検索</h2>
+            <div class="form-section">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="search-workspace">ワークスペース</label>
+                        <select id="search-workspace">
+                            <option value="">全体（指定なし）</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="search-classification">分類</label>
+                        <select id="search-classification">
+                            <option value="">すべて</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="search-status">ステータス</label>
+                        <select id="search-status">
+                            <option value="">すべて</option>
+                            <option value="pending">pending</option>
+                            <option value="queued">queued</option>
+                            <option value="processing">processing</option>
+                            <option value="completed">completed</option>
+                            <option value="failed">failed</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="search-q">キーワード（タイトル部分一致）</label>
+                    <input type="text" id="search-q" placeholder="キーワードを入力">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 0.9em; color: #4b5563; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="exclude-text-only"> テキストのみ（添付なし）を除く
+                    </label>
+                </div>
+                <button class="btn btn-primary" onclick="searchDocuments()">🔍 検索</button>
+            </div>
+
+            <!-- 検索履歴 -->
+            <div id="search-history-section" style="margin-top: 12px; display: none;">
+                <div style="font-size: 0.85em; color: #6b7280; margin-bottom: 6px;">最近の検索：</div>
+                <div id="search-history-list"></div>
+            </div>
+
+            <!-- 検索結果 -->
+            <div id="search-results-section" style="margin-top: 20px; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <span id="search-result-count" style="color: #6b7280; font-size: 0.9em;"></span>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn" id="btn-classify" onclick="classifySelected()" style="background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: white; font-size: 0.85em; padding: 6px 14px;">
+                            🏷 分類を確認
+                        </button>
+                        <button class="btn btn-primary" onclick="addSelectedToQueue()" style="font-size: 0.85em; padding: 6px 14px;">
+                            ➕ 選択した件をキューに追加
+                        </button>
+                    </div>
+                </div>
+                <!-- 分類結果の表示エリア -->
+                <div id="classify-results-area" style="display: none; margin-bottom: 12px; padding: 12px; background: #f5f3ff; border-radius: 8px; border: 1px solid #c4b5fd; font-size: 0.85em;">
+                    <div id="classify-results-content"></div>
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="font-size: 0.85em; color: #6b7280; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="select-all-results" onchange="toggleSelectAll(this)"> すべて選択（上位20件まで）
+                    </label>
+                </div>
+                <div class="requests-list" id="search-results-list"></div>
+            </div>
+
             <!-- ブロックされたドキュメント一覧 -->
-            <h2 style="margin-bottom: 20px; color: #1f2937;">🚫 Gatekeeper ブロック（処理対象外）</h2>
+            <h2 style="margin-bottom: 20px; color: #1f2937; margin-top: 40px;">🚫 Gatekeeper ブロック（処理対象外）</h2>
             <div class="requests-list" id="blocked-list" style="margin-bottom: 40px;">
                 <div class="empty-state">
                     <p>読み込み中...</p>
@@ -683,11 +786,13 @@
         // ページ読み込み時
         window.addEventListener('load', function() {
             loadWorkspaces();
+            loadClassifications('');
             refreshQueue();
             loadBlockedDocuments();
             loadFailedDocuments();
             loadDashboard();
             startPolling();
+            renderSearchHistory();
         });
 
         // ポーリング開始
@@ -716,18 +821,68 @@
                 const data = await response.json();
 
                 if (data.success && data.workspaces) {
+                    // キュー追加フォームのワークスペース
                     const select = document.getElementById('workspace');
+                    // 検索フォームのワークスペース
+                    const searchSelect = document.getElementById('search-workspace');
                     data.workspaces.forEach(workspace => {
-                        const option = document.createElement('option');
-                        option.value = workspace;
-                        option.textContent = workspace;
-                        select.appendChild(option);
+                        const opt1 = document.createElement('option');
+                        opt1.value = workspace;
+                        opt1.textContent = workspace;
+                        select.appendChild(opt1);
+
+                        const opt2 = document.createElement('option');
+                        opt2.value = workspace;
+                        opt2.textContent = workspace;
+                        searchSelect.appendChild(opt2);
                     });
                 }
             } catch (error) {
                 console.error('ワークスペース読み込みエラー:', error);
             }
         }
+
+        // 分類（origin_app）一覧を読み込む
+        async function loadClassifications(workspace) {
+            try {
+                const params = workspace ? `?workspace=${encodeURIComponent(workspace)}` : '';
+                const response = await fetch(`/internal/classifications${params}`);
+                const data = await response.json();
+
+                const select = document.getElementById('search-classification');
+                // 「すべて」以外をクリア
+                while (select.options.length > 1) select.remove(1);
+
+                if (data.success && data.classifications) {
+                    data.classifications.forEach(cls => {
+                        const option = document.createElement('option');
+                        option.value = cls;
+                        option.textContent = cls;
+                        select.appendChild(option);
+                    });
+                }
+
+                // 疑似分類ステータス（DB カラムではなく条件で絞り込む）
+                const pseudoStatuses = [
+                    { value: 'text_only',      label: '[テキストのみ] 添付なし' },
+                    { value: 'unclassified',   label: '[未分類] ファイルあり・分類なし' },
+                    { value: 'file_not_found', label: '[ファイル未発見] Drive 404' },
+                ];
+                pseudoStatuses.forEach(ps => {
+                    const opt = document.createElement('option');
+                    opt.value = ps.value;
+                    opt.textContent = ps.label;
+                    select.appendChild(opt);
+                });
+            } catch (error) {
+                console.error('分類読み込みエラー:', error);
+            }
+        }
+
+        // 検索ワークスペース変更時に分類を更新
+        document.getElementById('search-workspace').addEventListener('change', function() {
+            loadClassifications(this.value);
+        });
 
         // ダッシュボードを読み込む
         async function loadDashboard() {
@@ -1410,6 +1565,362 @@
                 hour: '2-digit',
                 minute: '2-digit'
             });
+        }
+
+        // ===== ドキュメント検索 =====
+
+        // 検索実行
+        async function searchDocuments() {
+            const workspace = document.getElementById('search-workspace').value;
+            const classification = document.getElementById('search-classification').value;
+            const status = document.getElementById('search-status').value;
+            const q = document.getElementById('search-q').value.trim();
+            const excludeTextOnly = document.getElementById('exclude-text-only').checked;
+
+            const params = new URLSearchParams();
+            if (workspace) params.set('workspace', workspace);
+            if (classification) params.set('classification', classification);
+            if (status) params.set('status', status);
+            if (q) params.set('q', q);
+            if (excludeTextOnly) params.set('exclude_text_only', 'true');
+            params.set('limit', '100');
+
+            try {
+                const response = await fetch(`/internal/search?${params}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    saveSearchHistory({ workspace, classification, status, q });
+                    renderSearchResults(data.documents, data.count);
+                } else {
+                    showMessage('error', `❌ 検索エラー: ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ 検索エラー: ${error.message}`);
+            }
+        }
+
+        // 検索結果を表示
+        function renderSearchResults(docs, count) {
+            const section = document.getElementById('search-results-section');
+            const list = document.getElementById('search-results-list');
+            const countEl = document.getElementById('search-result-count');
+            const selectAll = document.getElementById('select-all-results');
+
+            section.style.display = 'block';
+            countEl.textContent = `${count} 件見つかりました`;
+            selectAll.checked = false;
+
+            if (!docs.length) {
+                list.innerHTML = '<div class="empty-state"><p>条件に一致するドキュメントがありません</p></div>';
+                return;
+            }
+
+            const statusColors = {
+                pending: '#6b7280',
+                queued: '#2563eb',
+                processing: '#f59e0b',
+                completed: '#10b981',
+                failed: '#ef4444'
+            };
+
+            list.innerHTML = docs.map(doc => {
+                const color = statusColors[doc.processing_status] || '#6b7280';
+                const label = doc.title || doc.file_name || doc.id;
+                const safeId = doc.id.replace(/"/g, '&quot;');
+                const safeName = escHtml(label).replace(/'/g, '&#39;');
+                return `
+                <div class="request-card" style="border-left: 4px solid ${color}; cursor: default;">
+                    <div style="display: flex; align-items: flex-start; gap: 10px;">
+                        <input type="checkbox" class="search-result-checkbox" value="${doc.id}" style="margin-top: 4px; flex-shrink: 0;">
+                        <div style="flex: 1; min-width: 0;">
+                            <div data-doc-name style="font-weight: 600; color: #1f2937; word-break: break-all;">${escHtml(label)}</div>
+                            <div style="font-size: 0.8em; color: #6b7280; margin-top: 4px;">
+                                ${doc.workspace ? `<span style="margin-right: 8px;">📁 ${escHtml(doc.workspace)}</span>` : ''}
+                                ${doc.origin_app ? `<span style="margin-right: 8px;">🏷 ${escHtml(doc.origin_app)}</span>` : ''}
+                                <span>状態: ${escHtml(doc.processing_status)}</span>
+                            </div>
+                            <div style="margin-top: 8px; display: flex; gap: 6px; align-items: center;">
+                                <button class="btn-reprocess btn-reprocess-g17"
+                                    id="btn-g17-${safeId}"
+                                    onclick="reprocessG('${safeId}', 'G17', '${safeName}')"
+                                    title="G14の表データからG17(表AI)を再実行してJ/Kを更新">
+                                    🔁 G17から
+                                </button>
+                                <button class="btn-reprocess btn-reprocess-g22"
+                                    id="btn-g22-${safeId}"
+                                    onclick="reprocessG('${safeId}', 'G22', '${safeName}')"
+                                    title="G21の地の文からG22(テキストAI)を再実行してJ/Kを更新">
+                                    🔁 G22から
+                                </button>
+                                <span id="reprocess-status-${safeId}" style="font-size: 0.78em; color: #6b7280;"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // すべて選択 / 解除（選択は上位20件まで）
+        function toggleSelectAll(checkbox) {
+            const allCbs = document.querySelectorAll('.search-result-checkbox');
+            if (checkbox.checked) {
+                allCbs.forEach((cb, i) => { cb.checked = i < 20; });
+            } else {
+                allCbs.forEach(cb => { cb.checked = false; });
+            }
+        }
+
+        // 選択した件を1件ずつ分類して origin_app を書き込む
+        async function classifySelected() {
+            console.log('[classify] ボタンが押されました');
+
+            const checkboxes = Array.from(document.querySelectorAll('.search-result-checkbox:checked'));
+            console.log('[classify] 選択数:', checkboxes.length);
+
+            if (!checkboxes.length) {
+                alert('ドキュメントを選択してください（チェックボックスにチェックを入れてください）');
+                return;
+            }
+            if (checkboxes.length > 20) {
+                alert('一度に処理できるのは20件までです');
+                return;
+            }
+
+            const total = checkboxes.length;
+            const btn = document.getElementById('btn-classify');
+            const area = document.getElementById('classify-results-area');
+            const content = document.getElementById('classify-results-content');
+
+            // ボタンをグレーアウト
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+            area.style.display = 'block';
+
+            let doneCount = 0;
+            let errorCount = 0;
+
+            // 初期表示：全件をペンディング行として並べる
+            const initialRows = checkboxes.map(cb => {
+                const docId = cb.value;
+                const card = cb.closest('.request-card');
+                const nameEl = card ? card.querySelector('[data-doc-name]') : null;
+                const label = nameEl ? nameEl.textContent : docId;
+                return `<div id="classify-row-${docId}" style="margin:3px 0; display:flex; align-items:center; gap:8px;">
+                    <span class="classify-spinner">⏳</span>
+                    <span style="color:#6b7280; font-size:0.9em; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escHtml(label)}</span>
+                    <span class="classify-status" style="color:#a78bfa; font-size:0.85em; flex-shrink:0;">待機中</span>
+                </div>`;
+            }).join('');
+
+            content.innerHTML = `<div id="classify-header" style="margin-bottom:8px; font-weight:600; color:#5b21b6;">🏷 分類中 0/${total}</div>` + initialRows;
+
+            try {
+                // 1件ずつ処理
+                for (const cb of checkboxes) {
+                    const docId = cb.value;
+                    const rowEl = document.getElementById('classify-row-' + docId);
+
+                    rowEl.querySelector('.classify-spinner').textContent = '🔄';
+                    rowEl.querySelector('.classify-status').textContent = '分類中...';
+                    rowEl.querySelector('.classify-status').style.color = '#f59e0b';
+                    btn.textContent = '⏳ ' + (doneCount + 1) + '/' + total + ' 分類中';
+
+                    try {
+                        const resp = await fetch('/internal/classify-documents', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ doc_ids: [docId] })
+                        });
+                        const data = await resp.json();
+                        const r = data.results && data.results[0];
+
+                        if (r && r.success) {
+                            rowEl.querySelector('.classify-spinner').textContent = '✅';
+                            rowEl.querySelector('.classify-status').style.color = '#7c3aed';
+                            rowEl.querySelector('.classify-status').textContent =
+                                (r.origin_app || '?') + ' (' + (r.confidence || '?') + ')';
+                        } else {
+                            errorCount++;
+                            rowEl.querySelector('.classify-spinner').textContent = '❌';
+                            rowEl.querySelector('.classify-status').style.color = '#ef4444';
+                            rowEl.querySelector('.classify-status').textContent =
+                                (r && r.error) || data.error || '失敗';
+                        }
+                    } catch (fetchErr) {
+                        errorCount++;
+                        rowEl.querySelector('.classify-spinner').textContent = '❌';
+                        rowEl.querySelector('.classify-status').style.color = '#ef4444';
+                        rowEl.querySelector('.classify-status').textContent = fetchErr.message;
+                        console.error('[classify] fetch エラー:', fetchErr);
+                    }
+
+                    // チェックを外す
+                    cb.checked = false;
+                    doneCount++;
+
+                    const pct = Math.round((doneCount / total) * 100);
+                    document.getElementById('classify-header').innerHTML =
+                        '<span style="font-weight:600; color:#5b21b6;">🏷 分類中 ' + doneCount + '/' + total + '</span>' +
+                        '<span style="margin-left:8px; color:#6b7280; font-size:0.85em;">' + pct + '%</span>' +
+                        '<div style="margin-top:5px; height:5px; background:#e5e7eb; border-radius:3px;">' +
+                        '<div style="height:5px; width:' + pct + '%; background:linear-gradient(90deg,#7c3aed,#5b21b6); border-radius:3px; transition:width 0.3s;"></div></div>';
+                }
+
+                // 完了
+                const successCount = doneCount - errorCount;
+                document.getElementById('classify-header').innerHTML =
+                    '<span style="font-weight:600; color:#059669;">✅ 分類完了 ' + successCount + '/' + total + ' 件' +
+                    (errorCount > 0 ? ' (' + errorCount + ' 件失敗)' : '') + '</span>' +
+                    '<div style="margin-top:5px; height:5px; background:#e5e7eb; border-radius:3px;">' +
+                    '<div style="height:5px; width:100%; background:linear-gradient(90deg,#7c3aed,#5b21b6); border-radius:3px;"></div></div>';
+
+                showMessage('success', '✅ 分類完了: ' + successCount + '/' + total + ' 件');
+                document.getElementById('select-all-results').checked = false;
+                searchDocuments();
+
+            } catch (outerErr) {
+                console.error('[classify] 予期せぬエラー:', outerErr);
+                showMessage('error', '❌ 予期せぬエラー: ' + outerErr.message);
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.textContent = '🏷 分類を確認';
+            }
+        }
+
+        // 選択した件をキューに追加
+        async function addSelectedToQueue() {
+            const checkboxes = document.querySelectorAll('.search-result-checkbox:checked');
+            const docIds = Array.from(checkboxes).map(cb => cb.value);
+
+            if (!docIds.length) {
+                showMessage('error', '❌ ドキュメントを選択してください');
+                return;
+            }
+
+            const workspace = document.getElementById('search-workspace').value || 'all';
+
+            try {
+                const response = await fetch('/internal/run-requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doc_ids: docIds, workspace })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('success', `✅ ${data.enqueued_count}件をキューに追加しました`);
+                    refreshQueue();
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            }
+        }
+
+        // ===== 検索履歴（localStorage） =====
+
+        const SEARCH_HISTORY_KEY = 'doc_search_history';
+        const MAX_HISTORY = 10;
+
+        function saveSearchHistory(params) {
+            const history = getSearchHistory();
+            const key = JSON.stringify(params);
+            const filtered = history.filter(h => JSON.stringify(h) !== key);
+            filtered.unshift(params);
+            localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(filtered.slice(0, MAX_HISTORY)));
+            renderSearchHistory();
+        }
+
+        function getSearchHistory() {
+            try {
+                return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]');
+            } catch {
+                return [];
+            }
+        }
+
+        function renderSearchHistory() {
+            const history = getSearchHistory();
+            const section = document.getElementById('search-history-section');
+            const list = document.getElementById('search-history-list');
+
+            if (!history.length) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            list.innerHTML = history.map((h, i) => {
+                const parts = [];
+                if (h.workspace) parts.push(h.workspace);
+                if (h.classification) parts.push(`分類:${h.classification}`);
+                if (h.status) parts.push(`状態:${h.status}`);
+                if (h.q) parts.push(`"${h.q}"`);
+                const label = parts.join(' / ') || '全件';
+                return `<button class="btn btn-secondary" style="margin: 2px 4px; font-size: 0.8em; padding: 4px 10px;"
+                    onclick="applySearchHistory(${i})">${escHtml(label)}</button>`;
+            }).join('');
+        }
+
+        function applySearchHistory(index) {
+            const h = getSearchHistory()[index];
+            if (!h) return;
+            document.getElementById('search-workspace').value = h.workspace || '';
+            document.getElementById('search-classification').value = h.classification || '';
+            document.getElementById('search-status').value = h.status || '';
+            document.getElementById('search-q').value = h.q || '';
+            searchDocuments();
+        }
+
+        // G17 / G22 再処理
+        async function reprocessG(docId, stage, docName) {
+            const btnG17 = document.getElementById('btn-g17-' + docId);
+            const btnG22 = document.getElementById('btn-g22-' + docId);
+            const statusEl = document.getElementById('reprocess-status-' + docId);
+
+            if (!confirm(`「${docName}」を ${stage} から再処理しますか？\n\n・G17: 表AIを再実行（表の解析結果を更新）\n・G22: テキストAIを再実行（タスク・スケジュール・注意事項を更新）\n\nいずれも検索インデックス（J/K）も更新されます。`)) {
+                return;
+            }
+
+            // ボタンを無効化
+            if (btnG17) { btnG17.disabled = true; }
+            if (btnG22) { btnG22.disabled = true; }
+            if (statusEl) { statusEl.textContent = `⏳ ${stage} 処理中...`; statusEl.style.color = '#f59e0b'; }
+
+            try {
+                const response = await fetch('/internal/reprocess-g', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doc_id: docId, start_stage: stage })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    if (statusEl) {
+                        statusEl.textContent = `✅ 完了 (${data.chunks_saved ?? '?'} chunks)`;
+                        statusEl.style.color = '#10b981';
+                    }
+                    showMessage('success', `✅ ${stage} 再処理完了: ${docName} (${data.chunks_saved ?? '?'} chunks)`);
+                } else {
+                    if (statusEl) { statusEl.textContent = `❌ ${data.error}`; statusEl.style.color = '#ef4444'; }
+                    showMessage('error', `❌ ${stage} 再処理失敗: ${data.error}`);
+                }
+            } catch (err) {
+                if (statusEl) { statusEl.textContent = `❌ ${err.message}`; statusEl.style.color = '#ef4444'; }
+                showMessage('error', `❌ 通信エラー: ${err.message}`);
+            } finally {
+                if (btnG17) { btnG17.disabled = false; }
+                if (btnG22) { btnG22.disabled = false; }
+            }
         }
 
         // メッセージを表示
