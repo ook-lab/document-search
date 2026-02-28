@@ -538,12 +538,14 @@ def api_events():
             start = e.get('start', {})
             end   = e.get('end', {})
             events.append({
-                'id':    e['id'],
-                'title': e.get('summary', '（タイトルなし）'),
-                'date':  (start.get('dateTime') or start.get('date', ''))[:10],
-                'start_time': (start.get('dateTime') or '')[-14:-9] if 'dateTime' in start else None,
-                'end_time':   (end.get('dateTime') or '')[-14:-9]   if 'dateTime' in end   else None,
-                'all_day': 'date' in start,
+                'id':          e['id'],
+                'title':       e.get('summary', '（タイトルなし）'),
+                'date':        (start.get('dateTime') or start.get('date', ''))[:10],
+                'start_time':  (start.get('dateTime') or '')[-14:-9] if 'dateTime' in start else None,
+                'end_time':    (end.get('dateTime') or '')[-14:-9]   if 'dateTime' in end   else None,
+                'all_day':     'date' in start,
+                'location':    e.get('location'),
+                'description': e.get('description'),
             })
         return jsonify({'events': events})
     except Exception as e:
@@ -567,30 +569,42 @@ def api_assign():
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel(GEMINI_MODEL)
 
-    slots_text = '\n'.join(
-        f'{s["date"]} {s.get("start_time","") or "終日"} {s.get("end_time","") or ""} [{s["id"]}] {s["title"]}'
-        for s in slots
-    )
+    def _slot_line(s):
+        time_str = f'{s.get("start_time","") or "終日"}-{s.get("end_time","") or ""}'
+        loc  = f' | 場所: {s["location"]}'       if s.get('location')    else ''
+        desc = f' | 説明: {s["description"][:40]}' if s.get('description') else ''
+        return f'{s["date"]} {time_str} [{s["id"]}] {s["title"]}{loc}{desc}'
+
+    slots_text = '\n'.join(_slot_line(s) for s in slots)
 
     prompt = f"""
-あなたは学習スケジュールの割り振り専門家です。
+あなたはカレンダーイベントの修正専門家です。
 
-以下の【既存の枠】に対して、【割り振り指示】に従って科目・タイトルを割り当ててください。
+以下の【既存のイベント】に対して、【修正指示】に従って各フィールドを修正してください。
 
-【既存の枠】（日付 開始時刻 終了時刻 [イベントID] 現タイトル）
+【既存のイベント】（日付 開始-終了 [ID] 件名 | 場所 | 説明）
 {slots_text}
 
-【割り振り指示】
+【修正指示】
 {subject_text}
 
 【出力ルール】
-- 各枠に対して新しいタイトルを割り当てる
-- 割り振り指示に書かれていない枠は現タイトルをそのまま維持する
+- 修正対象の各イベントについて、修正後の値を全フィールド出力する
+- 変更しないフィールドは元の値をそのまま出力する
+- start_time / end_time は HH:MM 形式。終日イベントの場合は null
+- location / description が元々ない かつ 指示にもなければ null
 - JSON配列のみ返す（説明文不要）
 
 【出力形式】
 [
-  {{"id": "イベントID", "new_title": "新しいタイトル"}},
+  {{
+    "id": "イベントID",
+    "summary": "件名",
+    "start_time": "HH:MM",
+    "end_time": "HH:MM",
+    "location": "場所 or null",
+    "description": "説明 or null"
+  }},
   ...
 ]
 """
@@ -604,18 +618,21 @@ def api_assign():
             raw = raw[raw.find('```') + 3:raw.rfind('```')].strip()
         assignments = json.loads(raw)
 
-        # slots の情報とマージしてプレビュー用データを返す
         id_to_slot = {s['id']: s for s in slots}
         results = []
         for a in assignments:
             slot = id_to_slot.get(a['id'], {})
             results.append({
-                'id':        a['id'],
-                'new_title': a['new_title'],
-                'date':      slot.get('date', ''),
-                'start_time': slot.get('start_time'),
-                'end_time':   slot.get('end_time'),
-                'old_title':  slot.get('title', ''),
+                'id':              a['id'],
+                'date':            slot.get('date', ''),
+                'old_title':       slot.get('title', ''),
+                'old_start_time':  slot.get('start_time'),
+                'old_end_time':    slot.get('end_time'),
+                'summary':         a.get('summary',     slot.get('title', '')),
+                'start_time':      a.get('start_time',  slot.get('start_time')),
+                'end_time':        a.get('end_time',    slot.get('end_time')),
+                'location':        a.get('location',    slot.get('location')),
+                'description':     a.get('description', slot.get('description')),
             })
         return jsonify({'assignments': results})
     except json.JSONDecodeError as e:
@@ -641,14 +658,33 @@ def api_update():
     results = []
     for a in assignments:
         try:
-            service.events().patch(
-                calendarId=calendar_id,
-                eventId=a['id'],
-                body={'summary': a['new_title']}
-            ).execute()
-            results.append({'id': a['id'], 'title': a['new_title'], 'success': True})
+            body = {}
+            if a.get('summary') is not None:
+                body['summary'] = a['summary']
+            if 'location' in a:
+                body['location'] = a.get('location') or ''
+            if 'description' in a:
+                body['description'] = a.get('description') or ''
+
+            date      = a.get('date', '')
+            new_start = a.get('start_time')
+            new_end   = a.get('end_time')
+            if new_start and date:
+                dt_s = datetime.fromisoformat(f'{date}T{new_start}:00')
+                body['start'] = {'dateTime': dt_s.isoformat(), 'timeZone': 'Asia/Tokyo'}
+            if new_end and date:
+                dt_e = datetime.fromisoformat(f'{date}T{new_end}:00')
+                body['end'] = {'dateTime': dt_e.isoformat(), 'timeZone': 'Asia/Tokyo'}
+
+            if body:
+                service.events().patch(
+                    calendarId=calendar_id,
+                    eventId=a['id'],
+                    body=body
+                ).execute()
+            results.append({'id': a['id'], 'summary': a.get('summary', ''), 'success': True})
         except Exception as e:
-            results.append({'id': a['id'], 'title': a.get('new_title', ''), 'success': False, 'error': str(e)})
+            results.append({'id': a['id'], 'success': False, 'error': str(e)})
 
     return jsonify({'results': results})
 

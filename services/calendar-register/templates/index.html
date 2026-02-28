@@ -403,28 +403,50 @@
     .btn-apply:hover { background: #1557b0; }
     .btn-apply:disabled { background: #aaa; cursor: default; }
 
-    /* 割り振い結果プレビュー */
-    .assign-result-item {
+    /* 修正プレビュー */
+    .ar-card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .ar-card-head {
+      background: #f8f9fa;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: #888;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .ar-head-old { text-decoration: line-through; }
+    .ar-card-row {
+      padding: 5px 14px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 8px 14px;
-      border-radius: 8px;
-      margin-bottom: 6px;
-      background: #fff;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      gap: 8px;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .ar-card-row:last-child { border-bottom: none; }
+    .ar-label {
+      font-size: 12px;
+      color: #999;
+      white-space: nowrap;
+      min-width: 28px;
+    }
+    .ar-input {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 4px 8px;
       font-size: 13px;
+      outline: none;
+      color: #222;
     }
-    .assign-result-item .ar-date { color: #888; white-space: nowrap; min-width: 80px; }
-    .assign-result-item .ar-time { color: #aaa; font-size: 12px; white-space: nowrap; min-width: 110px; }
-    .assign-result-item .ar-old  { color: #aaa; text-decoration: line-through; }
-    .assign-result-item .ar-arrow { color: #888; }
-    .assign-result-item .ar-new  { color: #1a73e8; font-weight: 600; }
-    .assign-result-item input.ar-edit {
-      border: 1px solid #ccc; border-radius: 4px;
-      padding: 3px 6px; font-size: 13px;
-      color: #1a73e8; font-weight: 600; flex: 1;
-    }
+    .ar-input:focus { border-color: #4285F4; }
+    .ar-input.time { max-width: 88px; flex: none; }
   </style>
 </head>
 <body>
@@ -888,25 +910,47 @@ async function assignSubjects() {
   }
 }
 
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function renderAssignPreview(assignments) {
   const list = document.getElementById('assignResultList');
   list.innerHTML = assignments.map((a, i) => {
-    const timeStr = a.all_day ? '終日' : `${a.start_time||''}〜${a.end_time||''}`;
+    const timeStr = !a.old_start_time ? '終日' : `${a.old_start_time}〜${a.old_end_time||''}`;
     return `
-      <div class="assign-result-item">
-        <span class="ar-date">${a.date}</span>
-        <span class="ar-time">${timeStr}</span>
-        <span class="ar-old">${a.old_title}</span>
-        <span class="ar-arrow">→</span>
-        <input class="ar-edit" data-idx="${i}" value="${a.new_title}">
+      <div class="ar-card">
+        <div class="ar-card-head">
+          <span>${a.date}</span>
+          <span>${timeStr}</span>
+          <span class="ar-head-old">${esc(a.old_title)}</span>
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">件名</span>
+          <input class="ar-input" data-idx="${i}" data-field="summary" value="${esc(a.summary)}">
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">開始</span>
+          <input type="time" class="ar-input time" data-idx="${i}" data-field="start_time" value="${a.start_time||''}">
+          <span class="ar-label" style="margin-left:8px;">終了</span>
+          <input type="time" class="ar-input time" data-idx="${i}" data-field="end_time" value="${a.end_time||''}">
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">場所</span>
+          <input class="ar-input" data-idx="${i}" data-field="location" value="${esc(a.location)}">
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">説明</span>
+          <input class="ar-input" data-idx="${i}" data-field="description" value="${esc(a.description)}">
+        </div>
       </div>`;
   }).join('');
   document.getElementById('assignPreview').style.display = 'block';
 
-  // 編集内容を assignmentData に反映
-  document.querySelectorAll('.ar-edit').forEach(el => {
+  document.querySelectorAll('#assignResultList input').forEach(el => {
     el.addEventListener('input', function () {
-      assignmentData[parseInt(this.dataset.idx)].new_title = this.value;
+      assignmentData[parseInt(this.dataset.idx)][this.dataset.field] = this.value;
     });
   });
 }
