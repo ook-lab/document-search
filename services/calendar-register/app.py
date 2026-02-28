@@ -654,6 +654,62 @@ def api_update():
 
 
 # ─────────────────────────────────────────
+# 検索機能
+# ─────────────────────────────────────────
+
+@app.route('/api/search', methods=['GET'])
+def api_search():
+    """キーワードでイベントを検索"""
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    calendar_id = request.args.get('calendar_id')
+    q           = request.args.get('q', '').strip()
+    date_from   = request.args.get('from')   # YYYY-MM-DD (省略可)
+    date_to     = request.args.get('to')     # YYYY-MM-DD (省略可)
+
+    if not calendar_id:
+        return jsonify({'error': 'calendar_id が必要です'}), 400
+    if not q:
+        return jsonify({'error': 'q（検索キーワード）が必要です'}), 400
+
+    service = _build_calendar_service(creds)
+    kwargs = dict(
+        calendarId=calendar_id,
+        q=q,
+        singleEvents=True,
+        orderBy='startTime',
+        maxResults=100,
+    )
+    if date_from:
+        kwargs['timeMin'] = f'{date_from}T00:00:00+09:00'
+    if date_to:
+        kwargs['timeMax'] = f'{date_to}T23:59:59+09:00'
+
+    try:
+        result = service.events().list(**kwargs).execute()
+        events = []
+        for e in result.get('items', []):
+            start = e.get('start', {})
+            end   = e.get('end', {})
+            events.append({
+                'id':          e['id'],
+                'title':       e.get('summary', '（タイトルなし）'),
+                'date':        (start.get('dateTime') or start.get('date', ''))[:10],
+                'start_time':  (start.get('dateTime') or '')[-14:-9] if 'dateTime' in start else None,
+                'end_time':    (end.get('dateTime') or '')[-14:-9]   if 'dateTime' in end   else None,
+                'all_day':     'date' in start,
+                'location':    e.get('location'),
+                'description': e.get('description'),
+                'html_link':   e.get('htmlLink'),
+            })
+        return jsonify({'events': events, 'count': len(events)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────
 # エントリーポイント
 # ─────────────────────────────────────────
 
