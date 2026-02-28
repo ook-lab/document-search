@@ -506,6 +506,154 @@ def _format_event_summary(ev: dict) -> str:
 
 
 # ─────────────────────────────────────────
+# 割り振り機能
+# ─────────────────────────────────────────
+
+@app.route('/api/events', methods=['GET'])
+def api_events():
+    """期間指定でイベント一覧を取得"""
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    calendar_id = request.args.get('calendar_id')
+    date_from   = request.args.get('from')   # YYYY-MM-DD
+    date_to     = request.args.get('to')     # YYYY-MM-DD
+    if not all([calendar_id, date_from, date_to]):
+        return jsonify({'error': 'calendar_id, from, to が必要です'}), 400
+
+    service = _build_calendar_service(creds)
+    try:
+        result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=f'{date_from}T00:00:00+09:00',
+            timeMax=f'{date_to}T23:59:59+09:00',
+            singleEvents=True,
+            orderBy='startTime',
+            maxResults=200,
+        ).execute()
+
+        events = []
+        for e in result.get('items', []):
+            start = e.get('start', {})
+            end   = e.get('end', {})
+            events.append({
+                'id':    e['id'],
+                'title': e.get('summary', '（タイトルなし）'),
+                'date':  (start.get('dateTime') or start.get('date', ''))[:10],
+                'start_time': (start.get('dateTime') or '')[-14:-9] if 'dateTime' in start else None,
+                'end_time':   (end.get('dateTime') or '')[-14:-9]   if 'dateTime' in end   else None,
+                'all_day': 'date' in start,
+            })
+        return jsonify({'events': events})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/assign', methods=['POST'])
+def api_assign():
+    """Gemini で枠リスト×科目リストの割り振い案を生成"""
+    data        = request.get_json()
+    slots       = (data or {}).get('slots', [])    # 既存イベントリスト
+    subject_text = (data or {}).get('subject_text', '').strip()
+
+    if not slots:
+        return jsonify({'error': '枠リストが空です'}), 400
+    if not subject_text:
+        return jsonify({'error': '科目リストが空です'}), 400
+    if not GEMINI_API_KEY:
+        return jsonify({'error': 'GEMINI_API_KEY が設定されていません'}), 500
+
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel(GEMINI_MODEL)
+
+    slots_text = '\n'.join(
+        f'{s["date"]} {s.get("start_time","") or "終日"} {s.get("end_time","") or ""} [{s["id"]}] {s["title"]}'
+        for s in slots
+    )
+
+    prompt = f"""
+あなたは学習スケジュールの割り振り専門家です。
+
+以下の【既存の枠】に対して、【割り振り指示】に従って科目・タイトルを割り当ててください。
+
+【既存の枠】（日付 開始時刻 終了時刻 [イベントID] 現タイトル）
+{slots_text}
+
+【割り振り指示】
+{subject_text}
+
+【出力ルール】
+- 各枠に対して新しいタイトルを割り当てる
+- 割り振り指示に書かれていない枠は現タイトルをそのまま維持する
+- JSON配列のみ返す（説明文不要）
+
+【出力形式】
+[
+  {{"id": "イベントID", "new_title": "新しいタイトル"}},
+  ...
+]
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        raw = response.text.strip()
+        if '```json' in raw:
+            raw = raw[raw.find('```json') + 7:raw.rfind('```')].strip()
+        elif '```' in raw:
+            raw = raw[raw.find('```') + 3:raw.rfind('```')].strip()
+        assignments = json.loads(raw)
+
+        # slots の情報とマージしてプレビュー用データを返す
+        id_to_slot = {s['id']: s for s in slots}
+        results = []
+        for a in assignments:
+            slot = id_to_slot.get(a['id'], {})
+            results.append({
+                'id':        a['id'],
+                'new_title': a['new_title'],
+                'date':      slot.get('date', ''),
+                'start_time': slot.get('start_time'),
+                'end_time':   slot.get('end_time'),
+                'old_title':  slot.get('title', ''),
+            })
+        return jsonify({'assignments': results})
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Gemini の出力をパースできませんでした: {e}'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/update', methods=['POST'])
+def api_update():
+    """イベントタイトルを一括更新（patch）"""
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    data        = request.get_json()
+    calendar_id = (data or {}).get('calendar_id')
+    assignments = (data or {}).get('assignments', [])
+    if not calendar_id or not assignments:
+        return jsonify({'error': 'calendar_id と assignments が必要です'}), 400
+
+    service = _build_calendar_service(creds)
+    results = []
+    for a in assignments:
+        try:
+            service.events().patch(
+                calendarId=calendar_id,
+                eventId=a['id'],
+                body={'summary': a['new_title']}
+            ).execute()
+            results.append({'id': a['id'], 'title': a['new_title'], 'success': True})
+        except Exception as e:
+            results.append({'id': a['id'], 'title': a.get('new_title', ''), 'success': False, 'error': str(e)})
+
+    return jsonify({'results': results})
+
+
+# ─────────────────────────────────────────
 # エントリーポイント
 # ─────────────────────────────────────────
 

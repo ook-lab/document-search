@@ -256,6 +256,175 @@
 
     .unauthed-notice { text-align: center; padding: 40px 20px; color: #888; }
     .unauthed-notice p { margin-bottom: 16px; font-size: 15px; }
+
+    /* ───── タブ ───── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      padding: 8px 20px;
+      border-radius: 8px 8px 0 0;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      background: #e8eaed;
+      font-size: 14px;
+      cursor: pointer;
+      color: #555;
+      font-weight: 500;
+    }
+    .tab-btn.active { background: #fff; color: #1a73e8; border-color: #ccc; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ───── 割り振り画面 ───── */
+    .assign-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .assign-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+
+    .assign-card-header {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .assign-range {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #eee;
+    }
+
+    .assign-range input[type=date] {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+    }
+
+    .btn-fetch {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      background: #4285F4;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-fetch:hover { background: #3367d6; }
+
+    .slot-list {
+      max-height: 320px;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .slot-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid #f5f5f5;
+    }
+
+    .slot-check { flex-shrink: 0; cursor: pointer; }
+
+    .slot-date { color: #888; white-space: nowrap; min-width: 80px; }
+    .slot-time { color: #aaa; white-space: nowrap; min-width: 110px; font-size: 12px; }
+    .slot-title { color: #333; flex: 1; }
+
+    textarea#subjectText {
+      width: 100%;
+      min-height: 280px;
+      border: none;
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.8;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      color: #222;
+    }
+
+    textarea#subjectText::placeholder { color: #bbb; }
+
+    .assign-actions {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .btn-assign {
+      padding: 8px 20px;
+      border-radius: 7px;
+      border: none;
+      background: #34a853;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-assign:hover { background: #2d8f47; }
+    .btn-assign:disabled { background: #aaa; cursor: default; }
+
+    .btn-apply {
+      padding: 8px 20px;
+      border-radius: 7px;
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-apply:hover { background: #1557b0; }
+    .btn-apply:disabled { background: #aaa; cursor: default; }
+
+    /* 割り振い結果プレビュー */
+    .assign-result-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      font-size: 13px;
+    }
+    .assign-result-item .ar-date { color: #888; white-space: nowrap; min-width: 80px; }
+    .assign-result-item .ar-time { color: #aaa; font-size: 12px; white-space: nowrap; min-width: 110px; }
+    .assign-result-item .ar-old  { color: #aaa; text-decoration: line-through; }
+    .assign-result-item .ar-arrow { color: #888; }
+    .assign-result-item .ar-new  { color: #1a73e8; font-weight: 600; }
+    .assign-result-item input.ar-edit {
+      border: 1px solid #ccc; border-radius: 4px;
+      padding: 3px 6px; font-size: 13px;
+      color: #1a73e8; font-weight: 600; flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -290,6 +459,17 @@
   </div>
 
   {% else %}
+
+  <!-- タブ -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('register')">📝 登録</button>
+    <button class="tab-btn" onclick="switchTab('assign')">🔀 割り振り</button>
+  </div>
+
+  <!-- ==============================
+       タブ1: 登録
+       ============================== -->
+  <div class="tab-content active" id="tab-register">
 
   <!-- プリセットパネル -->
   <div id="presetPanel">
@@ -335,6 +515,54 @@
     <div class="panel-title">✅ 登録結果</div>
     <div id="resultList"></div>
   </div>
+
+  </div><!-- /tab-register -->
+
+  <!-- ==============================
+       タブ2: 割り振り
+       ============================== -->
+  <div class="tab-content" id="tab-assign">
+
+    <div class="assign-grid">
+      <!-- 左: 枠リスト -->
+      <div class="assign-card">
+        <div class="assign-card-header">① 枠を取得</div>
+        <div class="assign-range">
+          <input type="date" id="assignFrom">
+          <span style="color:#888;font-size:13px;">〜</span>
+          <input type="date" id="assignTo">
+          <button class="btn-fetch" onclick="fetchSlots()">取得</button>
+        </div>
+        <div class="slot-list" id="slotList">
+          <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">期間を選んで「取得」を押してください</div>
+        </div>
+      </div>
+
+      <!-- 右: 科目リスト -->
+      <div class="assign-card">
+        <div class="assign-card-header">② 割り振り指示を入力</div>
+        <textarea id="subjectText" placeholder="3/10 午前: 国語, 数学&#10;3/10 午後: 英語&#10;3/11: 理科, 社会, 英語&#10;&#10;（自由に書いてOK。Gemini が枠に割り振ります）"></textarea>
+      </div>
+    </div>
+
+    <div class="assign-actions">
+      <button class="btn-assign" id="btnAssign" onclick="assignSubjects()" disabled>
+        🤖 Gemini で割り振い案を生成
+      </button>
+      <button class="btn-apply" id="btnApply" onclick="applyAssignments()" disabled>
+        カレンダーに反映
+      </button>
+      <div id="assignStatus" style="font-size:13px;color:#888;margin-left:8px;"></div>
+    </div>
+
+    <!-- 割り振い結果プレビュー -->
+    <div id="assignPreview" style="display:none;">
+      <div class="panel-title">📋 割り振い案（編集可）</div>
+      <div id="assignResultList"></div>
+    </div>
+
+  </div><!-- /tab-assign -->
+
   {% endif %}
 </div>
 
@@ -539,6 +767,170 @@ function renderResults(results) {
     }
   }).join('');
   document.getElementById('resultPanel').style.display = 'block';
+}
+
+// ─── タブ切り替え ───
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['register','assign'][i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => {
+    el.classList.toggle('active', el.id === 'tab-' + name);
+  });
+  // 割り振りタブを開いたとき日付を今日に初期化
+  if (name === 'assign') initAssignDates();
+}
+
+function initAssignDates() {
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+  const from = document.getElementById('assignFrom');
+  const to   = document.getElementById('assignTo');
+  if (!from.value) from.value = fmt(today);
+  if (!to.value) {
+    const end = new Date(today);
+    end.setDate(end.getDate() + 30);
+    to.value = fmt(end);
+  }
+}
+
+// ─── 枠を取得 ───
+let fetchedSlots = [];
+
+async function fetchSlots() {
+  const calendarId = document.getElementById('calendarSelect')?.value;
+  const from = document.getElementById('assignFrom').value;
+  const to   = document.getElementById('assignTo').value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+  if (!from || !to) { alert('期間を指定してください'); return; }
+
+  setAssignStatus('<span class="spinner"></span>取得中...');
+  try {
+    const res = await fetch(`/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    fetchedSlots = data.events;
+    renderSlotList(fetchedSlots);
+    document.getElementById('btnAssign').disabled = fetchedSlots.length === 0;
+    setAssignStatus(fetchedSlots.length + ' 件取得しました', '#137333');
+  } catch (e) {
+    setAssignStatus('取得失敗: ' + e.message, '#c5221f');
+  }
+}
+
+function renderSlotList(slots) {
+  const list = document.getElementById('slotList');
+  if (!slots.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">イベントが見つかりません</div>';
+    return;
+  }
+  list.innerHTML = slots.map(s => {
+    const timeStr = s.all_day ? '終日' : `${s.start_time||''}〜${s.end_time||''}`;
+    return `
+      <div class="slot-item">
+        <input type="checkbox" class="slot-check" data-id="${s.id}" checked>
+        <span class="slot-date">${s.date}</span>
+        <span class="slot-time">${timeStr}</span>
+        <span class="slot-title">${s.title}</span>
+      </div>`;
+  }).join('');
+}
+
+// ─── Gemini で割り振い案生成 ───
+let assignmentData = [];
+
+async function assignSubjects() {
+  const subject_text = document.getElementById('subjectText').value.trim();
+  if (!subject_text) { alert('割り振り指示を入力してください'); return; }
+
+  // チェックされた枠だけ使う
+  const checkedIds = new Set(
+    [...document.querySelectorAll('.slot-check:checked')].map(el => el.dataset.id)
+  );
+  const slots = fetchedSlots.filter(s => checkedIds.has(s.id));
+  if (!slots.length) { alert('枠を選択してください'); return; }
+
+  setAssignStatus('<span class="spinner"></span>Gemini で割り振い案を生成中...');
+  document.getElementById('btnApply').disabled = true;
+
+  try {
+    const res = await fetch('/api/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slots, subject_text })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    assignmentData = data.assignments;
+    renderAssignPreview(assignmentData);
+    document.getElementById('btnApply').disabled = false;
+    setAssignStatus('割り振い案を生成しました。内容を確認・編集してから「カレンダーに反映」を押してください', '#137333');
+  } catch (e) {
+    setAssignStatus('生成失敗: ' + e.message, '#c5221f');
+  }
+}
+
+function renderAssignPreview(assignments) {
+  const list = document.getElementById('assignResultList');
+  list.innerHTML = assignments.map((a, i) => {
+    const timeStr = a.all_day ? '終日' : `${a.start_time||''}〜${a.end_time||''}`;
+    return `
+      <div class="assign-result-item">
+        <span class="ar-date">${a.date}</span>
+        <span class="ar-time">${timeStr}</span>
+        <span class="ar-old">${a.old_title}</span>
+        <span class="ar-arrow">→</span>
+        <input class="ar-edit" data-idx="${i}" value="${a.new_title}">
+      </div>`;
+  }).join('');
+  document.getElementById('assignPreview').style.display = 'block';
+
+  // 編集内容を assignmentData に反映
+  document.querySelectorAll('.ar-edit').forEach(el => {
+    el.addEventListener('input', function () {
+      assignmentData[parseInt(this.dataset.idx)].new_title = this.value;
+    });
+  });
+}
+
+// ─── カレンダーに反映 ───
+async function applyAssignments() {
+  const calendarId = document.getElementById('calendarSelect')?.value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+  if (!assignmentData.length) return;
+
+  document.getElementById('btnApply').disabled = true;
+  setAssignStatus('<span class="spinner"></span>更新中...');
+
+  try {
+    const res = await fetch('/api/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendar_id: calendarId, assignments: assignmentData })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const ok  = data.results.filter(r => r.success).length;
+    const err = data.results.filter(r => !r.success).length;
+    if (err === 0) {
+      setAssignStatus(`✅ ${ok} 件を更新しました`, '#137333');
+    } else {
+      setAssignStatus(`⚠️ ${ok} 件成功、${err} 件失敗`, '#b06000');
+    }
+    document.getElementById('btnApply').disabled = false;
+  } catch (e) {
+    setAssignStatus('更新失敗: ' + e.message, '#c5221f');
+    document.getElementById('btnApply').disabled = false;
+  }
+}
+
+function setAssignStatus(html, color) {
+  const el = document.getElementById('assignStatus');
+  el.innerHTML = html;
+  el.style.color = color || '#1a73e8';
 }
 
 // ─── ステータスバー ───
