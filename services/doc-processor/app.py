@@ -409,7 +409,7 @@ def request_stop():
 
     try:
         db = DatabaseClient()
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
 
         workspace = data.get('workspace')
         reason = data.get('reason', 'Web UIからの停止要求')
@@ -467,7 +467,7 @@ def request_release_lease():
 
     try:
         db = DatabaseClient()
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
 
         workspace = data.get('workspace')
         doc_id = data.get('doc_id')
@@ -587,7 +587,7 @@ def clear_queue_api():
     try:
         db = DatabaseClient(use_service_role=True)
         # クエリパラメータまたはJSONボディから取得
-        workspace = request.args.get('workspace') or (request.get_json() or {}).get('workspace', 'all')
+        workspace = request.args.get('workspace') or (request.get_json(silent=True) or {}).get('workspace', 'all')
 
         result = db.client.rpc('clear_queue', {
             'p_workspace': workspace
@@ -619,7 +619,7 @@ def retry_failed_documents():
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
 
         workspace = data.get('workspace') or 'all'
         limit = min(int(data.get('limit', 100)), 500)
@@ -729,7 +729,7 @@ def execute_queue():
     - バックグラウンド実行（レスポンスは即座に返す）
     """
     try:
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         workspace = data.get('workspace', 'all')
         limit = min(int(data.get('limit', 10)), 100)
 
@@ -948,7 +948,7 @@ def classify_documents():
 
     try:
         db = DatabaseClient(use_service_role=True)
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         doc_ids = data.get('doc_ids', [])
 
         if not doc_ids:
@@ -1094,7 +1094,7 @@ def create_run_request():
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
 
         # パラメータ取得（limit と max_items 両方対応）
         limit = min(int(data.get('limit', data.get('max_items', 10))), 100)
@@ -1151,6 +1151,80 @@ def create_run_request():
         return safe_error_response(e)
 
 
+# ========== doc_type 一括変更 ==========
+
+@app.route('/internal/update-doc-type', methods=['POST'])
+def update_doc_type():
+    """選択ドキュメントの doc_type を一括変更
+
+    【パラメータ】
+    - doc_ids: ドキュメントIDの配列
+    - doc_type: 変更後の doc_type 文字列
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        data = request.get_json(silent=True) or {}
+        doc_ids = data.get('doc_ids', [])
+        doc_type = data.get('doc_type', '').strip()
+
+        if not doc_ids:
+            return jsonify({'success': False, 'error': 'doc_ids が必要です'}), 400
+        if not doc_type:
+            return jsonify({'success': False, 'error': 'doc_type が必要です'}), 400
+
+        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+            'doc_type': doc_type
+        }).in_('id', doc_ids).execute()
+
+        updated_count = len(result.data) if result.data else 0
+        logger.info(f"[update-doc-type] {updated_count}件の doc_type を '{doc_type}' に変更: {doc_ids}")
+
+        return jsonify({
+            'success': True,
+            'message': f'{updated_count}件の doc_type を変更しました',
+            'updated_count': updated_count,
+        })
+
+    except Exception as e:
+        logger.error(f"update-doc-type エラー: {e}")
+        return safe_error_response(e)
+
+
+# ========== pending リセット ==========
+
+@app.route('/internal/set-pending', methods=['POST'])
+def set_pending():
+    """選択ドキュメントを pending にリセット（キューには追加しない）
+
+    【パラメータ】
+    - doc_ids: ドキュメントIDの配列
+    """
+    try:
+        db = DatabaseClient(use_service_role=True)
+        data = request.get_json(silent=True) or {}
+        doc_ids = data.get('doc_ids', [])
+
+        if not doc_ids:
+            return jsonify({'success': False, 'error': 'doc_ids が必要です'}), 400
+
+        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+            'processing_status': 'pending'
+        }).in_('id', doc_ids).execute()
+
+        updated_count = len(result.data) if result.data else 0
+        logger.info(f"[set-pending] {updated_count}件を pending にリセット: {doc_ids}")
+
+        return jsonify({
+            'success': True,
+            'message': f'{updated_count}件を pending にリセットしました',
+            'updated_count': updated_count,
+        })
+
+    except Exception as e:
+        logger.error(f"set-pending エラー: {e}")
+        return safe_error_response(e)
+
+
 # ========== G ステージ再処理 ==========
 
 @app.route('/internal/reprocess-g', methods=['POST'])
@@ -1171,7 +1245,7 @@ def reprocess_g():
 
     try:
         db = DatabaseClient(use_service_role=True)
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         doc_id = data.get('doc_id')
         start_stage = data.get('start_stage', 'G22')
 
@@ -1183,7 +1257,7 @@ def reprocess_g():
         # ドキュメント情報と保存済み中間データを取得
         fetch_result = db.client.table('Rawdata_FILE_AND_MAIL').select(
             'id, file_name, title, doc_type, display_subject, display_post_text, '
-            'display_sender, display_sent_at, classroom_sender_email, owner_id, '
+            'display_sender, display_sent_at, owner_id, '
             'g14_reconstructed_tables, g21_articles, g17_table_analyses, g22_ai_extracted, '
             'stage_g_structured_data'
         ).eq('id', doc_id).execute()
@@ -1192,7 +1266,7 @@ def reprocess_g():
             return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
 
         doc = fetch_result.data[0]
-        gemini_key = _os.getenv('GEMINI_API_KEY') or _os.getenv('GOOGLE_API_KEY')
+        gemini_key = _os.getenv('GOOGLE_AI_API_KEY') or _os.getenv('GEMINI_API_KEY') or _os.getenv('GOOGLE_API_KEY')
 
         def _parse_json_col(val):
             if val is None:
@@ -1265,15 +1339,35 @@ def reprocess_g():
                 'g17_table_analyses': _json.dumps(g17_output, ensure_ascii=False)
             }).eq('id', doc_id).execute()
 
-            # stage_g_structured_data の tables を更新
+            # G17生出力(sections構造) → UI用フォーマット(rows構造) に変換
+            def _to_ui_tables(table_analyses):
+                result = []
+                for analysis in table_analyses:
+                    sections = analysis.get('sections', [])
+                    section_data = sections[0].get('data', []) if sections else []
+                    result.append({
+                        'table_id': analysis.get('table_id', ''),
+                        'table_type': analysis.get('table_type', 'structured'),
+                        'description': analysis.get('description', ''),
+                        'headers': [],
+                        'rows': section_data,
+                        'sections': sections,
+                        'metadata': sections[0].get('metadata', {}) if sections else analysis.get('metadata', {}),
+                    })
+                return result
+            ui_tables = _to_ui_tables(g17_output)
+
+            # stage_g_structured_data の tables を更新（変換後のUI用データで）
             try:
                 ui_data = _parse_json_col(doc.get('stage_g_structured_data')) or {}
-                ui_data['tables'] = g17_output
+                ui_data['tables'] = ui_tables
                 db.client.table('Rawdata_FILE_AND_MAIL').update(
                     {'stage_g_structured_data': ui_data}
                 ).eq('id', doc_id).execute()
             except Exception as e:
                 logger.warning(f'stage_g_structured_data 更新エラー（継続）: {e}')
+
+            g17_output = ui_tables  # 以降はUI用フォーマットを使う
 
             g21_output = _parse_json_col(doc.get('g21_articles')) or []
             g22_output = _parse_json_col(doc.get('g22_ai_extracted')) or {}
@@ -1296,7 +1390,12 @@ def reprocess_g():
                 if a.get('body', '').strip()
             ],
             'structured_tables': [
-                {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
+                {
+                    'table_title': t.get('description', t.get('table_title', '')),
+                    'headers': t.get('headers', []),
+                    'rows': t.get('rows', []),
+                    'metadata': t.get('metadata', {}),
+                }
                 for t in g17_output
                 if t.get('rows')
             ],
@@ -1317,24 +1416,14 @@ def reprocess_g():
         all_chunks = MetadataChunker().create_metadata_chunks(document_data)
         logger.info(f'[reprocess-g] {start_stage} 全チャンク生成: {len(all_chunks)}件')
 
-        # ステージ由来のチャンクタイプのみに絞り込む
-        if start_stage == 'G17':
-            new_chunks = [c for c in all_chunks if c.get('chunk_type', '').startswith('table_')]
-            delete_filter = lambda q: q.like('chunk_type', 'table_%')
-        else:  # G22
-            new_chunks = [c for c in all_chunks if c.get('chunk_type', '').startswith(
-                ('calendar_event_', 'task_', 'notice_')
-            )]
-            delete_filter = lambda q: q.or_(
-                'chunk_type.like.calendar_event_%,chunk_type.like.task_%,chunk_type.like.notice_%'
-            )
+        # chunk_indexは全チャンク通し番号のため、タイプ別削除では番号衝突が起きる
+        # → 全チャンク削除して全チャンク再挿入
+        new_chunks = all_chunks
+        logger.info(f'[reprocess-g] {start_stage} 全チャンク再挿入: {len(new_chunks)}件')
 
-        logger.info(f'[reprocess-g] {start_stage} 対象チャンク: {len(new_chunks)}件')
-
-        # 対象チャンクタイプのみ削除
+        # 全チャンク削除
         try:
-            q = db.client.table('10_ix_search_index').delete().eq('document_id', doc_id)
-            delete_filter(q).execute()
+            db.client.table('10_ix_search_index').delete().eq('document_id', doc_id).execute()
         except Exception as e:
             logger.warning(f'既存チャンク削除エラー（継続）: {e}')
 
@@ -1357,7 +1446,14 @@ def reprocess_g():
         k_result = stage_k.embed_and_save(doc_id, new_chunks)
 
         if not k_result.get('success'):
-            return jsonify({'success': False, 'error': f'Stage K 失敗: {k_result}'}), 500
+            errors = k_result.get('errors', [])
+            saved = k_result.get('saved_count', 0)
+            failed = k_result.get('failed_count', 0)
+            # 部分成功（1件以上保存済み）は警告扱いで続行
+            if saved > 0:
+                logger.warning(f'[reprocess-g] Stage K 部分失敗: {saved}件成功, {failed}件失敗. errors={errors}')
+            else:
+                return jsonify({'success': False, 'error': f'Stage K 全失敗: {errors}'}), 500
 
         logger.info(f'[reprocess-g] 完了: {start_stage} → {doc_id} ({k_result.get("saved_count", 0)} chunks)')
         return jsonify({

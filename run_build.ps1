@@ -21,4 +21,7 @@ Write-Host "Running gcloud builds submit..."
 Write-Host "Build complete. Now deploying..."
 & gcloud run deploy doc-processor --image asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/doc-processor:latest --region asia-northeast1 --allow-unauthenticated --service-account document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com --timeout 3600 --memory 16Gi --cpu 4
 
-Write-Host "Done!"
+& gcloud run deploy calendar-register --image asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-deploy/calendar-register:latest --region asia-northeast1 --allow-unauthenticated --service-account document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com --timeout 60 --memory 512Mi --cpu 1 --set-env-vars "GCP_PROJECT_ID=consummate-yew-479020-u2,GEMINI_API_KEY=$env:GOOGLE_AI_API_KEY"
+
+Write-Host "Done! calendar-register の URL を確認して OAUTH_REDIRECT_URI を更新してください"
+Write-Host "  gcloud run services describe calendar-register --region asia-northeast1 --format='value(status.url)'"

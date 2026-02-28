@@ -57,6 +57,7 @@ class F5LogicalTableJoiner:
             'non_table_text': merge_result.get('non_table_text', ''),
             'metadata': merge_result.get('metadata', {}),
             'display_fields': merge_result.get('display_fields'),
+            'all_dates': merge_result.get('all_dates', []),
         }
 
         logger.info("=" * 60)

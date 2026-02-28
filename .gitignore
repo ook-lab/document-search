@@ -56,3 +56,6 @@ tmpclaude-*
 
 # Test fixtures (large binary files)
 tests/fixtures/**/*.pdf
+# calendar-register OAuth2
+services/calendar-register/auth/token.json
+services/calendar-register/auth/credentials.json

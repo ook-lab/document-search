@@ -668,31 +668,26 @@
                     </label>
                     <label>
                         構成フロー:
-                        <select id="flow-select" style="padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;">
-                            <option value="flash-x1" selected>Flash×1 (標準・高速)</option>
-                            <option value="lite-lite-pro">Lite→Lite→Pro (コスパ最強)</option>
-                            <option value="lite-flash-pro">Lite→Flash→Pro (黄金比)</option>
-                            <option value="flash-flash-pro">Flash→Flash→Pro (3回ループの王)</option>
-                            <option value="lite-flash-flash-pro">Lite→Flash→Flash→Pro (賢い節約術)</option>
-                            <option value="flash-flash-flash-pro">Flash→Flash→Flash→Pro (Deep Research推奨)</option>
-                            <option value="lite-lite-flash-flash">Lite→Lite→Flash×Flash (粘りの凡人)</option>
-                            <option value="flash-flash-flash">Flash→Flash→Flash (ザ・標準)</option>
-                            <option value="lite-lite-lite-flash">Lite→Lite→Lite→Flash (人海戦術)</option>
-                            <option value="flash-flash-flash-flash">Flash→Flash→Flash→Flash (優等生の限界)</option>
-                            <option value="lite-lite-pro">Lite→Lite→Pro (コスパ最強)</option>
-                            <option value="lite-flash-pro">Lite→Flash→Pro (黄金比・標準)</option>
-                            <option value="lite-lite-flash-pro">Lite→Lite→Flash→Pro (泥臭い名探偵)</option>
-                            <option value="lite-lite-lite-pro">Lite→Lite→Lite→Pro (質より量の極み)</option>
-                            <option value="flash-pro-pro">Flash→Pro→Pro (精鋭部隊)</option>
-                            <option value="lite-pro-pro">Lite→Pro→Pro (一点突破・改)</option>
-                            <option value="lite-lite-pro-pro">Lite→Lite→Pro→Pro (素材重視のプロ)</option>
-                            <option value="lite-flash-pro-pro">Lite→Flash→Pro→Pro (超・黄金比)</option>
-                            <option value="flash-flash-pro-pro">Flash→Flash→Pro→Pro (編集長決済)</option>
-                            <option value="pro-pro-pro">Pro→Pro→Pro (富豪の鉄板)</option>
-                            <option value="lite-pro-pro-pro">Lite→Pro→Pro→Pro (成り上がり)</option>
-                            <option value="flash-pro-pro-pro">Flash→Pro→Pro→Pro (天才集団)</option>
-                            <option value="pro-pro-pro-pro">Pro→Pro→Pro→Pro (全知全能)</option>
+                        <select id="flow-select" style="padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;" onchange="updateCostDisplay()">
+                            <option value="lite-x1" selected>Lite</option>
+                            <option value="lite-lite">Lite→Lite</option>
+                            <option value="flash-x1">Flash</option>
+                            <option value="lite-lite-lite">Lite→Lite→Lite</option>
+                            <option value="lite-flash">Lite→Flash</option>
                         </select>
+                    </label>
+                    <label>
+                        入力上限:
+                        <input type="number" id="maxContextInput" value="30000" min="1000" max="1000000" step="1000"
+                               style="width: 90px; padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;"
+                               oninput="updateCostDisplay()">
+                        文字
+                        <span id="costDisplay" style="font-size: 11px; color: #888; margin-left: 6px;"></span>
+                    </label>
+                    <label>
+                        閾値:
+                        <input type="number" id="thresholdInput" value="0.4" min="0" max="2" step="0.05"
+                               style="width: 60px; padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;">
                     </label>
                 </div>
             </div>
@@ -751,7 +746,52 @@
         let selectedDocTypes = [];
         let hierarchyData = []; // {name: 'workspace', doc_types: [...]}
 
-        // ✅ ページ読み込み時に階層構造を取得
+        // ── コスト計算 ────────────────────────────────────────────────
+        // モデル別入力単価（$/1M tokens）
+        const MODEL_PRICE = {
+            'lite':  0.10,
+            'flash': 0.30,
+        };
+        // flow → 主モデルの単価（最後のステップ基準）
+        function getFlowPrice(flowId) {
+            if (flowId.endsWith('flash')) return MODEL_PRICE.flash;
+            return MODEL_PRICE.lite;
+        }
+        // flow → ステップ数
+        function getFlowSteps(flowId) {
+            return (flowId.match(/-/g) || []).length;
+        }
+
+        let usdJpy = null; // 取得後にセット
+
+        async function fetchUsdJpy() {
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD');
+                const data = await res.json();
+                usdJpy = data.rates && data.rates.JPY ? data.rates.JPY : null;
+            } catch (e) {
+                usdJpy = null;
+            }
+            updateCostDisplay();
+        }
+
+        function updateCostDisplay() {
+            const chars = parseInt(document.getElementById('maxContextInput').value) || 0;
+            const flowId = document.getElementById('flow-select').value;
+            const tokens = Math.round(chars / 4);
+            const pricePerM = getFlowPrice(flowId);
+            const steps = getFlowSteps(flowId);
+            const costUsd = (tokens / 1_000_000) * pricePerM * steps;
+
+            let text = `≈${tokens.toLocaleString()} tokens / $${costUsd.toFixed(4)}/クエリ`;
+            if (usdJpy) {
+                const costJpy = costUsd * usdJpy;
+                text += ` (¥${costJpy.toFixed(2)})`;
+            }
+            document.getElementById('costDisplay').textContent = text;
+        }
+
+        // ✅ ページ読み込み時に階層構造 + 為替レートを取得
         window.onload = async function() {
             try {
                 const response = await fetch('/api/filters');
@@ -765,6 +805,7 @@
             } catch (error) {
                 console.error('フィルタ取得エラー:', error);
             }
+            fetchUsdJpy(); // 為替レート取得 & コスト初期表示
         };
 
         function renderHierarchyFilters() {
@@ -1052,7 +1093,8 @@
                     query,
                     limit,
                     workspaces: selectedWorkspaces,
-                    doc_types: selectedDocTypes
+                    doc_types: selectedDocTypes,
+                    threshold: parseFloat(document.getElementById('thresholdInput').value) || 0.4
                 };
 
                 console.log('[検索実行]', searchPayload);
@@ -1083,7 +1125,8 @@
                     body: JSON.stringify({
                         query,
                         documents: currentDocuments,
-                        flow: selectedFlow
+                        flow: selectedFlow,
+                        max_context_chars: parseInt(document.getElementById('maxContextInput').value) || null
                     })
                 });
 

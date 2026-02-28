@@ -2203,11 +2203,10 @@ function truncateText(text, maxLength = 100) {
 
 async function loadPreview(doc) {
     const container = document.getElementById('preview-container');
-    const fileId = doc.drive_file_id || doc.source_id;
     const fileName = doc.file_name || 'document';
 
-    if (!fileId) {
-        container.innerHTML = '<div class="empty-state"><p>ファイルIDがありません</p></div>';
+    if (!doc.file_url && !doc.file_id) {
+        container.innerHTML = '<div class="empty-state"><p>ファイルURLがありません</p></div>';
         return;
     }
 

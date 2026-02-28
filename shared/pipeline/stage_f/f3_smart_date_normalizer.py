@@ -88,6 +88,11 @@ class F3SmartDateNormalizer:
         # merge_resultを更新
         if merge_result:
             merge_result['events'] = norm_result['normalized_events']
+            merge_result['all_dates'] = norm_result.get('all_dates', [])
+            # テーブルセルの日付をインプレースで正規化
+            date_string_map = norm_result.get('date_string_map', {})
+            if date_string_map and merge_result.get('tables'):
+                self._apply_date_map_to_tables(merge_result['tables'], date_string_map)
 
         # ★チェーン: 次のステージ（F-5）を呼び出す
         if self.next_stage and merge_result:
@@ -131,13 +136,19 @@ class F3SmartDateNormalizer:
             return self._error_result("Gemini API not available")
 
         if not events:
-            logger.info("[F-3] 正規化するイベントがありません")
-            return {
-                'success': True,
-                'normalized_events': [],
-                'tokens_used': 0,
-                'normalization_count': 0
-            }
+            has_context = merge_result and (
+                merge_result.get('raw_integrated_text') or merge_result.get('tables')
+            )
+            if not has_context:
+                logger.info("[F-3] 正規化するイベントも文書テキストもありません")
+                return {
+                    'success': True,
+                    'normalized_events': [],
+                    'all_dates': [],
+                    'tokens_used': 0,
+                    'normalization_count': 0
+                }
+            logger.info("[F-3] イベントなし、文書全体から日付抽出のみ実行")
 
         logger.info(f"[F-3] 日付正規化開始: {len(events)}件")
 
@@ -182,7 +193,7 @@ class F3SmartDateNormalizer:
             logger.info("=" * 80)
 
             # レスポンスをパース
-            normalized_events = self._parse_response(raw_text, events)
+            normalized_events, all_dates, date_string_map = self._parse_response(raw_text, events)
 
             # トークン数を概算
             tokens_used = (len(prompt) + len(raw_text)) // 4
@@ -223,11 +234,15 @@ class F3SmartDateNormalizer:
 
             logger.info(f"[F-3] 正規化完了:")
             logger.info(f"  ├─ 正規化成功: {normalization_count}件")
+            logger.info(f"  ├─ 全日付抽出: {len(all_dates)}件 {all_dates}")
+            logger.info(f"  ├─ 日付マップ: {len(date_string_map)}件 {date_string_map}")
             logger.info(f"  └─ トークン: 約{tokens_used}")
 
             return {
                 'success': True,
                 'normalized_events': normalized_events,
+                'all_dates': all_dates,
+                'date_string_map': date_string_map,
                 'tokens_used': tokens_used,
                 'normalization_count': normalization_count
             }
@@ -284,20 +299,19 @@ class F3SmartDateNormalizer:
         if not year_context:
             year_hints = []
 
-            # テキストから年度ヒント抽出（先頭500文字）
+            # テキストから年度ヒント抽出（全文）
             if raw_text:
-                text_sample = raw_text[:500] if len(raw_text) > 500 else raw_text
-                year_hints.append(f"**文書テキスト（抜粋）:**\n```\n{text_sample}\n```")
+                year_hints.append(f"**文書テキスト（全文）:**\n```\n{raw_text}\n```")
 
-            # 表データから年度ヒント抽出（最初の表のみ）
-            if tables and len(tables) > 0:
-                table = tables[0]
-                headers = table.get('headers', [])
-                rows = table.get('rows', [])[:5]  # 最初の5行のみ
-                table_sample = f"ヘッダー: {headers}\n"
-                for i, row in enumerate(rows, 1):
-                    table_sample += f"行{i}: {row}\n"
-                year_hints.append(f"**表データ（抜粋）:**\n```\n{table_sample}```")
+            # 表データから年度ヒント抽出（全表・全行）
+            if tables:
+                for t_idx, table in enumerate(tables, 1):
+                    headers = table.get('headers', [])
+                    rows = table.get('rows', [])
+                    table_sample = f"ヘッダー: {headers}\n"
+                    for i, row in enumerate(rows, 1):
+                        table_sample += f"行{i}: {row}\n"
+                    year_hints.append(f"**表データ {t_idx}（全行）:**\n```\n{table_sample}```")
 
             if year_hints:
                 year_hints_section = "\n\n**年度推定のための参考情報:**\n" + "\n\n".join(year_hints)
@@ -331,7 +345,19 @@ class F3SmartDateNormalizer:
 2. **曜日の検証**: 日付に曜日が付いている場合（例: "1/15（月）"）、変換後の日付が実際にその曜日か確認してください
    - 曜日が合わない場合は、正しい年を再推定してください
    - 例: "1/15（月）" → 2025-01-15が月曜日でない場合、2024-01-15や2026-01-15など、月曜日になる年を探してください
-3. **日付の変換**: 以下のイベントリストに含まれる日付表現を、ISO 8601 形式（YYYY-MM-DD）に変換してください
+3. **イベントの日付変換**: 以下のイベントリストに含まれる日付表現を、ISO 8601 形式（YYYY-MM-DD）に変換してください
+4. **文書全体の日付抽出**: 上記の参考情報（テキスト・表）に含まれる**全ての日付表現**を抽出し、YYYY-MM-DD形式に正規化してください
+   - 表のセルに「5」「3/5」のような不完全な日付がある場合も、文書全体の文脈から年・月を補完して正規化してください
+   - 重複は除去してください
+5. **日付文字列マッピング**: 文書中に出現した日付表現の原文と正規化後のYYYY-MM-DDのペアを列挙してください
+   - 年・月・日が特定できないものは除外してください
+   - 同じ正規化結果を持つ異なる表記はすべて含めてください（例: "3/5" と "3月5日" が同じ日なら両方）
+   - **★含めてよい例**: 「3/5」「3月5日」「3月5日（月）」「25（水）」など、月・日・曜日の組み合わせで日付と明確にわかるもの
+   - **★含めてはいけない例**:
+     - 「朝, 1, 2, 3, 4, 5, 6」のような時限番号・コマ番号・連番の中の数字
+     - 点数・個数・ページ番号など、日付以外の文脈で使われている数字
+     - 表のヘッダーや列名として「1, 2, 3, 4, 5, 6」と並んでいる数字（時間割の時限等）
+   - **★文脈で判断する**: 同じ「5」でも、月名ヘッダーの下にある行の「5」は「5日」として有効。時限番号として「朝, 1, 2, 3, 4, 5, 6」と並んでいる「5」は日付ではない
 
 **重要な変換ルール:**
 1. 「1/12」 → 推定した年度を使って「YYYY-01-12」
@@ -346,19 +372,32 @@ class F3SmartDateNormalizer:
 ```
 
 **出力形式:**
-各イベントに `normalized_date` と `normalized_time` フィールドを追加してください。
-日付が不明な場合は `normalized_date: null` としてください。
-
 ```json
-[
-  {{
-    "original_text": "...",
-    "normalized_date": "YYYY-MM-DD",
-    "normalized_time": "HH:MM",
-    ...
+{{
+  "normalized_events": [
+    {{
+      "original_text": "...",
+      "normalized_date": "YYYY-MM-DD",
+      "normalized_time": "HH:MM",
+      ...
+    }}
+  ],
+  "all_dates": [
+    "YYYY-MM-DD",
+    "YYYY-MM-DD"
+  ],
+  "date_string_map": {{
+    "3/5": "2026-03-05",
+    "3月5日": "2026-03-05",
+    "3月5日（月）": "2026-03-05",
+    "3/12": "2026-03-12"
   }}
-]
+}}
 ```
+
+- `normalized_events`: 入力イベントリストに `normalized_date`/`normalized_time` を追加したもの（日付不明は null）
+- `all_dates`: 文書全体から抽出・正規化した全日付（重複なし・昇順）
+- `date_string_map`: 文書中の日付表現の原文 → YYYY-MM-DD マッピング（テーブルセルの書き換えに使用）
 """)
 
         return "".join(prompt_parts)
@@ -367,16 +406,16 @@ class F3SmartDateNormalizer:
         self,
         raw_text: str,
         original_events: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple:
         """
-        レスポンスをパースして正規化イベントを抽出
+        レスポンスをパースして正規化イベント・全日付・日付文字列マップを抽出
 
         Args:
             raw_text: Geminiの生レスポンス
             original_events: 元のイベントリスト
 
         Returns:
-            正規化されたイベントリスト
+            (normalized_events, all_dates, date_string_map)
         """
         try:
             # ```json ... ``` で囲まれている場合
@@ -384,31 +423,54 @@ class F3SmartDateNormalizer:
                 start = raw_text.find('```json') + 7
                 end = raw_text.find('```', start)
                 json_str = raw_text[start:end].strip()
-                normalized_events = json.loads(json_str)
+                parsed = json.loads(json_str)
             # ``` ... ``` で囲まれている場合
             elif '```' in raw_text:
                 start = raw_text.find('```') + 3
                 end = raw_text.find('```', start)
                 json_str = raw_text[start:end].strip()
-                normalized_events = json.loads(json_str)
+                parsed = json.loads(json_str)
             # JSON部分のみの場合
             else:
-                normalized_events = json.loads(raw_text)
+                parsed = json.loads(raw_text)
+
+            # 新形式: {"normalized_events": [...], "all_dates": [...], "date_string_map": {...}}
+            if isinstance(parsed, dict) and 'normalized_events' in parsed:
+                normalized_events = parsed.get('normalized_events', [])
+                all_dates = parsed.get('all_dates', [])
+                date_string_map = parsed.get('date_string_map', {})
+            else:
+                # 旧形式（リスト）との後方互換
+                normalized_events = parsed if isinstance(parsed, list) else []
+                all_dates = []
+                date_string_map = {}
 
             # 元のイベントとマージ
             for i, event in enumerate(normalized_events):
                 if i < len(original_events):
-                    # 元のイベントのフィールドを保持
                     for key, value in original_events[i].items():
                         if key not in event:
                             event[key] = value
 
-            return normalized_events
+            import re
+            # all_dates の検証（YYYY-MM-DD 形式のみ残す）
+            all_dates = [
+                d for d in all_dates
+                if isinstance(d, str) and re.match(r'^\d{4}-\d{2}-\d{2}$', d)
+            ]
+
+            # date_string_map の検証（値が YYYY-MM-DD 形式のもののみ残す）
+            date_string_map = {
+                k: v for k, v in date_string_map.items()
+                if isinstance(k, str) and isinstance(v, str)
+                and re.match(r'^\d{4}-\d{2}-\d{2}$', v)
+            }
+
+            return normalized_events, all_dates, date_string_map
 
         except Exception as e:
             logger.warning(f"[F-3] JSONパースエラー: {e}")
-            # パース失敗時は元のイベントを返す
-            return original_events
+            return original_events, [], {}
 
     def normalize_single_date(
         self,
@@ -449,12 +511,50 @@ class F3SmartDateNormalizer:
 
         return None
 
+    def _apply_date_map_to_tables(
+        self,
+        tables: List[Dict[str, Any]],
+        date_map: Dict[str, str]
+    ) -> None:
+        """
+        テーブルセルの日付表現を正規化済み YYYY-MM-DD に書き換える（インプレース）
+
+        Args:
+            tables: merge_result['tables'] のリスト
+            date_map: {原文日付表現: "YYYY-MM-DD"} のマッピング
+        """
+        replaced = 0
+        for table in tables:
+            # stage_b: data フィールド（list of dicts or lists）
+            if 'data' in table:
+                for row in table['data']:
+                    if isinstance(row, dict):
+                        for key, val in row.items():
+                            if isinstance(val, str) and val.strip() in date_map:
+                                row[key] = date_map[val.strip()]
+                                replaced += 1
+                    elif isinstance(row, list):
+                        for i, val in enumerate(row):
+                            if isinstance(val, str) and val.strip() in date_map:
+                                row[i] = date_map[val.strip()]
+                                replaced += 1
+            # stage_e40: cells フィールド
+            if 'cells' in table:
+                for cell in table['cells']:
+                    val = cell.get('text', '')
+                    if isinstance(val, str) and val.strip() in date_map:
+                        cell['text'] = date_map[val.strip()]
+                        replaced += 1
+        logger.info(f"[F-3] テーブルセル日付正規化: {replaced}箇所を書き換え")
+
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """エラー結果を返す"""
         return {
             'success': False,
             'error': error_message,
             'normalized_events': [],
+            'all_dates': [],
+            'date_string_map': {},
             'tokens_used': 0,
             'normalization_count': 0
         }

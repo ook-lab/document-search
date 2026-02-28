@@ -119,6 +119,9 @@ class G22TextAIProcessor:
             logger.info("[G-22] (処理する articles がありません)")
             return {
                 'success': True,
+                'summary': '',
+                'tags': [],
+                'people': [],
                 'topic_sections': [],
                 'calendar_events': [],
                 'tasks': [],
@@ -196,11 +199,17 @@ class G22TextAIProcessor:
             logger.info("[G-22]")
             logger.info("[G-22] ========== 抽出結果詳細 ==========")
 
+            summary = result.get('summary', '')
+            tags = result.get('tags', [])
+            people = result.get('people', [])
             topic_sections = result.get('topic_sections', [])
             calendar_events = result.get('calendar_events', [])
             tasks = result.get('tasks', [])
             notices = result.get('notices', [])
 
+            logger.info(f"[G-22] summary: {summary[:50]}..." if len(summary) > 50 else f"[G-22] summary: {summary}")
+            logger.info(f"[G-22] tags: {tags}")
+            logger.info(f"[G-22] people: {people}")
             logger.info(f"[G-22] topic_sections: {len(topic_sections)}件")
             for i, sec in enumerate(topic_sections, 1):
                 logger.info(f"[G-22]   Section {i}: title={sec.get('title')} body={len(sec.get('body',''))}文字")
@@ -252,6 +261,9 @@ class G22TextAIProcessor:
 
             result = {
                 'success': True,
+                'summary': summary,
+                'tags': tags,
+                'people': people,
                 'topic_sections': topic_sections,
                 'calendar_events': calendar_events,
                 'tasks': tasks,
@@ -265,6 +277,9 @@ class G22TextAIProcessor:
                     db = DatabaseClient(use_service_role=True)
                     update_data = {
                         'g22_ai_extracted': {
+                            'summary': summary,
+                            'tags': tags,
+                            'people': people,
                             'calendar_events': calendar_events,
                             'tasks': tasks,
                             'notices': notices
@@ -342,17 +357,28 @@ class G22TextAIProcessor:
 
 この全データを使って、以下の JSON を返してください：
 
-1. **topic_sections**: 全データを内容のまとまりごとにグループ化してください。
+1. **summary**: 文書全体の内容を1〜2文で日本語要約
+   - 何についての文書か、主要なトピックを端的に記述
+
+2. **tags**: 文書のキーワードタグ（配列）
+   - 例：["運動会", "持ち物", "保護者向け"]
+   - 5〜10個程度
+
+3. **people**: 文書に登場する人物・役職（配列）
+   - 例：["担任 田中先生", "PTA会長", "校長"]
+   - 固有名詞・役職名のみ。不明な場合は空配列
+
+4. **topic_sections**: 全データを内容のまとまりごとにグループ化してください。
    - 各セクションに適切な日本語タイトルをつける（例：「メール情報」「運動会について」「持ち物」）
    - ラベルの異なるデータ（メール情報 vs PDF地の文）を適切に分類すること
    - 全 articles のデータをカバーすること（省略しない）
 
-2. **calendar_events**: 日付（YYYY-MM-DD形式）、時間、イベント名、場所
+5. **calendar_events**: 日付（YYYY-MM-DD形式）、時間、イベント名、場所
    - 「1/15」のような表記は年度ヒントを参考に完全な日付に変換すること
 
-3. **tasks**: 提出物、準備物、持ち物
+6. **tasks**: 提出物、準備物、持ち物
 
-4. **notices**: 重要な連絡、変更点
+7. **notices**: 重要な連絡、変更点
 
 [全 articles]
 {text}
@@ -360,6 +386,9 @@ class G22TextAIProcessor:
 出力形式:
 ```json
 {{
+  "summary": "今年の運動会についての案内です。...",
+  "tags": ["運動会", "持ち物", "保護者向け"],
+  "people": ["担任 田中先生", "校長"],
   "topic_sections": [
     {{
       "title": "運動会について",
@@ -392,7 +421,7 @@ class G22TextAIProcessor:
 
 **重要な指示:**
 - テキストに記載されていない情報は絶対に作らないこと
-- 抽出できない場合は空の配列を返すこと
+- 抽出できない場合は空の配列（または空文字列）を返すこと
 - 日付は可能な限り YYYY-MM-DD 形式に変換すること
 - topic_sections は必ず全文をカバーすること（省略・要約しない）
 """
@@ -438,6 +467,9 @@ class G22TextAIProcessor:
         return {
             'success': False,
             'error': error_message,
+            'summary': '',
+            'tags': [],
+            'people': [],
             'topic_sections': [],
             'calendar_events': [],
             'tasks': [],

@@ -221,9 +221,25 @@ class G17TableAIProcessor:
 
             header_info = self._detect_headers_from_commonality(sub_data, commonality)
 
+            table_semantics = commonality.get('table_semantics', {
+                'type': 'other', 'type_ja': 'その他', 'target': None,
+                'scope': 'none', 'date_range': None, 'confidence': 0.5
+            })
+
+            # human-readable タイトルを生成（chunk_content の先頭に使用）
+            sem_target = table_semantics.get('target') or ''
+            sem_type_ja = table_semantics.get('type_ja') or ''
+            if sem_target and sem_type_ja:
+                semantic_title = f"{sem_target} {sem_type_ja}"
+            elif sem_type_ja:
+                semantic_title = sem_type_ja
+            else:
+                semantic_title = f"{table_id} - {group_name}" if group_name else table_id
+
             title = f"{table_id} - {group_name}" if group_name else table_id
             processed_sections.append({
                 'title': title,
+                'semantic_title': semantic_title,
                 'table_type': header_info.get('table_type', 'structured'),
                 'description': commonality.get('description', ''),
                 'data': sub_data,
@@ -237,6 +253,7 @@ class G17TableAIProcessor:
                     'implicit_headers': header_info.get('implicit_headers', []),
                     'split_from': group_name,
                     'primary_header_candidate': group_name,
+                    'table_semantics': table_semantics,
                 }
             })
             total_records += len(sub_data)
@@ -404,6 +421,7 @@ class G17TableAIProcessor:
 各行と各列について、以下を判定してください：
 1. 抽象化レベル：「カテゴリー名」か「具体的な値」か
 2. 共通の種類：その行/列が何を表すか
+3. このテーブル全体の意味・種別・対象を分類する（table_semantics）
 
 ## 重要な原則
 
@@ -423,12 +441,44 @@ class G17TableAIProcessor:
 - 例：1列目に人名、2列目に役職、3列目に人名
   → 本来は行0に「人名、役職名、人名」というヘッダーがあるべき（省略されている）
 
+## table_semantics の判定基準
+
+### type（テーブル種別）
+- `timetable`：時間割（曜日×時限×科目）
+- `schedule`：行事予定・日程表（日付×予定）
+- `homework`：宿題・課題・提出物の一覧
+- `checklist`：持ち物・準備・確認リスト
+- `roster`：名簿・係・担当者表
+- `price`：料金・費用・金額表
+- `results`：成績・得点・採点結果
+- `agenda`：議事録・議題・決定事項
+- `contact`：連絡先・電話番号・メール
+- `other`：上記以外
+
+### target（対象）
+- クラス名（例：5A、5B、3年1組）、学年（例：5年生、全学年）、グループ名、人名など
+- 複数対象の場合はカンマ区切り（例：「5A,5B」）
+- 対象が特定できない場合は null
+
+### scope（時間粒度）
+- `weekly`：週単位、`monthly`：月単位、`daily`：日単位
+- `semester`：学期、`yearly`：年間
+- `none`：時間に無関係
+
 ## 出力（JSONのみ）
 
 ```json
 {{
   "success": true,
   "description": "この表の説明（1-2文）",
+  "table_semantics": {{
+    "type": "timetable",
+    "type_ja": "週間時間割",
+    "target": "5B",
+    "scope": "weekly",
+    "date_range": null,
+    "confidence": 0.95
+  }},
   "row_analysis": [
     {{
       "row_index": 0,
@@ -460,6 +510,7 @@ class G17TableAIProcessor:
 - すべての行とすべての列について分析してください
 - 「カテゴリー名」と「具体的な値」の区別を明確にしてください
 - 暗黙的ヘッダーがある場合は、その存在を示してください
+- table_semantics は必ず出力してください（type が不明な場合は "other"）
 """
 
         try:
@@ -472,6 +523,20 @@ class G17TableAIProcessor:
             json_str = self._extract_json(raw)
             parsed = json.loads(json_str)
             parsed['success'] = True
+
+            # table_semantics のバリデーション
+            sem = parsed.get('table_semantics')
+            if sem and isinstance(sem, dict):
+                valid_types = {'timetable', 'schedule', 'homework', 'checklist', 'roster',
+                               'price', 'results', 'agenda', 'contact', 'other'}
+                if sem.get('type') not in valid_types:
+                    sem['type'] = 'other'
+                if not sem.get('type_ja'):
+                    sem['type_ja'] = sem.get('type', 'other')
+                logger.info(f"[G-17] table_semantics: type={sem.get('type')}, target={sem.get('target')}, scope={sem.get('scope')}")
+            else:
+                parsed['table_semantics'] = {'type': 'other', 'type_ja': 'その他', 'target': None, 'scope': 'none', 'date_range': None, 'confidence': 0.5}
+
             return parsed, tokens
 
         except Exception as e:

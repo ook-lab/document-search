@@ -110,8 +110,9 @@ def search_documents():
             workspaces = [data.get('workspace')]
 
         enable_query_expansion = data.get('enable_query_expansion', False)  # デフォルトで無効
+        threshold = float(data.get('threshold', 0.4))  # 足切りスコア閾値
 
-        print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, workspaces={workspaces}, doc_types={doc_types}")
+        print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, workspaces={workspaces}, doc_types={doc_types}, threshold={threshold}")
 
         if not query:
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
@@ -180,7 +181,6 @@ def search_documents():
                             'document_date': doc.get('document_date'),
                             'metadata': doc.get('metadata', {}),
                             'summary': doc.get('summary'),
-                            'content': doc.get('attachment_text', ''),
                             'similarity': 1.0,  # 最高スコア（参照されたファイル）
                             'is_cross_reference': True  # クロスリファレンスフラグ
                         })
@@ -195,7 +195,8 @@ def search_documents():
             embedding,
             limit,
             doc_types if doc_types else None,
-            date_filter=date_filter  # 時系列フィルタを渡す
+            date_filter=date_filter,
+            threshold=threshold,
         )
 
         # ✅ クロスリファレンス結果を先頭に追加
@@ -245,14 +246,20 @@ def generate_answer():
         query = data.get('query', '')
         documents = data.get('documents', [])
         flow_id = data.get('flow', 'flash-x1')  # ユーザーが選択した構成フロー
+        model_override = data.get('model')       # モデル直接指定（flowより優先）
+        max_context_chars = data.get('max_context_chars')  # トークン上限（文字数）
 
         if not query:
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
 
-        # ✅ 構成フローを取得
+        # ✅ 構成フローを取得（model直接指定がある場合はそちらを優先）
         from shared.common.config.model_tiers import ResearchFlow
-        flow_config = ResearchFlow.get_flow(flow_id)
-        steps = flow_config.get('steps', ['gemini-2.5-flash'])
+        if model_override:
+            steps = [model_override]
+            print(f"[INFO] モデル直接指定: {model_override}")
+        else:
+            flow_config = ResearchFlow.get_flow(flow_id)
+            steps = flow_config.get('steps', ['gemini-2.5-flash'])
 
         print(f"[INFO] 構成フロー実行: {flow_id} ({len(steps)}ステップ)")
 
@@ -307,7 +314,8 @@ def generate_answer():
                 model_name,
                 query,
                 current_documents,
-                is_final_step=(step_idx == len(steps))
+                is_final_step=(step_idx == len(steps)),
+                max_context_chars=max_context_chars,
             )
 
             if not answer:
@@ -338,7 +346,8 @@ def _generate_answer_with_model(
     model_name: str,
     query: str,
     documents: List[Dict[str, Any]],
-    is_final_step: bool = True
+    is_final_step: bool = True,
+    max_context_chars: Optional[int] = None,
 ) -> tuple:
     """
     指定されたモデルで回答を生成
@@ -373,11 +382,15 @@ def _generate_answer_with_model(
         print(f"[DEBUG] 文書数: {len(documents)}件", flush=True, file=sys.stderr)
         print(f"[DEBUG] コンテキスト文字数: {len(context)}文字", flush=True, file=sys.stderr)
 
-        # ✅ コンテキストの文字数制限（2025年モデル対応: Gemini 2.5 Flashは100万トークン対応）
-        MAX_CONTEXT_LENGTH = 500000  # 約50万文字まで（Gemini 2.5 Flashの100万トークン性能をフル活用）
+        # コンテキスト長を決定（優先順位: 明示指定 > モデル別デフォルト）
+        is_lite = 'lite' in model_name
+        default_max = 30000 if is_lite else 50000
+        MAX_CONTEXT_LENGTH = int(max_context_chars) if max_context_chars else default_max
+        max_output_tokens_override = 8192 if is_lite else None  # Liteは出力も制限
+
         if len(context) > MAX_CONTEXT_LENGTH:
             context = context[:MAX_CONTEXT_LENGTH] + "\n\n[... 以降は省略されました ...]"
-            print(f"[WARNING] コンテキストを切り詰めました: {len(context)} → {MAX_CONTEXT_LENGTH} 文字")
+            print(f"[WARNING] コンテキストを切り詰めました: {MAX_CONTEXT_LENGTH} 文字（モデル: {model_name}）")
 
         # プロンプトを作成（Phase 2.2.3: 構造的クエリ対応 + ユーザーコンテキスト追加）
         prompt_parts = []
@@ -437,10 +450,13 @@ def _generate_answer_with_model(
         print(f"[DEBUG] 推定トークン数: {len(prompt) // 4}トークン（概算）", flush=True, file=sys.stderr)
 
         # AIモデルで回答生成
+        call_kwargs = {"model_name": model_name}
+        if max_output_tokens_override:
+            call_kwargs["max_tokens"] = max_output_tokens_override
         response = llm_client.call_model(
             tier="ui_response",
             prompt=prompt,
-            model_name=model_name
+            **call_kwargs
         )
 
         if not response.get('success'):
@@ -623,7 +639,7 @@ def _group_documents_by_file(documents: List[Dict[str, Any]]) -> List[Dict[str, 
         all_contents = []
         seen_contents = set()
         for chunk in sorted(chunks, key=lambda x: x.get('similarity', 0), reverse=True):
-            content = chunk.get('content') or chunk.get('summary') or chunk.get('attachment_text', '')
+            content = chunk.get('content') or chunk.get('summary', '')
             if content and content not in seen_contents:
                 all_contents.append(content)
                 seen_contents.add(content)
@@ -659,22 +675,12 @@ def _detect_date_filter(query: str) -> Optional[str]:
 
     query_lower = query.lower()
 
-    # 今日
-    if re.search(r'(今日|きょう|本日)', query):
-        return 'today'
-
-    # 今週
-    if re.search(r'(今週|こんしゅう|this week)', query):
-        return 'this_week'
-
-    # 今月
-    if re.search(r'(今月|こんげつ|this month)', query):
-        return 'this_month'
-
-    # 最新・最近
+    # 最新・最近届いた文書（受信日フィルタとして有効）
     if re.search(r'(最新|最近|さいきん|さいしん|new|latest|recent)', query):
         return 'recent'
 
+    # 今日・今週・今月は文書の受信日でなくコンテンツの内容に関する質問なので
+    # ベクトル検索＋LLMに委ねる（受信日フィルタは不適切）
     return None
 
 
@@ -791,71 +797,44 @@ def _detect_query_type(query: str) -> Dict[str, Any]:
 
 def _build_context(documents: List[Dict[str, Any]]) -> str:
     """
-    検索結果からコンテキストを構築（チャンクベース）
-
-    Args:
-        documents: 検索結果のリスト
-
-    Returns:
-        フォーマットされたコンテキスト文字列
+    検索結果からコンテキストを構築。
+    chunk_content（Stage J で col_map を使って生成済みのテキスト）をそのまま使用。
     """
     if not documents:
         return "関連する文書が見つかりませんでした。"
 
-    import json
-
     context_parts = []
-    total_chunks = 0
+    total_chars = 0
 
     for doc_idx, doc in enumerate(documents, 1):
-        file_name = doc.get('file_name', '無題')
-        doc_type = doc.get('doc_type', '不明')
-        similarity = doc.get('similarity', 0)
-        all_chunks = doc.get('all_chunks', [])
+        file_name     = doc.get('file_name', '無題')
+        doc_type      = doc.get('doc_type', '不明')
+        similarity    = doc.get('similarity', 0)
+        document_date = doc.get('document_date', '')
+        date_matched  = doc.get('is_date_matched', False)
 
-        # 基本情報
-        context_part = f"""
-【文書{doc_idx}】
+        all_chunks = doc.get('all_chunks', [])
+        if all_chunks:
+            parts = [chunk.get('chunk_content', '') for chunk in all_chunks if chunk.get('chunk_content', '')]
+            full_text = "\n\n".join(parts)
+        else:
+            full_text = doc.get('summary', '')
+
+        date_tag = "（日付一致✓）" if date_matched else ""
+        context_part = f"""【文書{doc_idx}】{date_tag}
 ファイル名: {file_name}
 文書タイプ: {doc_type}
-類似度: {similarity:.2f}
-チャンク数: {len(all_chunks)}個
-"""
+日付: {document_date}
+スコア: {similarity:.3f}
 
-        # ✅ ヒットした全チャンクを追加
-        if all_chunks:
-            context_part += "\n【ヒットしたチャンク】"
-            for chunk_idx, chunk in enumerate(all_chunks, 1):
-                chunk_type = chunk.get('chunk_type', 'unknown')
-                chunk_content = chunk.get('chunk_content', '')
-                chunk_metadata = chunk.get('chunk_metadata', {})
-                search_weight = chunk.get('search_weight', 1.0)
-
-                context_part += f"\n\n  チャンク{chunk_idx} (タイプ: {chunk_type}, 重み: {search_weight})"
-                context_part += f"\n  内容: {chunk_content}"
-
-                # ✅ chunk_metadataに構造化データがある場合は追加
-                if chunk_metadata:
-                    original_structure = chunk_metadata.get('original_structure')
-                    if original_structure:
-                        context_part += f"\n\n  【構造化データ（JSON）】"
-                        context_part += f"\n  ```json\n{json.dumps(original_structure, ensure_ascii=False, indent=2)}\n  ```"
-                        context_part += "\n  ※上記の構造化データを参照して、表の行・列の関係や階層構造を正確に把握してください"
-
-                total_chunks += 1
-        else:
-            # フォールバック: all_chunksがない場合（後方互換性）
-            summary = doc.get('summary', '')
-            if summary:
-                context_part += f"\n\n要約: {summary}"
+{full_text}
+{"─" * 60}"""
 
         context_parts.append(context_part)
+        total_chars += len(full_text)
 
-    # ✅ デバッグ用: コンテキストの文字数をログ出力
-    final_context = "\n".join(context_parts)
-    print(f"[DEBUG] コンテキスト文字数: {len(final_context)} 文字")
-    print(f"[DEBUG] 文書数: {len(documents)} 件")
-    print(f"[DEBUG] 総チャンク数: {total_chunks} 個")
+    final_context = "\n\n".join(context_parts)
+    print(f"[DEBUG] コンテキスト: {len(documents)} 件 / {total_chars} 文字")
 
     return final_context
 
@@ -977,48 +956,125 @@ def health_check():
 
 @app.route('/api/debug/database', methods=['GET'])
 def debug_database():
-    """データベース接続とワークスペース情報のデバッグエンドポイント"""
+    """データベース接続・検索インデックス診断エンドポイント"""
+    result = {}
+    errors = {}
+
     try:
-        # クライアント取得
-        db_client, _, _ = get_clients()
+        db_client, llm_client, _ = get_clients()
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'クライアント初期化失敗: {e}'}), 500
 
-        # Rawdata_FILE_AND_MAILテーブルの件数を確認
+    # 1. Rawdata_FILE_AND_MAIL 件数
+    try:
         count_response = db_client.client.table('Rawdata_FILE_AND_MAIL').select('id', count='exact').limit(1).execute()
-        total_count = count_response.count if hasattr(count_response, 'count') else 'unknown'
+        result['rawdata_count'] = count_response.count if hasattr(count_response, 'count') else 'unknown'
+    except Exception as e:
+        errors['rawdata_count'] = str(e)
 
-        # サンプルデータを取得
-        sample_response = db_client.client.table('Rawdata_FILE_AND_MAIL').select('workspace, doc_type').limit(10).execute()
-        samples = sample_response.data if sample_response.data else []
-
-        # get_workspace_hierarchy()を実行
+    # 2. workspace/doc_type 階層
+    try:
         hierarchy = db_client.get_workspace_hierarchy()
+        result['workspace_count'] = len(hierarchy)
+        result['workspaces'] = list(hierarchy.keys())
+    except Exception as e:
+        errors['hierarchy'] = str(e)
 
-        # 環境変数の確認（セキュリティのため一部のみ）
-        supabase_url = os.getenv('SUPABASE_URL', 'NOT_SET')
-        supabase_key_set = 'YES' if os.getenv('SUPABASE_KEY') else 'NO'
+    # 3. 10_ix_search_index 件数・embedding確認
+    try:
+        idx_response = db_client.client.table('10_ix_search_index').select('id', count='exact').limit(1).execute()
+        result['search_index_count'] = idx_response.count if hasattr(idx_response, 'count') else 'unknown'
+    except Exception as e:
+        errors['search_index_count'] = str(e)
+
+    try:
+        sample = db_client.client.table('10_ix_search_index').select('document_id, chunk_type, chunk_content').limit(3).execute()
+        result['search_index_sample'] = [
+            {'document_id': str(r.get('document_id', ''))[:8], 'chunk_type': r.get('chunk_type'), 'preview': (r.get('chunk_content') or '')[:50]}
+            for r in (sample.data or [])
+        ]
+    except Exception as e:
+        errors['search_index_sample'] = str(e)
+
+    # embedding NULL件数確認（NULLならStage K未実行）
+    try:
+        # embedding IS NOT NULL なチャンク数（直接カラム選択でNULLチェック）
+        not_null_resp = db_client.client.table('10_ix_search_index').select('id', count='exact').not_.is_('embedding', 'null').limit(1).execute()
+        result['embedding_not_null_count'] = not_null_resp.count if hasattr(not_null_resp, 'count') else 'unknown'
+    except Exception as e:
+        errors['embedding_not_null_count'] = str(e)
+
+    # 4. unified_search_v2 テスト呼び出し（ダミーembedding）
+    try:
+        # ゼロベクトルは余弦距離が未定義になるため微小値を使用
+        test_embedding = [0.01] * 1536
+        test_response = db_client.client.rpc('unified_search_v2', {
+            'query_text': 'テスト',
+            'query_embedding': test_embedding,
+            'match_threshold': -2.0,  # 全件ヒット狙い（コサイン類似度の最小値は-1）
+            'match_count': 3,
+        }).execute()
+        result['unified_search_v2_count'] = len(test_response.data or [])
+        result['unified_search_v2_ok'] = True
+    except Exception as e:
+        result['unified_search_v2_ok'] = False
+        errors['unified_search_v2'] = str(e)
+
+    # 5. 環境変数確認
+    supabase_url = os.getenv('SUPABASE_URL', 'NOT_SET')
+    result['env'] = {
+        'supabase_url': supabase_url[:30] + '...' if supabase_url != 'NOT_SET' else 'NOT_SET',
+        'supabase_key_set': 'YES' if os.getenv('SUPABASE_KEY') else 'NO',
+        'service_role_key_set': 'YES' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else 'NO',
+        'openai_key_set': 'YES' if os.getenv('OPENAI_API_KEY') else 'NO',
+    }
+
+    return jsonify({
+        'success': True,
+        'result': result,
+        'errors': errors
+    })
+
+
+@app.route('/api/debug/search-raw', methods=['GET'])
+def debug_search_raw():
+    """実際のembeddingで unified_search_v2 を直接テストするデバッグエンドポイント"""
+    try:
+        db_client, llm_client, _ = get_clients()
+        query = request.args.get('q', '今週の予定は？')
+
+        # 実際のembeddingを生成
+        embedding = llm_client.generate_embedding(query)
+        embedding_preview = embedding[:5]  # 最初の5次元だけ確認用
+
+        # threshold=-1.0で直接呼び出し（全件対象）
+        resp = db_client.client.rpc('unified_search_v2', {
+            'query_text': query,
+            'query_embedding': embedding,
+            'match_threshold': -1.0,
+            'match_count': 5,
+        }).execute()
+
+        results_preview = []
+        for r in (resp.data or []):
+            results_preview.append({
+                'document_id': str(r.get('document_id', ''))[:8],
+                'file_name': r.get('file_name', '')[:40],
+                'combined_score': r.get('combined_score'),
+                'raw_similarity': r.get('raw_similarity'),
+            })
 
         return jsonify({
             'success': True,
-            'database_info': {
-                'total_documents': total_count,
-                'sample_count': len(samples),
-                'samples': samples[:5],  # 最初の5件のみ
-                'workspace_count': len(hierarchy),
-                'workspaces': list(hierarchy.keys()),
-                'hierarchy_sample': {k: v for k, v in list(hierarchy.items())[:2]}  # 最初の2つのみ
-            },
-            'env_check': {
-                'supabase_url_set': supabase_url[:30] + '...' if supabase_url != 'NOT_SET' else 'NOT_SET',
-                'supabase_key_set': supabase_key_set
-            }
+            'query': query,
+            'embedding_dim': len(embedding),
+            'embedding_preview': embedding_preview,
+            'result_count': len(resp.data or []),
+            'results': results_preview,
         })
-
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'error_type': type(e).__name__
-        }), 500
+        import traceback
+        return jsonify({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
 @app.route('/api/workspaces', methods=['GET'])

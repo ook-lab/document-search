@@ -60,11 +60,35 @@ class ResearchFlow:
 
     # 各構成フローの定義: {"steps": [model_list], "description": "説明", "cost": コスト, "ability": 能力}
     FLOWS = {
+        "lite-x1": {
+            "steps": ["gemini-2.5-flash-lite"],
+            "description": "Lite (軽量・最速)",
+            "cost": 0.08,
+            "ability": 6.5
+        },
+        "lite-lite": {
+            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite"],
+            "description": "Lite→Lite (軽量2ステップ)",
+            "cost": 0.16,
+            "ability": 7.0
+        },
         "flash-x1": {
             "steps": ["gemini-2.5-flash"],
-            "description": "Flash×1 (標準・高速)",
+            "description": "Flash (標準・高速)",
             "cost": 0.64,
             "ability": 8.0
+        },
+        "lite-lite-lite": {
+            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash-lite"],
+            "description": "Lite→Lite→Lite (軽量3ステップ)",
+            "cost": 0.24,
+            "ability": 7.3
+        },
+        "lite-flash": {
+            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+            "description": "Lite→Flash (バランス型)",
+            "cost": 0.72,
+            "ability": 8.2
         },
         "lite-lite-pro": {
             "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
@@ -191,7 +215,7 @@ class ResearchFlow:
     @classmethod
     def get_flow(cls, flow_id: str) -> Dict[str, Any]:
         """指定されたフローIDの構成を取得"""
-        return cls.FLOWS.get(flow_id, cls.FLOWS["flash-x1"])
+        return cls.FLOWS.get(flow_id, cls.FLOWS["lite-x1"])
 
     @classmethod
     def get_all_flows(cls) -> Dict[str, Dict[str, Any]]:

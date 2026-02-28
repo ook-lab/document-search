@@ -81,11 +81,16 @@ class StageKEmbedding:
 
         saved_count = 0
         failed_count = 0
+        errors = []
 
         for chunk in chunks:
             try:
                 # null文字を除去
                 chunk_text = chunk['chunk_text'].replace('\u0000', '') if chunk['chunk_text'] else ''
+
+                if not chunk_text.strip():
+                    logger.warning(f"[Stage K] 空チャンクをスキップ: type={chunk.get('chunk_type')}")
+                    continue
 
                 # Embedding生成
                 embedding = self.llm_client.generate_embedding(chunk_text)
@@ -107,21 +112,23 @@ class StageKEmbedding:
                 saved_count += 1
 
             except Exception as e:
-                logger.error(f"[Stage K エラー] チャンク保存失敗: {e}")
+                err_msg = f"type={chunk.get('chunk_type')}: {e}"
+                logger.error(f"[Stage K エラー] チャンク保存失敗: {err_msg}")
+                errors.append(err_msg)
                 failed_count += 1
 
         logger.info(f"[Stage K完了] {saved_count}/{len(chunks)}チャンクを保存 (失敗: {failed_count})")
 
-        # chunk_countを更新
+        # chunk_countを更新（カラムが存在しない場合はスキップ）
         if saved_count > 0:
             try:
-                self.db.client.table('Rawdata_FILE_AND_MAIL')\
+                result = self.db.client.table('Rawdata_FILE_AND_MAIL')\
                     .update({'chunk_count': saved_count})\
                     .eq('id', document_id)\
                     .execute()
                 logger.debug(f"[Stage K] chunk_count更新: {saved_count}個")
-            except Exception as e:
-                logger.warning(f"[Stage K 警告] chunk_count更新エラー（継続）: {e}")
+            except Exception:
+                pass  # chunk_countカラムなし
 
         # 成功条件: 最低1チャンク以上保存 & 失敗なし
         is_success = saved_count > 0 and failed_count == 0
@@ -129,7 +136,8 @@ class StageKEmbedding:
         return {
             'success': is_success,
             'saved_count': saved_count,
-            'failed_count': failed_count
+            'failed_count': failed_count,
+            'errors': errors,
         }
 
     def process(self, chunks: List[Dict[str, Any]], document_id: str) -> None:

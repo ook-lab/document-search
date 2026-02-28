@@ -174,7 +174,8 @@ class G1Controller:
                 'headers': [],  # headers は空（UI側で自動生成される）
                 'rows': section_data,  # sections[0].data を rows に設定
                 'sections': sections,  # UI契約: 常に sections を含める
-                'metadata': analysis.get('metadata', {})
+                # ★section-level metadata（col_map, row_label_col, header_meanings 等）を保持
+                'metadata': sections[0].get('metadata', {}) if sections else analysis.get('metadata', {})
             }
             ui_tables.append(ui_table)
         return ui_tables

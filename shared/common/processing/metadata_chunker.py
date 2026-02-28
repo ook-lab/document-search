@@ -248,15 +248,18 @@ class MetadataChunker:
             for i, table in enumerate(structured_tables):
                 table_text = self._format_table_chunk(table, i)
                 if table_text:
+                    table_meta = table.get('metadata', {})
+                    table_semantics = table_meta.get('table_semantics') or {}
                     chunks.extend(self._create_chunk(
                         chunk_type=f'table_{i}',
                         text=table_text,
                         metadata={
                             'original_structure': table,
-                            'structure_type': 'table'
+                            'structure_type': 'table',
+                            'table_semantics': table_semantics,
                         }
                     ))
-                    logger.debug(f"[MetadataChunker] tableチャンク作成: table_{i}")
+                    logger.debug(f"[MetadataChunker] tableチャンク作成: table_{i} semantics={table_semantics.get('type')}/{table_semantics.get('target')}")
 
         # 12. weekly_schedule（週間予定）チャンク
         weekly_schedule = document_data.get('weekly_schedule', [])
@@ -381,6 +384,34 @@ class MetadataChunker:
                             }
                         ))
                         logger.debug(f"[MetadataChunker] taskチャンク作成: {task_name}")
+
+        # 16. notices（お知らせ）チャンク
+        notices = document_data.get('notices', [])
+        if notices:
+            for i, notice in enumerate(notices):
+                if isinstance(notice, dict):
+                    category = notice.get('category', '')
+                    content = notice.get('content', '')
+
+                    if not content or not content.strip():
+                        continue
+
+                    notice_text_parts = []
+                    if category:
+                        notice_text_parts.append(f"カテゴリ: {category}")
+                    notice_text_parts.append(content.strip())
+
+                    notice_text = '\n'.join(notice_text_parts)
+                    chunks.extend(self._create_chunk(
+                        chunk_type=f'notice_{i}',
+                        text=notice_text,
+                        metadata={
+                            'original_structure': notice,
+                            'structure_type': 'notice',
+                            'category': category
+                        }
+                    ))
+                    logger.debug(f"[MetadataChunker] noticeチャンク作成: {category}")
 
         logger.info(f"[MetadataChunker] メタデータチャンク生成完了: {len(chunks)}個")
         return chunks
@@ -675,73 +706,120 @@ class MetadataChunker:
 
     def _format_table_chunk(self, table: Dict[str, Any], index: int) -> Optional[str]:
         """
-        構造化表をテキストに展開
+        構造化表をテキストに展開。
 
-        Args:
-            table: {
-                'table_title': str,
-                'table_type': str,
-                'headers': List[str],
-                'rows': List[Dict[str, str]]
-            }
-            index: テーブルのインデックス
+        G17 の col_map がある場合（2D rows + metadata）:
+          col_map キー N → row[N + row_label_col + 1] の位置にある値を
+          G17 が解析したカラム名と対応付けてテキスト化する。
 
-        Returns:
-            テーブル全体をテキスト化したもの
+        col_map がない場合（headers + rows_as_dicts）:
+          既存ロジックで処理。
         """
         if not table or not isinstance(table, dict):
             return None
 
-        table_title = table.get('table_title', f'表{index + 1}')
+        # semantic_title（G17が生成した人間語タイトル）を優先、なければ table_title にフォールバック
+        semantic_title = table.get('semantic_title', '')
+        table_title = semantic_title if semantic_title else table.get('table_title', f'表{index + 1}')
         headers = table.get('headers', [])
         rows = table.get('rows', [])
+        metadata = table.get('metadata', {})
 
         if not rows:
             return None
 
-        # テーブルをテキスト化
-        lines = []
-        lines.append(f"【{table_title}】")
-        lines.append("")
+        lines = [f"【{table_title}】", ""]
 
-        # 各行をテキスト化
-        for row_idx, row in enumerate(rows, 1):
-            if isinstance(row, dict):
-                # 辞書形式の行
-                row_parts = []
-                for header in headers:
-                    value = row.get(header, '')
-                    # valueがリストの場合は、改行区切りで結合
-                    if isinstance(value, list):
-                        value = '\n'.join(str(v) for v in value)
-                    elif value is not None:
-                        value = str(value)
-                    else:
-                        value = ''
+        col_map = metadata.get('col_map', {})
+        row_label_col = int(metadata.get('row_label_col') or 0)
+        data_start_row = int(metadata.get('data_start_row') or 0)
 
-                    if value:
-                        row_parts.append(f"{header}: {value}")
-                if row_parts:
-                    lines.append(f"{row_idx}. " + ", ".join(row_parts))
-            elif isinstance(row, list):
-                # リスト形式の行（ヘッダーと組み合わせる）
-                row_parts = []
-                for i, value in enumerate(row):
-                    # valueがリストの場合は、改行区切りで結合
-                    if isinstance(value, list):
-                        value_str = '\n'.join(str(v) for v in value)
-                    else:
-                        value_str = str(value) if value is not None else ''
+        # G17 の col_map あり: 座標ベースでカラム名を付ける
+        if col_map and rows and isinstance(rows[0], list):
+            slot_map = {}  # {row内の位置: カラム名}
+            for key, info in col_map.items():
+                pos = int(key) + row_label_col + 1
+                label = None
+                if isinstance(info, dict):
+                    for v in info.values():
+                        if isinstance(v, str) and v.strip():
+                            label = v.strip()
+                            break
+                elif isinstance(info, str) and info.strip():
+                    label = info.strip()
+                slot_map[pos] = label or f"列{key}"
 
-                    if i < len(headers):
-                        header = headers[i]
-                        if isinstance(header, list):
-                            header = ', '.join(str(h) for h in header)
-                        row_parts.append(f"{header}: {value_str}")
+            # フィルダウン:
+            # - null: 全列フィルダウン（結合セルの跡）
+            # - "": ラベル列（slot_map に含まれない列）ではフィルダウン
+            #       Stage B が結合セルを "" で出力するため
+            #       データ列（slot_map に含まれる列）の "" は空セルとして保持
+            data_col_positions = set(slot_map.keys())
+            last_values: dict = {}
+            filled_rows = []
+            for row in rows[data_start_row:]:
+                if not row:
+                    filled_rows.append(row)
+                    continue
+                filled = list(row)
+                for col_idx, val in enumerate(filled):
+                    is_data_col = col_idx in data_col_positions
+                    if val is None or (val == '' and not is_data_col):
+                        filled[col_idx] = last_values.get(col_idx)
                     else:
-                        row_parts.append(value_str)
-                if row_parts:
-                    lines.append(f"{row_idx}. " + ", ".join(row_parts))
+                        last_values[col_idx] = val
+                filled_rows.append(filled)
+
+            for row_idx, row in enumerate(filled_rows, 1):
+                if not row:
+                    continue
+                row_label = str(row[row_label_col] or '').replace('\n', ' ').strip() if row_label_col < len(row) else ''
+                parts = []
+                for pos, col_label in sorted(slot_map.items()):
+                    val = row[pos] if pos < len(row) else None
+                    if val is None or str(val).strip() == '':
+                        continue
+                    val_str = str(val).replace('\n', ' ').strip()
+                    parts.append(f"{col_label}: {val_str}")
+                if row_label or parts:
+                    row_text = (f"{row_label}: " if row_label else "") + ", ".join(parts)
+                    if row_text.strip():
+                        lines.append(f"{row_idx}. {row_text}")
+
+        else:
+            # col_map なし: headers + rows_as_dicts（または列名なし2D）
+            for row_idx, row in enumerate(rows[data_start_row:], 1):
+                if isinstance(row, dict):
+                    row_parts = []
+                    for header in headers:
+                        value = row.get(header, '')
+                        if isinstance(value, list):
+                            value = '\n'.join(str(v) for v in value)
+                        elif value is not None:
+                            value = str(value)
+                        else:
+                            value = ''
+                        if value:
+                            row_parts.append(f"{header}: {value}")
+                    if row_parts:
+                        lines.append(f"{row_idx}. " + ", ".join(row_parts))
+                elif isinstance(row, list):
+                    row_parts = []
+                    for i, value in enumerate(row):
+                        if isinstance(value, list):
+                            value_str = '\n'.join(str(v) for v in value)
+                        else:
+                            value_str = str(value) if value is not None else ''
+                        if i < len(headers):
+                            header = headers[i]
+                            if isinstance(header, list):
+                                header = ', '.join(str(h) for h in header)
+                            row_parts.append(f"{header}: {value_str}")
+                        else:
+                            if value_str:
+                                row_parts.append(value_str)
+                    if row_parts:
+                        lines.append(f"{row_idx}. " + ", ".join(row_parts))
 
         return '\n'.join(lines) if len(lines) > 2 else None
 

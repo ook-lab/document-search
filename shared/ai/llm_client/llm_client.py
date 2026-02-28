@@ -235,9 +235,9 @@ class LLMClient:
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
 
-            # 生成設定
+            # 生成設定（kwargs で max_tokens が渡された場合は優先）
             generation_config = genai.GenerationConfig(
-                max_output_tokens=config.get("max_tokens", 65536),
+                max_output_tokens=kwargs.pop('max_tokens', config.get("max_tokens", 65536)),
                 temperature=config.get("temperature", 0.1)
             )
 

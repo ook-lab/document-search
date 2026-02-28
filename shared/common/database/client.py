@@ -259,7 +259,8 @@ class DatabaseClient:
         embedding: List[float],
         limit: int = 50,
         doc_types: Optional[List[str]] = None,
-        date_filter: Optional[str] = None
+        date_filter: Optional[str] = None,
+        threshold: float = 0.4
     ) -> List[Dict[str, Any]]:
         """
         2階層ハイブリッド検索：小チャンク検索 + 大チャンク回答（重複排除＆Rerank対応）
@@ -292,7 +293,7 @@ class DatabaseClient:
             rpc_params = {
                 "query_text": query,
                 "query_embedding": embedding,
-                "match_threshold": 0.0,
+                "match_threshold": -1.0,  # text-embedding-3-small は異トピック間で負値になるため全件対象
                 "match_count": limit,  # 指定された件数を取得
                 "vector_weight": 0.7,  # ベクトル検索70% - 意味的類似度を重視
                 "fulltext_weight": 0.3,  # キーワード検索30% - 完全一致の補助
@@ -323,9 +324,6 @@ class DatabaseClient:
                     'document_date': result.get('document_date'),
                     'metadata': result.get('metadata'),
                     'summary': result.get('summary'),
-
-                    # 回答用：添付ファイルテキスト（unified_search_v2のattachment_text）
-                    'content': result.get('attachment_text'),  # 添付ファイルテキスト
                     'large_chunk_id': result.get('document_id'),  # ドキュメントID
 
                     # ヒットしたチャンク情報（重み付けされた最適チャンク）
@@ -351,8 +349,6 @@ class DatabaseClient:
                     doc_result['source_url'] = result.get('source_url')
                 if 'file_url' in result:
                     doc_result['file_url'] = result.get('file_url')
-                if 'attachment_text' in result:
-                    doc_result['attachment_text'] = result.get('attachment_text')
                 if 'created_at' in result:
                     doc_result['created_at'] = result.get('created_at')
                 if 'display_subject' in result:
@@ -365,8 +361,14 @@ class DatabaseClient:
                     doc_result['display_sent_at'] = result.get('display_sent_at')
                 if 'display_post_text' in result:
                     doc_result['display_post_text'] = result.get('display_post_text')
+                if 'content_dates' in result:
+                    doc_result['content_dates'] = result.get('content_dates') or []
 
                 final_results.append(doc_result)
+
+            # ── キーワード・日付を先に抽出（チャンクフィルタとリランクで共用）──
+            target_date = self._extract_date(query)
+            keywords    = self._extract_keywords(query)
 
             # ✅ 各ドキュメントのヒットチャンク全体を取得
             # Phase 4A: anon 接続時は直接テーブルアクセスを禁止（all_chunks をスキップ）
@@ -381,15 +383,22 @@ class DatabaseClient:
                         # このドキュメントの全チャンクを取得（重要度順、上限なし）
                         chunks_response = (
                             self.client.table('10_ix_search_index')
-                            .select('chunk_index, chunk_content, chunk_type, chunk_metadata, search_weight')
+                            .select('id, chunk_index, chunk_content, chunk_type, chunk_metadata, search_weight')
                             .eq('document_id', document_id)
                             .order('search_weight', desc=True)  # 重要度順
                             .execute()
                         )
 
                         if chunks_response.data:
-                            doc_result['all_chunks'] = chunks_response.data
-                            print(f"[DEBUG] ドキュメント {document_id[:8]}: {len(chunks_response.data)}個のチャンク取得")
+                            raw_chunks = chunks_response.data
+                            filtered = self._filter_chunks_for_context(
+                                raw_chunks,
+                                query=query,
+                                best_chunk_id=doc_result.get('chunk_id'),
+                                keywords=keywords,
+                            )
+                            doc_result['all_chunks'] = filtered
+                            print(f"[DEBUG] ドキュメント {document_id[:8]}: {len(raw_chunks)}個取得 → {len(filtered)}個に絞り込み")
                         else:
                             doc_result['all_chunks'] = []
 
@@ -402,19 +411,40 @@ class DatabaseClient:
                 for doc_result in final_results:
                     doc_result['all_chunks'] = []
 
+            # ── リランク（日付・キーワード数値ブースト）──────────────────────
+
+            for doc in final_results:
+                if target_date:
+                    date_boost = self._check_date_match(doc, target_date)
+                    doc['similarity'] += date_boost
+                    if date_boost > 0:
+                        doc['is_date_matched'] = True
+                if keywords:
+                    kw_boost = self._calculate_keyword_match_score(
+                        doc.get('file_name', ''), keywords, query
+                    )
+                    doc['similarity'] += kw_boost * 0.2
+
+            final_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+
+            # ── 足切り（件数はトークン上限に委ねる）──────────────────────────
+            cutoff = [r for r in final_results if r.get('similarity', 0) >= threshold]
+            # 足切り後が空なら上位3件をフォールバック（情報ゼロ回避）
+            final_results = cutoff if cutoff else final_results[:3]
+
             print(f"[DEBUG] 最終検索結果: {len(final_results)} 件（unified_search_v2）")
-            print(f"[DEBUG] 検索戦略: 重み付けスコアリング + chunk_type優先順位 + タイトルマッチ")
+            print(f"[DEBUG] 日付抽出: {target_date}, キーワード: {keywords}")
+            print(f"[DEBUG] 足切り({threshold})通過: {len(cutoff)} 件 → {len(final_results)} 件に絞り込み")
 
             return final_results
 
         except Exception as e:
-            print(f"2-tier hybrid search error: {e}")
+            print(f"[ERROR] unified_search_v2 失敗: {e}")
             import traceback
             traceback.print_exc()
-
-            # フォールバック: 従来のベクトル検索（workspaceフィルタなし）
-            print("[WARNING] フォールバックモード: match_documents を使用")
-            return await self._fallback_vector_search(embedding, limit, None)
+            # unified_search_v2 が失敗した場合はエラーを上位に伝播させる
+            # （フォールバックは削除済みカラムを参照するため使用しない）
+            raise
 
     def search_documents_sync(
         self,
@@ -422,7 +452,8 @@ class DatabaseClient:
         embedding: List[float],
         limit: int = 50,
         doc_types: Optional[List[str]] = None,
-        date_filter: Optional[str] = None
+        date_filter: Optional[str] = None,
+        threshold: float = 0.4
     ) -> List[Dict[str, Any]]:
         """
         同期版のsearch_documents（Flaskエンドポイント用）
@@ -449,7 +480,7 @@ class DatabaseClient:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     result = loop.run_until_complete(
-                        self.search_documents(query, embedding, limit, doc_types, date_filter)
+                        self.search_documents(query, embedding, limit, doc_types, date_filter, threshold)
                     )
                     return result
             except RuntimeError:
@@ -458,13 +489,65 @@ class DatabaseClient:
 
             # asyncio.run()を使用（推奨される方法）
             return asyncio.run(
-                self.search_documents(query, embedding, limit, doc_types, date_filter)
+                self.search_documents(query, embedding, limit, doc_types, date_filter, threshold)
             )
         except Exception as e:
-            print(f"Sync wrapper error: {e}")
+            print(f"[ERROR] search_documents_sync 失敗: {e}")
             import traceback
             traceback.print_exc()
-            return []
+            raise  # エラーを上位に伝播させてフロントエンドで確認できるようにする
+
+    def _filter_chunks_for_context(
+        self,
+        chunks: List[Dict[str, Any]],
+        query: str,
+        best_chunk_id: Optional[str],
+        keywords: List[str],
+        non_table_weight_threshold: float = 1.0,
+    ) -> List[Dict[str, Any]]:
+        """
+        コンテキスト構築用チャンクのフィルタリング。
+
+        - table_X チャンク（G17）: table_semantics.target がクエリキーワードに一致するもの。
+          一致なしの場合は best_chunk_id のみ（フォールバック）。
+        - それ以外（G21/G22）: search_weight >= non_table_weight_threshold のもの全件。
+        """
+        import json as _json
+
+        table_chunks = [c for c in chunks if (c.get('chunk_type') or '').startswith('table_')]
+        other_chunks = [c for c in chunks if not (c.get('chunk_type') or '').startswith('table_')]
+
+        # ── G17 テーブルチャンク ──────────────────────────────────────────
+        relevant_tables = []
+        if keywords and table_chunks:
+            for chunk in table_chunks:
+                # chunk_metadata から table_semantics を取得
+                meta = chunk.get('chunk_metadata') or {}
+                if isinstance(meta, str):
+                    try:
+                        meta = _json.loads(meta)
+                    except Exception:
+                        meta = {}
+                sem = meta.get('table_semantics') or {}
+                target = str(sem.get('target') or '').strip()
+
+                # chunk_content（タイトル含む）とtargetを対象にキーワードマッチ
+                content = (chunk.get('chunk_content') or '') + ' ' + target
+                if any(kw in content for kw in keywords):
+                    relevant_tables.append(chunk)
+
+        # キーワードマッチなし → best_chunk_id にフォールバック
+        if not relevant_tables:
+            best = [c for c in table_chunks if str(c.get('id')) == str(best_chunk_id)] if best_chunk_id else []
+            relevant_tables = best if best else table_chunks[:1]
+
+        # ── G21/G22 その他チャンク ──────────────────────────────────────
+        filtered_other = [
+            c for c in other_chunks
+            if (c.get('search_weight') or 0) >= non_table_weight_threshold
+        ]
+
+        return relevant_tables + filtered_other
 
     def _apply_date_filter(self, results: List[Dict[str, Any]], date_filter: str) -> List[Dict[str, Any]]:
         """
@@ -553,85 +636,105 @@ class DatabaseClient:
                 "match_threshold": 0.0,
                 "match_count": min(limit, 5)
             }
-            if workspace:
-                rpc_params["filter_workspace"] = workspace
 
             response = self.client.rpc("match_documents", rpc_params).execute()
-            results = response.data if response.data else []
+            raw = response.data if response.data else []
 
-            print(f"[DEBUG] フォールバック検索結果: {len(results)} 件")
+            print(f"[DEBUG] フォールバック検索結果: {len(raw)} 件")
+
+            # match_documents の戻り値を search_documents と同じ形式に変換
+            results = []
+            for r in raw:
+                results.append({
+                    'id': r.get('document_id'),
+                    'file_name': r.get('file_name'),
+                    'doc_type': r.get('doc_type'),
+                    'workspace': r.get('workspace'),
+                    'similarity': r.get('similarity', 0),
+                    'chunk_content': r.get('chunk_text'),
+                    'all_chunks': [],
+                })
             return results
 
         except Exception as e:
-            print(f"Fallback search error: {e}")
+            print(f"[ERROR] フォールバック検索エラー: {e}")
             return []
 
     def _check_date_match(self, doc: Dict[str, Any], target_date: str) -> float:
         """
-        ドキュメントのメタデータと本文から target_date を検索
-        年を無視して、月・日だけでマッチング（例：12-04）
+        日付スコアブースト（加算方式）
+
+        ① content_dates ブースト（近傍含む）と ② テキストマッチは独立して加算。
+          完全一致:   +0.3
+          1〜7日差:   +0.15
+          8〜14日差:  +0.05
+        ② テキストマッチ: +0.3
 
         Args:
             doc: ドキュメント
             target_date: ターゲット日付（YYYY-MM-DD形式、例：2025-12-04）
 
         Returns:
-            マッチスコア（0.0～0.5）
+            マッチスコア（最大 +0.6）
         """
-        # 年を除いた月・日のみを抽出（例：2025-12-04 → 12-04）
+        from datetime import date as date_type
         try:
             parts = target_date.split('-')
             month = int(parts[1])
             day = int(parts[2])
+            target_dt = date_type(int(parts[0]), month, day)
         except:
             return 0.0
 
-        # 検索パターン：「12/4」「12月4日」「12-04」など
+        # テキスト内の日付パターン（表記揺れ + F3正規化済みYYYY-MM-DD の月日部分）
         date_patterns = [
-            f"{month}/{day}",           # 12/4
-            f"{month:02d}/{day:02d}",   # 12/04
-            f"{month}月{day}日",         # 12月4日
-            f"{month:02d}-{day:02d}",   # 12-04
+            f"{month}/{day}",           # 3/5
+            f"{month:02d}/{day:02d}",   # 03/05
+            f"{month}月{day}日",         # 3月5日
+            f"-{month:02d}-{day:02d}",  # -03-05（YYYY-MM-DD の一部にマッチ）
         ]
 
-        # 1. 本文（content, summary, attachment_text）を検索 - 最優先
-        text_fields = ['content', 'summary', 'attachment_text']
+        boost = 0.0
+
+        # ① content_dates（F3正規化済みコンテンツ日付）: 完全一致 or 近傍
+        content_dates = doc.get('content_dates', [])
+        if isinstance(content_dates, list):
+            min_diff = None
+            for cd in content_dates:
+                try:
+                    cd_parts = str(cd).split('-')
+                    cd_dt = date_type(int(cd_parts[0]), int(cd_parts[1]), int(cd_parts[2]))
+                    diff = abs((cd_dt - target_dt).days)
+                    if min_diff is None or diff < min_diff:
+                        min_diff = diff
+                except:
+                    pass
+            if min_diff is not None:
+                if min_diff == 0:
+                    print(f"[DEBUG] content_dates 完全一致: {doc.get('file_name')}")
+                    boost += 0.3
+                elif min_diff <= 7:
+                    print(f"[DEBUG] content_dates {min_diff}日差: {doc.get('file_name')}")
+                    boost += 0.15
+                elif min_diff <= 14:
+                    print(f"[DEBUG] content_dates {min_diff}日差: {doc.get('file_name')}")
+                    boost += 0.05
+
+        # ② テキスト（chunk_content / summary）→ +0.3
+        text_fields = ['chunk_content', 'summary']
         for field in text_fields:
             text = doc.get(field, '')
             if text:
                 for pattern in date_patterns:
                     if pattern in text:
-                        print(f"[DEBUG] 本文で日付マッチ: {doc.get('file_name')} に '{pattern}' が含まれる")
-                        return 0.5  # 本文マッチで +0.5 ブースト（最優先）
+                        print(f"[DEBUG] テキストマッチ: {doc.get('file_name')} '{pattern}' in {field}")
+                        boost += 0.3
+                        break
+                else:
+                    continue
+                break
 
-        # 2. メタデータの weekly_schedule をチェック
-        metadata = doc.get('metadata', {})
-        weekly_schedule = metadata.get('weekly_schedule', [])
-        if isinstance(weekly_schedule, list):
-            for day_item in weekly_schedule:
-                if isinstance(day_item, dict):
-                    date = day_item.get('date', '')
-                    if date:
-                        try:
-                            doc_month = int(date.split('-')[1])
-                            doc_day = int(date.split('-')[2])
-                            if month == doc_month and day == doc_day:
-                                return 0.3  # メタデータマッチで +0.3 ブースト
-                        except:
-                            pass
-
-        # 3. document_date をチェック
-        document_date = doc.get('document_date', '')
-        if document_date:
-            try:
-                doc_month = int(str(document_date).split('-')[1])
-                doc_day = int(str(document_date).split('-')[2])
-                if month == doc_month and day == doc_day:
-                    return 0.2
-            except:
-                pass
-
-        return 0.0
+        return boost
 
     def _calculate_keyword_match_score(
         self,
@@ -1054,23 +1157,22 @@ class DatabaseClient:
         new_doc_type: Optional[str] = None
     ) -> bool:
         """
-        ドキュメントのメタデータと文書タイプを更新
+        ドキュメントのメタデータを更新
 
-        注意: この関数は修正履歴を記録しません。
+        注意: doc_type は投稿時のみ設定可能。プログラムからの変更は禁止。
         修正履歴を記録する場合は record_correction() を使用してください。
 
         Args:
             doc_id: ドキュメントID
             new_metadata: 新しいメタデータ
-            new_doc_type: 新しい文書タイプ（オプション）
+            new_doc_type: 無視される（doc_type はプログラムから変更不可）
 
         Returns:
             成功したかどうか
         """
         try:
             update_data = {'metadata': new_metadata}
-            if new_doc_type:
-                update_data['doc_type'] = new_doc_type
+            # doc_type はプログラムからの変更禁止（Supabase で直接修正すること）
 
             response = (
                 self.client.table('Rawdata_FILE_AND_MAIL')
@@ -1099,7 +1201,7 @@ class DatabaseClient:
         Args:
             doc_id: ドキュメントID
             new_metadata: 新しいメタデータ
-            new_doc_type: 新しい文書タイプ（オプション）
+            new_doc_type: 無視される（doc_type はプログラムから変更不可）
             corrector_email: 修正者のメールアドレス（オプション）
             notes: 修正に関するメモ（オプション）
 
@@ -1151,9 +1253,7 @@ class DatabaseClient:
                 'metadata': new_metadata,
                 'latest_correction_id': correction_id
             }
-            if new_doc_type and new_doc_type != old_doc_type:
-                update_data['doc_type'] = new_doc_type
-                logger.info(f"[record_correction] doc_type変更: {old_doc_type} → {new_doc_type}")
+            # doc_type はプログラムからの変更禁止（Supabase で直接修正すること）
 
             # year, month のトップレベルカラムへの同期は削除（metadata 内で管理）
 

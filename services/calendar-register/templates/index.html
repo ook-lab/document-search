@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>カレンダー登録</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ───── トップバー ───── */
+    .topbar {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,.06);
+    }
+
+    .topbar h1 { font-size: 15px; font-weight: 600; color: #333; white-space: nowrap; }
+    .topbar .spacer { flex: 1; }
+
+    .cal-select-wrap { display: flex; align-items: center; gap: 8px; }
+
+    .cal-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #4285F4;
+      flex-shrink: 0;
+    }
+
+    select#calendarSelect {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 6px 28px 6px 10px;
+      font-size: 14px;
+      appearance: none;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 8px center / 12px;
+      min-width: 200px;
+      cursor: pointer;
+    }
+
+    select#calendarSelect:disabled { background-color: #f5f5f5; color: #999; }
+
+    .btn-preset {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      color: #555;
+    }
+    .btn-preset:hover { background: #f5f5f5; }
+    .btn-preset.active { background: #e8f0fe; border-color: #4285F4; color: #1a73e8; }
+
+    .auth-btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 500; }
+    .btn-login  { background: #4285F4; color: #fff; }
+    .btn-logout { background: #f0f0f0; color: #555; }
+
+    /* ───── メイン ───── */
+    .main { max-width: 740px; margin: 28px auto; padding: 0 16px; }
+
+    /* ───── プリセットパネル ───── */
+    #presetPanel {
+      display: none;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .preset-header {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .preset-cal-name { color: #1a73e8; }
+
+    textarea#presetText {
+      width: 100%;
+      min-height: 160px;
+      border: none;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.8;
+      resize: vertical;
+      font-family: 'Consolas', 'Courier New', monospace;
+      color: #333;
+      outline: none;
+    }
+
+    textarea#presetText::placeholder { color: #bbb; }
+
+    .preset-footer {
+      padding: 10px 16px;
+      border-top: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .preset-hint { font-size: 12px; color: #999; flex: 1; }
+
+    .btn-save-preset {
+      padding: 6px 16px;
+      border-radius: 6px;
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-save-preset:hover { background: #1557b0; }
+
+    #presetSaveStatus { font-size: 12px; color: #137333; }
+
+    /* ───── メインカード ───── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 20px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .card-header code {
+      background: #f5f5f5;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 12px;
+      color: #c0392b;
+    }
+
+    textarea#eventText {
+      width: 100%;
+      min-height: 260px;
+      border: none;
+      padding: 16px 20px;
+      font-size: 15px;
+      line-height: 1.8;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      color: #222;
+    }
+
+    textarea#eventText::placeholder { color: #bbb; }
+
+    .card-footer {
+      padding: 12px 20px;
+      border-top: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-parse {
+      padding: 8px 18px;
+      border-radius: 7px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      color: #444;
+    }
+    .btn-parse:hover { background: #f5f5f5; }
+
+    .btn-register {
+      padding: 8px 22px;
+      border-radius: 7px;
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-register:hover { background: #1557b0; }
+    .btn-register:disabled { background: #aaa; cursor: default; }
+
+    .char-count { margin-left: auto; font-size: 12px; color: #aaa; }
+
+    /* ───── プレビュー ───── */
+    #previewPanel { margin-top: 16px; display: none; }
+    .panel-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; padding: 0 4px; }
+    .event-list { list-style: none; }
+    .event-item {
+      background: #fff;
+      border-radius: 8px;
+      border-left: 4px solid #4285F4;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .event-item.all-day { border-left-color: #0f9d58; }
+    .event-item .ev-title { font-size: 15px; font-weight: 600; color: #222; }
+    .event-item .ev-meta  { font-size: 12px; color: #777; margin-top: 3px; }
+    .event-item .ev-loc   { font-size: 12px; color: #555; margin-top: 2px; }
+
+    /* ───── 登録結果 ───── */
+    #resultPanel { margin-top: 16px; display: none; }
+    .result-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; border-radius: 8px; margin-bottom: 6px;
+      font-size: 14px; background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .result-item.ok  { border-left: 4px solid #0f9d58; }
+    .result-item.err { border-left: 4px solid #d93025; }
+    .result-icon { font-size: 16px; }
+    .result-link { font-size: 12px; color: #1a73e8; text-decoration: none; margin-left: auto; }
+    .result-link:hover { text-decoration: underline; }
+
+    /* ───── ステータスバー ───── */
+    #statusBar {
+      display: none; margin-top: 10px; padding: 8px 14px;
+      border-radius: 7px; font-size: 13px;
+      background: #e8f0fe; color: #1a73e8;
+    }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #c5d8fb; border-top-color: #1a73e8;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      margin-right: 6px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .unauthed-notice { text-align: center; padding: 40px 20px; color: #888; }
+    .unauthed-notice p { margin-bottom: 16px; font-size: 15px; }
+  </style>
+</head>
+<body>
+
+<!-- トップバー -->
+<div class="topbar">
+  <h1>📅 カレンダー登録</h1>
+
+  {% if authed %}
+  <div class="cal-select-wrap">
+    <div class="cal-dot" id="calDot"></div>
+    <select id="calendarSelect" disabled>
+      <option>読み込み中...</option>
+    </select>
+  </div>
+  <button class="btn-preset" id="btnPresetToggle" onclick="togglePreset()">⚙ プリセット</button>
+  <div class="spacer"></div>
+  <a href="/auth/logout" class="auth-btn btn-logout">ログアウト</a>
+  {% else %}
+  <div class="spacer"></div>
+  <a href="/auth/login" class="auth-btn btn-login">Google でログイン</a>
+  {% endif %}
+</div>
+
+<div class="main">
+  {% if not authed %}
+  <div class="card">
+    <div class="unauthed-notice">
+      <p>Google アカウントでログインすると<br>カレンダーへの登録が使えます</p>
+      <a href="/auth/login" class="auth-btn btn-login" style="display:inline-block;padding:10px 24px;font-size:15px;">Google でログイン</a>
+    </div>
+  </div>
+
+  {% else %}
+
+  <!-- プリセットパネル -->
+  <div id="presetPanel">
+    <div class="preset-header">
+      ⚙ プリセット辞書 —
+      <span class="preset-cal-name" id="presetCalName">カレンダーを選択してください</span>
+    </div>
+    <textarea id="presetText" placeholder="# 時間割&#10;1時間目: 08:45-09:30&#10;2時間目: 09:35-10:20&#10;週テスト: 13:30-17:00&#10;&#10;# 場所略称&#10;体育館: 第一体育館"></textarea>
+    <div class="preset-footer">
+      <span class="preset-hint">カレンダーごとに保存されます。Gemini がこの辞書を参照して時間・場所を解釈します。</span>
+      <span id="presetSaveStatus"></span>
+      <button class="btn-save-preset" onclick="savePreset()">保存</button>
+    </div>
+  </div>
+
+  <!-- メインカード -->
+  <div class="card">
+    <div class="card-header">
+      予定を1行1件で入力してください。<br>
+      時間あり: <code>1/15 10:00-12:00 授業参観 体育館</code> &nbsp;
+      開始のみ: <code>来週月曜 13:30 歯医者</code> &nbsp;
+      終日: <code>1/20 運動会</code> &nbsp;
+      プリセット使用例: <code>1/15 1時間目 算数</code>
+    </div>
+
+    <textarea id="eventText" placeholder="・1/15(水) 1時間目 算数&#10;・来週月曜 週テスト&#10;・1/20 運動会"></textarea>
+
+    <div class="card-footer">
+      <button class="btn-parse" onclick="parseEvents()">🔍 解析プレビュー</button>
+      <button class="btn-register" id="btnRegister" onclick="registerEvents()" disabled>カレンダーに登録</button>
+      <span class="char-count" id="charCount">0 行</span>
+    </div>
+  </div>
+
+  <div id="statusBar"></div>
+
+  <div id="previewPanel">
+    <div class="panel-title">📋 解析結果（Gemini）</div>
+    <ul class="event-list" id="eventList"></ul>
+  </div>
+
+  <div id="resultPanel">
+    <div class="panel-title">✅ 登録結果</div>
+    <div id="resultList"></div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+let parsedEvents = [];
+let calendars = [];
+let presetOpen = false;
+
+{% if authed %}
+// ─── カレンダー一覧ロード ───
+(async () => {
+  const sel = document.getElementById('calendarSelect');
+  const dot = document.getElementById('calDot');
+  try {
+    const res = await fetch('/api/calendars');
+    if (!res.ok) throw new Error(await res.text());
+    calendars = await res.json();
+
+    sel.innerHTML = calendars.map(c =>
+      `<option value="${c.id}" ${c.primary ? 'selected' : ''}>${c.name}</option>`
+    ).join('');
+    sel.disabled = false;
+
+    const primary = calendars.find(c => c.primary) || calendars[0];
+    if (primary) dot.style.background = primary.color;
+
+    sel.addEventListener('change', () => {
+      const cal = calendars.find(c => c.id === sel.value);
+      if (cal) dot.style.background = cal.color;
+      if (presetOpen) loadPreset(sel.value, cal?.name || sel.value);
+    });
+
+    // 初期プリセット読み込み（パネルが開いたときのために）
+    if (primary) loadPreset(primary.id, primary.name);
+  } catch (e) {
+    sel.innerHTML = '<option>読み込み失敗</option>';
+    showStatus('カレンダーの読み込みに失敗しました: ' + e.message, 'error');
+  }
+})();
+{% endif %}
+
+// ─── 行数カウント ───
+document.getElementById('eventText')?.addEventListener('input', function () {
+  const lines = this.value.split('\n').filter(l => l.trim()).length;
+  document.getElementById('charCount').textContent = lines + ' 行';
+});
+
+// ─── プリセットパネル開閉 ───
+function togglePreset() {
+  const panel = document.getElementById('presetPanel');
+  const btn   = document.getElementById('btnPresetToggle');
+  presetOpen = !presetOpen;
+  panel.style.display = presetOpen ? 'block' : 'none';
+  btn.classList.toggle('active', presetOpen);
+
+  if (presetOpen) {
+    const sel = document.getElementById('calendarSelect');
+    const cal = calendars.find(c => c.id === sel?.value);
+    if (cal) loadPreset(cal.id, cal.name);
+  }
+}
+
+// ─── プリセット読み込み ───
+async function loadPreset(calendarId, calendarName) {
+  document.getElementById('presetCalName').textContent = calendarName || calendarId;
+  try {
+    const res = await fetch(`/api/presets/${encodeURIComponent(calendarId)}`);
+    const data = await res.json();
+    document.getElementById('presetText').value = data.preset_text || '';
+    document.getElementById('presetSaveStatus').textContent = '';
+  } catch (e) {
+    // 取得失敗は無視（空欄のまま）
+  }
+}
+
+// ─── プリセット保存 ───
+async function savePreset() {
+  const sel = document.getElementById('calendarSelect');
+  const calendarId = sel?.value;
+  if (!calendarId) return;
+
+  const preset_text = document.getElementById('presetText').value;
+  const status = document.getElementById('presetSaveStatus');
+  status.textContent = '保存中...';
+  status.style.color = '#888';
+
+  try {
+    const res = await fetch(`/api/presets/${encodeURIComponent(calendarId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset_text })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    status.textContent = '✓ 保存しました';
+    status.style.color = '#137333';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  } catch (e) {
+    status.textContent = '保存失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  }
+}
+
+// ─── 解析プレビュー ───
+async function parseEvents() {
+  const text = document.getElementById('eventText').value.trim();
+  if (!text) { alert('テキストを入力してください'); return; }
+
+  const preset_text = document.getElementById('presetText')?.value || '';
+
+  showStatus('<span class="spinner"></span>Gemini で解析中...', 'info');
+  document.getElementById('previewPanel').style.display = 'none';
+  document.getElementById('resultPanel').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, preset_text })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '解析失敗');
+
+    parsedEvents = data.events;
+    renderPreview(parsedEvents);
+    document.getElementById('btnRegister').disabled = parsedEvents.length === 0;
+    hideStatus();
+  } catch (e) {
+    showStatus('解析エラー: ' + e.message, 'error');
+  }
+}
+
+function renderPreview(events) {
+  const list = document.getElementById('eventList');
+  list.innerHTML = events.map(ev => {
+    const timeStr = ev.all_day || !ev.start_time
+      ? '終日'
+      : ev.end_time
+        ? `${ev.start_time} 〜 ${ev.end_time}`
+        : `${ev.start_time} 〜（+1時間）`;
+    const locStr = ev.location ? `<div class="ev-loc">📍 ${ev.location}</div>` : '';
+    return `
+      <li class="event-item ${ev.all_day ? 'all-day' : ''}">
+        <div class="ev-title">${ev.title}</div>
+        <div class="ev-meta">${ev.date} &nbsp; ${timeStr}</div>
+        ${locStr}
+      </li>`;
+  }).join('');
+  document.getElementById('previewPanel').style.display = 'block';
+}
+
+// ─── カレンダーに登録 ───
+async function registerEvents() {
+  if (!parsedEvents.length) { alert('まず解析を実行してください'); return; }
+
+  const calendarId = document.getElementById('calendarSelect').value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+
+  document.getElementById('btnRegister').disabled = true;
+  document.getElementById('resultPanel').style.display = 'none';
+  showStatus('<span class="spinner"></span>登録中...', 'info');
+
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendar_id: calendarId, events: parsedEvents })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '登録失敗');
+
+    renderResults(data.results);
+    const ok  = data.results.filter(r => r.success).length;
+    const err = data.results.filter(r => !r.success).length;
+    hideStatus();
+    if (err === 0) {
+      showStatus(`✅ ${ok} 件を登録しました`, 'success');
+    } else {
+      showStatus(`⚠️ ${ok} 件成功、${err} 件失敗`, 'warn');
+    }
+  } catch (e) {
+    showStatus('登録エラー: ' + e.message, 'error');
+    document.getElementById('btnRegister').disabled = false;
+  }
+}
+
+function renderResults(results) {
+  const list = document.getElementById('resultList');
+  list.innerHTML = results.map(r => {
+    if (r.success) {
+      return `
+        <div class="result-item ok">
+          <span class="result-icon">✅</span>
+          <span>${r.summary || r.title}</span>
+          <a class="result-link" href="${r.html_link}" target="_blank">カレンダーで確認 →</a>
+        </div>`;
+    } else {
+      return `
+        <div class="result-item err">
+          <span class="result-icon">❌</span>
+          <span>${r.title} — ${r.error}</span>
+        </div>`;
+    }
+  }).join('');
+  document.getElementById('resultPanel').style.display = 'block';
+}
+
+// ─── ステータスバー ───
+function showStatus(html, type) {
+  const bar = document.getElementById('statusBar');
+  const colors = {
+    info:    { bg: '#e8f0fe', fg: '#1a73e8' },
+    success: { bg: '#e6f4ea', fg: '#137333' },
+    warn:    { bg: '#fef7e0', fg: '#b06000' },
+    error:   { bg: '#fce8e6', fg: '#c5221f' },
+  };
+  const c = colors[type] || colors.info;
+  bar.style.background = c.bg;
+  bar.style.color = c.fg;
+  bar.innerHTML = html;
+  bar.style.display = 'block';
+}
+
+function hideStatus() {
+  document.getElementById('statusBar').style.display = 'none';
+}
+</script>
+</body>
+</html>

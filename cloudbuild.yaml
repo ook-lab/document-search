@@ -51,27 +51,27 @@ steps:
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-review:${_TAG}'
 
   # ============================================
-  # 4. kakeibo-ui
+  # 4. calendar-register
   # ============================================
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:${_TAG}'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/calendar-register:${_TAG}'
       - '-f'
-      - 'kakeibo_ui/Dockerfile'
+      - 'services/calendar-register/Dockerfile'
       - '.'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:${_TAG}'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/calendar-register:${_TAG}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:${_TAG}'
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-review:${_TAG}'
-  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:${_TAG}'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/calendar-register:${_TAG}'
 
 substitutions:
   _TAG: 'latest'
@@ -79,3 +79,4 @@ substitutions:
 options:
   machineType: 'E2_HIGHCPU_8'
   logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE

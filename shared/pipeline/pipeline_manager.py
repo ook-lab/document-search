@@ -848,6 +848,7 @@ class PipelineManager:
                 'g17_table_analyses': json.dumps(final_metadata.get('g17_output', []), ensure_ascii=False) if final_metadata.get('g17_output') else None,
                 'g21_articles': json.dumps(final_metadata.get('g21_output', []), ensure_ascii=False) if final_metadata.get('g21_output') else None,
                 'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None,
+                'content_dates': stage_f_result.get('all_dates') or None,
             }).eq('id', document_id).execute()
             logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
         except Exception as e:
@@ -861,6 +862,7 @@ class PipelineManager:
         self._update_document_progress(document_id, 0.60, 'チャンク化')
         metadata_chunker = MetadataChunker()
         g22_output = final_metadata.get('g22_output', {})
+        all_dates = stage_f_result.get('all_dates') or []
         document_data = {
             'file_name': file_name,
             'doc_type': doc.get('doc_type'),
@@ -869,15 +871,24 @@ class PipelineManager:
             'display_sender': doc.get('display_sender'),
             'display_sent_at': doc.get('display_sent_at'),
             'classroom_sender_email': doc.get('classroom_sender_email'),
+            # F3: 最初の日付を document_date として使用
+            'document_date': all_dates[0] if all_dates else None,
+            # DB カラムから取得
+            'person': doc.get('person'),
+            'organizations': doc.get('organizations'),
+            # G22: summary / tags / people
+            'summary': g22_output.get('summary', ''),
+            'tags': g22_output.get('tags', []),
+            'people': g22_output.get('people', []),
             # G21: articles → text_blocks（title/body → title/content）
             'text_blocks': [
                 {'title': a.get('title', ''), 'content': a.get('body', '')}
                 for a in final_metadata.get('g21_output', [])
                 if a.get('body', '').strip()
             ],
-            # G17: table analyses → structured_tables（description → table_title）
+            # G17: table analyses → structured_tables（semantic_title → table_title）
             'structured_tables': [
-                {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
+                {'table_title': t.get('description', ''), 'semantic_title': (t.get('sections') or [{}])[0].get('semantic_title', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', []), 'metadata': t.get('metadata', {})}
                 for t in final_metadata.get('g17_output', [])
                 if t.get('rows')
             ],
@@ -1022,7 +1033,7 @@ class PipelineManager:
                     'pdf_producer': pdf_producer,
                     'origin_app': stage_a_result.get('origin_app'),
                     'layout_profile': stage_a_result.get('layout_profile'),
-                    'doc_type': stage_a_result.get('document_type'),
+                    # doc_type は ingestion が設定した値を保持する（Stage A で上書きしない）
                     # Gatekeeper フィールド
                     'gate_decision': gatekeeper_result.get('decision'),
                     'gate_block_code': gatekeeper_result.get('block_code'),
@@ -1249,7 +1260,8 @@ class PipelineManager:
                     'g14_reconstructed_tables': json.dumps(final_metadata.get('g14_output', []), ensure_ascii=False) if final_metadata.get('g14_output') else None,
                     'g17_table_analyses': json.dumps(final_metadata.get('g17_output', []), ensure_ascii=False) if final_metadata.get('g17_output') else None,
                     'g21_articles': json.dumps(final_metadata.get('g21_output', []), ensure_ascii=False) if final_metadata.get('g21_output') else None,
-                    'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None
+                    'g22_ai_extracted': json.dumps(final_metadata.get('g22_output', {}), ensure_ascii=False) if final_metadata.get('g22_output') else None,
+                    'content_dates': stage_f_result.get('all_dates') or None,
                 }).eq('id', document_id).execute()
                 logger.info(f"[Stage G] ui_data を DB に保存: {document_id}")
                 logger.info(f"[Stage G] G-11/G-14/G-17/G-21/G-22 を個別カラムに保存")
@@ -1278,6 +1290,7 @@ class PipelineManager:
             metadata_chunker = MetadataChunker()
 
             g22_output = final_metadata.get('g22_output', {})
+            all_dates = stage_f_result.get('all_dates') or []
             document_data = {
                 'file_name': file_name,
                 'doc_type': doc.get('doc_type'),
@@ -1286,15 +1299,24 @@ class PipelineManager:
                 'display_sender': doc.get('display_sender'),
                 'display_sent_at': doc.get('display_sent_at'),
                 'classroom_sender_email': doc.get('classroom_sender_email'),
+                # F3: 最初の日付を document_date として使用
+                'document_date': all_dates[0] if all_dates else None,
+                # DB カラムから取得
+                'person': doc.get('person'),
+                'organizations': doc.get('organizations'),
+                # G22: summary / tags / people
+                'summary': g22_output.get('summary', ''),
+                'tags': g22_output.get('tags', []),
+                'people': g22_output.get('people', []),
                 # G21: articles → text_blocks（title/body → title/content）
                 'text_blocks': [
                     {'title': a.get('title', ''), 'content': a.get('body', '')}
                     for a in final_metadata.get('g21_output', [])
                     if a.get('body', '').strip()
                 ],
-                # G17: table analyses → structured_tables（description → table_title）
+                # G17: table analyses → structured_tables（semantic_title → table_title）
                 'structured_tables': [
-                    {'table_title': t.get('description', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', [])}
+                    {'table_title': t.get('description', ''), 'semantic_title': (t.get('sections') or [{}])[0].get('semantic_title', ''), 'headers': t.get('headers', []), 'rows': t.get('rows', []), 'metadata': t.get('metadata', {})}
                     for t in final_metadata.get('g17_output', [])
                     if t.get('rows')
                 ],

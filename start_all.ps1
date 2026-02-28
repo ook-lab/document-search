@@ -20,10 +20,11 @@ Write-Host ""
 
 # サービス定義
 $services = @(
-    @{ Name = "kakeibo-ui";       Path = "kakeibo_ui/app.py";              Port = 5000 },
-    @{ Name = "doc-search";       Path = "services/doc-search/app.py";    Port = 5001 },
-    @{ Name = "doc-review";       Path = "services/doc-review/app.py";    Port = 5002 },
-    @{ Name = "doc-processor";    Path = "services/doc-processor/app.py"; Port = 8080 }
+    @{ Name = "kakeibo-ui";         Path = "kakeibo_ui/app.py";                              Port = 5000 },
+    @{ Name = "doc-search";         Path = "services/doc-search/app.py";                    Port = 5001 },
+    @{ Name = "doc-review";         Path = "services/doc-review/app.py";                    Port = 5002 },
+    @{ Name = "calendar-register";  Path = "services/calendar-register/app.py";             Port = 5003 },
+    @{ Name = "doc-processor";      Path = "services/doc-processor/app.py";                 Port = 8080 }
 )
 
 # netsuper-search は Streamlit アプリ
@@ -62,11 +63,12 @@ Write-Host "  All services are launching!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Service URLs:" -ForegroundColor White
-Write-Host "  - Kakeibo UI:       http://localhost:5000" -ForegroundColor Gray
-Write-Host "  - Doc Search:       http://localhost:5001" -ForegroundColor Gray
-Write-Host "  - Doc Review:       http://localhost:5002" -ForegroundColor Gray
-Write-Host "  - Doc Processor:    http://localhost:8080" -ForegroundColor Gray
-Write-Host "  - Netsuper Search:  http://localhost:8501" -ForegroundColor Gray
+Write-Host "  - Kakeibo UI:         http://localhost:5000" -ForegroundColor Gray
+Write-Host "  - Doc Search:         http://localhost:5001" -ForegroundColor Gray
+Write-Host "  - Doc Review:         http://localhost:5002" -ForegroundColor Gray
+Write-Host "  - Calendar Register:  http://localhost:5003" -ForegroundColor Gray
+Write-Host "  - Doc Processor:      http://localhost:8080" -ForegroundColor Gray
+Write-Host "  - Netsuper Search:    http://localhost:8501" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Press any key to exit this launcher (services will continue running)..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

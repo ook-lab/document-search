@@ -734,6 +734,12 @@
                         <button class="btn" id="btn-classify" onclick="classifySelected()" style="background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: white; font-size: 0.85em; padding: 6px 14px;">
                             🏷 分類を確認
                         </button>
+                        <button class="btn" onclick="openDocTypeModal()" style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); color: white; font-size: 0.85em; padding: 6px 14px;">
+                            📂 doc_type変更
+                        </button>
+                        <button class="btn" onclick="addSelectedToPending()" style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: white; font-size: 0.85em; padding: 6px 14px;">
+                            🔄 選択した件をpendingに戻す
+                        </button>
                         <button class="btn btn-primary" onclick="addSelectedToQueue()" style="font-size: 0.85em; padding: 6px 14px;">
                             ➕ 選択した件をキューに追加
                         </button>
@@ -931,7 +937,7 @@
 
         // キューに追加
         async function enqueueDocuments() {
-            const limit = parseInt(document.getElementById('max-items').value) || 10;
+            const limit = parseInt(document.getElementById('max-items')?.value) || 10;
             const workspace = document.getElementById('workspace').value || null;
             const docIdInput = document.getElementById('doc-id').value.trim();
 
@@ -974,7 +980,7 @@
 
             const btn = document.getElementById('btn-execute');
             const workspace = document.getElementById('workspace').value || 'all';
-            const limit = parseInt(document.getElementById('max-items').value) || 10;
+            const limit = parseInt(document.getElementById('max-items')?.value) || 10;
 
             // ボタンを無効化
             isExecuting = true;
@@ -1205,12 +1211,11 @@
 
                 listEl.innerHTML = queuedDocs.map(doc => {
                     const title = doc.title || doc.file_name || '(無題)';
-                    const shortId = doc.id.substring(0, 8);
 
                     return `
                         <div class="request-card">
                             <div class="request-header">
-                                <span class="request-id" title="${doc.id}">${shortId}...</span>
+                                <span class="request-id" title="${doc.id}">${doc.id}</span>
                                 <span class="request-status queued">⏳ queued</span>
                             </div>
                             <div class="doc-titles">
@@ -1302,14 +1307,13 @@
 
                 const docsHtml = blockedDocs.map(doc => {
                     const title = doc.title || doc.file_name || '(無題)';
-                    const shortId = doc.id.substring(0, 8);
                     const blockCode = doc.gate_block_code || 'UNKNOWN';
                     const blockReason = doc.gate_block_reason || '理由不明';
 
                     return `
                         <div class="request-card" style="border-left: 4px solid #ef4444;">
                             <div class="request-header">
-                                <span class="request-id" title="${doc.id}">${shortId}...</span>
+                                <span class="request-id" title="${doc.id}">${doc.id}</span>
                                 <span class="request-status failed" style="background: #fef2f2; color: #991b1b;">🚫 BLOCK</span>
                             </div>
                             <div class="doc-titles">
@@ -1421,7 +1425,6 @@
 
                 const docsHtml = failedDocs.map(doc => {
                     const title = doc.title || doc.file_name || '(無題)';
-                    const shortId = doc.id.substring(0, 8);
                     const attemptCount = doc.attempt_count || 0;
 
                     // エラーメッセージ: 優先順位 last_error_reason > error_message > metadata.last_error
@@ -1454,7 +1457,7 @@
                     return `
                         <div class="request-card" style="border-left: 4px solid #f59e0b;">
                             <div class="request-header">
-                                <span class="request-id" title="${doc.id}">${shortId}...</span>
+                                <span class="request-id" title="${doc.id}">${doc.id}</span>
                                 <span class="request-status failed">❌ FAILED</span>
                             </div>
                             <div class="doc-titles">
@@ -1637,6 +1640,7 @@
                             <div data-doc-name style="font-weight: 600; color: #1f2937; word-break: break-all;">${escHtml(label)}</div>
                             <div style="font-size: 0.8em; color: #6b7280; margin-top: 4px;">
                                 ${doc.workspace ? `<span style="margin-right: 8px;">📁 ${escHtml(doc.workspace)}</span>` : ''}
+                                ${doc.doc_type ? `<span style="margin-right: 8px;">📂 ${escHtml(doc.doc_type)}</span>` : ''}
                                 ${doc.origin_app ? `<span style="margin-right: 8px;">🏷 ${escHtml(doc.origin_app)}</span>` : ''}
                                 <span>状態: ${escHtml(doc.processing_status)}</span>
                             </div>
@@ -1795,6 +1799,35 @@
             }
         }
 
+        // 選択した件をpendingにリセット
+        async function addSelectedToPending() {
+            const checkboxes = document.querySelectorAll('.search-result-checkbox:checked');
+            const docIds = Array.from(checkboxes).map(cb => cb.value);
+
+            if (!docIds.length) {
+                showMessage('error', '❌ ドキュメントを選択してください');
+                return;
+            }
+
+            try {
+                const response = await fetch('/internal/set-pending', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doc_ids: docIds })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showMessage('success', `✅ ${data.updated_count}件をpendingにリセットしました`);
+                    refreshQueue();
+                    loadDashboard();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            }
+        }
+
         // 選択した件をキューに追加
         async function addSelectedToQueue() {
             const checkboxes = document.querySelectorAll('.search-result-checkbox:checked');
@@ -1932,6 +1965,78 @@
                 messageBox.className = 'status-message';
             }, 5000);
         }
+        // ===== doc_type 一括変更 =====
+
+        function openDocTypeModal() {
+            const checkboxes = document.querySelectorAll('.search-result-checkbox:checked');
+            if (!checkboxes.length) {
+                showMessage('error', '❌ ドキュメントを選択してください');
+                return;
+            }
+            document.getElementById('doc-type-modal-count').textContent = checkboxes.length + '件';
+            document.getElementById('doc-type-input').value = '';
+            document.getElementById('doc-type-modal').style.display = 'flex';
+            document.getElementById('doc-type-input').focus();
+        }
+
+        function closeDocTypeModal() {
+            document.getElementById('doc-type-modal').style.display = 'none';
+        }
+
+        async function applyDocTypeChange() {
+            const docType = document.getElementById('doc-type-input').value.trim();
+            if (!docType) {
+                showMessage('error', '❌ doc_type を入力してください');
+                return;
+            }
+            const checkboxes = document.querySelectorAll('.search-result-checkbox:checked');
+            const docIds = Array.from(checkboxes).map(cb => cb.value);
+
+            const btn = document.getElementById('btn-apply-doc-type');
+            btn.disabled = true;
+            btn.textContent = '変更中...';
+
+            try {
+                const response = await fetch('/internal/update-doc-type', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doc_ids: docIds, doc_type: docType })
+                });
+                const data = await response.json();
+                closeDocTypeModal();
+                if (data.success) {
+                    showMessage('success', `✅ ${data.updated_count}件の doc_type を「${docType}」に変更しました`);
+                    searchDocuments();
+                } else {
+                    showMessage('error', `❌ ${data.error}`);
+                }
+            } catch (error) {
+                showMessage('error', `❌ エラー: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '変更する';
+            }
+        }
+
+        // Escキーでモーダルを閉じる
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') closeDocTypeModal();
+        });
     </script>
+
+    <!-- doc_type変更モーダル -->
+    <div id="doc-type-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:white; border-radius:12px; padding:28px; min-width:360px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <h3 style="margin:0 0 16px; font-size:1.1em; color:#1f2937;">📂 doc_type 一括変更</h3>
+            <p style="margin:0 0 16px; color:#6b7280; font-size:0.9em;"><span id="doc-type-modal-count"></span>の doc_type を変更します</p>
+            <input id="doc-type-input" type="text" placeholder="新しい doc_type を入力"
+                style="width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:0.95em; box-sizing:border-box; margin-bottom:16px;"
+                onkeydown="if(event.key==='Enter') applyDocTypeChange()">
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button class="btn" onclick="closeDocTypeModal()" style="background:#f3f4f6; color:#374151;">キャンセル</button>
+                <button id="btn-apply-doc-type" class="btn" onclick="applyDocTypeChange()" style="background:linear-gradient(135deg,#d97706,#b45309); color:white;">変更する</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
