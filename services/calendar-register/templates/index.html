@@ -463,8 +463,7 @@
   <!-- タブ -->
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('register')">📝 登録</button>
-    <button class="tab-btn" onclick="switchTab('assign')">🔀 割り振り</button>
-    <button class="tab-btn" onclick="switchTab('search')">🔍 検索</button>
+    <button class="tab-btn" onclick="switchTab('assign')">✏️ 修正</button>
   </div>
 
   <!-- ==============================
@@ -532,6 +531,10 @@
           <input type="date" id="assignFrom">
           <span style="color:#888;font-size:13px;">〜</span>
           <input type="date" id="assignTo">
+        </div>
+        <div class="assign-range" style="border-bottom:none;">
+          <input type="text" id="assignQ" placeholder="キーワード（省略可）"
+            style="flex:1;border:1px solid #ccc;border-radius:6px;padding:5px 10px;font-size:13px;outline:none;">
           <button class="btn-fetch" onclick="fetchSlots()">取得</button>
         </div>
         <div class="slot-list" id="slotList">
@@ -541,14 +544,14 @@
 
       <!-- 右: 科目リスト -->
       <div class="assign-card">
-        <div class="assign-card-header">② 割り振り指示を入力</div>
-        <textarea id="subjectText" placeholder="3/10 午前: 国語, 数学&#10;3/10 午後: 英語&#10;3/11: 理科, 社会, 英語&#10;&#10;（自由に書いてOK。Gemini が枠に割り振ります）"></textarea>
+        <div class="assign-card-header">② 修正指示を入力</div>
+        <textarea id="subjectText" placeholder="3/10 午前: 国語, 数学&#10;3/10 午後: 英語&#10;3/11: 理科, 社会, 英語&#10;&#10;（自由に書いてOK。Gemini が修正案を作ります）"></textarea>
       </div>
     </div>
 
     <div class="assign-actions">
       <button class="btn-assign" id="btnAssign" onclick="assignSubjects()" disabled>
-        🤖 Gemini で割り振い案を生成
+        🤖 Gemini で修正案を生成
       </button>
       <button class="btn-apply" id="btnApply" onclick="applyAssignments()" disabled>
         カレンダーに反映
@@ -558,38 +561,12 @@
 
     <!-- 割り振い結果プレビュー -->
     <div id="assignPreview" style="display:none;">
-      <div class="panel-title">📋 割り振い案（編集可）</div>
+      <div class="panel-title">📋 修正案（編集可）</div>
       <div id="assignResultList"></div>
     </div>
 
   </div><!-- /tab-assign -->
 
-  <!-- ==============================
-       タブ3: 検索
-       ============================== -->
-  <div class="tab-content" id="tab-search">
-
-    <div class="card" style="margin-bottom:16px;">
-      <div style="padding:14px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <input type="text" id="searchQ" placeholder="キーワードを入力（例: 算数、体育館、夏期講習）"
-          style="flex:1;min-width:200px;border:1px solid #ccc;border-radius:7px;padding:8px 14px;font-size:15px;outline:none;">
-        <button class="btn-fetch" id="btnSearch" onclick="searchEvents()" style="padding:8px 20px;font-size:14px;font-weight:600;">検索</button>
-      </div>
-      <div style="padding:0 16px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-top:1px solid #f0f0f0;padding-top:10px;">
-        <span style="font-size:13px;color:#888;">期間（省略可）</span>
-        <input type="date" id="searchFrom" style="border:1px solid #ccc;border-radius:6px;padding:5px 8px;font-size:13px;">
-        <span style="color:#888;font-size:13px;">〜</span>
-        <input type="date" id="searchTo"   style="border:1px solid #ccc;border-radius:6px;padding:5px 8px;font-size:13px;">
-        <span id="searchStatus" style="margin-left:auto;font-size:13px;color:#888;"></span>
-      </div>
-    </div>
-
-    <div id="searchResults" style="display:none;">
-      <div class="panel-title" id="searchResultTitle"></div>
-      <div id="searchResultList"></div>
-    </div>
-
-  </div><!-- /tab-search -->
 
   {% endif %}
 </div>
@@ -798,7 +775,7 @@ function renderResults(results) {
 }
 
 // ─── タブ切り替え ───
-const TAB_NAMES = ['register', 'assign', 'search'];
+const TAB_NAMES = ['register', 'assign'];
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
     b.classList.toggle('active', TAB_NAMES[i] === name);
@@ -829,19 +806,30 @@ async function fetchSlots() {
   const calendarId = document.getElementById('calendarSelect')?.value;
   const from = document.getElementById('assignFrom').value;
   const to   = document.getElementById('assignTo').value;
+  const q    = document.getElementById('assignQ').value.trim();
   if (!calendarId) { alert('カレンダーを選択してください'); return; }
   if (!from || !to) { alert('期間を指定してください'); return; }
 
   setAssignStatus('<span class="spinner"></span>取得中...');
+
+  // キーワードがあれば /api/search、なければ /api/events
+  let url;
+  if (q) {
+    url = `/api/search?calendar_id=${encodeURIComponent(calendarId)}&q=${encodeURIComponent(q)}&from=${from}&to=${to}`;
+  } else {
+    url = `/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`;
+  }
+
   try {
-    const res = await fetch(`/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`);
+    const res = await fetch(url);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
     fetchedSlots = data.events;
     renderSlotList(fetchedSlots);
     document.getElementById('btnAssign').disabled = fetchedSlots.length === 0;
-    setAssignStatus(fetchedSlots.length + ' 件取得しました', '#137333');
+    const label = q ? `「${q}」で ${fetchedSlots.length} 件` : `${fetchedSlots.length} 件取得しました`;
+    setAssignStatus(label, '#137333');
   } catch (e) {
     setAssignStatus('取得失敗: ' + e.message, '#c5221f');
   }
@@ -894,7 +882,7 @@ async function assignSubjects() {
     assignmentData = data.assignments;
     renderAssignPreview(assignmentData);
     document.getElementById('btnApply').disabled = false;
-    setAssignStatus('割り振い案を生成しました。内容を確認・編集してから「カレンダーに反映」を押してください', '#137333');
+    setAssignStatus('修正案を生成しました。内容を確認・編集してから「カレンダーに反映」を押してください', '#137333');
   } catch (e) {
     setAssignStatus('生成失敗: ' + e.message, '#c5221f');
   }
@@ -955,71 +943,6 @@ async function applyAssignments() {
   }
 }
 
-// ─── 検索 ───
-async function searchEvents() {
-  const calendarId = document.getElementById('calendarSelect')?.value;
-  const q    = document.getElementById('searchQ').value.trim();
-  const from = document.getElementById('searchFrom').value;
-  const to   = document.getElementById('searchTo').value;
-  if (!calendarId) { alert('カレンダーを選択してください'); return; }
-  if (!q) { alert('キーワードを入力してください'); return; }
-
-  const status = document.getElementById('searchStatus');
-  status.innerHTML = '<span class="spinner"></span>検索中...';
-  status.style.color = '#1a73e8';
-  document.getElementById('searchResults').style.display = 'none';
-
-  const params = new URLSearchParams({ calendar_id: calendarId, q });
-  if (from) params.append('from', from);
-  if (to)   params.append('to', to);
-
-  try {
-    const res  = await fetch('/api/search?' + params);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-
-    const events = data.events;
-    const title  = document.getElementById('searchResultTitle');
-    title.textContent = `「${q}」の検索結果 — ${events.length} 件`;
-
-    const list = document.getElementById('searchResultList');
-    if (!events.length) {
-      list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:14px;">該当するイベントがありません</div>';
-    } else {
-      list.innerHTML = events.map(e => {
-        const timeStr = e.all_day || !e.start_time
-          ? '終日'
-          : e.end_time ? `${e.start_time} 〜 ${e.end_time}` : `${e.start_time}〜`;
-        const locStr  = e.location    ? `<div class="ev-loc">📍 ${e.location}</div>` : '';
-        const descStr = e.description ? `<div class="ev-loc" style="color:#888;">${e.description.slice(0, 80)}${e.description.length > 80 ? '…' : ''}</div>` : '';
-        const link    = e.html_link   ? `<a class="result-link" href="${e.html_link}" target="_blank" style="margin-left:auto;flex-shrink:0;">カレンダーで確認 →</a>` : '';
-        return `
-          <div class="event-item" style="display:flex;align-items:flex-start;gap:10px;">
-            <div style="flex:1;">
-              <div class="ev-title">${e.title}</div>
-              <div class="ev-meta">${e.date} &nbsp; ${timeStr}</div>
-              ${locStr}${descStr}
-            </div>
-            ${link}
-          </div>`;
-      }).join('');
-    }
-
-    document.getElementById('searchResults').style.display = 'block';
-    status.textContent = `${events.length} 件`;
-    status.style.color = '#137333';
-  } catch (err) {
-    status.textContent = '検索失敗: ' + err.message;
-    status.style.color = '#c5221f';
-  }
-}
-
-// Enterキーで検索
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('searchQ')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') searchEvents();
-  });
-});
 
 function setAssignStatus(html, color) {
   const el = document.getElementById('assignStatus');
