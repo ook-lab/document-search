@@ -752,14 +752,15 @@ def api_index_settings_save(calendar_id):
     index_enabled = bool((data or {}).get('index_enabled', False))
 
     try:
-        existing = db.table('calendar_sync_state').select('calendar_id').eq('calendar_id', calendar_id).execute()
+        user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
+        existing = db.table('calendar_sync_state').select('calendar_id').eq('user_id', user_id).eq('calendar_id', calendar_id).execute()
         if existing.data:
             db.table('calendar_sync_state').update(
                 {'index_enabled': index_enabled}
-            ).eq('calendar_id', calendar_id).execute()
+            ).eq('user_id', user_id).eq('calendar_id', calendar_id).execute()
         else:
             db.table('calendar_sync_state').insert(
-                {'calendar_id': calendar_id, 'index_enabled': index_enabled}
+                {'user_id': user_id, 'calendar_id': calendar_id, 'index_enabled': index_enabled}
             ).execute()
 
         if index_enabled:
