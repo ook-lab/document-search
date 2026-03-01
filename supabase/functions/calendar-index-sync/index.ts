@@ -81,13 +81,21 @@ serve(async (req) => {
     const calendar_id = url.searchParams.get("calendar_id") ?? "primary";
     if (!user_id) return new Response("missing user_id", { status: 400 });
 
-    // 1) calendar_name を calendar_sync_state から取得
+    // 1) calendar_sync_state から calendar_name と index_enabled を取得
     const { data: syncState } = await supabase
       .from("calendar_sync_state")
-      .select("calendar_name")
+      .select("calendar_name, index_enabled")
       .eq("user_id", user_id)
       .eq("calendar_id", calendar_id)
       .maybeSingle();
+
+    // index_enabled = false なら何もしない
+    if (!syncState?.index_enabled) {
+      return new Response(
+        JSON.stringify({ ok: true, skipped: true, reason: "index_enabled=false" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
     const calendar_name: string = syncState?.calendar_name ?? calendar_id;
 

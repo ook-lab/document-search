@@ -690,6 +690,65 @@ def api_update():
 
 
 # ─────────────────────────────────────────
+# 検索インデックス設定
+# ─────────────────────────────────────────
+
+@app.route('/api/index-settings/<path:calendar_id>', methods=['GET'])
+def api_index_settings_get(calendar_id):
+    """カレンダーの index_enabled を取得"""
+    db = _get_supabase()
+    if not db:
+        return jsonify({'index_enabled': False})
+    try:
+        # calendar_sync_state は user_id が必要だが、ここでは calendar_id のみで判断
+        # token.json から user 識別子を取得する代わりに、
+        # Google カレンダー API で確認済みの calendar_id をキーに検索する
+        res = db.table('calendar_sync_state') \
+                .select('index_enabled') \
+                .eq('calendar_id', calendar_id) \
+                .execute()
+        if res.data:
+            return jsonify({'index_enabled': bool(res.data[0]['index_enabled'])})
+        return jsonify({'index_enabled': False})
+    except Exception as e:
+        return jsonify({'index_enabled': False, 'warning': str(e)})
+
+
+@app.route('/api/index-settings/<path:calendar_id>', methods=['POST'])
+def api_index_settings_save(calendar_id):
+    """index_enabled を更新し、ON なら index-sync、OFF なら チャンク削除"""
+    db = _get_supabase()
+    if not db:
+        return jsonify({'error': 'Supabase が設定されていません'}), 500
+
+    data = request.get_json()
+    index_enabled = bool((data or {}).get('index_enabled', False))
+
+    try:
+        # calendar_sync_state を upsert
+        db.table('calendar_sync_state').upsert(
+            {'calendar_id': calendar_id, 'index_enabled': index_enabled},
+            on_conflict='calendar_id'
+        ).execute()
+
+        if not index_enabled:
+            # OFF: Rawdata_FILE_AND_MAIL + チャンクを削除
+            raw = db.table('Rawdata_FILE_AND_MAIL') \
+                    .select('id') \
+                    .eq('doc_type', 'GOOGLE_CALENDAR') \
+                    .filter('metadata->>calendar_id', 'eq', calendar_id) \
+                    .execute()
+            if raw.data:
+                doc_id = raw.data[0]['id']
+                db.table('10_ix_search_index').delete().eq('document_id', doc_id).execute()
+                db.table('Rawdata_FILE_AND_MAIL').delete().eq('id', doc_id).execute()
+
+        return jsonify({'success': True, 'index_enabled': index_enabled})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────
 # 検索機能
 # ─────────────────────────────────────────
 

@@ -121,6 +121,34 @@
 
     .preset-hint { font-size: 12px; color: #999; flex: 1; }
 
+    /* 検索インデックストグル */
+    .index-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-top: 1px solid #eee;
+      background: #fafafa;
+    }
+    .index-toggle-label { font-size: 13px; color: #444; flex: 1; }
+    .index-toggle-label small { display: block; font-size: 11px; color: #aaa; margin-top: 1px; }
+    .toggle-switch {
+      position: relative; width: 40px; height: 22px; flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #ccc; border-radius: 22px; transition: .2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; left: 3px; bottom: 3px;
+      background: #fff; border-radius: 50%; transition: .2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: #34a853; }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+    #indexToggleStatus { font-size: 12px; color: #888; }
+
     .btn-save-preset {
       padding: 6px 16px;
       border-radius: 6px;
@@ -505,6 +533,17 @@
       <span id="presetSaveStatus"></span>
       <button class="btn-save-preset" onclick="savePreset()">保存</button>
     </div>
+    <div class="index-toggle-wrap">
+      <div class="index-toggle-label">
+        文書検索に含める
+        <small>ON にするとカレンダーのイベントが検索対象になります</small>
+      </div>
+      <span id="indexToggleStatus"></span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
   </div>
 
   <!-- メインカード -->
@@ -619,7 +658,10 @@ let presetOpen = false;
     sel.addEventListener('change', () => {
       const cal = calendars.find(c => c.id === sel.value);
       if (cal) dot.style.background = cal.color;
-      if (presetOpen) loadPreset(sel.value, cal?.name || sel.value);
+      if (presetOpen) {
+        loadPreset(sel.value, cal?.name || sel.value);
+        loadIndexSetting(sel.value);
+      }
     });
 
     // 初期プリセット読み込み（パネルが開いたときのために）
@@ -648,7 +690,50 @@ function togglePreset() {
   if (presetOpen) {
     const sel = document.getElementById('calendarSelect');
     const cal = calendars.find(c => c.id === sel?.value);
-    if (cal) loadPreset(cal.id, cal.name);
+    if (cal) {
+      loadPreset(cal.id, cal.name);
+      loadIndexSetting(cal.id);
+    }
+  }
+}
+
+// ─── インデックス設定読み込み ───
+async function loadIndexSetting(calendarId) {
+  try {
+    const res  = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`);
+    const data = await res.json();
+    document.getElementById('indexToggle').checked = !!data.index_enabled;
+    document.getElementById('indexToggleStatus').textContent = '';
+  } catch {
+    document.getElementById('indexToggle').checked = false;
+  }
+}
+
+// ─── インデックス設定保存 ───
+async function saveIndexSetting(enabled) {
+  const sel = document.getElementById('calendarSelect');
+  const calendarId = sel?.value;
+  if (!calendarId) return;
+
+  const status = document.getElementById('indexToggleStatus');
+  status.textContent = '保存中...';
+  status.style.color = '#888';
+
+  try {
+    const res = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index_enabled: enabled })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    status.textContent = enabled ? '✓ 検索対象に追加しました' : '✓ 検索対象から除外しました';
+    status.style.color = '#137333';
+    setTimeout(() => { status.textContent = ''; }, 2500);
+  } catch (e) {
+    status.textContent = '保存失敗: ' + e.message;
+    status.style.color = '#c5221f';
+    // 失敗したらトグルを戻す
+    document.getElementById('indexToggle').checked = !enabled;
   }
 }
 
