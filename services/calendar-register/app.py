@@ -339,8 +339,7 @@ def api_preset_save(calendar_id):
     tags        = data.get('tags', [])
     try:
         db.table('calendar_presets').upsert(
-            {'calendar_id': calendar_id, 'preset_text': preset_text, 'tags': tags},
-            on_conflict='calendar_id'
+            {'calendar_id': calendar_id, 'preset_text': preset_text, 'tags': tags}
         ).execute()
         return jsonify({'success': True})
     except Exception as e:
