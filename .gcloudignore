@@ -1,79 +1,38 @@
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 *.egg-info/
 .venv/
 venv/
 env/
 
+# Secrets
+.env
+.env.*
+
 # Git
 .git/
 .gitignore
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Logs
-*.log
-logs/
-
-# Temporary files
+# Temporary / runtime
 .tmp.driveupload/
 tmpclaude-*/
-tmpclaude-*
-*.tmp
 temp/
 cache/
 _runtime/
+debug_output/
+*.log
+logs/
 
-# Node modules (if any)
-node_modules/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Other services (not needed for build)
-services/web-frontend/
-services/app-backend/
-services/notifier/
-
-# Frontend / UI (separate builds)
+# Not needed for build
+supabase/
 frontend/
 kakeibo_ui/
 K_kakeibo/
-
-# Database / Supabase
-supabase/
-database/
-
-# Debug output data (large PDFs, images, JSONs)
-debug_output/
-scripts/debug/debug_output/
-
-# Tests and docs
 tests/
 docs/
-*.md
-!README.md
-
-# Snapshot / pipeline docs
-PIPELINE_*.md
-PROJECT_SNAPSHOT_*.md
-PROJECT_FULL_*.md
-PIPELINE_PROMPTS_*.md
-
-# Misc root files not needed for build
-reports/
-backups/
-data/
-*.bat
-docker-compose.yml
-simple_build.yaml
-tmp_*.ps1
+node_modules/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

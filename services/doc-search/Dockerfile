@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/doc-search/app.py .
 COPY services/doc-search/templates/ ./templates/
 # プロジェクトルートからの共通モジュール
+COPY shared/__init__.py ./shared/__init__.py
 COPY shared/common/ ./shared/common/
 COPY shared/ai/ ./shared/ai/
 # ドキュメント処理用のファイル
