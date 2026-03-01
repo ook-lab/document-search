@@ -199,6 +199,11 @@ def search_documents():
             threshold=threshold,
         )
 
+        # ✅ GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
+        cal_results   = [d for d in results if d.get('doc_type') == 'GOOGLE_CALENDAR']
+        other_results = [d for d in results if d.get('doc_type') != 'GOOGLE_CALENDAR']
+        results = cal_results + other_results
+
         # ✅ クロスリファレンス結果を先頭に追加
         if cross_reference_results:
             # 重複を避ける：クロスリファレンス結果と同じIDのものは除外
@@ -434,6 +439,14 @@ def _generate_answer_with_model(
   * 時間割やスケジュールに関する質問には、表データから該当する科目や予定を抽出して回答してください
   * 議事録の質問には、議題グループや担当者・期限情報を参照してください
   * 複数のクラスやグループがある場合、質問に該当するものを絞り込んで回答してください
+- **【カレンダー確定情報】の扱い：**
+  * 参考文書の中に「【カレンダー確定情報】」と記載された情報がある場合、それは実際にカレンダーに登録された確定済みの予定です
+  * カレンダー情報は他の文書より**最優先**で回答に反映してください
+  * カレンダー情報と他の文書の内容が**矛盾する場合**（日時・場所・内容が異なるなど）は：
+    1. カレンダー情報を正として回答する
+    2. 回答の末尾に「⚠️ 注記：」として矛盾内容を明示する
+    * 例：「⚠️ 注記：文書「〇〇」では△△と記載されていますが、カレンダーの確定情報と異なります。」
+
 - 情報が不足している場合は、その旨を伝えてください
 - **参考文書の記載方法：**
   * 回答の最後に「参考文書：」として、実際に使用した全ての文書のファイル名を列挙してください
@@ -821,7 +834,9 @@ def _build_context(documents: List[Dict[str, Any]]) -> str:
             full_text = doc.get('summary', '')
 
         date_tag = "（日付一致✓）" if date_matched else ""
-        context_part = f"""【文書{doc_idx}】{date_tag}
+        is_calendar = (doc_type == 'GOOGLE_CALENDAR')
+        block_header = "【カレンダー確定情報】" if is_calendar else f"【文書{doc_idx}】"
+        context_part = f"""{block_header}{date_tag}
 ファイル名: {file_name}
 文書タイプ: {doc_type}
 日付: {document_date}
