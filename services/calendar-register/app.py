@@ -338,9 +338,15 @@ def api_preset_save(calendar_id):
     preset_text = data.get('preset_text', '')
     tags        = data.get('tags', [])
     try:
-        db.table('calendar_presets').upsert(
-            {'calendar_id': calendar_id, 'preset_text': preset_text, 'tags': tags}
-        ).execute()
+        existing = db.table('calendar_presets').select('calendar_id').eq('calendar_id', calendar_id).execute()
+        if existing.data:
+            db.table('calendar_presets').update(
+                {'preset_text': preset_text, 'tags': tags}
+            ).eq('calendar_id', calendar_id).execute()
+        else:
+            db.table('calendar_presets').insert(
+                {'calendar_id': calendar_id, 'preset_text': preset_text, 'tags': tags}
+            ).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -746,10 +752,15 @@ def api_index_settings_save(calendar_id):
     index_enabled = bool((data or {}).get('index_enabled', False))
 
     try:
-        db.table('calendar_sync_state').upsert(
-            {'calendar_id': calendar_id, 'index_enabled': index_enabled},
-            on_conflict='calendar_id'
-        ).execute()
+        existing = db.table('calendar_sync_state').select('calendar_id').eq('calendar_id', calendar_id).execute()
+        if existing.data:
+            db.table('calendar_sync_state').update(
+                {'index_enabled': index_enabled}
+            ).eq('calendar_id', calendar_id).execute()
+        else:
+            db.table('calendar_sync_state').insert(
+                {'calendar_id': calendar_id, 'index_enabled': index_enabled}
+            ).execute()
 
         if index_enabled:
             # ON: バックグラウンドで初回 index-sync を実行
