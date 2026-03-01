@@ -149,6 +149,33 @@
     .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
     #indexToggleStatus { font-size: 12px; color: #888; }
 
+    /* ───── タグチップ（プリセットパネル） ───── */
+    .tag-section { padding: 10px 16px; border-top: 1px solid #eee; background: #fafafa; }
+    .tag-section-title { font-size: 12px; color: #666; margin-bottom: 6px; }
+    .tag-chip-area {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      border: 1px solid #ddd; border-radius: 8px; padding: 6px 8px;
+      background: #fff; min-height: 36px; cursor: text;
+    }
+    .tag-chip {
+      display: flex; align-items: center; gap: 3px;
+      background: #e8f0fe; border-radius: 14px;
+      padding: 3px 6px 3px 10px; font-size: 13px; color: #1a73e8;
+    }
+    .tag-chip-remove {
+      cursor: pointer; color: #1a73e8; font-size: 15px; line-height: 1;
+      background: none; border: none; padding: 0 2px; opacity: 0.6;
+    }
+    .tag-chip-remove:hover { opacity: 1; }
+    .tag-chip-input-box { border: none; outline: none; font-size: 13px; min-width: 100px; flex: 1; }
+
+    /* ───── タグチェックボックス（登録・修正タブ） ───── */
+    .tag-check-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 20px; }
+    .tag-check-label { font-size: 12px; color: #666; flex-shrink: 0; }
+    .tag-check-group { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag-check-item { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+    .tag-check-item input[type=checkbox] { accent-color: #1a73e8; cursor: pointer; }
+
     .btn-save-preset {
       padding: 6px 16px;
       border-radius: 6px;
@@ -528,6 +555,13 @@
       <span class="preset-cal-name" id="presetCalName">カレンダーを選択してください</span>
     </div>
     <textarea id="presetText" placeholder="# 時間割&#10;1時間目: 08:45-09:30&#10;2時間目: 09:35-10:20&#10;週テスト: 13:30-17:00&#10;&#10;# 場所略称&#10;体育館: 第一体育館"></textarea>
+    <div class="tag-section">
+      <div class="tag-section-title">タグ（クリックして登録・修正タブで絞り込みに使えます）</div>
+      <div class="tag-chip-area" id="tagChipArea" onclick="document.getElementById('tagInput').focus()">
+        <input class="tag-chip-input-box" id="tagInput" placeholder="タグ名を入力してEnter"
+          onkeydown="handleTagInput(event)">
+      </div>
+    </div>
     <div class="preset-footer">
       <span class="preset-hint">カレンダーごとに保存されます。Gemini がこの辞書を参照して時間・場所を解釈します。</span>
       <span id="presetSaveStatus"></span>
@@ -558,6 +592,12 @@
 
     <textarea id="eventText" placeholder="・1/15(水) 1時間目 算数&#10;・来週月曜 週テスト&#10;・1/20 運動会"></textarea>
 
+    <div id="registerTagWrap" style="display:none; border-top:1px solid #f0f0f0;">
+      <div class="tag-check-wrap">
+        <span class="tag-check-label">タグ付与:</span>
+        <div class="tag-check-group" id="registerTagGroup"></div>
+      </div>
+    </div>
     <div class="card-footer">
       <button class="btn-parse" onclick="parseEvents()">🔍 解析プレビュー</button>
       <button class="btn-register" id="btnRegister" onclick="registerEvents()" disabled>カレンダーに登録</button>
@@ -598,6 +638,12 @@
             style="flex:1;border:1px solid #ccc;border-radius:6px;padding:5px 10px;font-size:13px;outline:none;">
           <button class="btn-fetch" onclick="fetchSlots()">取得</button>
         </div>
+        <div id="assignTagRow" style="display:none; padding:6px 12px 8px;">
+          <div class="tag-check-wrap" style="padding:0;">
+            <span class="tag-check-label">タグ絞り込み (AND):</span>
+            <div class="tag-check-group" id="assignTagGroup"></div>
+          </div>
+        </div>
         <div class="slot-list" id="slotList">
           <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">期間を選んで「取得」を押してください</div>
         </div>
@@ -636,6 +682,7 @@
 let parsedEvents = [];
 let calendars = [];
 let presetOpen = false;
+let calendarTags = [];   // 現在のカレンダーのタグ一覧
 
 {% if authed %}
 // ─── カレンダー一覧ロード ───
@@ -745,6 +792,9 @@ async function loadPreset(calendarId, calendarName) {
     const data = await res.json();
     document.getElementById('presetText').value = data.preset_text || '';
     document.getElementById('presetSaveStatus').textContent = '';
+    calendarTags = data.tags || [];
+    renderTagChips();
+    renderTagCheckboxes();
   } catch (e) {
     // 取得失敗は無視（空欄のまま）
   }
@@ -765,7 +815,7 @@ async function savePreset() {
     const res = await fetch(`/api/presets/${encodeURIComponent(calendarId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preset_text })
+      body: JSON.stringify({ preset_text, tags: calendarTags })
     });
     if (!res.ok) throw new Error(await res.text());
     status.textContent = '✓ 保存しました';
@@ -774,6 +824,63 @@ async function savePreset() {
   } catch (e) {
     status.textContent = '保存失敗: ' + e.message;
     status.style.color = '#c5221f';
+  }
+}
+
+// ─── タグ管理 ───
+function renderTagChips() {
+  const area = document.getElementById('tagChipArea');
+  const input = document.getElementById('tagInput');
+  // チップを再描画（inputは残す）
+  area.querySelectorAll('.tag-chip').forEach(el => el.remove());
+  calendarTags.forEach(tag => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `#${tag}<button class="tag-chip-remove" onclick="removeTag('${tag}')" title="削除">×</button>`;
+    area.insertBefore(chip, input);
+  });
+}
+
+function handleTagInput(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const val = e.target.value.replace(/^#/, '').trim();
+  if (!val || calendarTags.includes(val)) { e.target.value = ''; return; }
+  calendarTags.push(val);
+  e.target.value = '';
+  renderTagChips();
+  renderTagCheckboxes();
+}
+
+function removeTag(tag) {
+  calendarTags = calendarTags.filter(t => t !== tag);
+  renderTagChips();
+  renderTagCheckboxes();
+}
+
+function renderTagCheckboxes() {
+  // 登録タブ
+  const regGroup = document.getElementById('registerTagGroup');
+  const regWrap  = document.getElementById('registerTagWrap');
+  if (calendarTags.length) {
+    regGroup.innerHTML = calendarTags.map(t =>
+      `<label class="tag-check-item"><input type="checkbox" name="regTag" value="${t}"> #${t}</label>`
+    ).join('');
+    regWrap.style.display = 'block';
+  } else {
+    regWrap.style.display = 'none';
+  }
+
+  // 修正タブ
+  const asnGroup = document.getElementById('assignTagGroup');
+  const asnRow   = document.getElementById('assignTagRow');
+  if (calendarTags.length) {
+    asnGroup.innerHTML = calendarTags.map(t =>
+      `<label class="tag-check-item"><input type="checkbox" name="asnTag" value="${t}"> #${t}</label>`
+    ).join('');
+    asnRow.style.display = 'block';
+  } else {
+    asnRow.style.display = 'none';
   }
 }
 
@@ -832,6 +939,14 @@ async function registerEvents() {
   const calendarId = document.getElementById('calendarSelect').value;
   if (!calendarId) { alert('カレンダーを選択してください'); return; }
 
+  // チェックされたタグを description に追記
+  const checkedTags = [...document.querySelectorAll('input[name=regTag]:checked')].map(el => el.value);
+  const eventsToRegister = parsedEvents.map(ev => {
+    if (!checkedTags.length) return ev;
+    const tagStr = checkedTags.map(t => `#${t}`).join(' ');
+    return { ...ev, description: ev.description ? `${ev.description}\n${tagStr}` : tagStr };
+  });
+
   document.getElementById('btnRegister').disabled = true;
   document.getElementById('resultPanel').style.display = 'none';
   showStatus('<span class="spinner"></span>登録中...', 'info');
@@ -840,7 +955,7 @@ async function registerEvents() {
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ calendar_id: calendarId, events: parsedEvents })
+      body: JSON.stringify({ calendar_id: calendarId, events: eventsToRegister })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '登録失敗');
@@ -919,10 +1034,15 @@ async function fetchSlots() {
 
   setAssignStatus('<span class="spinner"></span>取得中...');
 
-  // キーワードがあれば /api/search、なければ /api/events
+  const checkedTags = [...document.querySelectorAll('input[name=asnTag]:checked')].map(el => el.value);
+
+  // キーワードかタグがあれば /api/search、どちらもなければ /api/events
   let url;
-  if (q) {
-    url = `/api/search?calendar_id=${encodeURIComponent(calendarId)}&q=${encodeURIComponent(q)}&from=${from}&to=${to}`;
+  if (q || checkedTags.length) {
+    const params = new URLSearchParams({ calendar_id: calendarId, from, to });
+    if (q)                  params.set('q', q);
+    if (checkedTags.length) params.set('tags', checkedTags.join(','));
+    url = `/api/search?${params.toString()}`;
   } else {
     url = `/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`;
   }
@@ -935,7 +1055,10 @@ async function fetchSlots() {
     fetchedSlots = data.events;
     renderSlotList(fetchedSlots);
     document.getElementById('btnAssign').disabled = fetchedSlots.length === 0;
-    const label = q ? `「${q}」で ${fetchedSlots.length} 件` : `${fetchedSlots.length} 件取得しました`;
+    const labelParts = [];
+    if (q) labelParts.push(`「${q}」`);
+    if (checkedTags.length) labelParts.push(checkedTags.map(t => `#${t}`).join(' '));
+    const label = labelParts.length ? `${labelParts.join(' & ')} で ${fetchedSlots.length} 件` : `${fetchedSlots.length} 件取得しました`;
     setAssignStatus(label, '#137333');
   } catch (e) {
     setAssignStatus('取得失敗: ' + e.message, '#c5221f');

@@ -4,7 +4,7 @@
 // 10_ix_search_index にベクトルインデックスを作成する。
 //
 // Rawdata_FILE_AND_MAIL のカラム対応:
-//   display_subject  = 件名 (summary)
+//   display_subject  = 件名（カレンダーに登録された「略称（正称）」形式をそのまま保存）
 //   display_post_text = 説明 (description)
 //   start_ts         = 開始日時
 //   end_ts           = 終了日時
@@ -148,7 +148,6 @@ serve(async (req) => {
       const event_id   = ev.event_id as string;
       const title      = payload.summary    ?? "(タイトルなし)";
       const description: string | null = payload.description ?? null;
-      const location:    string | null = payload.location    ?? null;
       const startTs: string | null = ev.start_ts ?? null;
       const endTs:   string | null = ev.end_ts   ?? null;
 

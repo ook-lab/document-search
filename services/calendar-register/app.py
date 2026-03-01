@@ -199,7 +199,7 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
 
     today = datetime.now()
     preset_section = f"""
-【プリセット辞書】（以下の定義を優先して解釈すること）
+【プリセット】
 {preset_text}
 """ if preset_text.strip() else ''
 
@@ -318,14 +318,14 @@ def api_preset_get(calendar_id):
     """カレンダーのプリセットを取得"""
     db = _get_supabase()
     if not db:
-        return jsonify({'preset_text': ''})
+        return jsonify({'preset_text': '', 'tags': []})
     try:
-        res = db.table('calendar_presets').select('preset_text').eq('calendar_id', calendar_id).execute()
+        res = db.table('calendar_presets').select('preset_text, tags').eq('calendar_id', calendar_id).execute()
         if res.data:
-            return jsonify({'preset_text': res.data[0]['preset_text']})
-        return jsonify({'preset_text': ''})
+            return jsonify({'preset_text': res.data[0]['preset_text'], 'tags': res.data[0].get('tags') or []})
+        return jsonify({'preset_text': '', 'tags': []})
     except Exception as e:
-        return jsonify({'preset_text': '', 'warning': str(e)})
+        return jsonify({'preset_text': '', 'tags': [], 'warning': str(e)})
 
 
 @app.route('/api/presets/<path:calendar_id>', methods=['POST'])
@@ -334,11 +334,12 @@ def api_preset_save(calendar_id):
     db = _get_supabase()
     if not db:
         return jsonify({'error': 'Supabase が設定されていません'}), 500
-    data = request.get_json()
-    preset_text = (data or {}).get('preset_text', '')
+    data = request.get_json() or {}
+    preset_text = data.get('preset_text', '')
+    tags        = data.get('tags', [])
     try:
         db.table('calendar_presets').upsert(
-            {'calendar_id': calendar_id, 'preset_text': preset_text},
+            {'calendar_id': calendar_id, 'preset_text': preset_text, 'tags': tags},
             on_conflict='calendar_id'
         ).execute()
         return jsonify({'success': True})
@@ -779,28 +780,34 @@ def api_index_settings_save(calendar_id):
 
 @app.route('/api/search', methods=['GET'])
 def api_search():
-    """キーワードでイベントを検索"""
+    """キーワード・タグでイベントを検索"""
     creds = _get_valid_credentials()
     if not creds:
         return jsonify({'error': 'unauthorized'}), 401
 
     calendar_id = request.args.get('calendar_id')
     q           = request.args.get('q', '').strip()
-    date_from   = request.args.get('from')   # YYYY-MM-DD (省略可)
-    date_to     = request.args.get('to')     # YYYY-MM-DD (省略可)
+    tags_param  = request.args.get('tags', '').strip()   # カンマ区切り
+    date_from   = request.args.get('from')
+    date_to     = request.args.get('to')
+
+    tags = [t.strip() for t in tags_param.split(',') if t.strip()] if tags_param else []
 
     if not calendar_id:
         return jsonify({'error': 'calendar_id が必要です'}), 400
-    if not q:
-        return jsonify({'error': 'q（検索キーワード）が必要です'}), 400
+    if not q and not tags:
+        return jsonify({'error': 'q またはタグが必要です'}), 400
 
     service = _build_calendar_service(creds)
+
+    # Google Calendar API の q: キーワードがなければ最初のタグで代用
+    q_for_api = q if q else tags[0]
     kwargs = dict(
         calendarId=calendar_id,
-        q=q,
+        q=q_for_api,
         singleEvents=True,
         orderBy='startTime',
-        maxResults=100,
+        maxResults=200,
     )
     if date_from:
         kwargs['timeMin'] = f'{date_from}T00:00:00+09:00'
@@ -811,6 +818,10 @@ def api_search():
         result = service.events().list(**kwargs).execute()
         events = []
         for e in result.get('items', []):
+            desc = e.get('description') or ''
+            # タグ AND フィルタリング（Python側）
+            if tags and not all(f'#{t}' in desc for t in tags):
+                continue
             start = e.get('start', {})
             end   = e.get('end', {})
             events.append({
@@ -821,7 +832,7 @@ def api_search():
                 'end_time':    (end.get('dateTime') or '')[-14:-9]   if 'dateTime' in end   else None,
                 'all_day':     'date' in start,
                 'location':    e.get('location'),
-                'description': e.get('description'),
+                'description': desc,
                 'html_link':   e.get('htmlLink'),
             })
         return jsonify({'events': events, 'count': len(events)})
