@@ -757,14 +757,14 @@ def api_index_settings_save(calendar_id):
                 target=_trigger_index_sync, args=(calendar_id,), daemon=True
             ).start()
         else:
-            # OFF: Rawdata_FILE_AND_MAIL + チャンクを削除
+            # OFF: このカレンダーの全イベントレコード + チャンクを削除
             raw = db.table('Rawdata_FILE_AND_MAIL') \
                     .select('id') \
                     .eq('doc_type', 'GOOGLE_CALENDAR') \
                     .filter('metadata->>calendar_id', 'eq', calendar_id) \
                     .execute()
-            if raw.data:
-                doc_id = raw.data[0]['id']
+            for row in (raw.data or []):
+                doc_id = row['id']
                 db.table('10_ix_search_index').delete().eq('document_id', doc_id).execute()
                 db.table('Rawdata_FILE_AND_MAIL').delete().eq('id', doc_id).execute()
 
