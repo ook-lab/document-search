@@ -15,6 +15,9 @@ Google カレンダー一括登録アプリ
 import os
 import json
 import sys
+import threading
+import urllib.request
+import urllib.parse
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -714,9 +717,27 @@ def api_index_settings_get(calendar_id):
         return jsonify({'index_enabled': False, 'warning': str(e)})
 
 
+def _trigger_index_sync(calendar_id: str):
+    """calendar-index-sync Edge Function をバックグラウンドで呼び出す"""
+    user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
+    if not user_id or not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    base = SUPABASE_URL.rstrip('/')
+    url  = (f'{base}/functions/v1/calendar-index-sync'
+            f'?user_id={urllib.parse.quote(user_id)}'
+            f'&calendar_id={urllib.parse.quote(calendar_id)}')
+    try:
+        req = urllib.request.Request(
+            url, headers={'Authorization': f'Bearer {SUPABASE_KEY}'}, method='GET'
+        )
+        urllib.request.urlopen(req, timeout=120)
+    except Exception as e:
+        app.logger.warning(f'calendar-index-sync 呼び出し失敗: {e}')
+
+
 @app.route('/api/index-settings/<path:calendar_id>', methods=['POST'])
 def api_index_settings_save(calendar_id):
-    """index_enabled を更新し、ON なら index-sync、OFF なら チャンク削除"""
+    """index_enabled を更新し、ON なら初回 index-sync を自動実行、OFF ならチャンク削除"""
     db = _get_supabase()
     if not db:
         return jsonify({'error': 'Supabase が設定されていません'}), 500
@@ -725,13 +746,17 @@ def api_index_settings_save(calendar_id):
     index_enabled = bool((data or {}).get('index_enabled', False))
 
     try:
-        # calendar_sync_state を upsert
         db.table('calendar_sync_state').upsert(
             {'calendar_id': calendar_id, 'index_enabled': index_enabled},
             on_conflict='calendar_id'
         ).execute()
 
-        if not index_enabled:
+        if index_enabled:
+            # ON: バックグラウンドで初回 index-sync を実行
+            threading.Thread(
+                target=_trigger_index_sync, args=(calendar_id,), daemon=True
+            ).start()
+        else:
             # OFF: Rawdata_FILE_AND_MAIL + チャンクを削除
             raw = db.table('Rawdata_FILE_AND_MAIL') \
                     .select('id') \

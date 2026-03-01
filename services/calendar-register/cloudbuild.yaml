@@ -33,7 +33,7 @@ steps:
       - '--cpu'
       - '1'
       - '--set-env-vars'
-      - 'GCP_PROJECT_ID=$PROJECT_ID,GEMINI_API_KEY=${_GEMINI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},OAUTH_REDIRECT_URI=https://calendar-register-983922127476.asia-northeast1.run.app/auth/callback'
+      - 'GCP_PROJECT_ID=$PROJECT_ID,GEMINI_API_KEY=${_GEMINI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},OAUTH_REDIRECT_URI=https://calendar-register-983922127476.asia-northeast1.run.app/auth/callback,CALENDAR_SYNC_USER_ID=${_CALENDAR_SYNC_USER_ID}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/calendar-register:latest'
