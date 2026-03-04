@@ -194,20 +194,15 @@ class GmailIngestionPipeline:
             既に存在するメッセージIDのセット
         """
         try:
-            # Rawdata_FILE_AND_MAIL テーブルで doc_type が一致するドキュメントを取得
-            result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('metadata').eq(
-                'doc_type', self.config['import_settings']['doc_type']
-            ).execute()
+            # 01_gmail_01_raw で既存 message_id を取得
+            result = self.db.client.table('01_gmail_01_raw').select('message_id').execute()
 
-            # metadata->message_id を抽出
             existing_ids = set()
             if result.data:
                 for doc in result.data:
-                    metadata = doc.get('metadata', {})
-                    if isinstance(metadata, dict):
-                        msg_id = metadata.get('message_id')
-                        if msg_id:
-                            existing_ids.add(msg_id)
+                    msg_id = doc.get('message_id')
+                    if msg_id:
+                        existing_ids.add(msg_id)
 
             logger.info(f"既存のメール: {len(existing_ids)}件")
             return existing_ids
@@ -528,103 +523,47 @@ class GmailIngestionPipeline:
                         result['attachment_file_ids'].append(email_png_file_id)
                         logger.info(f"HTMLメール処理: HTML={email_html_file_id}, PNG={email_png_file_id}")
 
-            # Supabaseに保存するデータ
-            # 1. メール本文（HTML→PNG）のレコードを作成
-            if email_html_file_id and email_png_file_id:
-                # HTMLからテキストを抽出（取り込み時点で抽出）
-                from bs4 import BeautifulSoup
-                try:
-                    soup = BeautifulSoup(text_html, 'html.parser')
-                    # scriptとstyleタグを除去
-                    for script in soup(["script", "style"]):
-                        script.decompose()
-                    # テキスト抽出
-                    extracted_text = soup.get_text(separator='\n', strip=True)
-                    logger.info(f"HTMLからテキスト抽出: {len(extracted_text)}文字")
-                except Exception as e:
-                    logger.warning(f"HTML解析エラー（フォールバック使用）: {e}")
-                    extracted_text = email_body  # フォールバック
+            # 01_gmail_01_raw に1件保存（メール + 添付をまとめて）
+            raw_row = {
+                'person':          self.config['import_settings']['person'],
+                'source':          self.config['import_settings']['workspace'],
+                'category':        self.config['import_settings'].get('category'),
+                'message_id':      message_id,
+                'thread_id':       message.get('threadId', ''),
+                'sent_at':         sent_at,
+                'header_subject':  subject,
+                'from_name':       sender_name,
+                'from_email':      sender_email,
+                'header_to':       to_email,
+                'body_plain':      text_plain,
+                'body_html':       text_html,
+                'snippet':         email_body[:500] if email_body else None,
+                'source_url':      (
+                    f"https://drive.google.com/file/d/{email_html_file_id}/view"
+                    if email_html_file_id else None
+                ),
+                'attachments':     attachment_info_list or None,
+            }
 
-                # ファイル名の共通部分
-                safe_subject = subject[:50].replace('/', '_').replace('\\', '_').replace(':', '_').replace('*', '_').replace('?', '_').replace('"', '_').replace('<', '_').replace('>', '_').replace('|', '_')
-                timestamp = message_id[:10]
-
-                email_doc_data = {
-                    'file_url': f"https://drive.google.com/file/d/{email_html_file_id}/view",
-                    'file_id': email_html_file_id,
-                    'screenshot_url': f"https://drive.google.com/file/d/{email_png_file_id}/view",  # PNG（OCR用・一時）
-                    'file_name': f"{timestamp}_{safe_subject}.html",  # HTML拡張子
-                    'doc_type': self.config['import_settings']['doc_type'],
-                    'workspace': self.config['import_settings']['workspace'],
-                    'person': self.config['import_settings']['person'],
-                    'organization': self.config['import_settings']['organization'],
-                    'attachment_text': extracted_text,  # HTMLから抽出したテキスト（取り込み時点）
-                    'summary': '',  # process_queued_documents.py で生成
-                    'tags': ['gmail', 'email_html'],
-                    'document_date': sent_at,
-                    'metadata': metadata,  # シンプルなメタデータのみ
-                    'content_hash': content_hash,
-                    'processing_status': 'pending',
-                    'processing_stage': 'gmail_html',
-                    # 表示用フィールド
-                    'display_subject': subject,
-                    'display_sent_at': sent_at,
-                    'display_sender': sender_name,
-                    'display_sender_email': sender_email,
-                    'display_post_text': email_body,  # 全文
-                    # Phase 3: owner_id 必須
-                    'owner_id': self.owner_id
-                }
-
-                try:
-                    doc_result = await self.db.insert_document('Rawdata_FILE_AND_MAIL', email_doc_data)
-                    if doc_result:
-                        doc_id = doc_result.get('doc_id')
-                        result['document_ids'].append(doc_id)
-                        logger.info(f"Supabase保存完了（メール本文HTML）: {subject}")
-                except Exception as db_error:
-                    logger.error(f"Supabase保存エラー（メール本文）: {db_error}")
-                    result['error'] = str(db_error)
-
-            # 2. 添付ファイルのレコードを作成（ある場合のみ）
-            if attachment_info_list:
-                # 添付ファイルがある場合：各添付ファイルごとにレコードを作成
-                for att_info in attachment_info_list:
-                    doc_data = {
-                        'file_url': f"https://drive.google.com/file/d/{att_info['drive_file_id']}/view",
-                        'file_id': att_info['drive_file_id'],
-                        'file_name': att_info['filename'],
-                        'doc_type': self.config['import_settings']['doc_type'],
-                        'workspace': self.config['import_settings']['workspace'],
-                        'person': self.config['import_settings']['person'],
-                        'organization': self.config['import_settings']['organization'],
-                        'attachment_text': '',  # process_queued_documents.py で抽出
-                        'summary': '',  # process_queued_documents.py で生成
-                        'tags': ['gmail', 'attachment'],
-                        'document_date': sent_at,
-                        'metadata': metadata,
-                        'content_hash': content_hash,
+            try:
+                raw_result = self.db.client.table('01_gmail_01_raw').insert(raw_row).execute()
+                raw_id = raw_result.data[0]['id'] if raw_result.data else None
+                if raw_id:
+                    self.db.client.table('pipeline_meta').insert({
+                        'raw_id':            raw_id,
+                        'raw_table':         '01_gmail_01_raw',
+                        'person':            self.config['import_settings']['person'],
+                        'source':            self.config['import_settings']['workspace'],
                         'processing_status': 'pending',
-                        'processing_stage': 'gmail_attachment_downloaded',
-                        # 表示用フィールド
-                        'display_subject': subject,
-                        'display_sent_at': sent_at,
-                        'display_sender': sender_name,
-                        'display_sender_email': sender_email,
-                        'display_post_text': email_body,  # 全文
-                        # Phase 3: owner_id 必須
-                        'owner_id': self.owner_id
-                    }
-
-                    try:
-                        doc_result = await self.db.insert_document('Rawdata_FILE_AND_MAIL', doc_data)
-                        if doc_result:
-                            doc_id = doc_result.get('doc_id')
-                            result['document_ids'].append(doc_id)
-                            logger.info(f"Supabase保存完了（添付ファイル）: {att_info['filename']}")
-                    except Exception as db_error:
-                        logger.error(f"Supabase保存エラー: {db_error}")
-                        result['error'] = str(db_error)
+                        'owner_id':          self.owner_id,
+                    }).execute()
+                    result['document_ids'].append(raw_id)
+                    logger.info(f"Supabase保存完了（メール + 添付 {len(attachment_info_list)}件）: {subject}")
+                else:
+                    logger.error(f"01_gmail_01_raw INSERT 失敗（データ空）: {subject}")
+            except Exception as db_error:
+                logger.error(f"Supabase保存エラー: {db_error}")
+                result['error'] = str(db_error)
 
             # メールのラベルを変更（DMラベルを削除し、Processedラベルに移動）
             processed_label = self.config['gmail'].get('processed_label', 'Processed')

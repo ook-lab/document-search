@@ -187,16 +187,16 @@ class G21TextStructurer:
                 'metadata': metadata
             }
 
-            # Supabaseに保存
+            # pipeline_meta に中間保存（クラッシュ時の復旧用）
             if self.document_id:
                 try:
                     db = DatabaseClient(use_service_role=True)
-                    db.client.table('Rawdata_FILE_AND_MAIL').update({
+                    db.client.table('pipeline_meta').update({
                         'g21_articles': articles
                     }).eq('id', self.document_id).execute()
-                    logger.info(f"[G-21] ✓ g21_articles を Supabase に保存: {len(articles)}件")
+                    logger.info(f"[G-21] ✓ g21_articles を pipeline_meta に保存: {len(articles)}件")
                 except Exception as e:
-                    logger.error(f"[G-21] Supabase保存エラー: {e}")
+                    logger.error(f"[G-21] pipeline_meta 保存エラー: {e}")
 
             # ★チェーン: 次のステージ（G-22）を呼び出す
             if self.next_stage:

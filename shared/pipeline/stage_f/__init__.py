@@ -55,7 +55,7 @@ class F1Controller:
             stage_d_result: Stage D の結果
             stage_e_result: Stage E の結果
             year_context: 年度コンテキスト
-            rawdata_record: Rawdata_FILE_AND_MAIL の1行（display_* フィールド付与用）
+            rawdata_record: pipeline_meta の1行（display_* フィールド付与用）
 
         Returns:
             F-5の最終結果（チェーン経由）

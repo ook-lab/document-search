@@ -75,12 +75,12 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/google-calendar-watch/index.ts"
 
-[functions.google-calendar-sync]
-enabled = true
-verify_jwt = true
-entrypoint = "./functions/google-calendar-sync/index.ts"
-
 [functions.google-calendar-renew-watches]
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/google-calendar-renew-watches/index.ts"
+
+[functions.calendar-index-sync]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/calendar-index-sync/index.ts"

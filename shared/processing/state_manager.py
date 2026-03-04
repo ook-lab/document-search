@@ -423,11 +423,11 @@ class StateManager:
     def _reset_stuck_documents(self):
         """processing状態でスタックしているドキュメントをpendingにリセット"""
         try:
-            result = self.client.table('Rawdata_FILE_AND_MAIL').select('id').eq('processing_status', 'processing').execute()
+            result = self.client.table('pipeline_meta').select('id').eq('processing_status', 'processing').execute()
             if result.data:
                 stuck_ids = [row['id'] for row in result.data]
                 if stuck_ids:
-                    self.client.table('Rawdata_FILE_AND_MAIL').update({
+                    self.client.table('pipeline_meta').update({
                         'processing_status': 'pending'
                     }).in_('id', stuck_ids).execute()
                     logger.info(f"Reset {len(stuck_ids)} stuck documents to pending")

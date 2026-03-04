@@ -38,16 +38,11 @@ serve(async (req) => {
     if (watch.resource_id !== resourceId) return new Response("ok", { status: 200 });
     if (watch.channel_token !== (channelToken ?? "")) return new Response("ok", { status: 200 });
 
-    // sync 完了後に calendar-index-sync を呼ぶ（fire and forget）
-    const syncUrl = `${PROJECT_URL}/functions/v1/google-calendar-sync?user_id=${encodeURIComponent(watch.user_id)}&calendar_id=${encodeURIComponent(watch.calendar_id)}`;
+    // calendar-index-sync が Google API 取得〜インデックス更新を一括実行（fire and forget）
     const indexUrl = `${PROJECT_URL}/functions/v1/calendar-index-sync?user_id=${encodeURIComponent(watch.user_id)}&calendar_id=${encodeURIComponent(watch.calendar_id)}`;
     const authHeader = { Authorization: `Bearer ${SERVICE_ROLE_KEY}` };
 
-    fetch(syncUrl, { method: "GET", headers: authHeader })
-      .then((r) => {
-        if (r.ok) fetch(indexUrl, { method: "GET", headers: authHeader }).catch(() => {});
-      })
-      .catch(() => {});
+    fetch(indexUrl, { method: "GET", headers: authHeader }).catch(() => {});
 
     return new Response("ok", { status: 200 });
   } catch {

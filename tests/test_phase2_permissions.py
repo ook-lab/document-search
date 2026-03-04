@@ -82,15 +82,15 @@ def get_authenticated_client(email: str, password: str):
 # =============================================================================
 
 def test_anon_can_select_rawdata():
-    """Test: anon は Rawdata_FILE_AND_MAIL を SELECT できる"""
-    print("\n[Test] anon can SELECT Rawdata_FILE_AND_MAIL...")
+    """Test: anon は pipeline_meta を SELECT できる"""
+    print("\n[Test] anon can SELECT pipeline_meta...")
 
     db = get_anon_client()
 
     try:
-        result = db.client.table('Rawdata_FILE_AND_MAIL').select('id').limit(1).execute()
+        result = db.client.table('pipeline_meta').select('id').limit(1).execute()
         if result.data is not None:
-            print("  ✅ PASS: anon can SELECT from Rawdata_FILE_AND_MAIL")
+            print("  ✅ PASS: anon can SELECT from pipeline_meta")
             return True
         else:
             print("  ✅ PASS: No data returned (but query succeeded)")
@@ -121,12 +121,12 @@ def test_anon_can_select_search_index():
 
 def test_anon_cannot_insert():
     """Test: anon は INSERT できない"""
-    print("\n[Test] anon CANNOT INSERT into Rawdata_FILE_AND_MAIL...")
+    print("\n[Test] anon CANNOT INSERT into pipeline_meta...")
 
     db = get_anon_client()
 
     try:
-        result = db.client.table('Rawdata_FILE_AND_MAIL').insert({
+        result = db.client.table('pipeline_meta').insert({
             'source_id': 'anon-attack-test',
             'file_name': 'anon_attack.pdf',
             'workspace': 'test'
@@ -135,7 +135,7 @@ def test_anon_cannot_insert():
         # 成功してしまった場合は失敗
         print("  ❌ FAIL: anon was able to INSERT (should be denied)")
         # クリーンアップ
-        db.client.table('Rawdata_FILE_AND_MAIL').delete().eq('source_id', 'anon-attack-test').execute()
+        db.client.table('pipeline_meta').delete().eq('source_id', 'anon-attack-test').execute()
         return False
 
     except Exception as e:
@@ -150,12 +150,12 @@ def test_anon_cannot_insert():
 
 def test_anon_cannot_update():
     """Test: anon は UPDATE できない"""
-    print("\n[Test] anon CANNOT UPDATE Rawdata_FILE_AND_MAIL...")
+    print("\n[Test] anon CANNOT UPDATE pipeline_meta...")
 
     db = get_anon_client()
 
     try:
-        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+        result = db.client.table('pipeline_meta').update({
             'review_status': 'anon_attack'
         }).eq('id', DOC_A_ID).execute()
 
@@ -179,12 +179,12 @@ def test_anon_cannot_update():
 
 def test_anon_cannot_delete():
     """Test: anon は DELETE できない"""
-    print("\n[Test] anon CANNOT DELETE from Rawdata_FILE_AND_MAIL...")
+    print("\n[Test] anon CANNOT DELETE from pipeline_meta...")
 
     db = get_anon_client()
 
     try:
-        result = db.client.table('Rawdata_FILE_AND_MAIL').delete().eq('id', DOC_A_ID).execute()
+        result = db.client.table('pipeline_meta').delete().eq('id', DOC_A_ID).execute()
 
         if len(result.data) == 0:
             print("  ✅ PASS: DELETE returned 0 rows (RLS working)")
@@ -241,7 +241,7 @@ def test_authenticated_can_update_own_data():
 
     try:
         # User A のドキュメントを更新
-        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+        result = db.client.table('pipeline_meta').update({
             'review_status': 'reviewed'
         }).eq('id', DOC_A_ID).execute()
 
@@ -249,7 +249,7 @@ def test_authenticated_can_update_own_data():
             print("  ✅ PASS: User A can UPDATE own data")
 
             # 元に戻す
-            db.client.table('Rawdata_FILE_AND_MAIL').update({
+            db.client.table('pipeline_meta').update({
                 'review_status': 'pending'
             }).eq('id', DOC_A_ID).execute()
 
@@ -272,7 +272,7 @@ def test_authenticated_can_delete_own_data():
     temp_id = "doc-temp-test-delete-001"
 
     try:
-        service_db.client.table('Rawdata_FILE_AND_MAIL').insert({
+        service_db.client.table('pipeline_meta').insert({
             'id': temp_id,
             'source_id': 'temp-delete-test',
             'file_name': 'temp_for_delete.pdf',
@@ -288,7 +288,7 @@ def test_authenticated_can_delete_own_data():
         return True
 
     try:
-        result = db.client.table('Rawdata_FILE_AND_MAIL').delete().eq('id', temp_id).execute()
+        result = db.client.table('pipeline_meta').delete().eq('id', temp_id).execute()
 
         if len(result.data) == 1:
             print("  ✅ PASS: User A can DELETE own data")
@@ -317,7 +317,7 @@ def test_authenticated_cannot_update_others_data():
 
     try:
         # User A が User B のデータを更新しようとする
-        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+        result = db.client.table('pipeline_meta').update({
             'review_status': 'hacked_by_a'
         }).eq('id', DOC_B_ID).execute()
 
@@ -349,7 +349,7 @@ def test_authenticated_cannot_delete_others_data():
 
     try:
         # User A が User B のデータを削除しようとする
-        result = db.client.table('Rawdata_FILE_AND_MAIL').delete().eq('id', DOC_B_ID).execute()
+        result = db.client.table('pipeline_meta').delete().eq('id', DOC_B_ID).execute()
 
         if len(result.data) == 0:
             print("  ✅ PASS: User A CANNOT DELETE User B's data (0 rows affected)")
@@ -463,12 +463,12 @@ def test_authenticated_cannot_insert_with_other_owner():
 
 def test_authenticated_select_visibility_document():
     """
-    Test: authenticated の SELECT 範囲（Rawdata_FILE_AND_MAIL）
+    Test: authenticated の SELECT 範囲（pipeline_meta）
 
     現設計: 全データ見える（Admin UI で全ドキュメントをレビューするため）
     将来制限する場合: RLS で owner_id = auth.uid() に変更
     """
-    print("\n[Test] authenticated SELECT visibility (Rawdata_FILE_AND_MAIL)...")
+    print("\n[Test] authenticated SELECT visibility (pipeline_meta)...")
 
     db = get_authenticated_client(USER_A_EMAIL, USER_A_PASSWORD)
     if not db:
@@ -477,7 +477,7 @@ def test_authenticated_select_visibility_document():
 
     try:
         # User A が User B のドキュメントを SELECT できるか
-        result = db.client.table('Rawdata_FILE_AND_MAIL').select('id, owner_id').eq('id', DOC_B_ID).execute()
+        result = db.client.table('pipeline_meta').select('id, owner_id').eq('id', DOC_B_ID).execute()
 
         if len(result.data) == 1:
             print("  ℹ️ INFO: User A CAN see User B's document (current design)")
@@ -569,9 +569,9 @@ def test_service_role_can_access_all():
     db = get_service_role_client()
 
     try:
-        # Rawdata_FILE_AND_MAIL
-        result = db.client.table('Rawdata_FILE_AND_MAIL').select('id').limit(1).execute()
-        print(f"  ✅ Rawdata_FILE_AND_MAIL: OK")
+        # pipeline_meta
+        result = db.client.table('pipeline_meta').select('id').limit(1).execute()
+        print(f"  ✅ pipeline_meta: OK")
 
         # processing_lock
         result = db.client.table('processing_lock').select('*').limit(1).execute()

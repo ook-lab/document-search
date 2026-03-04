@@ -742,9 +742,9 @@
 
     <script>
         let currentDocuments = [];
-        let selectedWorkspaces = [];
-        let selectedDocTypes = [];
-        let hierarchyData = []; // {name: 'workspace', doc_types: [...]}
+        let selectedPersons = [];
+        let selectedSources = [];
+        let hierarchyData = []; // {name: 'workspace', sources: [...]}
 
         // ── コスト計算 ────────────────────────────────────────────────
         // モデル別入力単価（$/1M tokens）
@@ -813,7 +813,7 @@
 
             container.innerHTML = hierarchyData.map(workspace => {
                 const wsId = `ws-${workspace.name}`;
-                const docTypeCount = workspace.doc_types.length;
+                const sourceCount = workspace.sources.length;
 
                 return `
                     <div class="workspace-item">
@@ -828,10 +828,10 @@
                             <label class="workspace-label" for="${wsId}" onclick="event.stopPropagation()">
                                 ${escapeHtml(workspace.name)}
                             </label>
-                            <span class="workspace-count">${docTypeCount}件</span>
+                            <span class="workspace-count">${sourceCount}件</span>
                         </div>
                         <div class="workspace-children" id="children-${wsId}">
-                            ${workspace.doc_types.map(dt => {
+                            ${workspace.sources.map(dt => {
                                 const dtId = `dt-${workspace.name}-${dt}`;
                                 return `
                                     <div class="doc-type-item" onclick="toggleCheckbox('${dtId}')">
@@ -889,7 +889,7 @@
             // 配下の子（doc_type）をすべて同じ状態にする
             const workspace = hierarchyData.find(w => w.name === workspaceName);
             if (workspace) {
-                workspace.doc_types.forEach(dt => {
+                workspace.sources.forEach(dt => {
                     const dtCheckbox = document.getElementById(`dt-${workspaceName}-${dt}`);
                     if (dtCheckbox) {
                         dtCheckbox.checked = isChecked;
@@ -912,7 +912,7 @@
             let allChecked = true;
             let noneChecked = true;
 
-            workspace.doc_types.forEach(dt => {
+            workspace.sources.forEach(dt => {
                 const dtCheckbox = document.getElementById(`dt-${workspaceName}-${dt}`);
                 if (dtCheckbox) {
                     if (dtCheckbox.checked) {
@@ -959,7 +959,7 @@
                 }
 
                 // 子チェックボックスをクリア
-                workspace.doc_types.forEach(dt => {
+                workspace.sources.forEach(dt => {
                     const dtCheckbox = document.getElementById(`dt-${workspace.name}-${dt}`);
                     if (dtCheckbox) dtCheckbox.checked = false;
                 });
@@ -969,28 +969,28 @@
         }
 
         function applyFilters() {
-            // チェックされたworkspaceとdoc_typeを収集
-            selectedWorkspaces = [];
-            selectedDocTypes = [];
+            // チェックされた person と source を収集
+            selectedPersons = [];
+            selectedSources = [];
 
             hierarchyData.forEach(workspace => {
                 const wsName = workspace.name;
 
                 // 子（doc_type）のチェック状態を確認
-                workspace.doc_types.forEach(dt => {
+                workspace.sources.forEach(dt => {
                     const dtCheckbox = document.getElementById(`dt-${wsName}-${dt}`);
                     if (dtCheckbox && dtCheckbox.checked) {
-                        // workspaceを追加（重複回避）
-                        if (!selectedWorkspaces.includes(wsName)) {
-                            selectedWorkspaces.push(wsName);
+                        // person を追加（重複回避）
+                        if (!selectedPersons.includes(wsName)) {
+                            selectedPersons.push(wsName);
                         }
-                        // doc_typeを追加
-                        selectedDocTypes.push(dt);
+                        // source を追加
+                        selectedSources.push(dt);
                     }
                 });
             });
 
-            console.log('[フィルタ適用]', { selectedWorkspaces, selectedDocTypes });
+            console.log('[フィルタ適用]', { selectedPersons, selectedSources });
 
             // フィルタチップを更新
             updateFilterChips();
@@ -1015,7 +1015,7 @@
                 const wsName = workspace.name;
                 const checkedTypes = [];
 
-                workspace.doc_types.forEach(dt => {
+                workspace.sources.forEach(dt => {
                     const dtCheckbox = document.getElementById(`dt-${wsName}-${dt}`);
                     if (dtCheckbox && dtCheckbox.checked) {
                         checkedTypes.push(dt);
@@ -1092,8 +1092,8 @@
                 const searchPayload = {
                     query,
                     limit,
-                    workspaces: selectedWorkspaces,
-                    doc_types: selectedDocTypes,
+                    persons: selectedPersons,
+                    sources: selectedSources,
                     threshold: parseFloat(document.getElementById('thresholdInput').value) || 0.4
                 };
 
@@ -1171,22 +1171,8 @@
             } else {
                 documentList.innerHTML = documents.map(doc => {
                     try {
-                        // ✅ Classroom投稿かどうかを判定
-                        const sourceType = doc.source_type || '';
-                        const metadata = doc.metadata || {};
-
-                        // 複数の条件でClassroom投稿を判定
-                        const hasClassroomSubject = doc.display_subject && doc.display_subject.trim() !== '';
-                        const hasClassroomSender = doc.display_sender && doc.display_sender.trim() !== '';
-                        const hasClassroomMetadata = metadata.course_name || metadata.course_id;
-                        const isClassroomRoute = doc.ingestion_route === 'classroom';
-
-                        const isClassroom = sourceType === 'classroom' ||
-                                          sourceType === 'classroom_text' ||
-                                          hasClassroomSubject ||
-                                          hasClassroomSender ||
-                                          hasClassroomMetadata ||
-                                          isClassroomRoute;
+                        // source が GOOGLE_CLASSROOM の場合は Classroom 投稿レイアウトで表示
+                        const isClassroom = doc.source === 'GOOGLE_CLASSROOM';
 
                         if (isClassroom) {
                             return renderClassroomPost(doc);
@@ -1204,57 +1190,38 @@
         }
 
         function renderClassroomPost(doc) {
-            // デバッグ: どのデータが来ているか確認
-            console.log('[DEBUG] Classroom投稿データ:', {
-                display_subject: doc.display_subject,
-                display_post_text: doc.display_post_text,
-                chunk_content: doc.chunk_content,
-                file_name: doc.file_name
-            });
+            // タイトル（09_unified_documents.title）
+            let title = doc.title || '';
+            if (title.length > 50) title = title.substring(0, 50) + '...';
 
-            // ✅ タイトルと本文を正しく取得
-            // display_subject: タイトル（課題/資料名、またはお知らせの件名）
-            // display_post_text: 投稿本文（classroom_textの場合のみ）
-            // full_text: ドキュメント本体（PDFの内容など）
-
-            // タイトルは最初の50文字に制限（長すぎる場合）
-            let title = doc.display_subject || '';
-            if (title && title.length > 50) {
-                title = title.substring(0, 50) + '...';
-            }
-
-            // 投稿本文はdisplay_post_textから取得、なければ検索でヒットしたチャンクを表示
-            const bodyText = (doc.display_post_text && doc.display_post_text.trim())
-                ? doc.display_post_text
+            // 本文: snippet → chunk_content の順に使用
+            const bodyText = (doc.snippet && doc.snippet.trim())
+                ? doc.snippet
                 : (doc.chunk_content || '');
 
-            // ✅ 送信者情報（display_senderを優先）
-            const metadata = doc.metadata || {};
-            const sender = doc.display_sender || metadata.author_name || metadata.sender || metadata.sender_name || '不明';
-
-            // ✅ 送信日時（display_sent_atを優先）
-            const dateStr = doc.display_sent_at || doc.created_at || metadata.created_time || '';
+            // 送信者・日時
+            const meta = doc.meta || {};
+            const sender = doc.from_name || meta.author_name || meta.sender_name || '不明';
+            const dateStr = doc.post_at || doc.indexed_at || '';
             const formattedDate = dateStr ? formatDate(dateStr) : '日時不明';
 
-            // ✅ 投稿種別（display_type）
-            const postType = doc.display_type || metadata.post_type || 'Classroom';
+            // 投稿種別
+            const postType = doc.category || doc.source || 'Classroom';
 
-            // 添付ファイル（source_urlまたはmetadataのmaterialsから）
+            // 添付ファイル
             const attachments = [];
 
-            // file_urlがある場合（Driveファイルへのリンク）
             if (doc.file_url) {
-                const fileName = doc.file_name || 'ファイル';
                 attachments.push({
                     url: doc.file_url,
-                    name: fileName,
+                    name: doc.title || 'ファイル',
                     type: 'drive'
                 });
             }
 
-            // metadataに追加の添付ファイル情報がある場合
-            if (metadata.materials && Array.isArray(metadata.materials)) {
-                metadata.materials.forEach(material => {
+            // meta.materials がある場合
+            if (meta.materials && Array.isArray(meta.materials)) {
+                meta.materials.forEach(material => {
                     if (material.driveFile && material.driveFile.url) {
                         attachments.push({
                             url: material.driveFile.url,
@@ -1297,22 +1264,16 @@
         }
 
         function renderRegularDocument(doc) {
-            // ✅ タイトル：summaryの最初の100文字を使用（ファイル名は使わない）
-            let title = 'ドキュメント';
-            if (doc.summary && doc.summary.trim() !== '') {
-                // summaryの最初の100文字をタイトルに使用
-                title = doc.summary.substring(0, 100);
-                if (doc.summary.length > 100) {
-                    title += '...';
-                }
-            }
+            // タイトル（09_unified_documents.title）
+            let title = doc.title || 'ドキュメント';
+            if (title.length > 100) title = title.substring(0, 100) + '...';
 
-            // ✅ 要約があればそれを優先、なければ本文をトリミング
-            const displayText = doc.summary || truncateText(doc.content || '', 200);
+            // 表示テキスト: snippet → chunk_content の順に使用
+            const displayText = doc.snippet || truncateText(doc.chunk_content || '', 200);
 
-            // ✅ file_urlがあればリンクボタンを表示（ファイル名をリンクテキストに使用）
+            // file_url があればリンクボタンを表示
             const fileUrl = doc.file_url || '';
-            const fileName = doc.file_name || 'ファイルを開く';
+            const fileName = doc.title || 'ファイルを開く';
             const linkButton = fileUrl ?
                 `<a href="${escapeHtml(fileUrl)}" target="_blank" class="btn-link">📄 ${escapeHtml(fileName)}</a>` :
                 '';

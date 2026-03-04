@@ -35,7 +35,7 @@ SYSTEM_OWNER_ID = '00000000-0000-0000-0000-000000000000'
 # 親子関係のマッピング（子テーブル → 親テーブル、結合キー）
 PARENT_CHILD_RELATIONS = {
     '10_ix_search_index': {
-        'parent_table': 'Rawdata_FILE_AND_MAIL',
+        'parent_table': 'pipeline_meta',
         'join_key': 'document_id',  # 子の document_id = 親の id
         'parent_key': 'id',
     }
@@ -43,7 +43,7 @@ PARENT_CHILD_RELATIONS = {
 
 # SYSTEM_OWNER_ID の許容上限（警告閾値）
 SYSTEM_OWNER_THRESHOLD = {
-    'Rawdata_FILE_AND_MAIL': 100,  # 100件超えたら警告
+    'pipeline_meta': 100,          # 100件超えたら警告
     '10_ix_search_index': 500,     # チャンクは多いので緩め
     'Rawdata_RECEIPT_shops': 50,
     'MASTER_Rules_transaction_dict': 20,
@@ -61,7 +61,7 @@ class TestOwnerIdDefinitions:
     def test_required_tables_defined(self):
         """必須テーブルが定義されている"""
         expected_tables = {
-            'Rawdata_FILE_AND_MAIL',
+            'pipeline_meta',
             '10_ix_search_index',
             'Rawdata_RECEIPT_shops',
             'MASTER_Rules_transaction_dict',
@@ -403,7 +403,7 @@ class TestActiveExecutionIntegrity:
         """active_execution_id が指す execution が存在する"""
         try:
             # active_execution_id が設定されているドキュメントを取得
-            docs_response = service_client.table('Rawdata_FILE_AND_MAIL') \
+            docs_response = service_client.table('pipeline_meta') \
                 .select('id, active_execution_id') \
                 .not_.is_('active_execution_id', 'null') \
                 .limit(1000) \
@@ -448,7 +448,7 @@ class TestActiveExecutionIntegrity:
         """active_execution_id が指す execution の status が succeeded"""
         try:
             # active_execution_id が設定されているドキュメントを取得
-            docs_response = service_client.table('Rawdata_FILE_AND_MAIL') \
+            docs_response = service_client.table('pipeline_meta') \
                 .select('id, active_execution_id') \
                 .not_.is_('active_execution_id', 'null') \
                 .limit(1000) \
@@ -498,7 +498,7 @@ class TestActiveExecutionIntegrity:
         """active_execution_id が指す execution の owner_id がドキュメントと一致"""
         try:
             # active_execution_id が設定されているドキュメントを取得
-            docs_response = service_client.table('Rawdata_FILE_AND_MAIL') \
+            docs_response = service_client.table('pipeline_meta') \
                 .select('id, owner_id, active_execution_id') \
                 .not_.is_('active_execution_id', 'null') \
                 .limit(1000) \

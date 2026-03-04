@@ -8,137 +8,76 @@
 
 ---
 
-## Architecture（処理は Worker のみ）
+## Architecture（多層構造のパイプライン）
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      Supabase DB                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │ops_requests │  │run_executions│  │10_ix_search_index│ │
-│  │ (入力)      │  │ (実行記録)   │  │ (検索用)         │ │
-│  └──────┬──────┘  └──────▲──────┘  └────────▲────────┘  │
-└─────────┼───────────────┼──────────────────┼───────────┘
-          │               │                  │
-          ▼               │                  │
-┌─────────────────┐       │                  │
-│   Worker CLI    │───────┴──────────────────┘
-│ （唯一の処理者） │
-└─────────────────┘
-
-┌─────────────────┐
-│ Search API      │   ← 検索専用。処理しない。
-│ (read-only)     │
-└─────────────────┘
+```mermaid
+graph TD
+    A[Raw Data] --> A_Stage[Stage A: 分類 & エントリポイント]
+    A_Stage --> B_Stage[Stage B: デジタル抽出/メタデータ取得]
+    B_Stage --> D_Stage[Stage D: ページ分割/領域検出]
+    D_Stage --> E_Stage[Stage E: AI-assisted OCR & 視覚構造解析]
+    E_Stage --> F_Stage[Stage F: セマンティックデータ統合 & 正規化]
+    F_Stage --> G_Stage[Stage G: UI最適化構造化 & RAG書込]
+    G_Stage --> J_Stage[Stage J: チャンク分割]
+    J_Stage --> K_Stage[Stage K: ベクトル埋め込み]
+    K_Stage --> DB[(Supabase / Vector DB)]
 ```
 
-**Rule**: Web = enqueue/search only. Worker = processing only.
+**Rule**: Web = enqueue/search only. Worker = processing only (Stages A-K).
 
 ---
 
-## Operational Flow（処理は起動しない）
+## Operational Flow
 
 ### Step 1: DB にリクエスト投入
+`services/doc-processor/app.py` または SQL でリクエストを登録します。
 
 ```sql
-INSERT INTO ops_requests (request_type, parameters, status)
-VALUES ('process_document', '{"document_id": "xxx"}', 'pending');
+INSERT INTO ops_requests (request_type, scope_type, scope_id, requested_by)
+VALUES ('process_document', 'document', 'xxx-uuid', 'admin');
 ```
 
 ### Step 2: Worker 実行
+Worker が `pipeline_manager.py` を通じて全ステージを順次実行します。
 
-```bash
-python scripts/ops.py requests --apply   # リクエスト適用
-python -m scripts.processing.worker      # Worker 実行
-```
-
-### Step 3: 結果確認
-
-```sql
-SELECT * FROM run_executions ORDER BY created_at DESC LIMIT 10;
-SELECT COUNT(*) FROM "10_ix_search_index";
-```
-
----
-
-## 運用管理（ops.py）
-
-```bash
-python scripts/ops.py stats                          # 統計
-python scripts/ops.py stop                           # 停止要求
-python scripts/ops.py release-lease --workspace X   # リース解放
-python scripts/ops.py requests --apply              # 要求適用
-```
-
----
-
-## Search API（検索専用 - 処理しない）
-
-```bash
-python services/doc-search/app.py
-```
-
-http://localhost:5001 で検索 UI を提供。
-
-> **⚠️ これを起動しても処理は実行されない。Worker を動かさない限り何も処理されない。**
-
----
-
-## 環境変数
-
-### 必須
-
-```bash
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_KEY=your_service_role_key
-GOOGLE_API_KEY=your_gemini_api_key
-```
-
-### 任意
-
-```bash
-OPENAI_API_KEY=your_openai_api_key  # Embeddings用
-```
-
----
-
-## Setup
-
-```bash
-pip install -r requirements.txt
-supabase db push  # マイグレーション適用
-```
-
-仮想環境は任意。
+### Step 3: 検索
+`services/doc-search` が `10_ix_search_index` に対してハイブリッド検索を実行します。
 
 ---
 
 ## Project Structure
 
 ```
-├── scripts/
-│   ├── ops.py                    # 運用管理CLI（SSOT）
-│   └── processing/
-│       └── worker.py             # Worker（処理実行）
+├── shared/
+│   └── pipeline/
+│       ├── stage_a/              # A: 分類 (A3EntryPoint)
+│       ├── stage_b/              # B: デジタル抽出 (B1Controller)
+│       ├── stage_d/              # D: 領域検出 (D1Controller)
+│       ├── stage_e/              # E: AI-OCR (E1Controller)
+│       ├── stage_f/              # F: データ統合 (F1Controller)
+│       ├── stage_g/              # G: UI/RAG構造化 (G1Controller)
+│       ├── stage_j_chunking.py   # J: チャンク化
+│       └── stage_k_embedding.py  # K: ベクトル化
 │
 ├── services/
-│   └── doc-search/               # Search API（検索専用）
-│
-├── shared/
-│   └── pipeline/                 # Stage E-K
-│
-└── supabase/
-    └── migrations/               # DB定義（SSOT）
+│   ├── doc-processor/            # 管理・運用API(Enqueueのみ)
+│   └── doc-search/               # 検索専用API
 ```
 
 ---
 
-## Pipeline（Stage E-K）
+## Pipeline Stages Specification
 
-```
-E: 前処理 → F: Vision → G: 整形 → H: 構造化 → I: 統合 → J: チャンク → K: ベクトル
-```
-
-Worker が DB の pending ドキュメントを取得し、Stage E-K を実行。
+| Stage | 名称 | 役割の詳細 |
+|:---:|---|---|
+| **A** | **Classification** | ファイル種別・ソースの判定。 |
+| **B** | **Digital Extraction** | PDF/Mailから直接テキスト・メタデータを抽出。 |
+| **D** | **Segmentation** | ページのセグメンテーション、表領域の検出。 |
+| **E** | **AI-OCR & Structure** | **核心。** TesseractとGemini Visionを組み合わせた視覚的構造の抽出（表・段落）。 |
+| **F** | **Fusion & Normalization** | デジタルと視覚情報の統合、日付のISO 8601正規化、表の論理結合。 |
+| **G** | **UI/RAG Optimization** | UI表示用データの確定、AIによる要約・タスク抽出、統合テーブル書込。 |
+| **J** | **Chunking** | メタデータを保持した検索用チャンクの生成。 |
+| **K** | **Embedding** | ベクトル化と `10_ix_search_index` への保存。 |
 
 ---
 

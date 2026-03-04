@@ -136,7 +136,7 @@ def _load_credentials():
 
 
 def _save_credentials(creds):
-    """credentials を保存（ローカルファイル + Secret Manager）"""
+    """credentials を保存（ローカルファイル + Secret Manager + google_oauth_tokens）"""
     data = json.dumps({
         'token': creds.token,
         'refresh_token': creds.refresh_token,
@@ -151,6 +151,18 @@ def _save_credentials(creds):
         f.write(data)
     # Secret Manager にも保存（Cloud Run 向け）
     _sm_write(SECRET_TOKEN, data)
+    # google_oauth_tokens テーブルに保存（Edge Function が参照するため必須）
+    user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
+    if user_id and creds.refresh_token:
+        db = _get_supabase()
+        if db:
+            try:
+                db.table('google_oauth_tokens').upsert(
+                    {'user_id': user_id, 'refresh_token': creds.refresh_token},
+                    on_conflict='user_id'
+                ).execute()
+            except Exception as e:
+                app.logger.warning(f'google_oauth_tokens 保存失敗: {e}')
 
 
 def _get_valid_credentials():
@@ -167,6 +179,40 @@ def _get_valid_credentials():
 
 def _build_calendar_service(creds):
     return googleapiclient.discovery.build('calendar', 'v3', credentials=creds)
+
+
+def _get_related_calendar_ids(service, calendar_id: str) -> list[str]:
+    """
+    指定カレンダーID + 同名の _arc / _pen カレンダーのIDをまとめて返す。
+    例: 「学校」→ ['学校のID', '学校_arcのID', '学校_penのID']
+    """
+    try:
+        base_name = service.calendars().get(calendarId=calendar_id).execute().get('summary', '')
+    except Exception:
+        return [calendar_id]
+    if not base_name:
+        return [calendar_id]
+
+    targets = {f'{base_name}_arc', f'{base_name}_pen'}
+    related = [calendar_id]
+    page_token = None
+    while True:
+        result = service.calendarList().list(pageToken=page_token).execute()
+        for c in result.get('items', []):
+            if c.get('summary') in targets:
+                related.append(c['id'])
+        page_token = result.get('nextPageToken')
+        if not page_token:
+            break
+    return related
+
+
+def _get_user_email(creds) -> str | None:
+    """認証済みユーザーのメールアドレスを返す（プライマリカレンダーのIDと同一）"""
+    try:
+        return _build_calendar_service(creds).calendars().get(calendarId='primary').execute().get('id')
+    except Exception:
+        return None
 
 
 # ─────────────────────────────────────────
@@ -376,6 +422,7 @@ def api_calendars():
             'color': c.get('backgroundColor', '#4285F4'),
         }
         for c in all_items
+        if not c.get('summary', '').endswith('_arc') and not c.get('summary', '').endswith('_pen')
     ]
     # プライマリを先頭に
     calendars.sort(key=lambda c: (not c['primary'], c['name']))
@@ -434,11 +481,12 @@ def api_register():
         return jsonify({'error': 'events が空です'}), 400
 
     service = _build_calendar_service(creds)
+    user_email = _get_user_email(creds)
     results = []
 
     for ev in events:
         try:
-            body = _build_event_body(ev)
+            body = _build_event_body(ev, user_email=user_email)
             created = service.events().insert(
                 calendarId=calendar_id,
                 body=body
@@ -464,7 +512,7 @@ def api_register():
 # イベント body 生成ヘルパー
 # ─────────────────────────────────────────
 
-def _build_event_body(ev: dict) -> dict:
+def _build_event_body(ev: dict, user_email: str | None = None) -> dict:
     """
     パース済みイベント dict → Google Calendar API の event body
     """
@@ -475,6 +523,7 @@ def _build_event_body(ev: dict) -> dict:
     all_day = ev.get('all_day', False)
     location = ev.get('location')
     description = ev.get('description')
+    attendance = ev.get('attendance')   # 'accepted' / 'declined' / 'tentative'
 
     body = {'summary': title}
     if location:
@@ -496,6 +545,9 @@ def _build_event_body(ev: dict) -> dict:
         dt_end = dt_start + timedelta(hours=1)
         body['start'] = {'dateTime': dt_start.isoformat(), 'timeZone': 'Asia/Tokyo'}
         body['end']   = {'dateTime': dt_end.isoformat(),   'timeZone': 'Asia/Tokyo'}
+
+    if attendance and user_email:
+        body['attendees'] = [{'email': user_email, 'responseStatus': attendance, 'self': True}]
 
     return body
 
@@ -532,22 +584,40 @@ def api_events():
         return jsonify({'error': 'calendar_id, from, to が必要です'}), 400
 
     service = _build_calendar_service(creds)
+    user_email = _get_user_email(creds)
     try:
-        result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=f'{date_from}T00:00:00+09:00',
-            timeMax=f'{date_to}T23:59:59+09:00',
-            singleEvents=True,
-            orderBy='startTime',
-            maxResults=200,
-        ).execute()
+        # メイン + _arc + _pen の3カレンダーをまとめて取得
+        related_ids = _get_related_calendar_ids(service, calendar_id)
+        all_items = []
+        for cal_id in related_ids:
+            try:
+                result = service.events().list(
+                    calendarId=cal_id,
+                    timeMin=f'{date_from}T00:00:00+09:00',
+                    timeMax=f'{date_to}T23:59:59+09:00',
+                    singleEvents=True,
+                    orderBy='startTime',
+                    maxResults=200,
+                ).execute()
+                all_items.extend(result.get('items', []))
+            except Exception:
+                pass
+
+        # 開始時刻でソート
+        all_items.sort(key=lambda e: e.get('start', {}).get('dateTime') or e.get('start', {}).get('date', ''))
 
         events = []
-        for e in result.get('items', []):
+        for e in all_items:
             start = e.get('start', {})
             end   = e.get('end', {})
+            attendees = e.get('attendees', [])
+            my_status = next(
+                (a.get('responseStatus') for a in attendees if a.get('self') or a.get('email') == user_email),
+                None
+            )
             events.append({
                 'id':          e['id'],
+                'calendar_id': e.get('organizer', {}).get('email') or calendar_id,
                 'title':       e.get('summary', '（タイトルなし）'),
                 'date':        (start.get('dateTime') or start.get('date', ''))[:10],
                 'start_time':  (start.get('dateTime') or '')[-14:-9] if 'dateTime' in start else None,
@@ -555,10 +625,222 @@ def api_events():
                 'all_day':     'date' in start,
                 'location':    e.get('location'),
                 'description': e.get('description'),
+                'my_status':   my_status,
             })
         return jsonify({'events': events})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/attendance/<path:calendar_id>/<event_id>', methods=['PATCH'])
+def api_update_attendance(calendar_id, event_id):
+    """イベントの出欠ステータスを更新（attendees.responseStatus）"""
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    data = request.get_json() or {}
+    status = data.get('status')
+    if status not in ('accepted', 'declined', 'tentative'):
+        return jsonify({'error': 'status は accepted / declined / tentative のいずれか'}), 400
+
+    user_email = _get_user_email(creds)
+    if not user_email:
+        return jsonify({'error': 'メールアドレスの取得に失敗しました'}), 500
+
+    service = _build_calendar_service(creds)
+    try:
+        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        # 自分以外の attendees は保持し、自分のエントリを上書き
+        attendees = [a for a in event.get('attendees', [])
+                     if not a.get('self') and a.get('email') != user_email]
+        attendees.append({'email': user_email, 'responseStatus': status, 'self': True})
+        service.events().patch(
+            calendarId=calendar_id,
+            eventId=event_id,
+            body={'attendees': attendees},
+            sendUpdates='none',
+        ).execute()
+        return jsonify({'success': True, 'status': status})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/backfill-attendees', methods=['POST'])
+def api_backfill_attendees():
+    """
+    02_gcal_01_raw で attendees が NULL のイベントに自分を参加者として追加する。
+    Google カレンダー側も PATCH して attendees を書き込む。
+    """
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    user_email = _get_user_email(creds)
+    if not user_email:
+        return jsonify({'error': 'メールアドレスの取得に失敗しました'}), 500
+
+    db = _get_supabase()
+    if not db:
+        return jsonify({'error': 'Supabase が設定されていません'}), 500
+
+    # attendees が NULL のレコードを取得
+    rows = db.table('02_gcal_01_raw') \
+             .select('id, event_id, calendar_id') \
+             .is_('attendees', 'null') \
+             .execute()
+
+    if not rows.data:
+        return jsonify({'updated': 0, 'errors': []})
+
+    service = _build_calendar_service(creds)
+    attendees_value = [{'email': user_email, 'responseStatus': 'accepted', 'self': True}]
+
+    updated = 0
+    errors = []
+
+    for row in rows.data:
+        event_id   = row['event_id']
+        calendar_id = row['calendar_id']
+        db_id      = row['id']
+
+        # Google カレンダーを PATCH
+        try:
+            service.events().patch(
+                calendarId=calendar_id,
+                eventId=event_id,
+                body={'attendees': attendees_value},
+                sendUpdates='none',
+            ).execute()
+        except Exception as e:
+            errors.append({'event_id': event_id, 'error': str(e)})
+            continue
+
+        # DB を更新
+        try:
+            import json as _json
+            db.table('02_gcal_01_raw') \
+              .update({'attendees': attendees_value}) \
+              .eq('id', db_id) \
+              .execute()
+            updated += 1
+        except Exception as e:
+            errors.append({'event_id': event_id, 'error': f'DB更新失敗: {e}'})
+
+    return jsonify({'updated': updated, 'errors': errors, 'total': len(rows.data)})
+
+
+@app.route('/api/redistribute-events', methods=['POST'])
+def api_redistribute_events():
+    """
+    02_gcal_01_raw のイベントを responseStatus に応じて別カレンダーに移動する。
+      accepted  → 現カレンダー（移動なし）
+      declined  → {カレンダー名}_arc
+      tentative → {カレンダー名}_pen
+    カレンダーが存在しなければ自動作成する。
+    """
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    db = _get_supabase()
+    if not db:
+        return jsonify({'error': 'Supabase が設定されていません'}), 500
+
+    service = _build_calendar_service(creds)
+
+    # カレンダー一覧を全件取得してキャッシュ（名前 → ID）
+    all_cals_by_name = {}
+    page_token = None
+    while True:
+        result = service.calendarList().list(pageToken=page_token).execute()
+        for c in result.get('items', []):
+            all_cals_by_name[c.get('summary', '')] = c['id']
+        page_token = result.get('nextPageToken')
+        if not page_token:
+            break
+
+    cal_name_cache = {}   # calendar_id → カレンダー名
+    dest_cache = {}       # (calendar_id, suffix) → 移動先カレンダーID
+
+    def get_cal_name(cal_id: str) -> str:
+        if cal_id not in cal_name_cache:
+            try:
+                cal = service.calendars().get(calendarId=cal_id).execute()
+                cal_name_cache[cal_id] = cal.get('summary', cal_id)
+            except Exception:
+                cal_name_cache[cal_id] = cal_id
+        return cal_name_cache[cal_id]
+
+    def get_or_create_dest(cal_id: str, suffix: str) -> str | None:
+        key = (cal_id, suffix)
+        if key in dest_cache:
+            return dest_cache[key]
+        target_name = f'{get_cal_name(cal_id)}_{suffix}'
+        if target_name in all_cals_by_name:
+            dest_cache[key] = all_cals_by_name[target_name]
+            return dest_cache[key]
+        # 存在しなければ作成
+        try:
+            new_cal = service.calendars().insert(body={'summary': target_name}).execute()
+            all_cals_by_name[target_name] = new_cal['id']
+            dest_cache[key] = new_cal['id']
+            return new_cal['id']
+        except Exception as e:
+            app.logger.warning(f'カレンダー作成失敗 {target_name}: {e}')
+            return None
+
+    # attendees が設定済みのレコードを取得
+    rows = db.table('02_gcal_01_raw') \
+             .select('id, event_id, calendar_id, attendees') \
+             .not_.is_('attendees', 'null') \
+             .execute()
+
+    moved = 0
+    skipped = 0
+    errors = []
+
+    for row in rows.data:
+        attendees = row.get('attendees') or []
+        # self: true のエントリから responseStatus を取得
+        my_status = next(
+            (a.get('responseStatus') for a in attendees if a.get('self')),
+            attendees[0].get('responseStatus') if attendees else None
+        )
+
+        if my_status == 'accepted' or not my_status:
+            skipped += 1
+            continue
+
+        suffix = 'arc' if my_status == 'declined' else 'pen'  # tentative → pen
+        cal_id   = row['calendar_id']
+        event_id = row['event_id']
+        db_id    = row['id']
+
+        dest_cal_id = get_or_create_dest(cal_id, suffix)
+        if not dest_cal_id:
+            errors.append({'event_id': event_id, 'error': f'移動先カレンダーの取得/作成に失敗'})
+            continue
+
+        # Google カレンダーでイベントを移動
+        try:
+            service.events().move(
+                calendarId=cal_id,
+                eventId=event_id,
+                destination=dest_cal_id,
+            ).execute()
+        except Exception as e:
+            errors.append({'event_id': event_id, 'error': str(e)})
+            continue
+
+        # DB の calendar_id を更新
+        try:
+            db.table('02_gcal_01_raw').update({'calendar_id': dest_cal_id}).eq('id', db_id).execute()
+            moved += 1
+        except Exception as e:
+            errors.append({'event_id': event_id, 'error': f'DB更新失敗: {e}'})
+
+    return jsonify({'moved': moved, 'skipped': skipped, 'errors': errors, 'total': len(rows.data)})
 
 
 @app.route('/api/assign', methods=['POST'])
@@ -713,12 +995,15 @@ def api_index_settings_get(calendar_id):
         # token.json から user 識別子を取得する代わりに、
         # Google カレンダー API で確認済みの calendar_id をキーに検索する
         res = db.table('calendar_sync_state') \
-                .select('index_enabled') \
+                .select('index_enabled, person') \
                 .eq('calendar_id', calendar_id) \
                 .execute()
         if res.data:
-            return jsonify({'index_enabled': bool(res.data[0]['index_enabled'])})
-        return jsonify({'index_enabled': False})
+            return jsonify({
+                'index_enabled': bool(res.data[0]['index_enabled']),
+                'person': res.data[0].get('person') or '',
+            })
+        return jsonify({'index_enabled': False, 'person': ''})
     except Exception as e:
         return jsonify({'index_enabled': False, 'warning': str(e)})
 
@@ -741,6 +1026,24 @@ def _trigger_index_sync(calendar_id: str):
         app.logger.warning(f'calendar-index-sync 呼び出し失敗: {e}')
 
 
+def _register_calendar_watch(calendar_id: str):
+    """google-calendar-watch Edge Function を呼び出して push 通知チャンネルを登録"""
+    user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
+    if not user_id or not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    base = SUPABASE_URL.rstrip('/')
+    url  = (f'{base}/functions/v1/google-calendar-watch'
+            f'?user_id={urllib.parse.quote(user_id)}'
+            f'&calendar_id={urllib.parse.quote(calendar_id)}')
+    try:
+        req = urllib.request.Request(
+            url, headers={'Authorization': f'Bearer {SUPABASE_KEY}'}, method='GET'
+        )
+        urllib.request.urlopen(req, timeout=30)
+    except Exception as e:
+        app.logger.warning(f'google-calendar-watch 呼び出し失敗: {e}')
+
+
 @app.route('/api/index-settings/<path:calendar_id>', methods=['POST'])
 def api_index_settings_save(calendar_id):
     """index_enabled を更新し、ON なら初回 index-sync を自動実行、OFF ならチャンク削除"""
@@ -748,39 +1051,50 @@ def api_index_settings_save(calendar_id):
     if not db:
         return jsonify({'error': 'Supabase が設定されていません'}), 500
 
-    data = request.get_json()
-    index_enabled = bool((data or {}).get('index_enabled', False))
+    data = request.get_json() or {}
+    index_enabled = bool(data.get('index_enabled', False))
+    person = (data.get('person') or '').strip()
 
     try:
         user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
-        existing = db.table('calendar_sync_state').select('calendar_id').eq('user_id', user_id).eq('calendar_id', calendar_id).execute()
-        if existing.data:
-            db.table('calendar_sync_state').update(
-                {'index_enabled': index_enabled}
-            ).eq('user_id', user_id).eq('calendar_id', calendar_id).execute()
-        else:
-            db.table('calendar_sync_state').insert(
-                {'user_id': user_id, 'calendar_id': calendar_id, 'index_enabled': index_enabled}
-            ).execute()
+        row = {'user_id': user_id, 'calendar_id': calendar_id, 'index_enabled': index_enabled}
+        if person:
+            row['person'] = person
+        db.table('calendar_sync_state').upsert(row, on_conflict='user_id,calendar_id').execute()
 
         if index_enabled:
-            # ON: バックグラウンドで初回 index-sync を実行
-            threading.Thread(
-                target=_trigger_index_sync, args=(calendar_id,), daemon=True
-            ).start()
+            # ON: watch 登録が完了してから index-sync を実行（calendar_name が確定した後に同期）
+            def _watch_then_sync(cal_id: str):
+                _register_calendar_watch(cal_id)
+                _trigger_index_sync(cal_id)
+            threading.Thread(target=_watch_then_sync, args=(calendar_id,), daemon=True).start()
         else:
             # OFF: このカレンダーの全イベントレコード + チャンクを削除
-            raw = db.table('Rawdata_FILE_AND_MAIL') \
+            raw = db.table('02_gcal_01_raw') \
                     .select('id') \
-                    .eq('doc_type', 'GOOGLE_CALENDAR') \
-                    .filter('metadata->>calendar_id', 'eq', calendar_id) \
+                    .eq('calendar_id', calendar_id) \
                     .execute()
-            for row in (raw.data or []):
-                doc_id = row['id']
-                db.table('10_ix_search_index').delete().eq('document_id', doc_id).execute()
-                db.table('Rawdata_FILE_AND_MAIL').delete().eq('id', doc_id).execute()
+            if raw.data:
+                raw_ids = [str(r['id']) for r in raw.data]
+                # pipeline_meta ID を取得してチャンク + meta を削除
+                meta_rows = db.table('pipeline_meta') \
+                    .select('id') \
+                    .eq('raw_table', '02_gcal_01_raw') \
+                    .in_('raw_id', raw_ids) \
+                    .execute()
+                for r in (meta_rows.data or []):
+                    db.table('10_ix_search_index').delete().eq('document_id', r['id']).execute()
+                    db.table('pipeline_meta').delete().eq('id', r['id']).execute()
+                # 09_unified_documents を削除
+                db.table('09_unified_documents') \
+                    .delete() \
+                    .eq('raw_table', '02_gcal_01_raw') \
+                    .in_('raw_id', raw_ids) \
+                    .execute()
+                # 02_gcal_01_raw を削除
+                db.table('02_gcal_01_raw').delete().in_('id', raw_ids).execute()
 
-        return jsonify({'success': True, 'index_enabled': index_enabled})
+        return jsonify({'success': True, 'index_enabled': index_enabled, 'person': person})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -813,22 +1127,32 @@ def api_search():
 
     # Google Calendar API の q: キーワードがなければ最初のタグで代用
     q_for_api = q if q else tags[0]
-    kwargs = dict(
-        calendarId=calendar_id,
+    base_kwargs = dict(
         q=q_for_api,
         singleEvents=True,
         orderBy='startTime',
         maxResults=200,
     )
     if date_from:
-        kwargs['timeMin'] = f'{date_from}T00:00:00+09:00'
+        base_kwargs['timeMin'] = f'{date_from}T00:00:00+09:00'
     if date_to:
-        kwargs['timeMax'] = f'{date_to}T23:59:59+09:00'
+        base_kwargs['timeMax'] = f'{date_to}T23:59:59+09:00'
 
     try:
-        result = service.events().list(**kwargs).execute()
+        # メイン + _arc + _pen の3カレンダーをまとめて検索
+        related_ids = _get_related_calendar_ids(service, calendar_id)
+        all_items = []
+        for cal_id in related_ids:
+            try:
+                result = service.events().list(calendarId=cal_id, **base_kwargs).execute()
+                all_items.extend(result.get('items', []))
+            except Exception:
+                pass
+
+        all_items.sort(key=lambda e: e.get('start', {}).get('dateTime') or e.get('start', {}).get('date', ''))
+
         events = []
-        for e in result.get('items', []):
+        for e in all_items:
             desc = e.get('description') or ''
             # タグ AND フィルタリング（Python側）
             if tags and not all(f'#{t}' in desc for t in tags):

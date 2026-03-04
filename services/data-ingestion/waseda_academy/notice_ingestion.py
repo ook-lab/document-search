@@ -122,7 +122,7 @@ class WasedaNoticeIngestionPipeline:
 
     async def check_existing_notices(self, notice_ids: List[str]) -> set:
         """
-        Supabaseで既存のお知らせIDをチェック（file_id カラムで照合）
+        Supabaseで既存のお知らせIDをチェック（05_ikuya_waseaca_01_raw.post_id で照合）
 
         Args:
             notice_ids: チェックするお知らせIDのリスト
@@ -131,11 +131,11 @@ class WasedaNoticeIngestionPipeline:
             既に存在するお知らせIDのセット
         """
         try:
-            result = self.db.client.table('Rawdata_FILE_AND_MAIL').select('file_id').in_(
-                'file_id', notice_ids
+            result = self.db.client.table('05_ikuya_waseaca_01_raw').select('post_id').in_(
+                'post_id', notice_ids
             ).execute()
 
-            existing_ids = {doc['file_id'] for doc in (result.data or []) if doc.get('file_id')}
+            existing_ids = {doc['post_id'] for doc in (result.data or []) if doc.get('post_id')}
             logger.info(f"既存のお知らせ: {len(existing_ids)}件")
             return existing_ids
 
@@ -243,32 +243,33 @@ class WasedaNoticeIngestionPipeline:
             pdfs = notice.get('pdfs', [])
             if not pdfs:
                 logger.info(f"PDFリンクなし、テキストのみで登録: {title}")
-                metadata = {
-                    'notice_title': title,
-                    'notice_date': date,
-                    'notice_source': source.get('label', '不明'),
-                    'notice_category': category.get('label', 'その他'),
-                    'notice_message': message,
-                }
-                doc_data = {
-                    'file_id': notice_id,
-                    'doc_type': '早稲アカオンライン',
-                    'workspace': 'waseda_academy',
-                    'person': ['育哉'],
-                    'organization': ['早稲田アカデミー'],
-                    'metadata': metadata,
-                    'processing_status': 'pending',
-                    'display_subject': title,
-                    'display_sent_at': sent_at,
-                    'display_sender': source.get('label', '不明'),
-                    'display_post_text': message,
-                    'owner_id': self.owner_id
+                raw_row = {
+                    'person': 'ikuya',
+                    'source': '早稲アカオンライン',
+                    'category': category.get('label', 'その他'),
+                    'post_id': notice_id,
+                    'post_type': 'notice',
+                    'title': title,
+                    'description': message,
+                    'creator_name': source.get('label', '不明'),
+                    'created_at': sent_at,
                 }
                 try:
-                    doc_result = await self.db.insert_document('Rawdata_FILE_AND_MAIL', doc_data)
-                    if doc_result:
-                        result['document_ids'].append(doc_result.get('id'))
-                        logger.info(f"テキストのみ保存完了: {title}")
+                    raw_result = self.db.client.table('05_ikuya_waseaca_01_raw').insert(raw_row).execute()
+                    raw_id = raw_result.data[0]['id'] if raw_result.data else None
+                    if raw_id:
+                        self.db.client.table('pipeline_meta').insert({
+                            'raw_id': raw_id,
+                            'raw_table': '05_ikuya_waseaca_01_raw',
+                            'person': 'ikuya',
+                            'source': '早稲アカオンライン',
+                            'processing_status': 'pending',
+                            'owner_id': self.owner_id,
+                        }).execute()
+                        result['document_ids'].append(raw_id)
+                        logger.info(f"テキストのみ保存完了: {title} → raw_id={raw_id}")
+                    else:
+                        logger.error(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
                 except Exception as db_error:
                     logger.error(f"Supabase保存エラー（テキストのみ）: {db_error}")
                     result['error'] = str(db_error)
@@ -317,34 +318,38 @@ class WasedaNoticeIngestionPipeline:
                     'pdf_title': pdf_title
                 }
 
-                # 5. Supabaseに基本情報のみ保存
-                doc_data = {
+                # 5. Supabaseに基本情報のみ保存（05_ikuya_waseaca_01_raw + pipeline_meta）
+                raw_row = {
+                    'person': 'ikuya',
+                    'source': '早稲アカオンライン',
+                    'category': category.get('label', 'その他'),
+                    'post_id': notice_id,
+                    'post_type': 'notice',
+                    'title': title,
+                    'description': message,
+                    'creator_name': source.get('label', '不明'),
+                    'created_at': sent_at,
                     'file_url': f"https://drive.google.com/file/d/{file_id}/view",
-                    'file_id': notice_id,
                     'file_name': actual_file_name,
-                    'doc_type': '早稲アカオンライン',  # 固定値
-                    'workspace': 'waseda_academy',
-                    'person': ['育哉'],  # 担当者（配列形式）
-                    'organization': ['早稲田アカデミー'],  # 組織（配列形式）
-                    'metadata': metadata,
-                    'processing_status': 'pending',
-                    # 表示用フィールド
-                    'display_subject': title,
-                    'display_sent_at': sent_at,
-                    'display_sender': source.get('label', '不明'),
-                    'display_post_text': message,
-                    # Phase 3: owner_id 必須
-                    'owner_id': self.owner_id
                 }
 
                 try:
-                    # Supabaseに保存
-                    doc_result = await self.db.insert_document('Rawdata_FILE_AND_MAIL', doc_data)
-                    if doc_result:
-                        doc_id = doc_result.get('id')
-                        result['document_ids'].append(doc_id)
-                        logger.info(f"Supabase保存完了（pending状態）: {doc_id}")
-                        logger.info(f"  → process_queued_documents.py で処理してください")
+                    raw_result = self.db.client.table('05_ikuya_waseaca_01_raw').insert(raw_row).execute()
+                    raw_id = raw_result.data[0]['id'] if raw_result.data else None
+                    if raw_id:
+                        self.db.client.table('pipeline_meta').insert({
+                            'raw_id': raw_id,
+                            'raw_table': '05_ikuya_waseaca_01_raw',
+                            'person': 'ikuya',
+                            'source': '早稲アカオンライン',
+                            'processing_status': 'pending',
+                            'owner_id': self.owner_id,
+                        }).execute()
+                        result['document_ids'].append(raw_id)
+                        logger.info(f"Supabase保存完了（pending状態）: raw_id={raw_id}")
+                        logger.info(f"  → process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw で処理してください")
+                    else:
+                        logger.error(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
 
                 except Exception as db_error:
                     logger.error(f"Supabase保存エラー: {db_error}")
@@ -466,7 +471,7 @@ async def main():
     logger.info("=" * 60)
     logger.info("")
     logger.info("次のステップ:")
-    logger.info("  python process_queued_documents.py --workspace=waseda_academy")
+    logger.info("  python process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw --execute")
     logger.info("=" * 60)
 
     # 結果を表示
@@ -486,7 +491,7 @@ async def main():
 
     print("\n" + "=" * 80)
     print("次のステップ:")
-    print("  python process_queued_documents.py --workspace=waseda_academy")
+    print("  python process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw --execute")
     print("=" * 80)
 
 

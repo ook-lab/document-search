@@ -216,7 +216,7 @@ class F1DataFusionMerger:
 
     def _build_display_header(self, rawdata_record: Dict[str, Any]) -> str:
         """
-        Rawdata_FILE_AND_MAIL の display_* フィールドをテキスト先頭に付与するヘッダーを生成。
+        pipeline_meta の display_* フィールドをテキスト先頭に付与するヘッダーを生成。
         各フィールドは属性ラベル付きで出力する。値が空の場合はそのフィールドをスキップ。
         """
         fields = [

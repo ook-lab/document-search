@@ -291,8 +291,8 @@ class G22TextAIProcessor:
                         update_data['g21_articles'] = topic_articles
                         logger.info(f"[G-22] ✓ g21_articles を AI トピック版で上書き: {len(topic_articles)}件")
 
-                    db.client.table('Rawdata_FILE_AND_MAIL').update(update_data).eq('id', self.document_id).execute()
-                    logger.info(f"[G-22] ✓ Supabase 保存完了: イベント{len(calendar_events)}件, タスク{len(tasks)}件, 注意事項{len(notices)}件")
+                    db.client.table('pipeline_meta').update(update_data).eq('id', self.document_id).execute()
+                    logger.info(f"[G-22] ✓ pipeline_meta 保存完了: イベント{len(calendar_events)}件, タスク{len(tasks)}件, 注意事項{len(notices)}件")
                 except Exception as e:
                     logger.error(f"[G-22] Supabase保存エラー: {e}")
 

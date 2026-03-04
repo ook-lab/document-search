@@ -296,7 +296,7 @@ class ExecutionManager:
             成功したかどうか
         """
         try:
-            result = self.db.client.table('Rawdata_FILE_AND_MAIL') \
+            result = self.db.client.table('pipeline_meta') \
                 .update({'active_execution_id': execution_id}) \
                 .eq('id', document_id) \
                 .execute()
@@ -384,8 +384,8 @@ class ExecutionManager:
             active execution（なければ None）
         """
         try:
-            # documents から active_execution_id を取得
-            doc_result = self.db.client.table('Rawdata_FILE_AND_MAIL') \
+            # pipeline_meta から active_execution_id を取得
+            doc_result = self.db.client.table('pipeline_meta') \
                 .select('active_execution_id') \
                 .eq('id', document_id) \
                 .limit(1) \

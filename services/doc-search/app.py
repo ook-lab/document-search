@@ -65,10 +65,10 @@ def get_filters():
 
         # 階層構造をリスト形式に変換（フロントエンド用）
         workspace_list = []
-        for workspace, doc_types in hierarchy.items():
+        for workspace, sources in hierarchy.items():
             workspace_list.append({
                 'name': workspace,
-                'doc_types': doc_types
+                'sources': sources
             })
 
         print(f"[DEBUG] フィルタ取得: {len(workspace_list)} workspaces（階層構造）")
@@ -101,18 +101,13 @@ def search_documents():
         requested_limit = data.get('limit', 3)
         limit = min(requested_limit, 50)  # 50件取得→高精度な5件にリランク可能
 
-        # ✅ 配列で受け取る（後方互換性のため単一値もサポート）
-        workspaces = data.get('workspaces', [])
-        doc_types = data.get('doc_types', [])
-
-        # 後方互換性: 単一のworkspaceパラメータもサポート
-        if not workspaces and data.get('workspace'):
-            workspaces = [data.get('workspace')]
+        persons   = data.get('persons', [])
+        sources   = data.get('sources', [])
 
         enable_query_expansion = data.get('enable_query_expansion', False)  # デフォルトで無効
         threshold = float(data.get('threshold', 0.4))  # 足切りスコア閾値
 
-        print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, workspaces={workspaces}, doc_types={doc_types}, threshold={threshold}")
+        print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, persons={persons}, sources={sources}, threshold={threshold}")
 
         if not query:
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
@@ -167,41 +162,49 @@ def search_documents():
         cross_reference_results = []
         if referenced_file:
             print(f"[DEBUG] クロスリファレンス検出: {referenced_file}")
-            # 参照されたファイルを検索
             try:
-                cross_ref_response = db_client.client.table('Rawdata_FILE_AND_MAIL').select('*').ilike('file_name', f'%{referenced_file}%').limit(3).execute()
+                cross_ref_response = (
+                    db_client.client.table('09_unified_documents')
+                    .select('id, title, source, person, category, post_at, start_at, meta, ui_data, file_url')
+                    .ilike('title', f'%{referenced_file}%')
+                    .limit(3)
+                    .execute()
+                )
                 if cross_ref_response.data:
-                    # 検索結果の形式に変換
                     for doc in cross_ref_response.data:
+                        raw_date = doc.get('post_at') or doc.get('start_at')
                         cross_reference_results.append({
-                            'id': doc.get('id'),
-                            'file_name': doc.get('file_name'),
-                            'doc_type': doc.get('doc_type'),
-                            'workspace': doc.get('workspace'),
-                            'document_date': doc.get('document_date'),
-                            'metadata': doc.get('metadata', {}),
-                            'summary': doc.get('summary'),
-                            'similarity': 1.0,  # 最高スコア（参照されたファイル）
-                            'is_cross_reference': True  # クロスリファレンスフラグ
+                            'id':            doc.get('id'),
+                            'title':         doc.get('title'),
+                            'source':        doc.get('source'),
+                            'person':        doc.get('person'),
+                            'category':      doc.get('category'),
+                            'document_date': raw_date[:10] if isinstance(raw_date, str) else None,
+                            'meta':          doc.get('meta', {}),
+                            'ui_data':       doc.get('ui_data'),
+                            'file_url':      doc.get('file_url'),
+                            'similarity':    1.0,
+                            'is_cross_reference': True,
                         })
                     print(f"[DEBUG] クロスリファレンス結果: {len(cross_reference_results)} 件")
             except Exception as e:
                 print(f"[WARNING] クロスリファレンス検索エラー: {e}")
 
-        # ベクトル検索を実行（同期ラッパーを使用）
-        # 拡張されたクエリをテキスト検索にも使用
+        # ベクトル検索を実行
+        person_filter = persons[0] if len(persons) == 1 else None
         results = db_client.search_documents_sync(
             expanded_query,
             embedding,
             limit,
-            doc_types if doc_types else None,
+            sources=sources if sources else None,
+            person=person_filter,
             date_filter=date_filter,
             threshold=threshold,
         )
 
-        # ✅ GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
-        cal_results   = [d for d in results if d.get('doc_type') == 'GOOGLE_CALENDAR']
-        other_results = [d for d in results if d.get('doc_type') != 'GOOGLE_CALENDAR']
+        # GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
+        cal_results   = [d for d in results if d.get('source') == 'GOOGLE_CALENDAR']
+        other_results = [d for d in results if d.get('source') != 'GOOGLE_CALENDAR']
         results = cal_results + other_results
 
         # ✅ クロスリファレンス結果を先頭に追加
@@ -811,7 +814,7 @@ def _detect_query_type(query: str) -> Dict[str, Any]:
 def _build_context(documents: List[Dict[str, Any]]) -> str:
     """
     検索結果からコンテキストを構築。
-    chunk_content（Stage J で col_map を使って生成済みのテキスト）をそのまま使用。
+    all_chunks の chunk_text を連結して使用。
     """
     if not documents:
         return "関連する文書が見つかりませんでした。"
@@ -820,25 +823,25 @@ def _build_context(documents: List[Dict[str, Any]]) -> str:
     total_chars = 0
 
     for doc_idx, doc in enumerate(documents, 1):
-        file_name     = doc.get('file_name', '無題')
-        doc_type      = doc.get('doc_type', '不明')
+        title         = doc.get('title', '無題')
+        source        = doc.get('source', '不明')
         similarity    = doc.get('similarity', 0)
         document_date = doc.get('document_date', '')
         date_matched  = doc.get('is_date_matched', False)
 
         all_chunks = doc.get('all_chunks', [])
         if all_chunks:
-            parts = [chunk.get('chunk_content', '') for chunk in all_chunks if chunk.get('chunk_content', '')]
+            parts = [chunk.get('chunk_text', '') for chunk in all_chunks if chunk.get('chunk_text', '')]
             full_text = "\n\n".join(parts)
         else:
-            full_text = doc.get('summary', '')
+            full_text = doc.get('chunk_content', '')
 
         date_tag = "（日付一致✓）" if date_matched else ""
-        is_calendar = (doc_type == 'GOOGLE_CALENDAR')
+        is_calendar = (source == 'GOOGLE_CALENDAR')
         block_header = "【カレンダー確定情報】" if is_calendar else f"【文書{doc_idx}】"
         context_part = f"""{block_header}{date_tag}
-ファイル名: {file_name}
-文書タイプ: {doc_type}
+タイトル: {title}
+ソース: {source}
 日付: {document_date}
 スコア: {similarity:.3f}
 
@@ -865,74 +868,84 @@ def extract_schedules():
         db_client, _, _ = get_clients()
 
         data = request.get_json()
-        workspace = data.get('workspace')
-        doc_types = data.get('doc_types', [])
+        person     = data.get('person')
+        sources    = data.get('sources', [])
         start_date = data.get('start_date')  # YYYY-MM-DD形式
-        end_date = data.get('end_date')  # YYYY-MM-DD形式
-        limit = data.get('limit', 100)
+        end_date   = data.get('end_date')    # YYYY-MM-DD形式
+        limit      = data.get('limit', 100)
 
-        print(f"[DEBUG] スケジュール抽出リクエスト: workspace={workspace}, doc_types={doc_types}, date_range={start_date}~{end_date}")
+        print(f"[DEBUG] スケジュール抽出リクエスト: person={person}, sources={sources}, date_range={start_date}~{end_date}")
 
         # データベースクエリを構築
-        query = db_client.client.table('Rawdata_FILE_AND_MAIL').select('*')
+        query = db_client.client.table('09_unified_documents').select(
+            'id, title, source, person, category, post_at, start_at, end_at, due_date, ui_data, meta'
+        )
 
-        # フィルタを適用
-        if workspace:
-            query = query.eq('workspace', workspace)
+        if person:
+            query = query.eq('person', person)
 
-        if doc_types:
-            query = query.in_('doc_type', doc_types)
+        if sources:
+            query = query.in_('source', sources)
 
-        # 日付範囲でフィルタ
+        # 日付範囲でフィルタ（post_at または start_at）
         if start_date:
-            query = query.gte('document_date', start_date)
+            query = query.or_(f'post_at.gte.{start_date},start_at.gte.{start_date}')
         if end_date:
-            query = query.lte('document_date', end_date)
+            query = query.or_(f'post_at.lte.{end_date},start_at.lte.{end_date}')
 
-        # 実行
         response = query.limit(limit).execute()
         documents = response.data if response.data else []
 
         print(f"[DEBUG] 検索結果: {len(documents)} 件")
 
-        # スケジュール情報を抽出
+        import re
         schedules = []
         for doc in documents:
-            metadata = doc.get('metadata', {})
+            doc_id    = doc.get('id')
+            title     = doc.get('title') or ''
+            source    = doc.get('source') or ''
+            person_v  = doc.get('person') or ''
+            post_at   = doc.get('post_at') or ''
+            start_at  = doc.get('start_at') or ''
+            ui_data   = doc.get('ui_data') or {}
 
-            # weekly_scheduleを抽出
-            weekly_schedule = metadata.get('weekly_schedule', [])
-            if weekly_schedule:
-                for schedule_item in weekly_schedule:
+            # Google Calendar イベントはそのままスケジュールとして扱う
+            if source == 'GOOGLE_CALENDAR':
+                schedules.append({
+                    'doc_id':       doc_id,
+                    'title':        title,
+                    'source':       source,
+                    'person':       person_v,
+                    'document_date': (start_at or post_at)[:10] if (start_at or post_at) else None,
+                    'schedule_type': 'calendar_event',
+                    'schedule_data': {
+                        'start_at': doc.get('start_at'),
+                        'end_at':   doc.get('end_at'),
+                        'location': doc.get('location'),
+                    }
+                })
+                continue
+
+            # ui_data.sections からキーワードマッチでスケジュール抽出
+            sections = ui_data.get('sections', [])
+            for section in sections:
+                sec_title = section.get('title', '') or ''
+                sec_body  = section.get('body', '')  or ''
+                combined  = sec_title + ' ' + sec_body
+                if re.search(
+                    r'(予定|スケジュール|日程|期限|締切|締め切り|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})',
+                    combined
+                ):
                     schedules.append({
-                        'document_id': doc.get('id'),
-                        'file_name': doc.get('file_name'),
-                        'doc_type': doc.get('doc_type'),
-                        'workspace': doc.get('workspace'),
-                        'document_date': doc.get('document_date'),
-                        'schedule_type': 'weekly',
-                        'schedule_data': schedule_item
-                    })
-
-            # text_blocksから日付・時間情報を抽出（オプション）
-            text_blocks = metadata.get('text_blocks', [])
-            for block in text_blocks:
-                title = block.get('title', '')
-                content = block.get('content', '')
-
-                # タイトルや内容に日付・時間のキーワードが含まれる場合
-                import re
-                if re.search(r'(予定|スケジュール|日程|期限|締切|締め切り|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})', title + content):
-                    schedules.append({
-                        'document_id': doc.get('id'),
-                        'file_name': doc.get('file_name'),
-                        'doc_type': doc.get('doc_type'),
-                        'workspace': doc.get('workspace'),
-                        'document_date': doc.get('document_date'),
-                        'schedule_type': 'text_block',
+                        'doc_id':       doc_id,
+                        'title':        title,
+                        'source':       source,
+                        'person':       person_v,
+                        'document_date': (post_at or start_at)[:10] if (post_at or start_at) else None,
+                        'schedule_type': 'section',
                         'schedule_data': {
-                            'title': title,
-                            'content': content
+                            'title':   sec_title,
+                            'content': sec_body,
                         }
                     })
 
@@ -980,12 +993,12 @@ def debug_database():
     except Exception as e:
         return jsonify({'success': False, 'error': f'クライアント初期化失敗: {e}'}), 500
 
-    # 1. Rawdata_FILE_AND_MAIL 件数
+    # 1. 09_unified_documents 件数
     try:
-        count_response = db_client.client.table('Rawdata_FILE_AND_MAIL').select('id', count='exact').limit(1).execute()
-        result['rawdata_count'] = count_response.count if hasattr(count_response, 'count') else 'unknown'
+        count_response = db_client.client.table('09_unified_documents').select('id', count='exact').limit(1).execute()
+        result['unified_docs_count'] = count_response.count if hasattr(count_response, 'count') else 'unknown'
     except Exception as e:
-        errors['rawdata_count'] = str(e)
+        errors['unified_docs_count'] = str(e)
 
     # 2. workspace/doc_type 階層
     try:
@@ -1003,9 +1016,9 @@ def debug_database():
         errors['search_index_count'] = str(e)
 
     try:
-        sample = db_client.client.table('10_ix_search_index').select('document_id, chunk_type, chunk_content').limit(3).execute()
+        sample = db_client.client.table('10_ix_search_index').select('doc_id, chunk_type, chunk_text').limit(3).execute()
         result['search_index_sample'] = [
-            {'document_id': str(r.get('document_id', ''))[:8], 'chunk_type': r.get('chunk_type'), 'preview': (r.get('chunk_content') or '')[:50]}
+            {'doc_id': str(r.get('doc_id', ''))[:8], 'chunk_type': r.get('chunk_type'), 'preview': (r.get('chunk_text') or '')[:50]}
             for r in (sample.data or [])
         ]
     except Exception as e:
@@ -1073,8 +1086,8 @@ def debug_search_raw():
         results_preview = []
         for r in (resp.data or []):
             results_preview.append({
-                'document_id': str(r.get('document_id', ''))[:8],
-                'file_name': r.get('file_name', '')[:40],
+                'doc_id': str(r.get('doc_id', ''))[:8],
+                'title': (r.get('title') or '')[:40],
                 'combined_score': r.get('combined_score'),
                 'raw_similarity': r.get('raw_similarity'),
             })
@@ -1106,18 +1119,16 @@ def get_workspaces():
         from shared.common.database.client import DatabaseClient
         db = DatabaseClient(use_service_role=True)
 
-        # ワークスペース一覧を取得
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select('workspace').execute()
+        # person 一覧を取得（09_unified_documents ベース）
+        query = db.client.table('09_unified_documents').select('person').execute()
 
-        # ユニークなワークスペースを抽出
-        workspaces = set()
+        persons = set()
         for row in query.data:
-            workspace = row.get('workspace')
-            if workspace:
-                workspaces.add(workspace)
+            p = row.get('person')
+            if p:
+                persons.add(p)
 
-        # ソートしてリスト化
-        workspace_list = sorted(list(workspaces))
+        workspace_list = sorted(list(persons))
 
         return jsonify({
             'success': True,

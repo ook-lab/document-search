@@ -21,7 +21,7 @@ class OwnerIdRequiredError(Exception):
 
 # owner_id を必須とするテーブルとカラム名のマッピング
 OWNER_ID_REQUIRED_TABLES = {
-    'Rawdata_FILE_AND_MAIL': 'owner_id',
+    'pipeline_meta': 'owner_id',
     '10_ix_search_index': 'owner_id',
     'Rawdata_RECEIPT_shops': 'owner_id',
     'MASTER_Rules_transaction_dict': 'created_by',
@@ -146,7 +146,7 @@ class DatabaseClient:
             既存の文書レコード、存在しない場合は None
         """
         try:
-            response = self.client.table('Rawdata_FILE_AND_MAIL').select('*').eq('file_url', file_url).execute()
+            response = self.client.table('09_unified_documents').select('*').eq('file_url', file_url).execute()
             if response.data:
                 return response.data[0]
             return None
@@ -258,51 +258,40 @@ class DatabaseClient:
         query: str,
         embedding: List[float],
         limit: int = 50,
-        doc_types: Optional[List[str]] = None,
+        sources: Optional[List[str]] = None,
+        person: Optional[str] = None,
         date_filter: Optional[str] = None,
         threshold: float = 0.4
     ) -> List[Dict[str, Any]]:
         """
-        2階層ハイブリッド検索：小チャンク検索 + 大チャンク回答（重複排除＆Rerank対応）
-
-        【検索フロー】
-        1. 小チャンク（300文字）でベクトル + 全文検索 → 関連ドキュメントを検出
-        2. ドキュメント単位で重複排除（最高スコアのみ） → 重複を削減
-        3. 大チャンク（全文）で回答生成 → 最も詳細な情報を使用
-
-        【フィルタの考え方】
-        - 階層構造（workspace > doc_type）はフロントエンドで維持
-        - データベース検索はdoc_typeのみで絞り込み
-        - 理由: workspace内の全doc_typeがON = workspaceがON（冗長なため）
+        ハイブリッド検索: 09_unified_documents + 10_ix_search_index を使用。
 
         Args:
             query: 検索クエリ
             embedding: クエリのembeddingベクトル
             limit: 取得する最大件数
-            doc_types: ドキュメントタイプフィルタ（配列、複数選択可能）
+            sources: ソースフィルタ（例: ['GOOGLE_GMAIL', 'GOOGLE_CLASSROOM']）
+            person: person フィルタ（例: 'エマ'）
+            date_filter: 日付フィルタ ('today', 'this_week', 'this_month', 'recent')
+            threshold: 足切りスコア閾値
 
         Returns:
-            検索結果のリスト（小チャンク検索スコア順、回答は大チャンク）
+            検索結果のリスト（スコア降順）
         """
         try:
-            # 日付フィルタは all_mentioned_dates 配列で検索するため、
-            # filter_year, filter_month の抽出は不要
-            # 代わりに、クエリに含まれる日付は全文検索でマッチ
-
-            # DB関数を呼び出し（unified_search_v2: 高度な重み付けスコアリング）
             rpc_params = {
                 "query_text": query,
                 "query_embedding": embedding,
-                "match_threshold": -1.0,  # text-embedding-3-small は異トピック間で負値になるため全件対象
-                "match_count": limit,  # 指定された件数を取得
-                "vector_weight": 0.7,  # ベクトル検索70% - 意味的類似度を重視
-                "fulltext_weight": 0.3,  # キーワード検索30% - 完全一致の補助
-                "filter_doc_types": doc_types,  # doc_typeのみで絞り込み
-                "filter_chunk_types": None,  # 全chunk_typeを対象（title, summary, display_subject等）
-                "filter_workspace": None  # 全workspaceを対象
+                "match_threshold": -1.0,
+                "match_count": limit,
+                "vector_weight": 0.7,
+                "fulltext_weight": 0.3,
+                "filter_sources": sources,
+                "filter_chunk_types": None,
+                "filter_person": person,
             }
 
-            print(f"[DEBUG] unified_search_v2 呼び出し: query='{query}', doc_types={doc_types}")
+            print(f"[DEBUG] unified_search_v2 呼び出し: query='{query}', sources={sources}, person={person}")
             response = self.client.rpc("unified_search_v2", rpc_params).execute()
             results = response.data if response.data else []
 
@@ -313,82 +302,70 @@ class DatabaseClient:
                 results = self._apply_date_filter(results, date_filter)
                 print(f"[DEBUG] 日付フィルタ適用後: {len(results)} 件 (filter={date_filter})")
 
-            # 結果を整形（unified_search_v2: 高度な検索結果）
+            # 結果を整形
             final_results = []
             for result in results:
+                # document_date: post_at (Gmail/Classroom) か start_at (Calendar) の日付部分
+                raw_date = result.get('post_at') or result.get('start_at')
+                document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
+
                 doc_result = {
-                    'id': result.get('document_id'),
-                    'file_name': result.get('file_name'),
-                    'doc_type': result.get('doc_type'),
-                    'workspace': result.get('workspace'),
-                    'document_date': result.get('document_date'),
-                    'metadata': result.get('metadata'),
-                    'summary': result.get('summary'),
-                    'large_chunk_id': result.get('document_id'),  # ドキュメントID
+                    'id':           result.get('doc_id'),
+                    'title':        result.get('title'),
+                    'source':       result.get('source'),
+                    'person':       result.get('person'),
+                    'category':     result.get('category'),
+                    'from_name':    result.get('from_name'),
+                    'from_email':   result.get('from_email'),
+                    'snippet':      result.get('snippet'),
+                    'post_at':      result.get('post_at'),
+                    'start_at':     result.get('start_at'),
+                    'end_at':       result.get('end_at'),
+                    'due_date':     result.get('due_date'),
+                    'location':     result.get('location'),
+                    'file_url':     result.get('file_url'),
+                    'ui_data':      result.get('ui_data'),
+                    'meta':         result.get('meta'),
+                    'indexed_at':   result.get('indexed_at'),
+                    'document_date': document_date,  # リランク用に保持
 
-                    # ヒットしたチャンク情報（重み付けされた最適チャンク）
-                    'chunk_content': result.get('best_chunk_text'),  # ヒットした最適チャンク
-                    'chunk_id': result.get('best_chunk_id'),  # チャンクID
-                    'chunk_index': result.get('best_chunk_index'),  # チャンクインデックス
-                    'chunk_type': result.get('best_chunk_type'),  # チャンクタイプ（title, summary等）
+                    # チャンク情報
+                    'chunk_content': result.get('best_chunk_text'),
+                    'chunk_id':      result.get('best_chunk_id'),
+                    'chunk_index':   result.get('best_chunk_index'),
+                    'chunk_type':    result.get('best_chunk_type'),
 
-                    # 検索スコア（unified_search_v2の詳細スコア）
-                    'similarity': result.get('combined_score', 0),  # 統合スコア
-                    'raw_similarity': result.get('raw_similarity', 0),  # 生の類似度
-                    'weighted_similarity': result.get('weighted_similarity', 0),  # 重み付け類似度
-                    'fulltext_score': result.get('fulltext_score', 0),  # 全文検索スコア
-                    'title_matched': result.get('title_matched', False),  # タイトルマッチフラグ
-
-                    # 後方互換性
-                    'chunk_score': result.get('combined_score', 0),
-                    'small_chunk_id': result.get('best_chunk_id')
+                    # スコア
+                    'similarity':          result.get('combined_score', 0),
+                    'raw_similarity':      result.get('raw_similarity', 0),
+                    'weighted_similarity': result.get('weighted_similarity', 0),
+                    'fulltext_score':      result.get('fulltext_score', 0),
+                    'title_matched':       result.get('title_matched', False),
+                    'chunk_score':         result.get('combined_score', 0),
+                    'large_chunk_id':      result.get('doc_id'),
+                    'small_chunk_id':      result.get('best_chunk_id'),
                 }
-
-                # ✅ Classroom表示用の追加フィールド（存在する場合のみ追加）
-                if 'source_url' in result:
-                    doc_result['source_url'] = result.get('source_url')
-                if 'file_url' in result:
-                    doc_result['file_url'] = result.get('file_url')
-                if 'created_at' in result:
-                    doc_result['created_at'] = result.get('created_at')
-                if 'display_subject' in result:
-                    doc_result['display_subject'] = result.get('display_subject')
-                if 'display_sender' in result:
-                    doc_result['display_sender'] = result.get('display_sender')
-                if 'classroom_sender_email' in result:
-                    doc_result['classroom_sender_email'] = result.get('classroom_sender_email')
-                if 'display_sent_at' in result:
-                    doc_result['display_sent_at'] = result.get('display_sent_at')
-                if 'display_post_text' in result:
-                    doc_result['display_post_text'] = result.get('display_post_text')
-                if 'content_dates' in result:
-                    doc_result['content_dates'] = result.get('content_dates') or []
-
                 final_results.append(doc_result)
 
-            # ── キーワード・日付を先に抽出（チャンクフィルタとリランクで共用）──
+            # キーワード・日付を先に抽出（チャンクフィルタとリランクで共用）
             target_date = self._extract_date(query)
             keywords    = self._extract_keywords(query)
 
-            # ✅ 各ドキュメントのヒットチャンク全体を取得
-            # Phase 4A: anon 接続時は直接テーブルアクセスを禁止（all_chunks をスキップ）
+            # 各ドキュメントのヒットチャンク全体を取得
             if self._is_service_role or self._is_authenticated:
                 print(f"[DEBUG] ヒットチャンク詳細を取得中...")
                 for doc_result in final_results:
-                    document_id = doc_result.get('id')
-                    if not document_id:
+                    doc_id = doc_result.get('id')
+                    if not doc_id:
                         continue
-
                     try:
-                        # このドキュメントの全チャンクを取得（重要度順、上限なし）
                         chunks_response = (
                             self.client.table('10_ix_search_index')
-                            .select('id, chunk_index, chunk_content, chunk_type, chunk_metadata, search_weight')
-                            .eq('document_id', document_id)
-                            .order('search_weight', desc=True)  # 重要度順
+                            .select('id, chunk_index, chunk_text, chunk_type, chunk_weight')
+                            .eq('doc_id', doc_id)
+                            .order('chunk_weight', desc=True)
                             .execute()
                         )
-
                         if chunks_response.data:
                             raw_chunks = chunks_response.data
                             filtered = self._filter_chunks_for_context(
@@ -398,21 +375,18 @@ class DatabaseClient:
                                 keywords=keywords,
                             )
                             doc_result['all_chunks'] = filtered
-                            print(f"[DEBUG] ドキュメント {document_id[:8]}: {len(raw_chunks)}個取得 → {len(filtered)}個に絞り込み")
+                            print(f"[DEBUG] doc {doc_id[:8]}: {len(raw_chunks)}個取得 → {len(filtered)}個に絞り込み")
                         else:
                             doc_result['all_chunks'] = []
-
                     except Exception as e:
-                        print(f"[WARNING] チャンク取得エラー (document_id={document_id}): {e}")
+                        print(f"[WARNING] チャンク取得エラー (doc_id={doc_id}): {e}")
                         doc_result['all_chunks'] = []
             else:
-                # anon 接続: 直接テーブルアクセス禁止のため all_chunks は空
                 print(f"[DEBUG] anon 接続のため all_chunks 取得をスキップ")
                 for doc_result in final_results:
                     doc_result['all_chunks'] = []
 
-            # ── リランク（日付・キーワード数値ブースト）──────────────────────
-
+            # リランク（日付・キーワード数値ブースト）
             for doc in final_results:
                 if target_date:
                     date_boost = self._check_date_match(doc, target_date)
@@ -421,15 +395,13 @@ class DatabaseClient:
                         doc['is_date_matched'] = True
                 if keywords:
                     kw_boost = self._calculate_keyword_match_score(
-                        doc.get('file_name', ''), keywords, query
+                        doc.get('title', ''), keywords, query
                     )
                     doc['similarity'] += kw_boost * 0.2
 
             final_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
 
-            # ── 足切り（件数はトークン上限に委ねる）──────────────────────────
             cutoff = [r for r in final_results if r.get('similarity', 0) >= threshold]
-            # 足切り後が空なら上位3件をフォールバック（情報ゼロ回避）
             final_results = cutoff if cutoff else final_results[:3]
 
             print(f"[DEBUG] 最終検索結果: {len(final_results)} 件（unified_search_v2）")
@@ -442,8 +414,6 @@ class DatabaseClient:
             print(f"[ERROR] unified_search_v2 失敗: {e}")
             import traceback
             traceback.print_exc()
-            # unified_search_v2 が失敗した場合はエラーを上位に伝播させる
-            # （フォールバックは削除済みカラムを参照するため使用しない）
             raise
 
     def search_documents_sync(
@@ -451,51 +421,47 @@ class DatabaseClient:
         query: str,
         embedding: List[float],
         limit: int = 50,
-        doc_types: Optional[List[str]] = None,
+        sources: Optional[List[str]] = None,
+        person: Optional[str] = None,
         date_filter: Optional[str] = None,
         threshold: float = 0.4
     ) -> List[Dict[str, Any]]:
         """
-        同期版のsearch_documents（Flaskエンドポイント用）
-
-        非同期版のsearch_documentsをasyncio.run()で実行するラッパー。
-        これにより、Flask（同期フレームワーク）から適切に非同期処理を呼び出せる。
+        同期版の search_documents（Flask エンドポイント用）
 
         Args:
             query: 検索クエリ
             embedding: クエリのembeddingベクトル
             limit: 取得する最大件数
-            doc_types: ドキュメントタイプフィルタ（配列、複数選択可能）
+            sources: ソースフィルタ（例: ['GOOGLE_GMAIL']）
+            person: person フィルタ（例: 'エマ'）
             date_filter: 日付フィルタ ('today', 'this_week', 'this_month', 'recent')
+            threshold: 足切りスコア閾値
 
         Returns:
             検索結果のリスト
         """
         try:
-            # 既存のイベントループがある場合は取得、なければ新規作成
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    # ループが既に動作している場合は新しいループを作成
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     result = loop.run_until_complete(
-                        self.search_documents(query, embedding, limit, doc_types, date_filter, threshold)
+                        self.search_documents(query, embedding, limit, sources, person, date_filter, threshold)
                     )
                     return result
             except RuntimeError:
-                # イベントループが存在しない場合
                 pass
 
-            # asyncio.run()を使用（推奨される方法）
             return asyncio.run(
-                self.search_documents(query, embedding, limit, doc_types, date_filter, threshold)
+                self.search_documents(query, embedding, limit, sources, person, date_filter, threshold)
             )
         except Exception as e:
             print(f"[ERROR] search_documents_sync 失敗: {e}")
             import traceback
             traceback.print_exc()
-            raise  # エラーを上位に伝播させてフロントエンドで確認できるようにする
+            raise
 
     def _filter_chunks_for_context(
         self,
@@ -508,43 +474,32 @@ class DatabaseClient:
         """
         コンテキスト構築用チャンクのフィルタリング。
 
-        - table_X チャンク（G17）: table_semantics.target がクエリキーワードに一致するもの。
+        - table_X チャンク: chunk_text にキーワードが含まれるもの。
           一致なしの場合は best_chunk_id のみ（フォールバック）。
-        - それ以外（G21/G22）: search_weight >= non_table_weight_threshold のもの全件。
+        - それ以外: chunk_weight >= non_table_weight_threshold のもの全件。
         """
-        import json as _json
-
         table_chunks = [c for c in chunks if (c.get('chunk_type') or '').startswith('table_')]
         other_chunks = [c for c in chunks if not (c.get('chunk_type') or '').startswith('table_')]
 
-        # ── G17 テーブルチャンク ──────────────────────────────────────────
+        # ── テーブルチャンク ──────────────────────────────────────────────
         relevant_tables = []
         if keywords and table_chunks:
             for chunk in table_chunks:
-                # chunk_metadata から table_semantics を取得
-                meta = chunk.get('chunk_metadata') or {}
-                if isinstance(meta, str):
-                    try:
-                        meta = _json.loads(meta)
-                    except Exception:
-                        meta = {}
-                sem = meta.get('table_semantics') or {}
-                target = str(sem.get('target') or '').strip()
-
-                # chunk_content（タイトル含む）とtargetを対象にキーワードマッチ
-                content = (chunk.get('chunk_content') or '') + ' ' + target
+                content = chunk.get('chunk_text') or ''
                 if any(kw in content for kw in keywords):
                     relevant_tables.append(chunk)
 
-        # キーワードマッチなし → best_chunk_id にフォールバック
-        if not relevant_tables:
-            best = [c for c in table_chunks if str(c.get('id')) == str(best_chunk_id)] if best_chunk_id else []
-            relevant_tables = best if best else table_chunks[:1]
+            if not relevant_tables:
+                # キーワードマッチなし → best_chunk_id にフォールバック
+                best = [c for c in table_chunks if str(c.get('id')) == str(best_chunk_id)] if best_chunk_id else []
+                relevant_tables = best if best else table_chunks[:1]
+        else:
+            relevant_tables = table_chunks[:1] if table_chunks else []
 
-        # ── G21/G22 その他チャンク ──────────────────────────────────────
+        # ── その他チャンク ────────────────────────────────────────────────
         filtered_other = [
             c for c in other_chunks
-            if (c.get('search_weight') or 0) >= non_table_weight_threshold
+            if (c.get('chunk_weight') or 0) >= non_table_weight_threshold
         ]
 
         return relevant_tables + filtered_other
@@ -570,14 +525,13 @@ class DatabaseClient:
 
             # document_dateが存在しない場合はスキップ
             if not document_date_str:
-                # 'recent' の場合は、作成日時 (created_at) でフィルタリング
+                # 'recent' の場合は、indexed_at でフィルタリング
                 if date_filter == 'recent':
-                    created_at_str = result.get('created_at')
-                    if created_at_str:
+                    indexed_at_str = result.get('indexed_at')
+                    if indexed_at_str:
                         try:
-                            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
-                            # 過去30日以内
-                            if (now - created_at).days <= 30:
+                            indexed_at = datetime.fromisoformat(indexed_at_str.replace('Z', '+00:00'))
+                            if (now - indexed_at).days <= 30:
                                 filtered_results.append(result)
                         except:
                             pass
@@ -696,38 +650,14 @@ class DatabaseClient:
 
         boost = 0.0
 
-        # ① content_dates（F3正規化済みコンテンツ日付）: 完全一致 or 近傍
-        content_dates = doc.get('content_dates', [])
-        if isinstance(content_dates, list):
-            min_diff = None
-            for cd in content_dates:
-                try:
-                    cd_parts = str(cd).split('-')
-                    cd_dt = date_type(int(cd_parts[0]), int(cd_parts[1]), int(cd_parts[2]))
-                    diff = abs((cd_dt - target_dt).days)
-                    if min_diff is None or diff < min_diff:
-                        min_diff = diff
-                except:
-                    pass
-            if min_diff is not None:
-                if min_diff == 0:
-                    print(f"[DEBUG] content_dates 完全一致: {doc.get('file_name')}")
-                    boost += 0.3
-                elif min_diff <= 7:
-                    print(f"[DEBUG] content_dates {min_diff}日差: {doc.get('file_name')}")
-                    boost += 0.15
-                elif min_diff <= 14:
-                    print(f"[DEBUG] content_dates {min_diff}日差: {doc.get('file_name')}")
-                    boost += 0.05
-
-        # ② テキスト（chunk_content / summary）→ +0.3
-        text_fields = ['chunk_content', 'summary']
+        # テキスト（chunk_content / title）→ +0.3
+        text_fields = ['chunk_content', 'title']
         for field in text_fields:
             text = doc.get(field, '')
             if text:
                 for pattern in date_patterns:
                     if pattern in text:
-                        print(f"[DEBUG] テキストマッチ: {doc.get('file_name')} '{pattern}' in {field}")
+                        print(f"[DEBUG] テキストマッチ: {doc.get('title')} '{pattern}' in {field}")
                         boost += 0.3
                         break
                 else:
@@ -738,15 +668,15 @@ class DatabaseClient:
 
     def _calculate_keyword_match_score(
         self,
-        file_name: str,
+        title: str,
         keywords: List[str],
         query: str
     ) -> float:
         """
-        file_name とクエリの一致度を計算
+        title とクエリの一致度を計算
 
         Args:
-            file_name: ファイル名
+            title: ドキュメントタイトル
             keywords: 抽出されたキーワードのリスト
             query: 元のクエリ
 
@@ -759,13 +689,13 @@ class DatabaseClient:
         # 完全一致（括弧付き単語がそのまま含まれる）
         for kw in keywords:
             if '（' in kw or '(' in kw:
-                if kw in file_name:
-                    return 1.0  # 「学年通信（29）」が完全一致
+                if kw in title:
+                    return 1.0
 
         # マッチしたキーワードの数をカウント
         matched_keywords = []
         for kw in keywords:
-            if kw in file_name:
+            if kw in title:
                 matched_keywords.append(kw)
 
         if not matched_keywords:
@@ -862,77 +792,56 @@ class DatabaseClient:
         self,
         limit: int = 100,
         search_query: Optional[str] = None,
-        workspace: Optional[str] = None,
-        review_status: Optional[str] = None,
-        exclude_workspace: Optional[str] = None,
-        doc_type: Optional[str] = None
+        person: Optional[str] = None,
+        source: Optional[str] = None,
+        category: Optional[str] = None,
+        review_status: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        レビュー対象のドキュメントを取得
-
-        通常モード（search_query=None）: 未レビューのドキュメントのみ取得
-        検索モード（search_query指定）: レビュー状態に関係なく全件から検索
+        レビュー対象のドキュメントを取得（pipeline_meta ベース）
 
         Args:
             limit: 取得する最大件数
-            search_query: 検索クエリ（IDまたはファイル名で部分一致）
-            workspace: ワークスペースフィルタ（'business', 'personal', またはNone）
-            review_status: レビューステータスフィルタ（'reviewed', 'pending', 'all', またはNone）
-            exclude_workspace: 除外するワークスペース（'gmail'など）
-            doc_type: ドキュメントタイプフィルタ（'DM-mail', 'JOB-mail'など）
+            search_query: 検索クエリ（ID で部分一致）
+            person: person フィルタ
+            source: source フィルタ
+            category: category フィルタ
+            review_status: 'reviewed', 'pending', 'all', または None
 
         Returns:
             ドキュメントのリスト（更新日時降順）
         """
         try:
-            query = self.client.table('Rawdata_FILE_AND_MAIL').select('*')
+            query = self.client.table('pipeline_meta').select('*')
 
-            # Workspaceフィルタを適用
-            if workspace:
-                query = query.eq('workspace', workspace)
+            # Gmail は除外
+            query = query.neq('raw_table', '01_gmail_01_raw')
 
-            # Workspace除外フィルタを適用
-            if exclude_workspace:
-                query = query.neq('workspace', exclude_workspace)
+            if person:
+                query = query.eq('person', person)
+            if source:
+                query = query.eq('source', source)
+            if category:
+                query = query.eq('category', category)
 
-            # Doc typeフィルタを適用
-            if doc_type:
-                query = query.eq('doc_type', doc_type)
-
-            # Review statusフィルタを適用
             if review_status == 'reviewed':
-                query = query.eq('review_status', 'reviewed')
+                query = query.not_.is_('latest_correction_id', 'null')
             elif review_status == 'pending':
-                # review_statusが'pending'またはNULLの場合
-                query = query.or_('review_status.eq.pending,review_status.is.null')
+                query = query.is_('latest_correction_id', 'null')
 
             if search_query:
-                # 検索モード: レビュー状態に関係なく検索
-                # IDでの完全一致検索を試みる
-                if len(search_query) == 36 or len(search_query) == 8:  # UUID形式またはID先頭8文字
-                    # IDで検索（部分一致）
+                if len(search_query) == 36 or len(search_query) == 8:
                     response_id = query.ilike('id', f'{search_query}%').limit(limit).execute()
                     if response_id.data:
                         return response_id.data
 
-                # ファイル名で部分一致検索
-                response = (
-                    query
-                    .ilike('file_name', f'%{search_query}%')
-                    .order('updated_at', desc=True)
-                    .limit(limit)
-                    .execute()
-                )
-                return response.data if response.data else []
-            else:
-                # 通常モード: 全ドキュメントを取得（is_reviewed カラムは削除）
-                response = (
-                    query
-                    .order('updated_at', desc=True)
-                    .limit(limit)
-                    .execute()
-                )
-                return response.data if response.data else []
+            response = (
+                query
+                .order('updated_at', desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return response.data if response.data else []
 
         except Exception as e:
             print(f"Error getting documents for review: {e}")
@@ -958,13 +867,13 @@ class DatabaseClient:
             from datetime import datetime
 
             update_data = {
-                'review_status': 'reviewed'  # review_status カラムを使用
+                'review_status': 'reviewed'
             }
             if reviewed_by:
                 update_data['reviewed_by'] = reviewed_by
 
             response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .update(update_data)
                 .eq('id', doc_id)
                 .execute()
@@ -990,12 +899,12 @@ class DatabaseClient:
         """
         try:
             update_data = {
-                'review_status': 'pending',  # review_status カラムを使用
+                'review_status': 'pending',
                 'reviewed_by': None
             }
 
             response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .update(update_data)
                 .eq('id', doc_id)
                 .execute()
@@ -1014,20 +923,20 @@ class DatabaseClient:
             進捗情報の辞書
         """
         try:
-            # 未レビューの件数（review_status = 'pending' または NULL）
+            # 未レビューの件数（latest_correction_id IS NULL）
             unreviewed_response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .select('*', count='exact')
-                .in_('review_status', ['pending', None])
+                .is_('latest_correction_id', 'null')
                 .execute()
             )
             unreviewed_count = unreviewed_response.count if unreviewed_response else 0
 
-            # レビュー済みの件数（review_status = 'reviewed'）
+            # レビュー済みの件数（latest_correction_id IS NOT NULL）
             reviewed_response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .select('*', count='exact')
-                .eq('review_status', 'reviewed')
+                .not_.is_('latest_correction_id', 'null')
                 .execute()
             )
             reviewed_count = reviewed_response.count if reviewed_response else 0
@@ -1055,80 +964,59 @@ class DatabaseClient:
 
     def get_available_workspaces(self) -> List[str]:
         """
-        データベース内の利用可能なワークスペース一覧を取得
+        利用可能な person 一覧を取得（09_unified_documents ベース）
 
         Returns:
-            ワークスペース名のリスト（重複なし、ソート済み）
+            person 名のリスト（重複なし、ソート済み）
         """
         try:
-            # 全ドキュメントからworkspaceを取得
-            response = self.client.table('Rawdata_FILE_AND_MAIL').select('workspace').execute()
-
-            workspaces = set()
-            for doc in response.data:
-                ws = doc.get('workspace')
-                if ws:  # NoneやNULLを除外
-                    workspaces.add(ws)
-
-            return sorted(list(workspaces))
+            response = self.client.table('09_unified_documents').select('person').execute()
+            persons = {doc.get('person') for doc in response.data if doc.get('person')}
+            return sorted(list(persons))
         except Exception as e:
-            print(f"Error getting available workspaces: {e}")
+            print(f"Error getting available persons: {e}")
             return []
 
     def get_available_doc_types(self) -> List[str]:
         """
-        データベース内の利用可能なドキュメントタイプ一覧を取得
+        利用可能な source 一覧を取得（09_unified_documents ベース）
 
         Returns:
-            ドキュメントタイプ名のリスト（重複なし、ソート済み）
+            source 名のリスト（重複なし、ソート済み）
         """
         try:
-            # 全ドキュメントからdoc_typeを取得
-            response = self.client.table('Rawdata_FILE_AND_MAIL').select('doc_type').execute()
-
-            doc_types = set()
-            for doc in response.data:
-                dt = doc.get('doc_type')
-                if dt:  # NoneやNULLを除外
-                    doc_types.add(dt)
-
-            return sorted(list(doc_types))
+            response = self.client.table('09_unified_documents').select('source').execute()
+            sources = {doc.get('source') for doc in response.data if doc.get('source')}
+            return sorted(list(sources))
         except Exception as e:
-            print(f"Error getting available doc_types: {e}")
+            print(f"Error getting available sources: {e}")
             return []
 
     def get_workspace_hierarchy(self) -> Dict[str, List[str]]:
         """
-        workspace別のdoc_type階層構造を取得
+        person 別の source 階層構造を取得（09_unified_documents ベース）
 
         Returns:
-            {workspace: [doc_type1, doc_type2, ...]} の辞書
+            {person: [source1, source2, ...]} の辞書
         """
         try:
-            # workspaceとdoc_typeの組み合わせを取得
-            response = self.client.table('Rawdata_FILE_AND_MAIL').select('workspace, doc_type').execute()
+            response = self.client.table('09_unified_documents').select('person, source').execute()
 
-            hierarchy = {}
+            hierarchy: Dict[str, set] = {}
             for doc in response.data:
-                workspace = doc.get('workspace')
-                doc_type = doc.get('doc_type')
+                person = doc.get('person')
+                source = doc.get('source')
+                if person and source:
+                    hierarchy.setdefault(person, set()).add(source)
 
-                if workspace and doc_type:
-                    if workspace not in hierarchy:
-                        hierarchy[workspace] = set()
-                    hierarchy[workspace].add(doc_type)
-
-            # setをソート済みリストに変換
-            result = {ws: sorted(list(types)) for ws, types in hierarchy.items()}
-
-            # workspaceもソート
+            result = {p: sorted(list(srcs)) for p, srcs in hierarchy.items()}
             result = dict(sorted(result.items()))
 
-            print(f"[DEBUG] workspace階層構造: {len(result)} workspaces")
+            print(f"[DEBUG] person 階層構造: {len(result)} persons")
             return result
 
         except Exception as e:
-            print(f"Error getting workspace hierarchy: {e}")
+            print(f"Error getting person hierarchy: {e}")
             return {}
 
     def get_document_by_id(self, doc_id: str) -> Optional[Dict[str, Any]]:
@@ -1142,9 +1030,26 @@ class DatabaseClient:
             ドキュメント、存在しない場合は None
         """
         try:
-            response = self.client.table('Rawdata_FILE_AND_MAIL').select('*').eq('id', doc_id).execute()
+            response = self.client.table('pipeline_meta').select('*').eq('id', doc_id).execute()
             if response.data:
-                return response.data[0]
+                doc = response.data[0]
+                # 09_unified_documents から title (file_name 相当) を付与
+                try:
+                    ud = (
+                        self.client.table('09_unified_documents')
+                        .select('title, ui_data, meta')
+                        .eq('raw_id', doc['raw_id'])
+                        .eq('raw_table', doc['raw_table'])
+                        .limit(1)
+                        .execute()
+                    )
+                    if ud.data:
+                        doc['file_name'] = ud.data[0].get('title')
+                        doc['stage_g_structured_data'] = ud.data[0].get('ui_data')
+                        doc['ud_meta'] = ud.data[0].get('meta')
+                except Exception:
+                    pass
+                return doc
             return None
         except Exception as e:
             print(f"Error getting document by id: {e}")
@@ -1172,10 +1077,9 @@ class DatabaseClient:
         """
         try:
             update_data = {'metadata': new_metadata}
-            # doc_type はプログラムからの変更禁止（Supabase で直接修正すること）
 
             response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .update(update_data)
                 .eq('id', doc_id)
                 .execute()
@@ -1257,10 +1161,10 @@ class DatabaseClient:
 
             # year, month のトップレベルカラムへの同期は削除（metadata 内で管理）
 
-            logger.info(f"[record_correction] Rawdata_FILE_AND_MAIL 更新開始: doc_id={doc_id}")
+            logger.info(f"[record_correction] pipeline_meta 更新開始: doc_id={doc_id}")
 
             document_response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .update(update_data)
                 .eq('id', doc_id)
                 .execute()
@@ -1324,7 +1228,7 @@ class DatabaseClient:
             }
 
             document_response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .update(update_data)
                 .eq('id', doc_id)
                 .execute()
@@ -1383,7 +1287,7 @@ class DatabaseClient:
         """
         try:
             response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('08_file_only_01_raw')
                 .select('file_id')
                 .not_.is_('file_id', 'null')
                 .execute()
@@ -1410,30 +1314,10 @@ class DatabaseClient:
             True: 重複あり（既に存在する）
             False: 重複なし（新規）
         """
-        try:
-            # content_hashが一致するドキュメントを検索
-            response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
-                .select('id, file_name, content_hash')
-                .eq('content_hash', content_hash)
-                .limit(1)
-                .execute()
-            )
-
-            if response.data:
-                # 重複が見つかった
-                existing_doc = response.data[0]
-                print(f"⚠️  重複検知: content_hash={content_hash[:16]}... は既に存在します")
-                print(f"   既存ファイル: {existing_doc.get('file_name', 'Unknown')}")
-                return True
-
-            # 重複なし
-            return False
-
-        except Exception as e:
-            print(f"Error checking duplicate hash: {e}")
-            # エラー時は安全側に倒して重複なしとして扱う
-            return False
+        # 新スキーマ（08_file_only_01_raw 等）には content_hash カラムがない。
+        # inbox_monitor.py は file_id ベースの重複検出に移行が必要。
+        # 現時点では重複なしとして扱う（安全側に倒す）。
+        return False
 
     def delete_document(self, doc_id: str) -> bool:
         """
@@ -1449,7 +1333,7 @@ class DatabaseClient:
         try:
             # ドキュメントを削除（ON DELETE CASCADEにより関連データも削除される）
             response = (
-                self.client.table('Rawdata_FILE_AND_MAIL')
+                self.client.table('pipeline_meta')
                 .delete()
                 .eq('id', doc_id)
                 .execute()

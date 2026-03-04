@@ -3,10 +3,12 @@ Document Service
 doc-review アプリ固有のドキュメント操作
 
 設計方針:
-- shared/common/database/client.py は改変しない
+- テーブル: pipeline_meta（レビュー管理・パイプライン状態）
+- タイトル: 09_unified_documents.title（file_name 相当）
+- 絞り込み軸: person, source, category
 - review_status は仮想フィールドとして latest_correction_id から導出
   - reviewed ⇔ latest_correction_id IS NOT NULL
-  - pending ⇔ latest_correction_id IS NULL
+  - pending  ⇔ latest_correction_id IS NULL
 """
 from typing import List, Dict, Any, Optional
 from loguru import logger
@@ -17,7 +19,7 @@ def derive_review_status(document: Dict[str, Any]) -> str:
     ドキュメントの review_status を導出
 
     Args:
-        document: ドキュメントレコード
+        document: pipeline_meta レコード
 
     Returns:
         'reviewed' or 'pending'
@@ -25,73 +27,110 @@ def derive_review_status(document: Dict[str, Any]) -> str:
     return 'reviewed' if document.get('latest_correction_id') else 'pending'
 
 
+def _fetch_titles(db_client, docs: List[Dict[str, Any]]) -> None:
+    """
+    pipeline_meta のリストに 09_unified_documents.title を file_name として付与
+
+    Args:
+        db_client: DatabaseClient インスタンス
+        docs: pipeline_meta レコードのリスト（in-place 更新）
+    """
+    if not docs:
+        return
+    raw_ids = list({doc['raw_id'] for doc in docs if doc.get('raw_id')})
+    if not raw_ids:
+        return
+    try:
+        response = (
+            db_client.client
+            .table('09_unified_documents')
+            .select('raw_id, raw_table, title')
+            .in_('raw_id', raw_ids)
+            .execute()
+        )
+        title_map = {
+            (r['raw_id'], r['raw_table']): r['title']
+            for r in (response.data or [])
+        }
+        for doc in docs:
+            doc['file_name'] = title_map.get((doc.get('raw_id'), doc.get('raw_table')))
+    except Exception as e:
+        logger.warning(f"Failed to fetch titles from 09_unified_documents: {e}")
+
+
 def get_documents_with_review_status(
     db_client,
     limit: int = 50,
-    workspace: Optional[str] = None,
+    person: Optional[str] = None,
+    source: Optional[str] = None,
+    category: Optional[str] = None,
     review_status: Optional[str] = None,
     search_query: Optional[str] = None,
-    exclude_workspace: Optional[str] = None,
-    doc_type: Optional[str] = None,
     processing_status: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    レビューステータス付きでドキュメント一覧を取得
-
-    review_status フィルタは latest_correction_id で実現:
-    - reviewed → latest_correction_id IS NOT NULL
-    - pending → latest_correction_id IS NULL
-    - all / None → フィルタなし
+    レビューステータス付きでドキュメント一覧を取得（pipeline_meta ベース）
 
     Args:
         db_client: DatabaseClient インスタンス
         limit: 取得件数上限
-        workspace: ワークスペースフィルタ
+        person: person フィルタ
+        source: source フィルタ
+        category: category フィルタ
         review_status: 'reviewed', 'pending', 'all', または None
-        search_query: 検索クエリ（ファイル名部分一致）
-        exclude_workspace: 除外するワークスペース
-        doc_type: ドキュメントタイプフィルタ
-        processing_status: 処理ステータスフィルタ ('completed', 'pending', 等)
+        search_query: 検索クエリ（09_unified_documents.title で部分一致）
+        processing_status: 処理ステータスフィルタ
 
     Returns:
         review_status フィールドを付与したドキュメントリスト
     """
     try:
-        # 直接 Supabase クライアントを使用（DatabaseClient改変を避ける）
-        query = db_client.client.table('Rawdata_FILE_AND_MAIL').select('*')
+        # search_query がある場合は 09_unified_documents.title で raw_id を絞り込む
+        raw_id_filter = None
+        if search_query:
+            try:
+                sr = (
+                    db_client.client
+                    .table('09_unified_documents')
+                    .select('raw_id')
+                    .ilike('title', f'%{search_query}%')
+                    .execute()
+                )
+                if not sr.data:
+                    return []
+                raw_id_filter = [r['raw_id'] for r in sr.data]
+            except Exception as e:
+                logger.warning(f"Failed to search 09_unified_documents.title: {e}")
 
-        # 基本フィルタ
-        if workspace:
-            query = query.eq('workspace', workspace)
+        query = db_client.client.table('pipeline_meta').select('*')
 
-        if exclude_workspace:
-            query = query.neq('workspace', exclude_workspace)
+        # Gmail は除外（emails 側で処理）
+        query = query.neq('raw_table', '01_gmail_01_raw')
 
-        if doc_type:
-            query = query.eq('doc_type', doc_type)
-
-        # processing_status フィルタ（completedのみ表示など）
+        if person:
+            query = query.eq('person', person)
+        if source:
+            query = query.eq('source', source)
+        if category:
+            query = query.eq('category', category)
         if processing_status:
             query = query.eq('processing_status', processing_status)
 
-        # review_status フィルタ（latest_correction_id で判定）
         if review_status == 'reviewed':
             query = query.not_.is_('latest_correction_id', 'null')
         elif review_status == 'pending':
             query = query.is_('latest_correction_id', 'null')
         # 'all' または None の場合はフィルタなし
 
-        # 検索クエリ
-        if search_query:
-            query = query.ilike('file_name', f'%{search_query}%')
+        if raw_id_filter is not None:
+            query = query.in_('raw_id', raw_id_filter)
 
-        # ソートと件数制限
         query = query.order('updated_at', desc=True).limit(limit)
 
         response = query.execute()
         documents = response.data if response.data else []
 
-        # review_status を導出して付与
+        _fetch_titles(db_client, documents)
         for doc in documents:
             doc['review_status'] = derive_review_status(doc)
 
@@ -105,31 +144,31 @@ def get_documents_with_review_status(
 def get_emails_with_review_status(
     db_client,
     limit: int = 50,
-    doc_type: Optional[str] = None,
+    category: Optional[str] = None,
     review_status: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    レビューステータス付きでメール一覧を取得
+    レビューステータス付きでメール一覧を取得（pipeline_meta ベース）
+
+    メールは raw_table = '01_gmail_01_raw' で固定
 
     Args:
         db_client: DatabaseClient インスタンス
         limit: 取得件数上限
-        doc_type: ドキュメントタイプフィルタ (DM-mail, JOB-mail など)
+        category: category フィルタ
         review_status: 'reviewed', 'pending', 'all', または None
 
     Returns:
         review_status フィールドを付与したメールリスト
     """
     try:
-        query = db_client.client.table('Rawdata_FILE_AND_MAIL').select('*')
+        query = db_client.client.table('pipeline_meta').select('*')
 
-        # メールは workspace='gmail' で固定
-        query = query.eq('workspace', 'gmail')
+        query = query.eq('raw_table', '01_gmail_01_raw')
 
-        if doc_type:
-            query = query.eq('doc_type', doc_type)
+        if category:
+            query = query.eq('category', category)
 
-        # review_status フィルタ
         if review_status == 'reviewed':
             query = query.not_.is_('latest_correction_id', 'null')
         elif review_status == 'pending':
@@ -140,6 +179,7 @@ def get_emails_with_review_status(
         response = query.execute()
         emails = response.data if response.data else []
 
+        _fetch_titles(db_client, emails)
         for email in emails:
             email['review_status'] = derive_review_status(email)
 
@@ -156,59 +196,47 @@ def update_stage_a_result(
     a_result: Dict[str, Any]
 ) -> bool:
     """
-    Stage A の解析結果を DB に保存
+    Stage A の解析結果を pipeline_meta に保存
 
     Args:
         db_client: DatabaseClient インスタンス
-        document_id: ドキュメントID
-        a_result: Stage A の結果（origin_app, layout_profile, pdf_creator, pdf_producer, gatekeeper など）
+        document_id: pipeline_meta.id
+        a_result: Stage A の結果
 
     Returns:
-        成功した場合 True、失敗した場合 False
+        成功した場合 True
     """
     try:
         logger.info(f"[DocumentService] Stage A 結果を保存: {document_id}")
 
-        # PDF メタデータから Creator/Producer を取得
         raw_metadata = a_result.get('raw_metadata', {})
         pdf_creator = raw_metadata.get('Creator', '')
         pdf_producer = raw_metadata.get('Producer', '')
 
-        # Gatekeeper 結果を取得（a5_gatekeeper または gatekeeper）
         gatekeeper_result = a_result.get('a5_gatekeeper') or a_result.get('gatekeeper') or {}
 
-        # 更新データを構築
         update_data = {
-            'pdf_creator': pdf_creator,
-            'pdf_producer': pdf_producer,
-            'origin_app': a_result.get('origin_app'),
-            'layout_profile': a_result.get('layout_profile'),
-            'doc_type': a_result.get('document_type'),  # 後方互換性
-            # Gatekeeper フィールド
-            'gate_decision': gatekeeper_result.get('decision'),
-            'gate_block_code': gatekeeper_result.get('block_code'),
-            'gate_block_reason': gatekeeper_result.get('block_reason'),
-            'origin_confidence': a_result.get('confidence'),
-            'gate_policy_version': gatekeeper_result.get('policy_version'),
+            'pdf_creator':          pdf_creator,
+            'pdf_producer':         pdf_producer,
+            'origin_app':           a_result.get('origin_app'),
+            'layout_profile':       a_result.get('layout_profile'),
+            'origin_confidence':    a_result.get('confidence'),
+            'gate_decision':        gatekeeper_result.get('decision'),
+            'gate_block_code':      gatekeeper_result.get('block_code'),
+            'gate_block_reason':    gatekeeper_result.get('block_reason'),
+            'gate_policy_version':  gatekeeper_result.get('policy_version'),
         }
 
-        # Supabase クライアントを直接使用
-        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update(
-            update_data
-        ).eq('id', document_id).execute()
+        response = (
+            db_client.client
+            .table('pipeline_meta')
+            .update(update_data)
+            .eq('id', document_id)
+            .execute()
+        )
 
         if response.data:
             logger.info(f"[DocumentService] Stage A 結果保存成功: {document_id}")
-            logger.info(f"  ├─ origin_app: {a_result.get('origin_app')}")
-            logger.info(f"  ├─ origin_confidence: {a_result.get('confidence')}")
-            logger.info(f"  ├─ layout_profile: {a_result.get('layout_profile')}")
-            logger.info(f"  ├─ gate_decision: {gatekeeper_result.get('decision')}")
-            if gatekeeper_result.get('decision') == 'BLOCK':
-                logger.info(f"  ├─ gate_block_code: {gatekeeper_result.get('block_code')}")
-                logger.info(f"  ├─ gate_block_reason: {gatekeeper_result.get('block_reason')}")
-            logger.info(f"  ├─ gate_policy_version: {gatekeeper_result.get('policy_version')}")
-            logger.info(f"  ├─ pdf_creator: {pdf_creator[:50]}..." if len(pdf_creator) > 50 else f"  ├─ pdf_creator: {pdf_creator}")
-            logger.info(f"  └─ pdf_producer: {pdf_producer[:50]}..." if len(pdf_producer) > 50 else f"  └─ pdf_producer: {pdf_producer}")
             return True
         else:
             logger.warning(f"[DocumentService] Stage A 結果保存失敗（レコードなし）: {document_id}")
@@ -226,55 +254,76 @@ def update_stage_g_result(
     final_metadata: Optional[Dict[str, Any]] = None
 ) -> bool:
     """
-    Stage G の解析結果を DB に保存
+    Stage G の解析結果を保存
+
+    - pipeline_meta.processing_status を 'completed' に更新
+    - 09_unified_documents.ui_data / meta に構造化データを保存
 
     Args:
         db_client: DatabaseClient インスタンス
-        document_id: ドキュメントID
-        ui_data: Stage G の ui_data（クリーンなUI用データ）
-        final_metadata: G11/G17/G21/G22 の出力
+        document_id: pipeline_meta.id
+        ui_data: Stage G の ui_data（UI用構造化データ）
+        final_metadata: G11/G14/G17/G21/G22 の出力
 
     Returns:
-        成功した場合 True、失敗した場合 False
+        成功した場合 True
     """
     try:
         logger.info(f"[DocumentService] Stage G 結果を保存: {document_id}")
 
-        update_data = {
-            'stage_g_structured_data': ui_data,
-            'processing_status': 'completed'  # 構造化完了
-        }
+        # pipeline_meta を completed に更新
+        pm_response = (
+            db_client.client
+            .table('pipeline_meta')
+            .update({'processing_status': 'completed'})
+            .eq('id', document_id)
+            .execute()
+        )
 
-        # ★それぞれの結果を個別のカラムに保存
+        if not pm_response.data:
+            logger.warning(f"[DocumentService] pipeline_meta 更新失敗: {document_id}")
+            return False
+
+        pm = pm_response.data[0]
+
+        # 09_unified_documents に ui_data と meta を保存
+        meta = {}
         if final_metadata:
-            g11_output = final_metadata.get('g11_output', [])
-            g14_output = final_metadata.get('g14_output', [])
-            g17_output = final_metadata.get('g17_output', [])
-            g21_output = final_metadata.get('g21_output', [])
-            g22_output = final_metadata.get('g22_output', {})
+            g11 = final_metadata.get('g11_output', [])
+            g14 = final_metadata.get('g14_output', [])
+            g17 = final_metadata.get('g17_output', [])
+            g21 = final_metadata.get('g21_output', [])
+            g22 = final_metadata.get('g22_output', {})
+            if g11: meta['g11_output'] = g11
+            if g14: meta['g14_output'] = g14
+            if g17: meta['g17_output'] = g17
+            if g21: meta['g21_output'] = g21
+            if g22: meta['g22_output'] = g22
 
-            update_data['g11_structured_tables'] = g11_output if g11_output else None
-            update_data['g14_reconstructed_tables'] = g14_output if g14_output else None
-            update_data['g17_table_analyses'] = g17_output if g17_output else None
-            update_data['g21_articles'] = g21_output if g21_output else None
-            update_data['g22_ai_extracted'] = g22_output if g22_output else None
+            logger.info(f"[DocumentService] G-11: {len(g11)}表")
+            logger.info(f"[DocumentService] G-14: {len(g14)}表")
+            logger.info(f"[DocumentService] G-17: {len(g17)}表")
+            logger.info(f"[DocumentService] G-21: {len(g21)}記事")
+            logger.info(f"[DocumentService] G-22: イベント{len(g22.get('calendar_events', []))}件")
 
-            logger.info(f"[DocumentService] G-11: {len(g11_output)}表")
-            logger.info(f"[DocumentService] G-14: {len(g14_output)}表")
-            logger.info(f"[DocumentService] G-17: {len(g17_output)}表")
-            logger.info(f"[DocumentService] G-21: {len(g21_output)}記事")
-            logger.info(f"[DocumentService] G-22: イベント{len(g22_output.get('calendar_events', []))}件")
+        ud_update = {'ui_data': ui_data}
+        if meta:
+            ud_update['meta'] = meta
 
-        # Supabase クライアントを直接使用
-        response = db_client.client.table('Rawdata_FILE_AND_MAIL').update(
-            update_data
-        ).eq('id', document_id).execute()
+        ud_response = (
+            db_client.client
+            .table('09_unified_documents')
+            .update(ud_update)
+            .eq('raw_id', pm['raw_id'])
+            .eq('raw_table', pm['raw_table'])
+            .execute()
+        )
 
-        if response.data:
+        if ud_response.data:
             logger.info(f"[DocumentService] Stage G 結果保存成功: {document_id}")
             return True
         else:
-            logger.warning(f"[DocumentService] Stage G 結果保存失敗（レコードなし）: {document_id}")
+            logger.warning(f"[DocumentService] 09_unified_documents 更新失敗: {document_id}")
             return False
 
     except Exception as e:

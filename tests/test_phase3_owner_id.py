@@ -24,8 +24,8 @@ class TestOwnerIdValidation:
 
     def test_owner_id_required_tables_defined(self):
         """必須テーブルが正しく定義されている"""
-        assert 'Rawdata_FILE_AND_MAIL' in OWNER_ID_REQUIRED_TABLES
-        assert OWNER_ID_REQUIRED_TABLES['Rawdata_FILE_AND_MAIL'] == 'owner_id'
+        assert 'pipeline_meta' in OWNER_ID_REQUIRED_TABLES
+        assert OWNER_ID_REQUIRED_TABLES['pipeline_meta'] == 'owner_id'
 
         assert '10_ix_search_index' in OWNER_ID_REQUIRED_TABLES
         assert OWNER_ID_REQUIRED_TABLES['10_ix_search_index'] == 'owner_id'
@@ -51,7 +51,7 @@ class TestOwnerIdValidation:
 
         # owner_id 欠落 → OwnerIdRequiredError
         with pytest.raises(OwnerIdRequiredError) as exc_info:
-            client._validate_owner_id('Rawdata_FILE_AND_MAIL', {
+            client._validate_owner_id('pipeline_meta', {
                 'file_name': 'test.pdf',
                 'source_id': '12345'
                 # owner_id 欠落
@@ -69,7 +69,7 @@ class TestOwnerIdValidation:
 
         # owner_id=None → OwnerIdRequiredError
         with pytest.raises(OwnerIdRequiredError):
-            client._validate_owner_id('Rawdata_FILE_AND_MAIL', {
+            client._validate_owner_id('pipeline_meta', {
                 'file_name': 'test.pdf',
                 'owner_id': None  # 明示的に None
             })
@@ -84,7 +84,7 @@ class TestOwnerIdValidation:
         client = MockDatabaseClient()
 
         # owner_id あり → 例外なし
-        client._validate_owner_id('Rawdata_FILE_AND_MAIL', {
+        client._validate_owner_id('pipeline_meta', {
             'file_name': 'test.pdf',
             'owner_id': '11111111-1111-1111-1111-111111111111'
         })
@@ -101,7 +101,7 @@ class TestOwnerIdValidation:
 
         # authenticated では owner_id 欠落でも検証スキップ
         # （RLS の WITH CHECK で auth.uid() が強制されるため）
-        client._validate_owner_id('Rawdata_FILE_AND_MAIL', {
+        client._validate_owner_id('pipeline_meta', {
             'file_name': 'test.pdf'
             # owner_id 欠落でも OK（RLS が保護）
         })
@@ -117,7 +117,7 @@ class TestOwnerIdValidation:
         client = MockDatabaseClient()
 
         # anon では検証スキップ（書き込み権限自体がない）
-        client._validate_owner_id('Rawdata_FILE_AND_MAIL', {
+        client._validate_owner_id('pipeline_meta', {
             'file_name': 'test.pdf'
         })
         # ここに到達すれば成功

@@ -151,12 +151,12 @@ class TestAnonRPCOnlyIntegration:
         return create_client(url, key)
 
     def test_anon_cannot_select_rawdata(self, anon_client):
-        """anon は Rawdata_FILE_AND_MAIL に直接 SELECT できない"""
+        """anon は pipeline_meta に直接 SELECT できない"""
         try:
-            response = anon_client.table('Rawdata_FILE_AND_MAIL').select('*').limit(1).execute()
+            response = anon_client.table('pipeline_meta').select('*').limit(1).execute()
             # 成功した場合は権限エラー期待
             assert len(response.data) == 0 or response.data is None, \
-                "anon が Rawdata_FILE_AND_MAIL を読めてしまっています"
+                "anon が pipeline_meta を読めてしまっています"
         except Exception as e:
             # permission denied が期待される
             assert 'permission denied' in str(e).lower() or \

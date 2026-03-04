@@ -151,18 +151,18 @@ class G17TableAIProcessor:
             'tokens_used': total_tokens
         }
 
-        # Supabaseに保存
+        # pipeline_meta に中間保存（クラッシュ時の復旧用）
         if self.document_id:
             try:
                 db = DatabaseClient(use_service_role=True)
-                db.client.table('Rawdata_FILE_AND_MAIL').update({
+                db.client.table('pipeline_meta').update({
                     'g17_table_analyses': table_analyses,
                     'g14_reconstructed_tables': g14_reconstructed
                 }).eq('id', self.document_id).execute()
-                logger.info(f"[G-17] ✓ g17_table_analyses を Supabase に保存: {len(table_analyses)}表")
-                logger.info(f"[G-17] ✓ g14_reconstructed_tables を Supabase に保存: {len(g14_reconstructed)}表")
+                logger.info(f"[G-17] ✓ g17_table_analyses を pipeline_meta に保存: {len(table_analyses)}表")
+                logger.info(f"[G-17] ✓ g14_reconstructed_tables を pipeline_meta に保存: {len(g14_reconstructed)}表")
             except Exception as e:
-                logger.error(f"[G-17] Supabase保存エラー: {e}")
+                logger.error(f"[G-17] pipeline_meta 保存エラー: {e}")
 
         return result
 

@@ -135,32 +135,30 @@ def health_check():
 
 @app.route('/internal/workspaces', methods=['GET'])
 def get_workspaces():
-    """ワークスペース一覧を取得
+    """ソース（source）一覧を取得
 
     【責務】
-    - Run Requests UI のワークスペース選択ドロップダウン用
-    - ワークスペース名の一覧を返すだけ（統計・進捗は扱わない）
+    - Run Requests UI のフィルタ選択ドロップダウン用
+    - pipeline_meta.source の一覧を返す
 
     【DBアクセス】
     - service_role を使用（RLSバイパス、他APIと統一）
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select('workspace').execute()
 
-        workspaces = set()
-        for row in query.data:
-            workspace = row.get('workspace')
-            if workspace:
-                workspaces.add(workspace)
+        result = db.client.table('pipeline_meta').select('source').execute()
+        sources = sorted(set(
+            r['source'] for r in (result.data or []) if r.get('source')
+        ))
 
         return jsonify({
             'success': True,
-            'workspaces': sorted(list(workspaces))
+            'workspaces': sources  # UI後方互換のため key は workspaces のまま
         })
 
     except Exception as e:
-        logger.error(f"ワークスペース取得エラー: {e}")
+        logger.error(f"ソース取得エラー: {e}")
         return safe_error_response(e)
 
 
@@ -170,19 +168,20 @@ def get_classifications():
 
     【責務】
     - 検索UIの分類フィルタ用ドロップダウン向け
-    - ワークスペース指定で絞り込み可能
+    - source 指定で絞り込み可能
 
     【パラメータ】
-    - workspace: 絞り込むワークスペース（省略時は全体）
+    - source: 絞り込むソース（省略時は全体）
+    - workspace: source の別名（後方互換）
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        workspace = request.args.get('workspace', '')
+        source = request.args.get('source') or request.args.get('workspace', '')
 
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select('origin_app')
+        query = db.client.table('pipeline_meta').select('origin_app')
 
-        if workspace and workspace != 'all':
-            query = query.eq('workspace', workspace)
+        if source and source != 'all':
+            query = query.eq('source', source)
 
         result = query.execute()
 
@@ -207,53 +206,96 @@ def search_documents():
     """ドキュメント検索
 
     【責務】
-    - ワークスペース + 分類（origin_app） + ステータス + キーワードで絞り込み
+    - person / source / category / classification（origin_app） + ステータス + キーワードで絞り込み
     - 検索結果からキューへの追加に使用
 
     【パラメータ】
-    - workspace: ワークスペース（省略時は全体）
-    - classification: 分類（origin_app）（省略時は全体）
+    - person: 絞り込み（省略時は全体）
+    - source: 絞り込み（省略時は全体）
+    - category: 絞り込み（省略時は全体）
+    - classification: origin_app（省略時は全体）
     - status: 処理ステータス（省略時は全体）
-    - q: キーワード（title / file_name の部分一致）
+    - q: キーワード（09_unified_documents.title の部分一致）
     - limit: 取得件数上限（デフォルト100、最大500）
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        workspace = request.args.get('workspace', '')
+        person         = request.args.get('person', '')
+        source         = request.args.get('source') or request.args.get('workspace', '')
+        category       = request.args.get('category', '')
         classification = request.args.get('classification', '')
-        status = request.args.get('status', '')
-        q = request.args.get('q', '').strip()
-        exclude_text_only = request.args.get('exclude_text_only', '') == 'true'
-        limit = min(int(request.args.get('limit', 100)), 500)
+        status         = request.args.get('status', '')
+        q              = request.args.get('q', '').strip()
+        limit          = min(int(request.args.get('limit', 100)), 500)
 
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, title, file_name, workspace, origin_app, processing_status, doc_type, created_at, updated_at'
+        # キーワード検索: 09_unified_documents.title で raw_id を絞り込む
+        raw_id_filter = None
+        if q:
+            try:
+                ud_result = db.client.table('09_unified_documents').select('raw_id') \
+                    .ilike('title', f'%{q}%').execute()
+                if not ud_result.data:
+                    return jsonify({'success': True, 'documents': [], 'count': 0})
+                raw_id_filter = [str(r['raw_id']) for r in ud_result.data]
+            except Exception as e:
+                logger.warning(f"title 検索エラー: {e}")
+
+        # pipeline_meta を検索
+        query = db.client.table('pipeline_meta').select(
+            'id, raw_id, raw_table, person, source, '
+            'origin_app, processing_status, attempt_count, created_at, updated_at'
         )
 
-        if workspace and workspace != 'all':
-            query = query.eq('workspace', workspace)
-        if exclude_text_only:
-            query = query.not_.is_('file_url', 'null')
+        if person and person != 'all':
+            query = query.eq('person', person)
+        if source and source != 'all':
+            query = query.eq('source', source)
+        if category and category != 'all':
+            query = query.eq('category', category)
         if classification and classification != 'all':
-            if classification == 'text_only':
-                query = query.is_('file_url', 'null')
-            elif classification == 'unclassified':
-                query = query.not_.is_('file_url', 'null').is_('origin_app', 'null')
+            if classification == 'unclassified':
+                query = query.is_('origin_app', 'null')
             else:
                 query = query.eq('origin_app', classification)
         if status and status != 'all':
             query = query.eq('processing_status', status)
-        if q:
-            query = query.ilike('title', f'%{q}%')
+        if raw_id_filter is not None:
+            query = query.in_('raw_id', raw_id_filter)
 
         result = query.order('created_at', desc=True).limit(limit).execute()
-        documents = result.data or []
+        pm_rows = result.data or []
 
-        return jsonify({
-            'success': True,
-            'documents': documents,
-            'count': len(documents)
-        })
+        # 09_unified_documents からタイトルを取得
+        title_map = {}
+        if pm_rows:
+            raw_ids = list({str(r['raw_id']) for r in pm_rows if r.get('raw_id')})
+            try:
+                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
+                    .in_('raw_id', raw_ids).execute()
+                title_map = {
+                    (str(r['raw_id']), r['raw_table']): r['title']
+                    for r in (ud_result.data or [])
+                }
+            except Exception as e:
+                logger.warning(f"title 取得エラー: {e}")
+
+        documents = []
+        for r in pm_rows:
+            title = title_map.get((str(r.get('raw_id')), r.get('raw_table')))
+            documents.append({
+                'id':                r['id'],
+                'title':             title,
+                'file_name':         title,
+                'person':            r.get('person'),
+                'source':            r.get('source'),
+                'origin_app':        r.get('origin_app'),
+                'processing_status': r.get('processing_status'),
+                'attempt_count':     r.get('attempt_count', 0),
+                'created_at':        r.get('created_at'),
+                'updated_at':        r.get('updated_at'),
+            })
+
+        return jsonify({'success': True, 'documents': documents, 'count': len(documents)})
 
     except Exception as e:
         logger.error(f"ドキュメント検索エラー: {e}")
@@ -267,74 +309,54 @@ def get_dashboard():
     """処理監視ダッシュボード（キュー状態 + ワーカー状況）
 
     【責務】
-    - キュー状態（pending/processing/completed/failed/retry_pending）の集計
+    - キュー状態（pending/processing/completed/failed）の集計
     - アクティブワーカー数と各ワーカーの処理件数
 
     【パラメータ】
-    - workspace: 対象ワークスペース（省略時は全体）
+    - source: 対象ソース（省略時は全体）
+    - workspace: source の別名（後方互換）
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        workspace = request.args.get('workspace', '')
+        source = request.args.get('source') or request.args.get('workspace', '') or 'all'
 
-        # ベースクエリ
-        table = db.client.table('Rawdata_FILE_AND_MAIL')
+        def _pm_count(s):
+            q = db.client.table('pipeline_meta').select('id', count='exact').eq('processing_status', s)
+            if source != 'all':
+                q = q.eq('source', source)
+            r = q.execute()
+            return r.count or 0
 
-        # ワークスペースフィルタ
-        if workspace and workspace != 'all':
-            base_filter = lambda q: q.eq('workspace', workspace)
-        else:
-            base_filter = lambda q: q
-            workspace = 'all'
+        pending_count    = _pm_count('pending')
+        processing_count = _pm_count('processing')
+        completed_count  = _pm_count('completed')
+        failed_count     = _pm_count('failed')
 
-        # キュー状態集計
-        # pending
-        pending_q = base_filter(table.select('id', count='exact').eq('processing_status', 'pending'))
-        pending_result = pending_q.execute()
-        pending_count = pending_result.count if pending_result.count else 0
-
-        # queued（新ステータス）
-        queued_q = base_filter(table.select('id', count='exact').eq('processing_status', 'queued'))
-        queued_result = queued_q.execute()
-        queued_count = queued_result.count if queued_result.count else 0
-
-        # processing
-        processing_q = base_filter(table.select('id', count='exact').eq('processing_status', 'processing'))
-        processing_result = processing_q.execute()
-        processing_count = processing_result.count if processing_result.count else 0
-
-        # completed
-        completed_q = base_filter(table.select('id', count='exact').eq('processing_status', 'completed'))
-        completed_result = completed_q.execute()
-        completed_count = completed_result.count if completed_result.count else 0
-
-        # failed
-        failed_q = base_filter(table.select('id', count='exact').eq('processing_status', 'failed'))
-        failed_result = failed_q.execute()
-        failed_count = failed_result.count if failed_result.count else 0
-
-        # ワーカー状況（processing 中の lease_owner を集計）
-        workers_q = base_filter(table.select('lease_owner').eq('processing_status', 'processing').not_.is_('lease_owner', 'null'))
+        workers_q = db.client.table('pipeline_meta').select('lease_owner') \
+            .eq('processing_status', 'processing').not_.is_('lease_owner', 'null')
+        if source != 'all':
+            workers_q = workers_q.eq('source', source)
         workers_result = workers_q.execute()
 
-        # lease_owner ごとにカウント
         worker_counts = {}
         for row in workers_result.data or []:
             owner = row.get('lease_owner')
             if owner:
                 worker_counts[owner] = worker_counts.get(owner, 0) + 1
-
-        by_worker = [{'worker_id': k, 'count': v} for k, v in sorted(worker_counts.items(), key=lambda x: -x[1])]
+        by_worker = [
+            {'worker_id': k, 'count': v}
+            for k, v in sorted(worker_counts.items(), key=lambda x: -x[1])
+        ]
 
         return jsonify({
             'success': True,
-            'workspace': workspace,
+            'workspace': source,
             'queue': {
-                'pending': pending_count,
-                'queued': queued_count,
+                'pending':    pending_count,
+                'queued':     0,
                 'processing': processing_count,
-                'completed': completed_count,
-                'failed': failed_count
+                'completed':  completed_count,
+                'failed':     failed_count
             },
             'workers': {
                 'active_processing': processing_count,
@@ -536,44 +558,76 @@ def request_release_lease():
 
 @app.route('/internal/run-requests', methods=['GET'])
 def get_queue_status_api():
-    """キュー状態とqueuedドキュメント一覧を取得"""
+    """キュー状態と pending ドキュメント一覧を取得
+
+    【パラメータ】
+    - source: 対象ソース（省略時は全体）
+    - workspace: source の別名（後方互換）
+    """
     try:
         db = DatabaseClient(use_service_role=True)
-        workspace = request.args.get('workspace', 'all')
+        source = request.args.get('source') or request.args.get('workspace', 'all')
 
-        # キュー状態を取得
-        status_result = db.client.rpc('get_queue_status', {
-            'p_workspace': workspace
-        }).execute()
+        def _pm_count(s):
+            q = db.client.table('pipeline_meta').select('id', count='exact').eq('processing_status', s)
+            if source != 'all':
+                q = q.eq('source', source)
+            r = q.execute()
+            return r.count or 0
 
-        status_data = {}
-        if status_result.data:
-            data = status_result.data[0] if isinstance(status_result.data, list) else status_result.data
-            status_data = {
-                'pending': data.get('pending_count', 0),
-                'queued': data.get('queued_count', 0),
-                'processing': data.get('processing_count', 0),
-                'completed': data.get('completed_count', 0),
-                'failed': data.get('failed_count', 0)
-            }
+        status_data = {
+            'pending':    _pm_count('pending'),
+            'queued':     0,
+            'processing': _pm_count('processing'),
+            'completed':  _pm_count('completed'),
+            'failed':     _pm_count('failed'),
+        }
 
-        # queuedドキュメント一覧を取得（Gatekeeper情報を含む）
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, title, file_name, workspace, doc_type, attempt_count, created_at, '
-            'gate_decision, gate_block_code, gate_block_reason, origin_app, origin_confidence'
-        ).eq('processing_status', 'queued')
+        # pending 一覧を返す
+        pm_q = db.client.table('pipeline_meta').select(
+            'id, raw_id, raw_table, person, source, attempt_count, '
+            'gate_decision, gate_block_code, origin_app, origin_confidence, created_at'
+        ).eq('processing_status', 'pending')
+        if source != 'all':
+            pm_q = pm_q.eq('source', source)
+        pm_result = pm_q.order('created_at', desc=False).limit(100).execute()
+        pm_rows = pm_result.data or []
 
-        if workspace and workspace != 'all':
-            query = query.eq('workspace', workspace)
+        # 09_unified_documents からタイトルを取得（処理済みの再キュー分）
+        title_map = {}
+        if pm_rows:
+            raw_ids = list({str(r['raw_id']) for r in pm_rows if r.get('raw_id')})
+            try:
+                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
+                    .in_('raw_id', raw_ids).execute()
+                title_map = {
+                    (str(r['raw_id']), r['raw_table']): r['title']
+                    for r in (ud_result.data or [])
+                }
+            except Exception as e:
+                logger.warning(f"pending タイトル取得エラー: {e}")
 
-        queued_result = query.order('created_at', desc=False).limit(100).execute()
-        queued_docs = queued_result.data or []
+        pending_docs = []
+        for r in pm_rows:
+            title = title_map.get((str(r.get('raw_id')), r.get('raw_table')))
+            pending_docs.append({
+                'id':            r['id'],
+                'title':         title,
+                'file_name':     title,
+                'source':        r.get('source'),
+                'person':        r.get('person'),
+                'attempt_count': r.get('attempt_count', 0),
+                'gate_decision': r.get('gate_decision'),
+                'gate_block_code': r.get('gate_block_code'),
+                'origin_app':    r.get('origin_app'),
+                'created_at':    r.get('created_at'),
+            })
 
         return jsonify({
             'success': True,
             'status': status_data,
-            'queued_docs': queued_docs,
-            'count': len(queued_docs)
+            'queued_docs': pending_docs,
+            'count': len(pending_docs)
         })
 
     except Exception as e:
@@ -611,53 +665,49 @@ def clear_queue_api():
 
 @app.route('/internal/queue/retry-failed', methods=['POST'])
 def retry_failed_documents():
-    """失敗ドキュメントを再キュー: failed → queued
+    """失敗ドキュメントを再試行: failed → pending
 
     【パラメータ】
-    - workspace: 対象ワークスペース（省略時は全体）
-    - limit: 再キュー上限（デフォルト100）
+    - source: 対象ソース（省略時は全体）
+    - workspace: source の別名（後方互換）
+    - limit: 再試行上限（デフォルト100）
     """
     try:
         db = DatabaseClient(use_service_role=True)
         data = request.get_json(silent=True) or {}
 
-        workspace = data.get('workspace') or 'all'
+        source = data.get('source') or data.get('workspace') or 'all'
         limit = min(int(data.get('limit', 100)), 500)
 
-        # まず対象のIDを取得
-        select_query = db.client.table('Rawdata_FILE_AND_MAIL').select('id').eq('processing_status', 'failed')
-
-        if workspace and workspace != 'all':
-            select_query = select_query.eq('workspace', workspace)
-
-        select_result = select_query.limit(limit).execute()
+        select_q = db.client.table('pipeline_meta').select('id').eq('processing_status', 'failed')
+        if source != 'all':
+            select_q = select_q.eq('source', source)
+        select_result = select_q.limit(limit).execute()
 
         if not select_result.data:
             return jsonify({
                 'success': True,
-                'message': '再キュー対象がありません',
+                'message': '再試行対象がありません',
                 'retry_count': 0,
-                'workspace': workspace
+                'source': source
             })
 
-        # IDリストで更新
-        doc_ids = [row['id'] for row in select_result.data]
-
-        update_result = db.client.table('Rawdata_FILE_AND_MAIL').update({
-            'processing_status': 'queued'
-        }).in_('id', doc_ids).execute()
-
+        meta_ids = [row['id'] for row in select_result.data]
+        update_result = db.client.table('pipeline_meta').update({
+            'processing_status': 'pending',
+            'last_error_reason': None,
+        }).in_('id', meta_ids).execute()
         retry_count = len(update_result.data) if update_result.data else 0
 
         return jsonify({
             'success': True,
-            'message': f'{retry_count}件を再キューしました',
+            'message': f'{retry_count}件を pending に戻しました',
             'retry_count': retry_count,
-            'workspace': workspace
+            'source': source
         })
 
     except Exception as e:
-        logger.error(f"再キューエラー: {e}")
+        logger.error(f"再試行エラー: {e}")
         return safe_error_response(e)
 
 
@@ -743,13 +793,15 @@ def execute_queue():
             }), 500
 
         # バックグラウンドでWorkerを起動
+        source = data.get('source') or workspace
         cmd = [
             sys.executable,
             str(worker_script),
-            f'--workspace={workspace}',
             f'--limit={limit}',
             '--execute'
         ]
+        if source and source != 'all':
+            cmd.insert(2, f'--source={source}')
 
         logger.info(f"Worker 起動: {' '.join(cmd)}")
 
@@ -804,29 +856,28 @@ def execute_queue():
 @app.route('/internal/queue/remove/<doc_id>', methods=['POST'])
 @app.route('/internal/run-requests/<doc_id>', methods=['DELETE'])
 def remove_from_queue(doc_id):
-    """特定ドキュメントをキューから削除: queued → pending"""
+    """特定ドキュメントを pending にリセット（doc_id は pipeline_meta.id）"""
     try:
         db = DatabaseClient(use_service_role=True)
 
-        # queued状態のドキュメントをpendingに戻す
-        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
+        result = db.client.table('pipeline_meta').update({
             'processing_status': 'pending'
-        }).eq('id', doc_id).eq('processing_status', 'queued').execute()
+        }).eq('id', doc_id).execute()
 
         if result.data:
             return jsonify({
                 'success': True,
-                'message': 'キューから削除しました',
+                'message': 'pending にリセットしました',
                 'doc_id': doc_id
             })
         else:
             return jsonify({
                 'success': False,
-                'error': 'ドキュメントが見つからないか、既にキューにありません'
+                'error': 'ドキュメントが見つかりません'
             }), 404
 
     except Exception as e:
-        logger.error(f"キューから削除エラー: {e}")
+        logger.error(f"pending リセットエラー: {e}")
         return safe_error_response(e)
 
 
@@ -839,28 +890,42 @@ def get_blocked_documents():
     - ブロック理由と詳細情報を含む
 
     【パラメータ】
-    - workspace: 対象ワークスペース（省略時は全体）
+    - source: 対象ソース（省略時は全体）
+    - workspace: source の別名（後方互換）
     - limit: 取得件数上限（デフォルト100、最大500）
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        workspace = request.args.get('workspace', 'all')
+        source = request.args.get('source') or request.args.get('workspace', 'all')
         limit = min(int(request.args.get('limit', 100)), 500)
 
-        # ブロックされたドキュメントを取得
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, title, file_name, workspace, doc_type, created_at, updated_at, '
-            'gate_decision, gate_block_code, gate_block_reason, '
-            'origin_app, origin_confidence, layout_profile, gate_policy_version'
+        query = db.client.table('pipeline_meta').select(
+            'id, raw_id, raw_table, person, source, created_at, updated_at, '
+            'gate_decision, gate_block_code, gate_block_reason, gate_policy_version, '
+            'origin_app, origin_confidence, layout_profile'
         ).eq('gate_decision', 'BLOCK')
 
-        if workspace and workspace != 'all':
-            query = query.eq('workspace', workspace)
+        if source and source != 'all':
+            query = query.eq('source', source)
 
         result = query.order('updated_at', desc=True).limit(limit).execute()
         blocked_docs = result.data or []
 
-        # ブロック理由別に集計
+        # 09_unified_documents からタイトルを取得
+        if blocked_docs:
+            raw_ids = list({str(r['raw_id']) for r in blocked_docs if r.get('raw_id')})
+            try:
+                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
+                    .in_('raw_id', raw_ids).execute()
+                title_map = {
+                    (str(r['raw_id']), r['raw_table']): r['title']
+                    for r in (ud_result.data or [])
+                }
+                for doc in blocked_docs:
+                    doc['title'] = title_map.get((str(doc.get('raw_id')), doc.get('raw_table')))
+            except Exception as e:
+                logger.warning(f"blocked docs タイトル取得エラー: {e}")
+
         block_stats = {}
         for doc in blocked_docs:
             code = doc.get('gate_block_code', 'UNKNOWN')
@@ -871,7 +936,7 @@ def get_blocked_documents():
             'blocked_docs': blocked_docs,
             'count': len(blocked_docs),
             'block_stats': block_stats,
-            'workspace': workspace
+            'source': source
         })
 
     except Exception as e:
@@ -888,33 +953,46 @@ def get_failed_documents():
     - エラーメッセージと詳細情報を含む
 
     【パラメータ】
-    - workspace: 対象ワークスペース（省略時は全体）
+    - source: 対象ソース（省略時は全体）
+    - workspace: source の別名（後方互換）
     - limit: 取得件数上限（デフォルト100、最大500）
     """
     try:
         db = DatabaseClient(use_service_role=True)
-        workspace = request.args.get('workspace', 'all')
+        source = request.args.get('source') or request.args.get('workspace', 'all')
         limit = min(int(request.args.get('limit', 100)), 500)
 
-        # 失敗したドキュメントを取得
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, title, file_name, workspace, doc_type, created_at, updated_at, '
+        query = db.client.table('pipeline_meta').select(
+            'id, raw_id, raw_table, person, source, created_at, updated_at, '
             'error_message, last_error_reason, attempt_count, failed_at, metadata, '
             'origin_app, origin_confidence, layout_profile, '
             'gate_block_code, gate_block_reason, pdf_creator, pdf_producer'
         ).eq('processing_status', 'failed')
 
-        if workspace and workspace != 'all':
-            query = query.eq('workspace', workspace)
+        if source and source != 'all':
+            query = query.eq('source', source)
 
         result = query.order('updated_at', desc=True).limit(limit).execute()
         failed_docs = result.data or []
 
-        # エラーメッセージから簡易的にエラー種別を集計
+        # 09_unified_documents からタイトルを取得
+        if failed_docs:
+            raw_ids = list({str(r['raw_id']) for r in failed_docs if r.get('raw_id')})
+            try:
+                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
+                    .in_('raw_id', raw_ids).execute()
+                title_map = {
+                    (str(r['raw_id']), r['raw_table']): r['title']
+                    for r in (ud_result.data or [])
+                }
+                for doc in failed_docs:
+                    doc['title'] = title_map.get((str(doc.get('raw_id')), doc.get('raw_table')))
+            except Exception as e:
+                logger.warning(f"failed docs タイトル取得エラー: {e}")
+
         error_stats = {}
         for doc in failed_docs:
             error_msg = doc.get('error_message', 'Unknown error')
-            # エラーメッセージの最初の50文字をキーとして集計
             error_key = error_msg[:50] if error_msg else 'Unknown'
             error_stats[error_key] = error_stats.get(error_key, 0) + 1
 
@@ -923,7 +1001,7 @@ def get_failed_documents():
             'failed_docs': failed_docs,
             'count': len(failed_docs),
             'error_stats': error_stats,
-            'workspace': workspace
+            'source': source
         })
 
     except Exception as e:
@@ -956,13 +1034,34 @@ def classify_documents():
         if len(doc_ids) > 20:
             return jsonify({'success': False, 'error': '一度に処理できるのは20件までです'}), 400
 
-        # ドキュメント情報を取得
-        fetch_result = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, file_name, file_url, title'
+        # pipeline_meta からドキュメント情報を取得（doc_ids は pipeline_meta.id）
+        pm_result = db.client.table('pipeline_meta').select(
+            'id, raw_id, raw_table'
         ).in_('id', doc_ids).execute()
 
-        if not fetch_result.data:
+        if not pm_result.data:
             return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
+
+        # 各 raw_table の raw_id → file_url, title を取得
+        raw_info = {}  # (raw_id, raw_table) → {file_url, title}
+        by_table = {}
+        for row in pm_result.data:
+            rt = row['raw_table']
+            if rt not in by_table:
+                by_table[rt] = []
+            by_table[rt].append(str(row['raw_id']))
+
+        for rt, ids in by_table.items():
+            try:
+                rt_result = db.client.table(rt).select('id, title, file_url') \
+                    .in_('id', ids).execute()
+                for r in (rt_result.data or []):
+                    raw_info[(str(r['id']), rt)] = {
+                        'file_url': r.get('file_url', ''),
+                        'title':    r.get('title', ''),
+                    }
+            except Exception as e:
+                logger.warning(f"raw table {rt} 取得エラー: {e}")
 
         # Stage A と Google Drive コネクタをインポート
         from shared.pipeline.stage_a.a3_entry_point import A3EntryPoint
@@ -972,30 +1071,31 @@ def classify_documents():
         a3 = A3EntryPoint()
         results = []
 
-        for doc in fetch_result.data:
-            doc_id = doc['id']
-            file_name = doc.get('file_name') or doc.get('title') or 'unknown.pdf'
-            file_url = doc.get('file_url', '')
+        for pm_row in pm_result.data:
+            meta_id   = pm_row['id']
+            raw_id    = str(pm_row['raw_id'])
+            raw_table = pm_row['raw_table']
+            raw_data  = raw_info.get((raw_id, raw_table), {})
+            file_name = raw_data.get('title') or 'unknown.pdf'
+            file_url  = raw_data.get('file_url', '')
 
             try:
-                # file_url から Google Drive ファイルID を抽出
                 match = _re.search(r'/d/([a-zA-Z0-9_-]+)', file_url)
                 if not match:
                     results.append({
-                        'id': doc_id, 'file_name': file_name,
+                        'id': meta_id, 'file_name': file_name,
                         'success': False, 'error': 'file_url から Drive ファイルIDを取得できません'
                     })
                     continue
 
                 drive_file_id = match.group(1)
 
-                # 一時ディレクトリにダウンロードして Stage A で分類
                 with tempfile.TemporaryDirectory() as tmp_dir:
                     local_path = drive.download_file(drive_file_id, file_name, tmp_dir)
 
                     if not local_path:
                         results.append({
-                            'id': doc_id, 'file_name': file_name,
+                            'id': meta_id, 'file_name': file_name,
                             'success': False, 'error': 'Google Drive からのダウンロード失敗'
                         })
                         continue
@@ -1004,7 +1104,7 @@ def classify_documents():
 
                 if not a_result.get('success', True):
                     results.append({
-                        'id': doc_id, 'file_name': file_name,
+                        'id': meta_id, 'file_name': file_name,
                         'success': False, 'error': a_result.get('error', '分類失敗')
                     })
                     continue
@@ -1015,26 +1115,25 @@ def classify_documents():
                 reason = a_result.get('reason', '')
 
                 update_data = {
-                    'origin_app': origin_app or None,
-                    'origin_confidence': confidence or None,
-                    'layout_profile': layout_profile or None,
+                    'origin_app':         origin_app or None,
+                    'origin_confidence':  confidence or None,
+                    'layout_profile':     layout_profile or None,
                 }
 
-                # raw_metadata から Creator / Producer を取得
                 raw_meta = (a_result.get('a2_type') or {}).get('raw_metadata') or \
                            a_result.get('raw_metadata') or {}
-                creator = raw_meta.get('Creator') or raw_meta.get('creator') or ''
+                creator  = raw_meta.get('Creator') or raw_meta.get('creator') or ''
                 producer = raw_meta.get('Producer') or raw_meta.get('producer') or ''
                 if creator:
                     update_data['pdf_creator'] = creator
                 if producer:
                     update_data['pdf_producer'] = producer
 
-                db.client.table('Rawdata_FILE_AND_MAIL').update(update_data).eq('id', doc_id).execute()
+                db.client.table('pipeline_meta').update(update_data).eq('id', meta_id).execute()
                 logger.info(f"[classify] {file_name}: {origin_app} ({confidence})")
 
                 results.append({
-                    'id': doc_id, 'file_name': file_name,
+                    'id': meta_id, 'file_name': file_name,
                     'success': True,
                     'origin_app': origin_app,
                     'confidence': confidence,
@@ -1043,20 +1142,20 @@ def classify_documents():
                 })
 
             except Exception as e:
-                logger.error(f"分類エラー ({doc_id}): {e}")
+                logger.error(f"分類エラー ({meta_id}): {e}")
                 error_str = str(e)
                 is_404 = ('File not found' in error_str or '404' in error_str
                           or 'not found' in error_str.lower())
                 if is_404:
                     try:
-                        db.client.table('Rawdata_FILE_AND_MAIL').update(
+                        db.client.table('pipeline_meta').update(
                             {'origin_app': 'file_not_found'}
-                        ).eq('id', doc_id).execute()
+                        ).eq('id', meta_id).execute()
                         logger.info(f"[classify] {file_name}: file_not_found (Drive 404) → DB保存")
                     except Exception as ue:
                         logger.error(f"file_not_found 保存エラー: {ue}")
                 results.append({
-                    'id': doc_id, 'file_name': file_name,
+                    'id': meta_id, 'file_name': file_name,
                     'success': False, 'error': error_str,
                     'origin_app': 'file_not_found' if is_404 else None,
                 })
@@ -1075,76 +1174,64 @@ def classify_documents():
 
 @app.route('/internal/run-requests', methods=['POST'])
 def create_run_request():
-    """キューに追加: → queued（新方式）
-
-    【新方式】
-    - ops_requests/run_executions は使わない
-    - 直接 enqueue_documents RPC を呼び出す
-    - 1件ずつ独立（束ねない）
+    """ドキュメントを pending にリセット（pipeline_meta ベース）
 
     【パラメータ】
-    - limit / max_items: 追加件数（デフォルト10、上限100）
-    - workspace: 対象ワークスペース（省略時は全体）
-    - doc_ids: 特定ドキュメントID（配列 or カンマ区切り文字列、省略時は自動選択）
-    - doc_id: 特定ドキュメント1件（doc_ids優先）
+    - limit: 確認件数（デフォルト10、上限100）
+    - source: 対象ソース（省略時は全体）
+    - workspace: source の別名（後方互換）
+    - doc_ids: 特定ドキュメントID（pipeline_meta.id の配列 or カンマ区切り）
+    - doc_id: 特定ドキュメント1件
 
-    【doc_ids 指定時の特別ルール】
-    - ステータスを問わず pending にリセットしてからキューに追加する
-    - completed / failed の再処理に使用
+    【doc_ids 指定時】
+    - ステータスを問わず pending にリセット（completed / failed の再処理）
+    【doc_ids 省略時】
+    - 現在の pending 件数を返す（既に pending なので操作不要）
     """
     try:
         db = DatabaseClient(use_service_role=True)
         data = request.get_json(silent=True) or {}
 
-        # パラメータ取得（limit と max_items 両方対応）
         limit = min(int(data.get('limit', data.get('max_items', 10))), 100)
-        workspace = data.get('workspace') or 'all'
+        source = data.get('source') or data.get('workspace') or 'all'
 
-        # doc_ids: 配列・カンマ区切り文字列・単一 doc_id をすべて受け付ける
         doc_ids = data.get('doc_ids')
         if isinstance(doc_ids, str):
             doc_ids = [d.strip() for d in doc_ids.split(',') if d.strip()]
         if not doc_ids and data.get('doc_id'):
             doc_ids = [data.get('doc_id')]
 
-        # enqueue_documents RPC を呼び出し
         if doc_ids:
-            # 特定ドキュメント指定: ステータスを問わず pending にリセットしてからキューに追加
-            db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'pending'
+            # 特定ドキュメント: pending にリセット
+            result = db.client.table('pipeline_meta').update({
+                'processing_status':  'pending',
+                'processing_progress': 0.0,
             }).in_('id', doc_ids).execute()
-            logger.info(f"[run-requests] {len(doc_ids)}件を pending にリセット: {doc_ids}")
-
-            result = db.client.rpc('enqueue_documents', {
-                'p_workspace': workspace,
-                'p_limit': len(doc_ids),
-                'p_doc_ids': doc_ids
-            }).execute()
-        else:
-            # 自動選択（pending のみ対象）
-            result = db.client.rpc('enqueue_documents', {
-                'p_workspace': workspace,
-                'p_limit': limit,
-                'p_doc_ids': None
-            }).execute()
-
-        if result.data:
-            data = result.data[0] if isinstance(result.data, list) else result.data
-            enqueued_count = data.get('enqueued_count', 0)
-            doc_ids = data.get('doc_ids', []) or []
+            enqueued_count = len(result.data) if result.data else 0
+            logger.info(f"[run-requests] {enqueued_count}件を pending にリセット: {doc_ids}")
 
             return jsonify({
                 'success': True,
-                'message': f'{enqueued_count}件をキューに追加しました',
+                'message': f'{enqueued_count}件を pending にリセットしました',
                 'enqueued_count': enqueued_count,
                 'doc_ids': doc_ids,
-                'note': 'Workerがqueuedを順番に処理します'
+                'note': 'Worker が pending を順番に処理します'
             })
+        else:
+            # 自動: pending 件数を返す
+            q = db.client.table('pipeline_meta').select('id', count='exact').eq('processing_status', 'pending')
+            if source != 'all':
+                q = q.eq('source', source)
+            result = q.limit(limit).execute()
+            pending_count = result.count or 0
 
-        return jsonify({
-            'success': False,
-            'error': 'キューへの追加に失敗しました'
-        }), 500
+            return jsonify({
+                'success': True,
+                'message': f'pending {pending_count}件（Worker が自動処理します）',
+                'enqueued_count': pending_count,
+                'doc_ids': [],
+                'note': 'Worker が pending を順番に処理します'
+            })
 
     except Exception as e:
         logger.error(f"RUN 要求作成エラー: {e}")
@@ -1155,33 +1242,41 @@ def create_run_request():
 
 @app.route('/internal/update-doc-type', methods=['POST'])
 def update_doc_type():
-    """選択ドキュメントの doc_type を一括変更
+    """選択ドキュメントの category を一括変更
 
     【パラメータ】
-    - doc_ids: ドキュメントIDの配列
-    - doc_type: 変更後の doc_type 文字列
+    - doc_ids: pipeline_meta.id の配列
+    - doc_type / category: 変更後の category 文字列
     """
     try:
         db = DatabaseClient(use_service_role=True)
         data = request.get_json(silent=True) or {}
         doc_ids = data.get('doc_ids', [])
-        doc_type = data.get('doc_type', '').strip()
+        category = (data.get('category') or data.get('doc_type', '')).strip()
 
         if not doc_ids:
             return jsonify({'success': False, 'error': 'doc_ids が必要です'}), 400
-        if not doc_type:
-            return jsonify({'success': False, 'error': 'doc_type が必要です'}), 400
+        if not category:
+            return jsonify({'success': False, 'error': 'category が必要です'}), 400
 
-        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
-            'doc_type': doc_type
-        }).in_('id', doc_ids).execute()
+        # pipeline_meta の raw_id/raw_table を取得して 09_unified_documents を更新
+        pm_result = db.client.table('pipeline_meta').select('raw_id, raw_table') \
+            .in_('id', doc_ids).execute()
+
+        if not pm_result.data:
+            return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
+
+        raw_ids = [str(r['raw_id']) for r in pm_result.data if r.get('raw_id')]
+        result = db.client.table('09_unified_documents').update({
+            'category': category
+        }).in_('raw_id', raw_ids).execute()
 
         updated_count = len(result.data) if result.data else 0
-        logger.info(f"[update-doc-type] {updated_count}件の doc_type を '{doc_type}' に変更: {doc_ids}")
+        logger.info(f"[update-doc-type] {updated_count}件の category を '{category}' に変更: {doc_ids}")
 
         return jsonify({
             'success': True,
-            'message': f'{updated_count}件の doc_type を変更しました',
+            'message': f'{updated_count}件の category を変更しました',
             'updated_count': updated_count,
         })
 
@@ -1194,10 +1289,10 @@ def update_doc_type():
 
 @app.route('/internal/set-pending', methods=['POST'])
 def set_pending():
-    """選択ドキュメントを pending にリセット（キューには追加しない）
+    """選択ドキュメントを pending にリセット（doc_ids は pipeline_meta.id）
 
     【パラメータ】
-    - doc_ids: ドキュメントIDの配列
+    - doc_ids: pipeline_meta.id の配列
     """
     try:
         db = DatabaseClient(use_service_role=True)
@@ -1207,8 +1302,9 @@ def set_pending():
         if not doc_ids:
             return jsonify({'success': False, 'error': 'doc_ids が必要です'}), 400
 
-        result = db.client.table('Rawdata_FILE_AND_MAIL').update({
-            'processing_status': 'pending'
+        result = db.client.table('pipeline_meta').update({
+            'processing_status':   'pending',
+            'processing_progress':  0.0,
         }).in_('id', doc_ids).execute()
 
         updated_count = len(result.data) if result.data else 0
@@ -1254,18 +1350,25 @@ def reprocess_g():
         if start_stage not in ('G17', 'G22'):
             return jsonify({'success': False, 'error': 'start_stage は G17 または G22 を指定してください'}), 400
 
-        # ドキュメント情報と保存済み中間データを取得
-        fetch_result = db.client.table('Rawdata_FILE_AND_MAIL').select(
-            'id, file_name, title, doc_type, display_subject, display_post_text, '
-            'display_sender, display_sent_at, owner_id, '
-            'g14_reconstructed_tables, g21_articles, g17_table_analyses, g22_ai_extracted, '
-            'stage_g_structured_data'
+        # pipeline_meta からドキュメント情報と中間データを取得（doc_id は pipeline_meta.id）
+        pm_result = db.client.table('pipeline_meta').select(
+            'id, raw_id, raw_table, person, source, owner_id, '
+            'g14_reconstructed_tables, g21_articles, g17_table_analyses, g22_ai_extracted'
         ).eq('id', doc_id).execute()
 
-        if not fetch_result.data:
+        if not pm_result.data:
             return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
 
-        doc = fetch_result.data[0]
+        pm = pm_result.data[0]
+        raw_id    = pm['raw_id']
+        raw_table = pm['raw_table']
+
+        # 09_unified_documents から ui_data と title を取得
+        ud_result = db.client.table('09_unified_documents').select(
+            'id, title, category, ui_data'
+        ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
+        ud = ud_result.data[0] if ud_result.data else {}
+
         gemini_key = _os.getenv('GOOGLE_AI_API_KEY') or _os.getenv('GEMINI_API_KEY') or _os.getenv('GOOGLE_API_KEY')
 
         def _parse_json_col(val):
@@ -1273,11 +1376,11 @@ def reprocess_g():
                 return None
             if isinstance(val, str):
                 return _json.loads(val)
-            return val  # 既に dict/list の場合
+            return val
 
         # ===== G22 再処理 =====
         if start_stage == 'G22':
-            g21_raw = doc.get('g21_articles')
+            g21_raw = pm.get('g21_articles')
             if not g21_raw:
                 return jsonify({
                     'success': False,
@@ -1293,30 +1396,30 @@ def reprocess_g():
             if not g22_result.get('success'):
                 return jsonify({'success': False, 'error': f'G22 処理失敗: {g22_result.get("error", "不明")}'}), 500
 
-            # g22_ai_extracted を更新
-            db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'g22_ai_extracted': _json.dumps(g22_result, ensure_ascii=False)
+            # pipeline_meta の g22_ai_extracted を更新
+            db.client.table('pipeline_meta').update({
+                'g22_ai_extracted': g22_result
             }).eq('id', doc_id).execute()
 
-            # stage_g_structured_data の timeline/actions/notices を更新
+            # 09_unified_documents の ui_data を更新
             try:
-                ui_data = _parse_json_col(doc.get('stage_g_structured_data')) or {}
+                ui_data = _parse_json_col(ud.get('ui_data')) or {}
                 ui_data['timeline'] = g22_result.get('calendar_events', [])
-                ui_data['actions'] = g22_result.get('tasks', [])
-                ui_data['notices'] = g22_result.get('notices', [])
-                db.client.table('Rawdata_FILE_AND_MAIL').update(
-                    {'stage_g_structured_data': ui_data}
-                ).eq('id', doc_id).execute()
+                ui_data['actions']  = g22_result.get('tasks', [])
+                ui_data['notices']  = g22_result.get('notices', [])
+                db.client.table('09_unified_documents').update(
+                    {'ui_data': ui_data}
+                ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
             except Exception as e:
-                logger.warning(f'stage_g_structured_data 更新エラー（継続）: {e}')
+                logger.warning(f'ui_data 更新エラー（継続）: {e}')
 
-            g17_output = _parse_json_col(doc.get('g17_table_analyses')) or []
+            g17_output = _parse_json_col(pm.get('g17_table_analyses')) or []
             g21_output = articles
             g22_output = g22_result
 
         # ===== G17 再処理 =====
         else:
-            g14_raw = doc.get('g14_reconstructed_tables')
+            g14_raw = pm.get('g14_reconstructed_tables')
             if not g14_raw:
                 return jsonify({
                     'success': False,
@@ -1334,56 +1437,84 @@ def reprocess_g():
 
             g17_output = g17_result.get('table_analyses', [])
 
-            # g17_table_analyses を更新
-            db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'g17_table_analyses': _json.dumps(g17_output, ensure_ascii=False)
+            # pipeline_meta の g17_table_analyses を更新
+            db.client.table('pipeline_meta').update({
+                'g17_table_analyses': g17_output
             }).eq('id', doc_id).execute()
 
-            # G17生出力(sections構造) → UI用フォーマット(rows構造) に変換
             def _to_ui_tables(table_analyses):
                 result = []
                 for analysis in table_analyses:
                     sections = analysis.get('sections', [])
                     section_data = sections[0].get('data', []) if sections else []
                     result.append({
-                        'table_id': analysis.get('table_id', ''),
+                        'table_id':   analysis.get('table_id', ''),
                         'table_type': analysis.get('table_type', 'structured'),
                         'description': analysis.get('description', ''),
-                        'headers': [],
-                        'rows': section_data,
-                        'sections': sections,
-                        'metadata': sections[0].get('metadata', {}) if sections else analysis.get('metadata', {}),
+                        'headers':    [],
+                        'rows':       section_data,
+                        'sections':   sections,
+                        'metadata':   sections[0].get('metadata', {}) if sections else analysis.get('metadata', {}),
                     })
                 return result
             ui_tables = _to_ui_tables(g17_output)
 
-            # stage_g_structured_data の tables を更新（変換後のUI用データで）
+            # 09_unified_documents の ui_data を更新
             try:
-                ui_data = _parse_json_col(doc.get('stage_g_structured_data')) or {}
+                ui_data = _parse_json_col(ud.get('ui_data')) or {}
                 ui_data['tables'] = ui_tables
-                db.client.table('Rawdata_FILE_AND_MAIL').update(
-                    {'stage_g_structured_data': ui_data}
-                ).eq('id', doc_id).execute()
+                db.client.table('09_unified_documents').update(
+                    {'ui_data': ui_data}
+                ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
             except Exception as e:
-                logger.warning(f'stage_g_structured_data 更新エラー（継続）: {e}')
+                logger.warning(f'ui_data 更新エラー（継続）: {e}')
 
-            g17_output = ui_tables  # 以降はUI用フォーマットを使う
+            g17_output = ui_tables
 
-            g21_output = _parse_json_col(doc.get('g21_articles')) or []
-            g22_output = _parse_json_col(doc.get('g22_ai_extracted')) or {}
+            g21_output = _parse_json_col(pm.get('g21_articles')) or []
+            g22_output = _parse_json_col(pm.get('g22_ai_extracted')) or {}
+
+        # ===== G31: 09_unified_documents を更新し unified_doc_id を取得 =====
+        from shared.pipeline.stage_g.g31_unified_writer import G31UnifiedWriter
+
+        # 最新 ui_data を DB から再取得（G17/G22 の更新を反映）
+        refreshed_ud = db.client.table('09_unified_documents').select(
+            'id, title, category, ui_data'
+        ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
+        updated_ud = refreshed_ud.data[0] if refreshed_ud.data else ud
+        updated_ui_data = _parse_json_col(updated_ud.get('ui_data'))
+
+        # G31 用 raw_data を pipeline_meta から構築
+        raw_data_for_g31 = {
+            'id':       pm['id'],
+            'raw_id':   raw_id,
+            'raw_table': raw_table,
+            'person':   pm.get('person'),
+            'source':   pm.get('source'),
+            'title':    updated_ud.get('title'),
+            'category': updated_ud.get('category'),
+            'owner_id': pm.get('owner_id'),
+        }
+
+        g31 = G31UnifiedWriter(db_client=db)
+        g31_result = g31.process(
+            raw_data=raw_data_for_g31,
+            raw_table=raw_table,
+            ui_data=updated_ui_data,
+        )
+        if not g31_result.get('success'):
+            return jsonify({'success': False, 'error': f'G31 失敗: {g31_result.get("error")}'}), 500
+
+        unified_doc_id = g31_result['doc_id']
+        logger.info(f'[reprocess-g] G31 完了: unified_doc_id={unified_doc_id}')
 
         # ===== Stage J: チャンク生成 =====
         from shared.common.processing.metadata_chunker import MetadataChunker
-        file_name = doc.get('file_name') or doc.get('title') or 'unknown'
+        file_name = updated_ud.get('title') or 'unknown'
 
         document_data = {
             'file_name': file_name,
-            'doc_type': doc.get('doc_type'),
-            'display_subject': doc.get('display_subject'),
-            'display_post_text': doc.get('display_post_text'),
-            'display_sender': doc.get('display_sender'),
-            'display_sent_at': doc.get('display_sent_at'),
-            'classroom_sender_email': doc.get('classroom_sender_email'),
+            'doc_type':  updated_ud.get('category'),
             'text_blocks': [
                 {'title': a.get('title', ''), 'content': a.get('body', '')}
                 for a in g21_output
@@ -1392,9 +1523,9 @@ def reprocess_g():
             'structured_tables': [
                 {
                     'table_title': t.get('description', t.get('table_title', '')),
-                    'headers': t.get('headers', []),
-                    'rows': t.get('rows', []),
-                    'metadata': t.get('metadata', {}),
+                    'headers':     t.get('headers', []),
+                    'rows':        t.get('rows', []),
+                    'metadata':    t.get('metadata', {}),
                 }
                 for t in g17_output
                 if t.get('rows')
@@ -1416,14 +1547,12 @@ def reprocess_g():
         all_chunks = MetadataChunker().create_metadata_chunks(document_data)
         logger.info(f'[reprocess-g] {start_stage} 全チャンク生成: {len(all_chunks)}件')
 
-        # chunk_indexは全チャンク通し番号のため、タイプ別削除では番号衝突が起きる
-        # → 全チャンク削除して全チャンク再挿入
         new_chunks = all_chunks
         logger.info(f'[reprocess-g] {start_stage} 全チャンク再挿入: {len(new_chunks)}件')
 
-        # 全チャンク削除
+        # 全チャンク削除（unified_doc_id = 09_unified_documents.id を使用）
         try:
-            db.client.table('10_ix_search_index').delete().eq('document_id', doc_id).execute()
+            db.client.table('10_ix_search_index').delete().eq('doc_id', unified_doc_id).execute()
         except Exception as e:
             logger.warning(f'既存チャンク削除エラー（継続）: {e}')
 
@@ -1443,7 +1572,7 @@ def reprocess_g():
 
         llm_client = LLMClient()
         stage_k = StageKEmbedding(llm_client=llm_client, db_client=db)
-        k_result = stage_k.embed_and_save(doc_id, new_chunks)
+        k_result = stage_k.embed_and_save(unified_doc_id, new_chunks)
 
         if not k_result.get('success'):
             errors = k_result.get('errors', [])

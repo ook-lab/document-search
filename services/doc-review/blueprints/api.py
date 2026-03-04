@@ -164,37 +164,35 @@ def list_documents():
     ドキュメント一覧取得
 
     Query params:
-        workspace: ワークスペースフィルタ
+        person: person フィルタ
+        source: source フィルタ
+        category: category フィルタ
         review_status: pending / reviewed / all（仮想フィールド、latest_correction_idから導出）
-        search: 検索クエリ
+        search: 検索クエリ（09_unified_documents.title で部分一致）
+        processing_status: 処理ステータスフィルタ
         limit: 取得件数（デフォルト50）
     """
     try:
         db_client = get_db_client_or_abort()
 
         # クエリパラメータ取得
-        workspace = request.args.get('workspace')
+        person = request.args.get('person') or None
+        source = request.args.get('source') or None
+        category = request.args.get('category') or None
         review_status = request.args.get('review_status', 'pending')
-        search_query = request.args.get('search')
-        processing_status = request.args.get('processing_status')
+        search_query = request.args.get('search') or None
+        processing_status = request.args.get('processing_status') or None
         limit = int(request.args.get('limit', 50))
 
-        # 空文字列をNoneに変換
-        if workspace == '':
-            workspace = None
-        if search_query == '':
-            search_query = None
-        if processing_status == '':
-            processing_status = None
-
-        # サービス層を使用（review_statusはlatest_correction_idから導出）
+        # サービス層を使用（review_status は latest_correction_id から導出）
         documents = get_documents_with_review_status(
             db_client=db_client,
             limit=limit,
-            workspace=workspace,
+            person=person,
+            source=source,
+            category=category,
             review_status=review_status,
             search_query=search_query,
-            exclude_workspace='gmail',  # Gmailはメール側で処理
             processing_status=processing_status
         )
 
@@ -752,25 +750,22 @@ def list_emails():
     メール一覧取得
 
     Query params:
-        doc_type: DM-mail / JOB-mail
+        category: category フィルタ
         review_status: pending / reviewed / all（仮想フィールド）
         limit: 取得件数
     """
     try:
         db_client = get_db_client_or_abort()
 
-        doc_type = request.args.get('doc_type')
+        category = request.args.get('category') or None
         review_status = request.args.get('review_status', 'all')
         limit = int(request.args.get('limit', 50))
 
-        if doc_type == '':
-            doc_type = None
-
-        # サービス層を使用（review_statusはlatest_correction_idから導出）
+        # サービス層を使用（review_status は latest_correction_id から導出）
         emails = get_emails_with_review_status(
             db_client=db_client,
             limit=limit,
-            doc_type=doc_type,
+            category=category,
             review_status=review_status
         )
 

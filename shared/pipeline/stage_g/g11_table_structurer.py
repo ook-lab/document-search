@@ -162,16 +162,7 @@ class G11TableStructurer:
                 'structured_tables': structured_tables
             }
 
-            # Supabaseに保存
-            if self.document_id:
-                try:
-                    db = DatabaseClient(use_service_role=True)
-                    db.client.table('Rawdata_FILE_AND_MAIL').update({
-                        'g11_structured_tables': structured_tables
-                    }).eq('id', self.document_id).execute()
-                    logger.info(f"[G-11] ✓ g11_structured_tables を Supabase に保存: {len(structured_tables)}表")
-                except Exception as e:
-                    logger.error(f"[G-11] Supabase保存エラー: {e}")
+            # G11 中間データは pipeline_meta に集約保存（_process_pipeline_meta_with_attachment が担当）
 
             # ★チェーン: 次のステージ（G-13）を呼び出す
             if self.next_stage:

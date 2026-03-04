@@ -189,7 +189,7 @@ class TestExecutionVersioningIntegration:
             'processing_status': 'pending'
         }
 
-        result = service_client.table('Rawdata_FILE_AND_MAIL').insert(doc_data).execute()
+        result = service_client.table('pipeline_meta').insert(doc_data).execute()
         if result.data:
             test_doc_id = result.data[0]['id']
 
@@ -207,7 +207,7 @@ class TestExecutionVersioningIntegration:
                     .eq('document_id', test_doc_id) \
                     .execute()
                 # ドキュメントを削除
-                service_client.table('Rawdata_FILE_AND_MAIL') \
+                service_client.table('pipeline_meta') \
                     .delete() \
                     .eq('id', test_doc_id) \
                     .execute()
@@ -247,7 +247,7 @@ class TestExecutionVersioningIntegration:
         assert success is True
 
         # 3. active_execution_id が設定されている
-        doc = service_client.table('Rawdata_FILE_AND_MAIL') \
+        doc = service_client.table('pipeline_meta') \
             .select('active_execution_id') \
             .eq('id', doc_id) \
             .execute()
@@ -293,7 +293,7 @@ class TestExecutionVersioningIntegration:
         assert len(history) >= 2
 
         # 検証: active が新しい execution を指している
-        doc = service_client.table('Rawdata_FILE_AND_MAIL') \
+        doc = service_client.table('pipeline_meta') \
             .select('active_execution_id') \
             .eq('id', doc_id) \
             .execute()
@@ -341,7 +341,7 @@ class TestExecutionVersioningIntegration:
         assert len(failed_execs) >= 1
 
         # 検証: active は前の成功結果のまま
-        doc = service_client.table('Rawdata_FILE_AND_MAIL') \
+        doc = service_client.table('pipeline_meta') \
             .select('active_execution_id') \
             .eq('id', doc_id) \
             .execute()
@@ -370,7 +370,7 @@ class TestExecutionVersioningIntegration:
             .eq('id', ctx.execution_id) \
             .execute()
 
-        doc_result = service_client.table('Rawdata_FILE_AND_MAIL') \
+        doc_result = service_client.table('pipeline_meta') \
             .select('owner_id') \
             .eq('id', doc_id) \
             .execute()
@@ -423,7 +423,7 @@ class TestIdempotency:
             'processing_status': 'pending'
         }
 
-        result = service_client.table('Rawdata_FILE_AND_MAIL').insert(doc_data).execute()
+        result = service_client.table('pipeline_meta').insert(doc_data).execute()
         doc_id = result.data[0]['id']
 
         try:
@@ -455,7 +455,7 @@ class TestIdempotency:
                 .delete() \
                 .eq('document_id', doc_id) \
                 .execute()
-            service_client.table('Rawdata_FILE_AND_MAIL') \
+            service_client.table('pipeline_meta') \
                 .delete() \
                 .eq('id', doc_id) \
                 .execute()

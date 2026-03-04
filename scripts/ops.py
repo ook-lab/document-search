@@ -102,30 +102,33 @@ def print_result_summary(affected_count: int, action: str):
 def cmd_stats(args):
     """統計情報を表示"""
     db = get_db_client()
-    workspace = args.workspace
+    source = args.workspace  # --workspace 引数を source として扱う
 
     try:
-        query = db.client.table('Rawdata_FILE_AND_MAIL').select('processing_status, workspace')
+        query = db.client.table('pipeline_meta').select('processing_status, source')
 
-        if workspace != 'all':
-            query = query.eq('workspace', workspace)
+        if source != 'all':
+            query = query.eq('source', source)
 
         response = query.limit(100000).execute()
 
-        stats = {
-            'pending': 0,
+        stats: Dict[str, Any] = {
+            'pending':    0,
             'processing': 0,
-            'completed': 0,
-            'failed': 0,
-            'null': 0
+            'completed':  0,
+            'failed':     0,
+            'null':       0
         }
 
+        source_counts: Dict[str, int] = {}
         for doc in response.data:
             status = doc.get('processing_status')
             if status is None:
                 stats['null'] += 1
             else:
                 stats[status] = stats.get(status, 0) + 1
+            src = doc.get('source', '(不明)')
+            source_counts[src] = source_counts.get(src, 0) + 1
 
         stats['total'] = len(response.data)
 
@@ -136,10 +139,10 @@ def cmd_stats(args):
             stats['success_rate'] = 0.0
 
         print("\n" + "="*60)
-        if workspace == 'all':
-            print("全体統計")
+        if source == 'all':
+            print("全体統計（pipeline_meta）")
         else:
-            print(f"統計 (workspace: {workspace})")
+            print(f"統計 (source: {source})")
         print("="*60)
         print(f"待機中 (pending):      {stats['pending']:>5}件")
         print(f"処理中 (processing):   {stats['processing']:>5}件")
@@ -149,6 +152,10 @@ def cmd_stats(args):
         print("-" * 60)
         print(f"合計:                  {stats['total']:>5}件")
         print(f"成功率:                {stats['success_rate']:>5.1f}%")
+        if len(source_counts) > 1:
+            print("\nソース別:")
+            for src, cnt in sorted(source_counts.items(), key=lambda x: -x[1]):
+                print(f"  {src}: {cnt}件")
         print("="*60 + "\n")
 
     except Exception as e:
@@ -265,11 +272,13 @@ def cmd_release_lease(args):
     # dry-run: 影響件数を表示
     try:
         if scope_type == 'document':
-            affected = db.client.table('Rawdata_FILE_AND_MAIL').select('id, title, file_name')\
+            # doc_id は pipeline_meta.id
+            affected = db.client.table('pipeline_meta').select('id, source, person')\
                 .eq('id', scope_id).eq('processing_status', 'processing').execute()
         else:
-            affected = db.client.table('Rawdata_FILE_AND_MAIL').select('id, title, file_name')\
-                .eq('workspace', scope_id).eq('processing_status', 'processing').limit(100).execute()
+            # workspace は source として扱う
+            affected = db.client.table('pipeline_meta').select('id, source, person')\
+                .eq('source', scope_id).eq('processing_status', 'processing').limit(100).execute()
 
         affected_count = len(affected.data) if affected.data else 0
 
@@ -281,8 +290,7 @@ def cmd_release_lease(args):
         if affected_count > 0 and affected_count <= 10:
             print("\n  対象ドキュメント:")
             for doc in affected.data:
-                title = doc.get('title', doc.get('file_name', '(不明)'))
-                print(f"    - {title}")
+                print(f"    - id={doc.get('id')} source={doc.get('source')}")
 
         if affected_count == 0:
             print("\n  processing 状態のドキュメントはありません")
@@ -331,21 +339,21 @@ def cmd_release_lease(args):
 # ============================================================
 
 def dry_run_reset_status(db: DatabaseClient, workspace: str = None, doc_id: str = None) -> DryRunResult:
-    """reset-status の dry-run"""
+    """reset-status の dry-run（workspace は source として扱う、doc_id は pipeline_meta.id）"""
     if doc_id:
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status')\
+        result = db.client.table('pipeline_meta')\
+            .select('id, source, person, processing_status')\
             .eq('id', doc_id)\
             .execute()
     elif workspace:
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status')\
-            .eq('workspace', workspace)\
+        result = db.client.table('pipeline_meta')\
+            .select('id, source, person, processing_status')\
+            .eq('source', workspace)\
             .eq('processing_status', 'processing')\
             .execute()
     else:
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status')\
+        result = db.client.table('pipeline_meta')\
+            .select('id, source, person, processing_status')\
             .eq('processing_status', 'processing')\
             .limit(1000)\
             .execute()
@@ -405,8 +413,8 @@ def cmd_reset_status(args):
     success_count = 0
     for doc in dry_result.affected_items:
         try:
-            db.client.table('Rawdata_FILE_AND_MAIL')\
-                .update({'processing_status': 'pending'})\
+            db.client.table('pipeline_meta')\
+                .update({'processing_status': 'pending', 'lease_owner': None, 'lease_until': None})\
                 .eq('id', doc['id'])\
                 .execute()
             success_count += 1
@@ -418,43 +426,38 @@ def cmd_reset_status(args):
 
 
 # ============================================================
-# Reset-Stages コマンド（E-Kクリア）
+# Reset-Stages コマンド（G中間データクリア）
 # ============================================================
 
-# クリアするフィールド
+# pipeline_meta のクリアするフィールド（G中間データ + ステータスリセット）
 STAGE_FIELDS_TO_CLEAR = {
-    'stage_e1_text': None,
-    'stage_e2_text': None,
-    'stage_e3_text': None,
-    'stage_e4_text': None,
-    'stage_e5_text': None,
-    'stage_f_text_ocr': None,
-    'stage_f_layout_ocr': None,
-    'stage_f_visual_elements': None,
-    'stage_h_normalized': None,
-    'stage_i_structured': None,
-    'stage_j_chunks_json': None,
-    'processing_status': 'pending',
-    'processing_stage': None,
+    'g14_reconstructed_tables': None,
+    'g17_table_analyses':       None,
+    'g21_articles':             None,
+    'g22_ai_extracted':         None,
+    'processing_status':        'pending',
+    'processing_progress':      0.0,
+    'lease_owner':              None,
+    'lease_until':              None,
 }
 
 
 def dry_run_reset_stages(db: DatabaseClient, workspace: str = None, doc_id: str = None, target_status: str = 'completed') -> DryRunResult:
-    """reset-stages の dry-run"""
+    """reset-stages の dry-run（workspace は source として扱う、doc_id は pipeline_meta.id）"""
     if doc_id:
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status, workspace')\
+        result = db.client.table('pipeline_meta')\
+            .select('id, source, person, processing_status')\
             .eq('id', doc_id)\
             .execute()
     elif workspace:
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status, workspace')\
-            .eq('workspace', workspace)\
+        result = db.client.table('pipeline_meta')\
+            .select('id, source, person, processing_status')\
+            .eq('source', workspace)\
             .eq('processing_status', target_status)\
             .execute()
     else:
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status, workspace')\
+        result = db.client.table('pipeline_meta')\
+            .select('id, source, person, processing_status')\
             .eq('processing_status', target_status)\
             .limit(1000)\
             .execute()
@@ -462,7 +465,7 @@ def dry_run_reset_stages(db: DatabaseClient, workspace: str = None, doc_id: str 
     return DryRunResult(
         affected_count=len(result.data) if result.data else 0,
         affected_items=result.data or [],
-        message=f"ステージE-Kをクリアしてpendingに戻します（対象: {target_status}）"
+        message=f"G中間データをクリアしてpendingに戻します（対象: {target_status}）"
     )
 
 
@@ -485,22 +488,21 @@ def cmd_reset_stages(args):
         print("\n対象のドキュメントがありません")
         return 0
 
-    # ワークスペース別集計
-    workspace_counts = {}
+    # ソース別集計
+    source_counts = {}
     for doc in dry_result.affected_items:
-        ws = doc.get('workspace', '(不明)')
-        workspace_counts[ws] = workspace_counts.get(ws, 0) + 1
+        src = doc.get('source', '(不明)')
+        source_counts[src] = source_counts.get(src, 0) + 1
 
-    print("\nワークスペース別:")
-    for ws, count in workspace_counts.items():
-        print(f"  - {ws}: {count}件")
+    print("\nソース別:")
+    for src, count in source_counts.items():
+        print(f"  - {src}: {count}件")
 
     # 対象の表示
     print("\n対象ドキュメント:")
     for i, doc in enumerate(dry_result.affected_items[:20]):
-        title = doc.get('title', doc.get('file_name', '(不明)'))
-        ws = doc.get('workspace', '不明')
-        print(f"  {i+1:>3}. [{ws}] {title}")
+        src = doc.get('source', '不明')
+        print(f"  {i+1:>3}. [{src}] id={doc.get('id')}")
     if dry_result.affected_count > 20:
         print(f"  ... 他 {dry_result.affected_count - 20}件")
 
@@ -518,7 +520,7 @@ def cmd_reset_stages(args):
 
     # 確認
     if not args.yes:
-        confirm = input(f"\n{dry_result.affected_count}件のステージE-Kをクリアしますか? (yes/no): ")
+        confirm = input(f"\n{dry_result.affected_count}件のG中間データをクリアしますか? (yes/no): ")
         if confirm.lower() != 'yes':
             print("キャンセルしました")
             return 0
@@ -529,7 +531,7 @@ def cmd_reset_stages(args):
     error_count = 0
     for doc in dry_result.affected_items:
         try:
-            db.client.table('Rawdata_FILE_AND_MAIL')\
+            db.client.table('pipeline_meta')\
                 .update(STAGE_FIELDS_TO_CLEAR)\
                 .eq('id', doc['id'])\
                 .execute()
@@ -639,25 +641,25 @@ def apply_ops_request(db: DatabaseClient, req: Dict[str, Any]) -> str:
         return "停止フラグを解除しました"
 
     elif req_type == 'RELEASE_LEASE':
-        # processing 状態のドキュメントを pending に
+        # processing 状態のドキュメントを pending に（pipeline_meta ベース）
+        lease_reset = {'processing_status': 'pending', 'lease_owner': None, 'lease_until': None}
         if scope_type == 'document' and scope_id:
-            db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'pending'
-            }).eq('id', scope_id).eq('processing_status', 'processing').execute()
+            db.client.table('pipeline_meta').update(lease_reset)\
+                .eq('id', scope_id).eq('processing_status', 'processing').execute()
             return f"ドキュメント {scope_id} のリースを解放しました"
         elif scope_type == 'workspace' and scope_id:
-            result = db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'pending'
-            }).eq('workspace', scope_id).eq('processing_status', 'processing').execute()
+            # workspace は source として扱う
+            result = db.client.table('pipeline_meta').update(lease_reset)\
+                .eq('source', scope_id).eq('processing_status', 'processing').execute()
             count = len(result.data) if result.data else 0
-            return f"workspace {scope_id} の {count}件のリースを解放しました"
+            return f"source={scope_id} の {count}件のリースを解放しました"
         else:
             return "スコープが不正です"
 
     elif req_type == 'RESET_DOC':
         if scope_type == 'document' and scope_id:
-            db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'pending'
+            db.client.table('pipeline_meta').update({
+                'processing_status': 'pending', 'lease_owner': None, 'lease_until': None
             }).eq('id', scope_id).execute()
             return f"ドキュメント {scope_id} をpendingにリセットしました"
         else:
@@ -665,22 +667,24 @@ def apply_ops_request(db: DatabaseClient, req: Dict[str, Any]) -> str:
 
     elif req_type == 'RESET_WORKSPACE':
         if scope_type == 'workspace' and scope_id:
-            result = db.client.table('Rawdata_FILE_AND_MAIL').update({
-                'processing_status': 'pending'
-            }).eq('workspace', scope_id).in_('processing_status', ['processing', 'failed']).execute()
+            # workspace は source として扱う
+            result = db.client.table('pipeline_meta').update({
+                'processing_status': 'pending', 'lease_owner': None, 'lease_until': None
+            }).eq('source', scope_id).in_('processing_status', ['processing', 'failed']).execute()
             count = len(result.data) if result.data else 0
-            return f"workspace {scope_id} の {count}件をpendingにリセットしました"
+            return f"source={scope_id} の {count}件をpendingにリセットしました"
         else:
             return "スコープが不正です"
 
     elif req_type == 'CLEAR_STAGES':
         if scope_type == 'document' and scope_id:
-            db.client.table('Rawdata_FILE_AND_MAIL').update(STAGE_FIELDS_TO_CLEAR).eq('id', scope_id).execute()
-            return f"ドキュメント {scope_id} のステージをクリアしました"
+            db.client.table('pipeline_meta').update(STAGE_FIELDS_TO_CLEAR).eq('id', scope_id).execute()
+            return f"ドキュメント {scope_id} のG中間データをクリアしました"
         elif scope_type == 'workspace' and scope_id:
-            result = db.client.table('Rawdata_FILE_AND_MAIL').update(STAGE_FIELDS_TO_CLEAR).eq('workspace', scope_id).execute()
+            # workspace は source として扱う
+            result = db.client.table('pipeline_meta').update(STAGE_FIELDS_TO_CLEAR).eq('source', scope_id).execute()
             count = len(result.data) if result.data else 0
-            return f"workspace {scope_id} の {count}件のステージをクリアしました"
+            return f"source={scope_id} の {count}件のG中間データをクリアしました"
         else:
             return "スコープが不正です"
 

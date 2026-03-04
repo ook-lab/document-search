@@ -28,6 +28,9 @@ CLI Document Processor - Worker の唯一の実行入口
 
     # Run Request 実行（Web UI からの要求を処理）
     python process_queued_documents.py --run-request <uuid> --execute
+
+    # pipeline_meta ベース処理（新スキーマ: 05_* raw テーブル向け）
+    python process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw --limit=1 --execute
 """
 import sys
 import asyncio
@@ -47,19 +50,19 @@ from shared.common.database.client import DatabaseClient
 from shared.logging import setup_master_logging
 
 
-def print_stats(processor: PipelineManager, workspace: str):
+def print_stats(processor: PipelineManager, source: str):
     """統計情報を表示"""
-    stats = processor.get_queue_stats(workspace)
+    stats = processor.get_queue_stats(source)
 
     if not stats:
         logger.info("統計情報の取得に失敗しました")
         return
 
     logger.info("\n" + "="*80)
-    if workspace == 'all':
+    if source == 'all':
         logger.info("全体統計")
     else:
-        logger.info(f"統計 (workspace: {workspace})")
+        logger.info(f"統計 (source: {source})")
     logger.info("="*80)
     logger.info(f"待機中 (pending):      {stats.get('pending', 0):>5}件")
     logger.info(f"処理中 (processing):   {stats.get('processing', 0):>5}件")
@@ -72,7 +75,7 @@ def print_stats(processor: PipelineManager, workspace: str):
     logger.info("="*80 + "\n")
 
 
-def print_dry_run_targets(processor: PipelineManager, workspace: str, limit: int, doc_id: str = None):
+def print_dry_run_targets(processor: PipelineManager, source: str, limit: int, doc_id: str = None):
     """dry-run: 処理対象を表示（実行しない）"""
     logger.info("\n" + "="*80)
     logger.info("【DRY-RUN MODE】処理対象の確認（実行されません）")
@@ -81,9 +84,9 @@ def print_dry_run_targets(processor: PipelineManager, workspace: str, limit: int
     if doc_id:
         # 単一ドキュメント
         from shared.common.database.client import DatabaseClient
-        db = DatabaseClient(use_service_role=True)  # RLSバイパスのためService Role使用
-        result = db.client.table('Rawdata_FILE_AND_MAIL')\
-            .select('id, file_name, title, processing_status, workspace')\
+        db = DatabaseClient(use_service_role=True)
+        result = db.client.table('pipeline_meta')\
+            .select('id, raw_id, raw_table, person, source, processing_status')\
             .eq('id', doc_id)\
             .execute()
 
@@ -92,14 +95,22 @@ def print_dry_run_targets(processor: PipelineManager, workspace: str, limit: int
             return
 
         doc = result.data[0]
+        title = '(不明)'
+        try:
+            ud = db.client.table('09_unified_documents').select('title')\
+                .eq('raw_id', doc['raw_id']).eq('raw_table', doc['raw_table']).execute()
+            if ud.data:
+                title = ud.data[0].get('title', '(不明)')
+        except Exception:
+            pass
         logger.info(f"\n対象ドキュメント:")
         logger.info(f"  ID:        {doc.get('id')}")
-        logger.info(f"  タイトル:  {doc.get('title', doc.get('file_name', '(不明)'))}")
+        logger.info(f"  タイトル:  {title}")
         logger.info(f"  ステータス: {doc.get('processing_status', '(不明)')}")
-        logger.info(f"  Workspace: {doc.get('workspace', '(不明)')}")
+        logger.info(f"  Source:    {doc.get('source', '(不明)')} / {doc.get('person', '(不明)')}")
     else:
         # バッチ
-        docs = processor.get_pending_documents(workspace, limit)
+        docs = processor.get_pending_documents(source, limit)
 
         if not docs:
             logger.info("\n処理対象のドキュメントがありません")
@@ -109,9 +120,9 @@ def print_dry_run_targets(processor: PipelineManager, workspace: str, limit: int
         logger.info("-" * 80)
 
         for i, doc in enumerate(docs[:20]):
-            title = doc.get('title', doc.get('file_name', '(不明)'))
-            ws = doc.get('workspace', '不明')
-            logger.info(f"  {i+1:>3}. [{ws}] {title}")
+            title = doc.get('file_name', '(不明)')
+            src = doc.get('source', '不明')
+            logger.info(f"  {i+1:>3}. [{src}] {title}")
 
         if len(docs) > 20:
             logger.info(f"  ... 他 {len(docs) - 20}件")
@@ -121,7 +132,7 @@ def print_dry_run_targets(processor: PipelineManager, workspace: str, limit: int
     if doc_id:
         logger.info(f"  python {sys.argv[0]} --doc-id {doc_id} --execute")
     else:
-        logger.info(f"  python {sys.argv[0]} --workspace={workspace} --limit={limit} --execute")
+        logger.info(f"  python {sys.argv[0]} --source={source} --limit={limit} --execute")
     logger.info("="*80 + "\n")
 
 
@@ -223,11 +234,11 @@ async def process_run_request(processor: PipelineManager, run_request_id: str):
 
     # 3. payload からパラメータを取得
     max_items = payload.get('max_items', 5)
-    workspace = payload.get('workspace', 'all')
+    source = payload.get('source', payload.get('workspace', 'all'))
     doc_id = payload.get('doc_id')
 
     logger.info(f"  max_items: {max_items}")
-    logger.info(f"  workspace: {workspace}")
+    logger.info(f"  source: {source}")
     if doc_id:
         logger.info(f"  doc_id: {doc_id}")
 
@@ -250,7 +261,7 @@ async def process_run_request(processor: PipelineManager, run_request_id: str):
                 failed_count = 1
         else:
             # バッチ処理
-            docs = processor.get_pending_documents(workspace, max_items)
+            docs = processor.get_pending_documents(source, max_items)
 
             if not docs:
                 logger.info("処理対象のドキュメントがありません")
@@ -350,6 +361,48 @@ def setup_file_logging(run_request_id: str = None) -> Path:
     return log_path
 
 
+async def run_pipeline_meta_batch(processor: PipelineManager, raw_table: str, limit: int):
+    """
+    pipeline_meta ベースのバッチ処理（新スキーマ: --raw-table 指定時に呼ばれる）
+
+    dequeue_pipeline RPC で1件ずつ原子デキューし、
+    process_pipeline_meta_job で処理する。
+    既存の dequeue_document + process_single_document は変更しない。
+    """
+    logger.info("="*80)
+    logger.info(f"pipeline_meta バッチ処理開始 (raw_table={raw_table}, limit={limit})")
+    logger.info("="*80)
+
+    success_count = 0
+    failed_count  = 0
+
+    for i in range(limit):
+        # 1件デキュー
+        meta = processor.dequeue_pipeline(raw_table)
+        if not meta:
+            logger.info(f"[{i}] キューが空です。終了します。")
+            break
+
+        meta_id = meta.get('meta_id') or meta.get('id')
+        logger.info(f"[{i+1}] meta_id={meta_id}, raw_id={meta.get('raw_id')}")
+
+        try:
+            success = await processor.process_pipeline_meta_job(meta_id)
+            if success:
+                success_count += 1
+                logger.info(f"[{i+1}] OK: meta_id={meta_id}")
+            else:
+                failed_count += 1
+                logger.error(f"[{i+1}] FAILED: meta_id={meta_id}")
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"[{i+1}] ERROR: meta_id={meta_id}: {e}")
+
+    logger.info("="*80)
+    logger.info(f"pipeline_meta バッチ処理完了: 成功={success_count}, 失敗={failed_count}")
+    logger.info("="*80)
+
+
 async def main():
     """メイン関数"""
     parser = argparse.ArgumentParser(
@@ -374,12 +427,19 @@ async def main():
 
   # Run Request 実行（Web UI からの要求）
   python process_queued_documents.py --run-request <uuid> --execute
+
+  # pipeline_meta ベース処理（新スキーマ: 05_* raw テーブル向け）
+  python process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw --limit=1 --execute
         """
     )
 
     # 対象指定
-    parser.add_argument('--workspace', default='all',
-                        help='対象ワークスペース (デフォルト: all)')
+    parser.add_argument('--source', default='all',
+                        help='対象ソース (デフォルト: all)')
+    parser.add_argument('--workspace', default=None,
+                        help='--source の旧名称（後方互換）')
+    parser.add_argument('--raw-table', dest='raw_table', default=None,
+                        help='pipeline_meta ベース処理: raw テーブル名 (例: 05_ikuya_waseaca_01_raw)')
     parser.add_argument('--limit', type=int, default=100,
                         help='処理する最大件数 (デフォルト: 100)')
     parser.add_argument('--doc-id', dest='doc_id',
@@ -403,16 +463,19 @@ async def main():
 
     args = parser.parse_args()
 
+    # --workspace は --source の旧名称（後方互換）
+    source = args.source
+    if args.workspace and args.workspace != 'all':
+        source = args.workspace
+
     # ログファイル出力設定（--stats 以外の場合）
     if not args.stats:
         log_path = setup_file_logging(args.run_request_id)
-        # Per-Task Logging: マスターログを設定（システム全体のイベント用）
         master_log_path = setup_master_logging(log_dir=_root_dir / 'logs')
         logger.info(f"マスターログ: {master_log_path}")
         logger.info("Per-Task Logging有効: 各タスクのログは logs/tasks/ に出力されます")
 
     # Worker実行時は service_role を使用（RLSバイパス）
-    # この時点で SUPABASE_SERVICE_ROLE_KEY が無ければ例外で停止（fail-fast）
     logger.info("Worker起動: service_role で Supabase に接続します")
     processor = PipelineManager(use_service_role=True)
 
@@ -420,9 +483,20 @@ async def main():
     if args.once:
         args.limit = 1
 
+    # --raw-table が指定された場合は pipeline_meta ベース処理（特定テーブル指定）
+    if args.raw_table:
+        if not args.execute:
+            logger.info("="*80)
+            logger.info(f"【DRY-RUN】pipeline_meta ベース処理 (raw_table={args.raw_table})")
+            logger.info(f"  実行するには: python {sys.argv[0]} --raw-table={args.raw_table} --limit={args.limit} --execute")
+            logger.info("="*80)
+            return
+        await run_pipeline_meta_batch(processor, args.raw_table, args.limit)
+        return
+
     # 統計情報のみ表示
     if args.stats:
-        print_stats(processor, args.workspace)
+        print_stats(processor, source)
         return
 
     # Run Request モード（Web UI からの要求を処理）
@@ -438,7 +512,7 @@ async def main():
 
     # dry-run モード（--execute なし）
     if not args.execute:
-        print_dry_run_targets(processor, args.workspace, args.limit, args.doc_id)
+        print_dry_run_targets(processor, source, args.limit, args.doc_id)
         return
 
     # ========== 実行モード ==========
@@ -451,9 +525,9 @@ async def main():
         await process_single_document(processor, args.doc_id)
         return
 
-    # バッチ処理
+    # バッチ処理（source でフィルタ、全 raw_table をラウンドロビン）
     await processor.run_batch(
-        workspace=args.workspace,
+        source=source,
         limit=args.limit,
         preserve_workspace=not args.no_preserve_workspace
     )

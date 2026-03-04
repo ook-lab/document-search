@@ -148,6 +148,83 @@
     .toggle-switch input:checked + .toggle-slider { background: #34a853; }
     .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
     #indexToggleStatus { font-size: 12px; color: #888; }
+    .index-person-wrap {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-top: 1px solid #eee; background: #fafafa;
+    }
+    .index-person-label { font-size: 13px; color: #444; flex-shrink: 0; }
+    .index-person-input {
+      flex: 1; border: 1px solid #ddd; border-radius: 4px;
+      padding: 4px 8px; font-size: 13px;
+    }
+    .btn-save-person {
+      padding: 4px 12px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #fff; cursor: pointer;
+    }
+    .btn-save-person:hover { background: #f0f0f0; }
+    #indexPersonStatus { font-size: 12px; color: #888; }
+
+    /* ───── 出欠タブ ───── */
+    .attendance-card {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .attendance-range {
+      padding: 12px 16px; display: flex; align-items: center;
+      gap: 8px; flex-wrap: wrap; border-bottom: 1px solid #eee;
+    }
+    .attendance-range input[type=date] {
+      border: 1px solid #ccc; border-radius: 6px;
+      padding: 5px 8px; font-size: 13px;
+    }
+    .attendance-list { padding: 8px 0; }
+    .attendance-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 16px; border-bottom: 1px solid #f5f5f5; font-size: 13px;
+    }
+    .attendance-item:last-child { border-bottom: none; }
+    .att-date { color: #888; font-size: 12px; white-space: nowrap; flex-shrink: 0; width: 90px; }
+    .att-title { flex: 1; }
+    .att-btns { display: flex; gap: 4px; flex-shrink: 0; }
+    .btn-att {
+      padding: 3px 10px; border-radius: 12px; border: 1px solid #ddd;
+      font-size: 12px; cursor: pointer; background: #fff; color: #555;
+      transition: all .15s;
+    }
+    .btn-att:hover { border-color: #aaa; }
+    .btn-att.active-accepted { background: #e6f4ea; color: #137333; border-color: #34a853; font-weight: 600; }
+    .btn-att.active-declined { background: #fce8e6; color: #c5221f; border-color: #ea4335; font-weight: 600; }
+    .btn-att.active-tentative { background: #fff3e0; color: #e37400; border-color: #fbbc04; font-weight: 600; }
+    .att-status-saving { font-size: 11px; color: #aaa; }
+
+    /* ───── プレビュー編集フィールド ───── */
+    .ev-edit-row {
+      display: flex; align-items: center; gap: 6px; margin-top: 5px; flex-wrap: wrap;
+    }
+    .ev-input {
+      border: 1px solid #e0e0e0; border-radius: 4px;
+      padding: 3px 7px; font-size: 13px; outline: none; background: #fafafa;
+      transition: border-color .15s;
+    }
+    .ev-input:focus { border-color: #4285F4; background: #fff; }
+    .ev-input-title { flex: 1; min-width: 160px; font-weight: 600; font-size: 14px; }
+    .ev-input-date  { width: 128px; }
+    .ev-input-time  { width: 82px; }
+    .ev-input-location { flex: 1; min-width: 120px; font-size: 13px; }
+    .ev-allday-label { font-size: 12px; color: #888; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+
+    /* ───── プレビュー出欠ボタン ───── */
+    .ev-att-row { display: flex; gap: 4px; margin-top: 6px; }
+    .btn-reg-att {
+      padding: 3px 11px; border-radius: 12px; border: 1px solid #ddd;
+      font-size: 12px; cursor: pointer; background: #fff; color: #666;
+      transition: all .12s;
+    }
+    .btn-reg-att:hover { border-color: #aaa; }
+    .btn-reg-att.active-accepted { background: #e6f4ea; color: #137333; border-color: #34a853; font-weight: 600; }
+    .btn-reg-att.active-declined { background: #fce8e6; color: #c5221f; border-color: #ea4335; font-weight: 600; }
+    .btn-reg-att.active-tentative { background: #fff3e0; color: #e37400; border-color: #fbbc04; font-weight: 600; }
 
     /* ───── タグチップ（プリセットパネル） ───── */
     .tag-section { padding: 10px 16px; border-top: 1px solid #eee; background: #fafafa; }
@@ -541,6 +618,7 @@
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('register')">📝 登録</button>
     <button class="tab-btn" onclick="switchTab('assign')">✏️ 修正</button>
+    <button class="tab-btn" onclick="switchTab('attendance')">🗓 出欠</button>
   </div>
 
   <!-- ==============================
@@ -569,14 +647,20 @@
     </div>
     <div class="index-toggle-wrap">
       <div class="index-toggle-label">
-        文書検索に含める
-        <small>ON にするとカレンダーのイベントが検索対象になります</small>
+        同期に含める
+        <small>ON にするとカレンダーのイベントが自動同期されます</small>
       </div>
       <span id="indexToggleStatus"></span>
       <label class="toggle-switch">
         <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
         <span class="toggle-slider"></span>
       </label>
+    </div>
+    <div class="index-person-wrap">
+      <span class="index-person-label">担当者名</span>
+      <input type="text" id="indexPerson" class="index-person-input" placeholder="例: 山田太郎">
+      <button class="btn-save-person" onclick="savePersonSetting()">保存</button>
+      <span id="indexPersonStatus"></span>
     </div>
   </div>
 
@@ -674,6 +758,49 @@
 
   </div><!-- /tab-assign -->
 
+  <!-- ==============================
+       タブ3: 出欠
+       ============================== -->
+  <div class="tab-content" id="tab-attendance">
+    <div class="attendance-card" style="margin-bottom:12px;">
+      <div class="assign-card-header">既存イベントの初期設定</div>
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:#555;flex:1;">
+          DB に取り込み済みで <code>attendees</code> が未設定のイベントに、自分を「出席」参加者として一括登録します。<br>
+          <span style="font-size:11px;color:#aaa;">登録後は出欠タブで欠席に変更すると Google カレンダーから非表示にできます。</span>
+        </span>
+        <button class="btn-fetch" id="btnBackfill" onclick="backfillAttendees()">一括登録</button>
+        <span id="backfillStatus" style="font-size:12px;color:#888;"></span>
+      </div>
+    </div>
+    <div class="attendance-card" style="margin-bottom:12px;">
+      <div class="assign-card-header">カレンダー振り分け</div>
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:#555;flex:1;">
+          出欠ステータスに応じてイベントを別カレンダーへ移動します。<br>
+          <span style="font-size:11px;color:#aaa;">
+            出席 → そのまま　／　欠席 → <b>カレンダー名_arc</b>　／　未定 → <b>カレンダー名_pen</b>
+            （カレンダーが存在しない場合は自動作成）
+          </span>
+        </span>
+        <button class="btn-fetch" id="btnRedistribute" onclick="redistributeEvents()">振り分け実行</button>
+        <span id="redistributeStatus" style="font-size:12px;color:#888;"></span>
+      </div>
+    </div>
+    <div class="attendance-card">
+      <div class="assign-card-header">期間を選んでイベントを取得</div>
+      <div class="attendance-range">
+        <input type="date" id="attFrom">
+        <span style="color:#888;font-size:13px;">〜</span>
+        <input type="date" id="attTo">
+        <button class="btn-fetch" onclick="fetchAttendanceEvents()">取得</button>
+        <div id="attStatus" style="font-size:12px;color:#888;margin-left:4px;"></div>
+      </div>
+      <div class="attendance-list" id="attList">
+        <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">期間を選んで「取得」を押してください</div>
+      </div>
+    </div>
+  </div><!-- /tab-attendance -->
 
   {% endif %}
 </div>
@@ -713,6 +840,13 @@ let calendarTags = [];   // 現在のカレンダーのタグ一覧
 
     // 初期プリセット読み込み（パネルが開いたときのために）
     if (primary) loadPreset(primary.id, primary.name);
+
+    // 出欠タブの日付デフォルト（今日〜1ヶ月後）
+    const today = new Date();
+    const nextMonth = new Date(today); nextMonth.setMonth(today.getMonth() + 1);
+    const fmt = d => d.toISOString().slice(0, 10);
+    document.getElementById('attFrom').value = fmt(today);
+    document.getElementById('attTo').value   = fmt(nextMonth);
   } catch (e) {
     sel.innerHTML = '<option>読み込み失敗</option>';
     showStatus('カレンダーの読み込みに失敗しました: ' + e.message, 'error');
@@ -751,8 +885,11 @@ async function loadIndexSetting(calendarId) {
     const data = await res.json();
     document.getElementById('indexToggle').checked = !!data.index_enabled;
     document.getElementById('indexToggleStatus').textContent = '';
+    document.getElementById('indexPerson').value = data.person || '';
+    document.getElementById('indexPersonStatus').textContent = '';
   } catch {
     document.getElementById('indexToggle').checked = false;
+    document.getElementById('indexPerson').value = '';
   }
 }
 
@@ -767,20 +904,48 @@ async function saveIndexSetting(enabled) {
   status.style.color = '#888';
 
   try {
+    const person = document.getElementById('indexPerson').value.trim();
     const res = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index_enabled: enabled })
+      body: JSON.stringify({ index_enabled: enabled, person })
     });
     if (!res.ok) throw new Error(await res.text());
-    status.textContent = enabled ? '✓ 検索対象に追加しました' : '✓ 検索対象から除外しました';
+    status.textContent = enabled ? '✓ 同期に追加しました' : '✓ 同期から除外しました';
     status.style.color = '#137333';
     setTimeout(() => { status.textContent = ''; }, 2500);
   } catch (e) {
     status.textContent = '保存失敗: ' + e.message;
     status.style.color = '#c5221f';
-    // 失敗したらトグルを戻す
     document.getElementById('indexToggle').checked = !enabled;
+  }
+}
+
+// ─── 担当者名保存 ───
+async function savePersonSetting() {
+  const sel = document.getElementById('calendarSelect');
+  const calendarId = sel?.value;
+  if (!calendarId) return;
+
+  const person = document.getElementById('indexPerson').value.trim();
+  const status = document.getElementById('indexPersonStatus');
+  status.textContent = '保存中...';
+  status.style.color = '#888';
+
+  try {
+    const index_enabled = document.getElementById('indexToggle').checked;
+    const res = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index_enabled, person })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    status.textContent = '✓ 保存しました';
+    status.style.color = '#137333';
+    setTimeout(() => { status.textContent = ''; }, 2500);
+  } catch (e) {
+    status.textContent = '保存失敗: ' + e.message;
+    status.style.color = '#c5221f';
   }
 }
 
@@ -913,38 +1078,213 @@ async function parseEvents() {
   }
 }
 
+function _esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function renderPreview(events) {
   const list = document.getElementById('eventList');
-  list.innerHTML = events.map(ev => {
-    const timeStr = ev.all_day || !ev.start_time
-      ? '終日'
-      : ev.end_time
-        ? `${ev.start_time} 〜 ${ev.end_time}`
-        : `${ev.start_time} 〜（+1時間）`;
-    const locStr = ev.location ? `<div class="ev-loc">📍 ${ev.location}</div>` : '';
+  list.innerHTML = events.map((ev, i) => {
+    const allDay = !!(ev.all_day || !ev.start_time);
     return `
-      <li class="event-item ${ev.all_day ? 'all-day' : ''}">
-        <div class="ev-title">${ev.title}</div>
-        <div class="ev-meta">${ev.date} &nbsp; ${timeStr}</div>
-        ${locStr}
+      <li class="event-item ${allDay ? 'all-day' : ''}" data-index="${i}">
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-title" type="text" value="${_esc(ev.title)}" placeholder="タイトル">
+        </div>
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-date" type="date" value="${ev.date || ''}">
+          <input class="ev-input ev-input-time ev-start" type="time" value="${ev.start_time || ''}" ${allDay ? 'disabled' : ''}>
+          <span style="color:#ccc;font-size:12px;">〜</span>
+          <input class="ev-input ev-input-time ev-end" type="time" value="${ev.end_time || ''}" ${allDay ? 'disabled' : ''}>
+          <label class="ev-allday-label">
+            <input type="checkbox" class="ev-input-allday" ${allDay ? 'checked' : ''} onchange="toggleAllDay(this)"> 終日
+          </label>
+        </div>
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-location" type="text" value="${_esc(ev.location || '')}" placeholder="📍 場所（任意）">
+        </div>
+        <div class="ev-att-row">
+          <button class="btn-reg-att active-accepted" data-att="accepted" onclick="selectEvAtt(this)">○ 出席</button>
+          <button class="btn-reg-att" data-att="declined" onclick="selectEvAtt(this)">✕ 欠席</button>
+          <button class="btn-reg-att" data-att="tentative" onclick="selectEvAtt(this)">△ 未定</button>
+        </div>
       </li>`;
   }).join('');
   document.getElementById('previewPanel').style.display = 'block';
 }
 
+function selectEvAtt(btn) {
+  btn.closest('.ev-att-row').querySelectorAll('.btn-reg-att').forEach(b => {
+    b.className = 'btn-reg-att' + (b === btn ? ` active-${b.dataset.att}` : '');
+  });
+}
+
+function toggleAllDay(cb) {
+  const item = cb.closest('.event-item');
+  item.querySelectorAll('.ev-input-time').forEach(inp => {
+    inp.disabled = cb.checked;
+    if (cb.checked) inp.value = '';
+  });
+  item.classList.toggle('all-day', cb.checked);
+}
+
 // ─── カレンダーに登録 ───
+// ─── 出欠タブ: イベント取得 ───
+async function fetchAttendanceEvents() {
+  const calendarId = document.getElementById('calendarSelect').value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+  const from = document.getElementById('attFrom').value;
+  const to   = document.getElementById('attTo').value;
+  if (!from || !to) { alert('期間を指定してください'); return; }
+
+  const status = document.getElementById('attStatus');
+  status.textContent = '取得中...';
+  const list = document.getElementById('attList');
+  list.innerHTML = '';
+
+  try {
+    const res = await fetch(`/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    if (!data.events.length) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">この期間にイベントはありません</div>';
+      status.textContent = '';
+      return;
+    }
+
+    list.innerHTML = data.events.map(ev => {
+      const time = ev.all_day ? '終日' : (ev.start_time ? (ev.end_time ? `${ev.start_time}〜${ev.end_time}` : ev.start_time) : '');
+      const cur = ev.my_status || '';
+      return `
+        <div class="attendance-item" id="att-item-${ev.id}">
+          <div class="att-date">${ev.date}<br><span style="color:#aaa;font-size:11px;">${time}</span></div>
+          <div class="att-title">${ev.title}</div>
+          <div class="att-btns">
+            <button class="btn-att ${cur === 'accepted' ? 'active-accepted' : ''}" onclick="updateAttendance('${calendarId}','${ev.id}','accepted')">○ 出席</button>
+            <button class="btn-att ${cur === 'declined' ? 'active-declined' : ''}" onclick="updateAttendance('${calendarId}','${ev.id}','declined')">✕ 欠席</button>
+            <button class="btn-att ${cur === 'tentative' ? 'active-tentative' : ''}" onclick="updateAttendance('${calendarId}','${ev.id}','tentative')">△ 未定</button>
+          </div>
+          <span class="att-status-saving" id="att-saving-${ev.id}"></span>
+        </div>`;
+    }).join('');
+    status.textContent = `${data.events.length} 件`;
+  } catch (e) {
+    status.textContent = '取得失敗: ' + e.message;
+  }
+}
+
+// ─── 出欠更新 ───
+async function updateAttendance(calendarId, eventId, status) {
+  const saving = document.getElementById(`att-saving-${eventId}`);
+  if (saving) { saving.textContent = '保存中...'; }
+
+  try {
+    const res = await fetch(`/api/attendance/${encodeURIComponent(calendarId)}/${eventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    // ボタンの active 状態を更新
+    const item = document.getElementById(`att-item-${eventId}`);
+    if (item) {
+      item.querySelectorAll('.btn-att').forEach(b => {
+        b.className = 'btn-att';
+        const s = b.textContent.includes('出席') ? 'accepted' : b.textContent.includes('欠席') ? 'declined' : 'tentative';
+        if (s === status) b.classList.add(`active-${status}`);
+      });
+    }
+    if (saving) { saving.textContent = '✓'; setTimeout(() => { saving.textContent = ''; }, 1500); }
+  } catch (e) {
+    if (saving) { saving.textContent = '失敗'; }
+  }
+}
+
+// ─── 既存イベントへの attendees 一括登録 ───
+async function backfillAttendees() {
+  const btn    = document.getElementById('btnBackfill');
+  const status = document.getElementById('backfillStatus');
+  btn.disabled = true;
+  status.textContent = '処理中...';
+  status.style.color = '#888';
+
+  try {
+    const res  = await fetch('/api/backfill-attendees', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '失敗');
+
+    if (data.errors.length === 0) {
+      status.textContent = `✓ ${data.updated} 件を登録しました`;
+      status.style.color = '#137333';
+    } else {
+      status.textContent = `${data.updated} 件成功、${data.errors.length} 件失敗`;
+      status.style.color = '#e37400';
+    }
+  } catch (e) {
+    status.textContent = '失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── カレンダー振り分け ───
+async function redistributeEvents() {
+  const btn    = document.getElementById('btnRedistribute');
+  const status = document.getElementById('redistributeStatus');
+  btn.disabled = true;
+  status.textContent = '処理中...';
+  status.style.color = '#888';
+
+  try {
+    const res  = await fetch('/api/redistribute-events', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '失敗');
+
+    const msg = `✓ ${data.moved} 件移動、${data.skipped} 件スキップ`;
+    status.textContent = data.errors.length > 0 ? `${msg}、${data.errors.length} 件エラー` : msg;
+    status.style.color = data.errors.length > 0 ? '#e37400' : '#137333';
+  } catch (e) {
+    status.textContent = '失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function registerEvents() {
-  if (!parsedEvents.length) { alert('まず解析を実行してください'); return; }
+  const items = document.querySelectorAll('#eventList .event-item');
+  if (!items.length) { alert('まず解析を実行してください'); return; }
 
   const calendarId = document.getElementById('calendarSelect').value;
   if (!calendarId) { alert('カレンダーを選択してください'); return; }
 
-  // チェックされたタグを description に追記
   const checkedTags = [...document.querySelectorAll('input[name=regTag]:checked')].map(el => el.value);
-  const eventsToRegister = parsedEvents.map(ev => {
-    if (!checkedTags.length) return ev;
-    const tagStr = checkedTags.map(t => `#${t}`).join(' ');
-    return { ...ev, description: ev.description ? `${ev.description}\n${tagStr}` : tagStr };
+
+  // 各行の編集済みデータを収集
+  const eventsToRegister = Array.from(items).map((item, i) => {
+    const allDay     = item.querySelector('.ev-input-allday')?.checked;
+    const startTime  = allDay ? null : (item.querySelector('.ev-start')?.value || null);
+    const endTime    = allDay ? null : (item.querySelector('.ev-end')?.value || null);
+    const attendance = item.querySelector('.btn-reg-att[class*="active"]')?.dataset.att || 'accepted';
+    let description  = parsedEvents[i]?.description || null;
+    if (checkedTags.length) {
+      const tagStr = checkedTags.map(t => `#${t}`).join(' ');
+      description = description ? `${description}\n${tagStr}` : tagStr;
+    }
+    return {
+      title:       item.querySelector('.ev-input-title')?.value || '（無題）',
+      date:        item.querySelector('.ev-input-date')?.value || '',
+      start_time:  startTime || null,
+      end_time:    endTime || null,
+      all_day:     !!allDay,
+      location:    item.querySelector('.ev-input-location')?.value || null,
+      description,
+      attendance,
+    };
   });
 
   document.getElementById('btnRegister').disabled = true;
@@ -997,7 +1337,7 @@ function renderResults(results) {
 }
 
 // ─── タブ切り替え ───
-const TAB_NAMES = ['register', 'assign'];
+const TAB_NAMES = ['register', 'assign', 'attendance'];
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
     b.classList.toggle('active', TAB_NAMES[i] === name);
