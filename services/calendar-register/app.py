@@ -666,6 +666,35 @@ def api_update_attendance(calendar_id, event_id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/backfill-person', methods=['POST'])
+def api_backfill_person():
+    """
+    calendar_sync_state の person 設定値で 02_gcal_01_raw の person を一括上書きする。
+    カレンダーIDをキーに照合し、person が未設定なら calendar_name を使う。
+    """
+    db = _get_supabase()
+    user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
+    if not db or not user_id:
+        return jsonify({'error': 'Supabase または CALENDAR_SYNC_USER_ID が未設定'}), 500
+
+    states = db.table('calendar_sync_state') \
+               .select('calendar_id, calendar_name, person') \
+               .eq('user_id', user_id) \
+               .execute()
+
+    if not states.data:
+        return jsonify({'updated_calendars': 0})
+
+    updated_calendars = 0
+    for state in states.data:
+        cal_id = state['calendar_id']
+        person = (state.get('person') or '').strip() or state.get('calendar_name') or cal_id
+        db.table('02_gcal_01_raw').update({'person': person}).eq('calendar_id', cal_id).execute()
+        updated_calendars += 1
+
+    return jsonify({'ok': True, 'updated_calendars': updated_calendars})
+
+
 @app.route('/api/backfill-attendees', methods=['POST'])
 def api_backfill_attendees():
     """

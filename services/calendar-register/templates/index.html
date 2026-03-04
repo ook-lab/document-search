@@ -769,8 +769,10 @@
           DB に取り込み済みで <code>attendees</code> が未設定のイベントに、自分を「出席」参加者として一括登録します。<br>
           <span style="font-size:11px;color:#aaa;">登録後は出欠タブで欠席に変更すると Google カレンダーから非表示にできます。</span>
         </span>
-        <button class="btn-fetch" id="btnBackfill" onclick="backfillAttendees()">一括登録</button>
-        <span id="backfillStatus" style="font-size:12px;color:#888;"></span>
+        <button class="btn-fetch" id="btnBackfill" onclick="backfillAttendees()">attendees 一括登録</button>
+        <span id="backfillStatus" style="font-size:12px;color:#888;margin-right:12px;"></span>
+        <button class="btn-fetch" id="btnBackfillPerson" onclick="backfillPerson()" style="background:#34a853;">person 上書き</button>
+        <span id="backfillPersonStatus" style="font-size:12px;color:#888;"></span>
       </div>
     </div>
     <div class="attendance-card" style="margin-bottom:12px;">
@@ -1223,6 +1225,28 @@ async function backfillAttendees() {
       status.textContent = `${data.updated} 件成功、${data.errors.length} 件失敗`;
       status.style.color = '#e37400';
     }
+  } catch (e) {
+    status.textContent = '失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── person 上書き ───
+async function backfillPerson() {
+  const btn    = document.getElementById('btnBackfillPerson');
+  const status = document.getElementById('backfillPersonStatus');
+  btn.disabled = true;
+  status.textContent = '処理中...';
+  status.style.color = '#888';
+
+  try {
+    const res  = await fetch('/api/backfill-person', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '失敗');
+    status.textContent = `✓ ${data.updated_calendars} カレンダーを更新しました`;
+    status.style.color = '#137333';
   } catch (e) {
     status.textContent = '失敗: ' + e.message;
     status.style.color = '#c5221f';

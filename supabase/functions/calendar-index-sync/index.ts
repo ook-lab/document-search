@@ -205,6 +205,19 @@ serve(async (req) => {
       GOOGLE_CLIENT_SECRET,
     );
 
+    // ユーザーのメールアドレスを取得（primary カレンダーの ID = メールアドレス）
+    let user_email: string | null = null;
+    try {
+      const r = await fetch(
+        "https://www.googleapis.com/calendar/v3/calendars/primary",
+        { headers: { Authorization: `Bearer ${access_token}` } },
+      );
+      const j = await r.json();
+      user_email = j.id ?? null;
+    } catch {
+      // 取得できなくても同期は続行
+    }
+
     // 4) Google Calendar API からデルタ取得
     const daysPast   = Number(url.searchParams.get("days_past")   ?? "180");
     const daysFuture = Number(url.searchParams.get("days_future") ?? "365");
@@ -328,8 +341,9 @@ serve(async (req) => {
               organizer_email:    payload.organizer?.email      ?? null,
               organizer_name:     payload.organizer?.displayName ?? null,
 
-              // 参加者
-              attendees:          payload.attendees             ?? null,
+              // 参加者（attendees が null = 自分が主催者で他に参加者なし → 自分を accepted で保存）
+              attendees: payload.attendees
+                ?? (user_email ? [{ email: user_email, responseStatus: "accepted", self: true }] : null),
               attendees_omitted:  payload.attendeesOmitted      ?? null,
 
               // ゲスト権限
@@ -394,7 +408,8 @@ serve(async (req) => {
               post_type:   null,
               ui_data,
               meta: {
-                attendees:          payload.attendees             ?? null,
+                attendees: payload.attendees
+                  ?? (user_email ? [{ email: user_email, responseStatus: "accepted", self: true }] : null),
                 recurrence:         payload.recurrence            ?? null,
                 recurring_event_id: payload.recurringEventId      ?? null,
                 creator_email:      payload.creator?.email        ?? null,
