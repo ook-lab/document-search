@@ -20,7 +20,7 @@ try {
     # --config で Dockerfile パスを指定、ソース . で .gcloudignore 適用
     gcloud builds submit . `
         --region=$REGION `
-        --config=scripts/debug/cloudbuild.yaml `
+        --config=services/debug-pipeline/cloudbuild.yaml `
         --timeout=1800
 
     if ($LASTEXITCODE -ne 0) {
