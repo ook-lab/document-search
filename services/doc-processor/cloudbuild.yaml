@@ -1,9 +1,20 @@
 steps:
+  # キャッシュ用に前回イメージを pull（初回は失敗しても続行）
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:latest || true'
+
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--cache-from'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:latest'
       - '-t'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:latest'
       - '-f'
       - 'services/doc-processor/Dockerfile'
       - '.'
@@ -12,6 +23,11 @@ steps:
     args:
       - 'push'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:latest'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
@@ -28,6 +44,7 @@ steps:
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:latest'
 
 substitutions:
   _TAG: 'latest'
