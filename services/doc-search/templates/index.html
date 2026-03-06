@@ -614,6 +614,48 @@
             width: calc(100% - 40px);
         }
 
+        /* ── Level 2: Source ─────────────────────────── */
+        .source-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px 10px 42px;
+            border-top: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .source-header:hover { background: #f8f9ff; }
+        .source-toggle {
+            font-size: 10px;
+            color: #667eea;
+            transition: transform 0.2s;
+            width: 12px;
+            display: inline-block;
+        }
+        .source-toggle.expanded { transform: rotate(90deg); }
+        .source-checkbox { width: 16px; height: 16px; cursor: pointer; }
+        .source-label { flex: 1; cursor: pointer; font-size: 0.95em; color: #555; }
+        .source-children {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .source-children.expanded { max-height: 600px; }
+
+        /* ── Level 3: Category ──────────────────────────── */
+        .category-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px 8px 72px;
+            border-top: 1px solid #f5f5f5;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .category-item:hover { background: #fcfcff; }
+        .category-checkbox { width: 14px; height: 14px; cursor: pointer; }
+        .category-label { flex: 1; cursor: pointer; font-size: 0.88em; color: #777; }
+
         /* スマホ対応 */
         @media (max-width: 768px) {
             .bottom-sheet {
@@ -669,11 +711,10 @@
                     <label>
                         構成フロー:
                         <select id="flow-select" style="padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;" onchange="updateCostDisplay()">
-                            <option value="lite-x1" selected>Lite</option>
-                            <option value="lite-lite">Lite→Lite</option>
-                            <option value="flash-x1">Flash</option>
-                            <option value="lite-lite-lite">Lite→Lite→Lite</option>
-                            <option value="lite-flash">Lite→Flash</option>
+                            <option value="compress-1step" selected>1回回し (Lite×1)</option>
+                            <option value="compress-2step">2回回し (Lite×2)</option>
+                            <option value="compress-3step-lite">3回回し (Lite×3)</option>
+                            <option value="compress-3step">3回回し+Flash (Lite×2→Flash)</option>
                         </select>
                     </label>
                     <label>
@@ -744,7 +785,8 @@
         let currentDocuments = [];
         let selectedPersons = [];
         let selectedSources = [];
-        let hierarchyData = []; // {name: 'workspace', sources: [...]}
+        let selectedCategories = [];
+        let hierarchyData = []; // {name: person, sources: [{name: source, categories: [cat,...]}, ...]}
 
         // ── コスト計算 ────────────────────────────────────────────────
         // モデル別入力単価（$/1M tokens）
@@ -752,14 +794,24 @@
             'lite':  0.10,
             'flash': 0.30,
         };
-        // flow → 主モデルの単価（最後のステップ基準）
-        function getFlowPrice(flowId) {
-            if (flowId.endsWith('flash')) return MODEL_PRICE.flash;
-            return MODEL_PRICE.lite;
-        }
-        // flow → ステップ数
-        function getFlowSteps(flowId) {
-            return (flowId.match(/-/g) || []).length;
+        // 各フローの入力トークン合計 × モデル単価（クエリ改善は誤差範囲）
+        function getFlowCost(flowId, chars) {
+            const LITE  = 0.10;  // $/1M input tokens (Flash-lite)
+            const FLASH = 0.30;  // $/1M input tokens (Flash)
+            const t = chars / 4; // Step1入力トークン（最大）
+            if (flowId === 'compress-1step') {
+                // Lite×1: Step=t
+                return (t * LITE) / 1_000_000;
+            } else if (flowId === 'compress-2step') {
+                // Lite×2: Step1=t, Step2=t*0.33
+                return ((t + t * 0.33) * LITE) / 1_000_000;
+            } else if (flowId === 'compress-3step-lite') {
+                // Lite×3: Step1=t, Step2=t*0.4, Step3=t*0.132
+                return ((t + t * 0.4 + t * 0.132) * LITE) / 1_000_000;
+            } else {
+                // compress-3step: Lite×2 + Flash×1: Step1=t, Step2=t*0.4, Step3=t*0.132
+                return ((t + t * 0.4) * LITE + t * 0.132 * FLASH) / 1_000_000;
+            }
         }
 
         let usdJpy = null; // 取得後にセット
@@ -779,9 +831,7 @@
             const chars = parseInt(document.getElementById('maxContextInput').value) || 0;
             const flowId = document.getElementById('flow-select').value;
             const tokens = Math.round(chars / 4);
-            const pricePerM = getFlowPrice(flowId);
-            const steps = getFlowSteps(flowId);
-            const costUsd = (tokens / 1_000_000) * pricePerM * steps;
+            const costUsd = getFlowCost(flowId, chars);
 
             let text = `≈${tokens.toLocaleString()} tokens / $${costUsd.toFixed(4)}/クエリ`;
             if (usdJpy) {
@@ -810,40 +860,54 @@
 
         function renderHierarchyFilters() {
             const container = document.getElementById('hierarchyFilters');
-
-            container.innerHTML = hierarchyData.map(workspace => {
-                const wsId = `ws-${workspace.name}`;
-                const sourceCount = workspace.sources.length;
-
+            container.innerHTML = hierarchyData.map(ws => {
+                const wsId = `ws-${ws.name}`;
                 return `
                     <div class="workspace-item">
-                        <div class="workspace-header" onclick="toggleWorkspaceExpansion('${workspace.name}')">
+                        <div class="workspace-header" onclick="toggleWorkspaceExpansion('${ws.name}')">
                             <span class="workspace-toggle" id="toggle-${wsId}">▶</span>
-                            <input type="checkbox"
-                                   class="workspace-checkbox"
-                                   id="${wsId}"
-                                   value="${workspace.name}"
-                                   onclick="event.stopPropagation()"
-                                   onchange="onWorkspaceChange('${workspace.name}')">
+                            <input type="checkbox" class="workspace-checkbox" id="${wsId}" value="${ws.name}"
+                                   onclick="event.stopPropagation()" onchange="onPersonChange('${ws.name}')">
                             <label class="workspace-label" for="${wsId}" onclick="event.stopPropagation()">
-                                ${escapeHtml(workspace.name)}
+                                ${escapeHtml(ws.name)}
                             </label>
-                            <span class="workspace-count">${sourceCount}件</span>
+                            <span class="workspace-count">${ws.sources.length}件</span>
                         </div>
                         <div class="workspace-children" id="children-${wsId}">
-                            ${workspace.sources.map(dt => {
-                                const dtId = `dt-${workspace.name}-${dt}`;
+                            ${ws.sources.map(src => renderSourceItem(ws.name, src)).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderSourceItem(personName, src) {
+            const srcId = `src-${personName}-${src.name}`;
+            const hasCats = src.categories && src.categories.length > 0;
+            if (hasCats) {
+                return `
+                    <div class="workspace-item" style="border-left: 3px solid #e8eaff; margin-left: 0;">
+                        <div class="source-header" onclick="toggleSourceExpansion('${personName}', '${src.name}')">
+                            <span class="source-toggle" id="toggle-${srcId}">▶</span>
+                            <input type="checkbox" class="source-checkbox" id="${srcId}" value="${src.name}"
+                                   data-person="${personName}"
+                                   onclick="event.stopPropagation()" onchange="onSourceChange('${personName}', '${src.name}')">
+                            <label class="source-label" for="${srcId}" onclick="event.stopPropagation()">
+                                ${escapeHtml(src.name)}
+                            </label>
+                            <span class="workspace-count">${src.categories.length}件</span>
+                        </div>
+                        <div class="source-children" id="children-${srcId}">
+                            ${src.categories.map(cat => {
+                                const catId = `cat-${personName}-${src.name}-${cat}`;
                                 return `
-                                    <div class="doc-type-item" onclick="toggleCheckbox('${dtId}')">
-                                        <input type="checkbox"
-                                               class="doc-type-checkbox"
-                                               id="${dtId}"
-                                               value="${dt}"
-                                               data-workspace="${workspace.name}"
+                                    <div class="category-item" onclick="toggleCategoryCheckbox('${catId}', '${personName}', '${src.name}')">
+                                        <input type="checkbox" class="category-checkbox" id="${catId}" value="${cat}"
+                                               data-person="${personName}" data-source="${src.name}"
                                                onclick="event.stopPropagation()"
-                                               onchange="onDocTypeChange('${workspace.name}')">
-                                        <label class="doc-type-label" for="${dtId}" onclick="event.stopPropagation()">
-                                            ${escapeHtml(dt)}
+                                               onchange="onCategoryChange('${personName}', '${src.name}')">
+                                        <label class="category-label" for="${catId}" onclick="event.stopPropagation()">
+                                            ${escapeHtml(cat)}
                                         </label>
                                     </div>
                                 `;
@@ -851,90 +915,114 @@
                         </div>
                     </div>
                 `;
-            }).join('');
-        }
-
-        function toggleCheckbox(id) {
-            const checkbox = document.getElementById(id);
-            if (checkbox) {
-                checkbox.checked = !checkbox.checked;
-                // 親のworkspaceを取得して変更イベントをトリガー
-                const workspace = checkbox.dataset.workspace;
-                if (workspace) {
-                    onDocTypeChange(workspace);
-                }
+            } else {
+                return `
+                    <div class="doc-type-item" onclick="toggleSourceCheckboxLeaf('${srcId}', '${personName}')">
+                        <input type="checkbox" class="doc-type-checkbox" id="${srcId}" value="${src.name}"
+                               data-person="${personName}"
+                               onclick="event.stopPropagation()" onchange="onPersonChange('${personName}')">
+                        <label class="doc-type-label" for="${srcId}" onclick="event.stopPropagation()">
+                            ${escapeHtml(src.name)}
+                        </label>
+                    </div>
+                `;
             }
         }
 
-        function toggleWorkspaceExpansion(workspaceName) {
-            const wsId = `ws-${workspaceName}`;
+        function toggleSourceCheckboxLeaf(id, personName) {
+            const cb = document.getElementById(id);
+            if (cb) { cb.checked = !cb.checked; onPersonChange(personName); }
+        }
+
+        function toggleCategoryCheckbox(id, personName, srcName) {
+            const cb = document.getElementById(id);
+            if (cb) { cb.checked = !cb.checked; onCategoryChange(personName, srcName); }
+        }
+
+        function toggleWorkspaceExpansion(personName) {
+            const wsId = `ws-${personName}`;
             const toggle = document.getElementById(`toggle-${wsId}`);
             const children = document.getElementById(`children-${wsId}`);
-
-            if (children.classList.contains('expanded')) {
-                children.classList.remove('expanded');
-                toggle.classList.remove('expanded');
-            } else {
-                children.classList.add('expanded');
-                toggle.classList.add('expanded');
-            }
+            const expanded = children.classList.toggle('expanded');
+            toggle.classList.toggle('expanded', expanded);
         }
 
-        // ✅ 親チェックボックスの変更時：子を連動
-        function onWorkspaceChange(workspaceName) {
-            const wsId = `ws-${workspaceName}`;
-            const wsCheckbox = document.getElementById(wsId);
-            const isChecked = wsCheckbox.checked;
+        function toggleSourceExpansion(personName, srcName) {
+            const srcId = `src-${personName}-${srcName}`;
+            const toggle = document.getElementById(`toggle-${srcId}`);
+            const children = document.getElementById(`children-${srcId}`);
+            const expanded = children.classList.toggle('expanded');
+            toggle.classList.toggle('expanded', expanded);
+        }
 
-            // 配下の子（doc_type）をすべて同じ状態にする
-            const workspace = hierarchyData.find(w => w.name === workspaceName);
-            if (workspace) {
-                workspace.sources.forEach(dt => {
-                    const dtCheckbox = document.getElementById(`dt-${workspaceName}-${dt}`);
-                    if (dtCheckbox) {
-                        dtCheckbox.checked = isChecked;
-                    }
+        // Level 1 (person) チェック → 配下の source/category を全連動
+        function onPersonChange(personName) {
+            const wsCb = document.getElementById(`ws-${personName}`);
+            if (!wsCb) return;
+            const isChecked = wsCb.checked;
+            const ws = hierarchyData.find(w => w.name === personName);
+            if (!ws) return;
+            ws.sources.forEach(src => {
+                const srcCb = document.getElementById(`src-${personName}-${src.name}`);
+                if (srcCb) { srcCb.checked = isChecked; srcCb.indeterminate = false; }
+                src.categories.forEach(cat => {
+                    const catCb = document.getElementById(`cat-${personName}-${src.name}-${cat}`);
+                    if (catCb) catCb.checked = isChecked;
+                });
+            });
+        }
+
+        // Level 2 (source) チェック → 配下の category を全連動、親 person を更新
+        function onSourceChange(personName, srcName) {
+            const srcCb = document.getElementById(`src-${personName}-${srcName}`);
+            if (!srcCb) return;
+            const isChecked = srcCb.checked;
+            const ws = hierarchyData.find(w => w.name === personName);
+            const src = ws && ws.sources.find(s => s.name === srcName);
+            if (src) {
+                src.categories.forEach(cat => {
+                    const catCb = document.getElementById(`cat-${personName}-${srcName}-${cat}`);
+                    if (catCb) catCb.checked = isChecked;
                 });
             }
-
-            console.log(`[親チェック] ${workspaceName}: ${isChecked ? 'ON' : 'OFF'} → 子を連動`);
+            syncPersonCheckbox(personName);
         }
 
-        // ✅ 子チェックボックスの変更時：親の状態を更新
-        function onDocTypeChange(workspaceName) {
-            const wsId = `ws-${workspaceName}`;
-            const wsCheckbox = document.getElementById(wsId);
-
-            // 配下の子の状態を確認
-            const workspace = hierarchyData.find(w => w.name === workspaceName);
-            if (!workspace) return;
-
-            let allChecked = true;
-            let noneChecked = true;
-
-            workspace.sources.forEach(dt => {
-                const dtCheckbox = document.getElementById(`dt-${workspaceName}-${dt}`);
-                if (dtCheckbox) {
-                    if (dtCheckbox.checked) {
-                        noneChecked = false;
-                    } else {
-                        allChecked = false;
-                    }
-                }
+        // Level 3 (category) チェック → 親 source・person を更新
+        function onCategoryChange(personName, srcName) {
+            const ws = hierarchyData.find(w => w.name === personName);
+            const src = ws && ws.sources.find(s => s.name === srcName);
+            if (!src) return;
+            const srcCb = document.getElementById(`src-${personName}-${srcName}`);
+            if (!srcCb) return;
+            const states = src.categories.map(cat => {
+                const cb = document.getElementById(`cat-${personName}-${srcName}-${cat}`);
+                return cb ? cb.checked : false;
             });
+            const all = states.every(Boolean);
+            const none = states.every(v => !v);
+            srcCb.checked = all;
+            srcCb.indeterminate = !all && !none;
+            syncPersonCheckbox(personName);
+        }
 
-            // 親の状態を更新
-            if (allChecked) {
-                wsCheckbox.checked = true;
-                wsCheckbox.indeterminate = false;
-            } else if (noneChecked) {
-                wsCheckbox.checked = false;
-                wsCheckbox.indeterminate = false;
-            } else {
-                // 一部だけチェックされている場合はindeterminate
-                wsCheckbox.checked = false;
-                wsCheckbox.indeterminate = true;
-            }
+        // person checkbox の indeterminate/checked を source の状態から同期
+        function syncPersonCheckbox(personName) {
+            const wsCb = document.getElementById(`ws-${personName}`);
+            if (!wsCb) return;
+            const ws = hierarchyData.find(w => w.name === personName);
+            if (!ws) return;
+            const srcStates = ws.sources.map(src => {
+                const cb = document.getElementById(`src-${personName}-${src.name}`);
+                return cb ? (cb.checked || cb.indeterminate) : false;
+            });
+            const allChecked = ws.sources.every(src => {
+                const cb = document.getElementById(`src-${personName}-${src.name}`);
+                return cb && cb.checked && !cb.indeterminate;
+            });
+            const noneActive = srcStates.every(v => !v);
+            wsCb.checked = allChecked;
+            wsCb.indeterminate = !allChecked && !noneActive;
         }
 
         function openFilterSheet() {
@@ -950,121 +1038,103 @@
         }
 
         function clearAllFilters() {
-            hierarchyData.forEach(workspace => {
-                // 親チェックボックスをクリア
-                const wsCheckbox = document.getElementById(`ws-${workspace.name}`);
-                if (wsCheckbox) {
-                    wsCheckbox.checked = false;
-                    wsCheckbox.indeterminate = false;
-                }
-
-                // 子チェックボックスをクリア
-                workspace.sources.forEach(dt => {
-                    const dtCheckbox = document.getElementById(`dt-${workspace.name}-${dt}`);
-                    if (dtCheckbox) dtCheckbox.checked = false;
+            hierarchyData.forEach(ws => {
+                const wsCb = document.getElementById(`ws-${ws.name}`);
+                if (wsCb) { wsCb.checked = false; wsCb.indeterminate = false; }
+                ws.sources.forEach(src => {
+                    const srcCb = document.getElementById(`src-${ws.name}-${src.name}`);
+                    if (srcCb) { srcCb.checked = false; srcCb.indeterminate = false; }
+                    src.categories.forEach(cat => {
+                        const catCb = document.getElementById(`cat-${ws.name}-${src.name}-${cat}`);
+                        if (catCb) catCb.checked = false;
+                    });
                 });
             });
-
-            console.log('[すべて解除]');
         }
 
         function applyFilters() {
-            // チェックされた person と source を収集
             selectedPersons = [];
             selectedSources = [];
+            selectedCategories = [];
 
-            hierarchyData.forEach(workspace => {
-                const wsName = workspace.name;
-
-                // 子（doc_type）のチェック状態を確認
-                workspace.sources.forEach(dt => {
-                    const dtCheckbox = document.getElementById(`dt-${wsName}-${dt}`);
-                    if (dtCheckbox && dtCheckbox.checked) {
-                        // person を追加（重複回避）
-                        if (!selectedPersons.includes(wsName)) {
-                            selectedPersons.push(wsName);
-                        }
-                        // source を追加
-                        selectedSources.push(dt);
+            hierarchyData.forEach(ws => {
+                const wsCb = document.getElementById(`ws-${ws.name}`);
+                if (wsCb && wsCb.checked && !wsCb.indeterminate) {
+                    // person 全体が選択 → person だけ追加（source/category は絞らない）
+                    selectedPersons.push(ws.name);
+                    return;
+                }
+                ws.sources.forEach(src => {
+                    const srcCb = document.getElementById(`src-${ws.name}-${src.name}`);
+                    if (srcCb && srcCb.checked && !srcCb.indeterminate) {
+                        // source 全体が選択 → person + source を追加
+                        if (!selectedPersons.includes(ws.name)) selectedPersons.push(ws.name);
+                        if (!selectedSources.includes(src.name)) selectedSources.push(src.name);
+                        return;
                     }
+                    // category 単位の選択
+                    src.categories.forEach(cat => {
+                        const catCb = document.getElementById(`cat-${ws.name}-${src.name}-${cat}`);
+                        if (catCb && catCb.checked) {
+                            if (!selectedPersons.includes(ws.name)) selectedPersons.push(ws.name);
+                            if (!selectedSources.includes(src.name)) selectedSources.push(src.name);
+                            if (!selectedCategories.includes(cat)) selectedCategories.push(cat);
+                        }
+                    });
                 });
             });
 
-            console.log('[フィルタ適用]', { selectedPersons, selectedSources });
-
-            // フィルタチップを更新
+            console.log('[フィルタ適用]', { selectedPersons, selectedSources, selectedCategories });
             updateFilterChips();
-
-            // Bottom Sheetを閉じる
             closeFilterSheet();
-
-            // 検索を実行（クエリがある場合のみ）
             const query = document.getElementById('queryInput').value.trim();
-            if (query) {
-                performSearch();
-            }
+            if (query) performSearch();
         }
 
         function updateFilterChips() {
             const container = document.getElementById('activeFilters');
-
-            // workspace別にdoc_typeをグループ化して表示
-            const chipsByWorkspace = {};
-
-            hierarchyData.forEach(workspace => {
-                const wsName = workspace.name;
-                const checkedTypes = [];
-
-                workspace.sources.forEach(dt => {
-                    const dtCheckbox = document.getElementById(`dt-${wsName}-${dt}`);
-                    if (dtCheckbox && dtCheckbox.checked) {
-                        checkedTypes.push(dt);
-                    }
-                });
-
-                if (checkedTypes.length > 0) {
-                    chipsByWorkspace[wsName] = checkedTypes;
-                }
-            });
-
-            if (Object.keys(chipsByWorkspace).length === 0) {
-                container.innerHTML = '';
-                return;
-            }
-
-            // チップを生成
             const chips = [];
-            for (const [wsName, types] of Object.entries(chipsByWorkspace)) {
-                types.forEach(dt => {
-                    chips.push(`
-                        <span class="chip chip-active">
-                            ${escapeHtml(wsName)}: ${escapeHtml(dt)}
-                            <span class="remove-chip" onclick="removeFilter('${escapeHtml(wsName)}', '${escapeHtml(dt)}')">×</span>
-                        </span>
-                    `);
+
+            hierarchyData.forEach(ws => {
+                const wsCb = document.getElementById(`ws-${ws.name}`);
+                if (wsCb && wsCb.checked && !wsCb.indeterminate) {
+                    chips.push(`<span class="chip chip-active">${escapeHtml(ws.name)}<span class="remove-chip" onclick="removePersonFilter('${ws.name}')">×</span></span>`);
+                    return;
+                }
+                ws.sources.forEach(src => {
+                    const srcCb = document.getElementById(`src-${ws.name}-${src.name}`);
+                    if (srcCb && srcCb.checked && !srcCb.indeterminate) {
+                        chips.push(`<span class="chip chip-active">${escapeHtml(ws.name)}: ${escapeHtml(src.name)}<span class="remove-chip" onclick="removeSourceFilter('${ws.name}','${src.name}')">×</span></span>`);
+                        return;
+                    }
+                    src.categories.forEach(cat => {
+                        const catCb = document.getElementById(`cat-${ws.name}-${src.name}-${cat}`);
+                        if (catCb && catCb.checked) {
+                            chips.push(`<span class="chip chip-active">${escapeHtml(ws.name)}: ${escapeHtml(src.name)}: ${escapeHtml(cat)}<span class="remove-chip" onclick="removeCategoryFilter('${ws.name}','${src.name}','${cat}')">×</span></span>`);
+                        }
+                    });
                 });
-            }
+            });
 
             container.innerHTML = chips.join('');
         }
 
-        function removeFilter(workspaceName, docType) {
-            // 該当するdoc_typeのチェックを外す
-            const dtCheckbox = document.getElementById(`dt-${workspaceName}-${docType}`);
-            if (dtCheckbox) {
-                dtCheckbox.checked = false;
-                // 親の状態を更新
-                onDocTypeChange(workspaceName);
-            }
+        function removePersonFilter(personName) {
+            const wsCb = document.getElementById(`ws-${personName}`);
+            if (wsCb) { wsCb.checked = false; wsCb.indeterminate = false; onPersonChange(personName); }
+            applyFilters();
+        }
 
-            // フィルタチップを更新
-            updateFilterChips();
+        function removeSourceFilter(personName, srcName) {
+            const srcCb = document.getElementById(`src-${personName}-${srcName}`);
+            if (srcCb) { srcCb.checked = false; srcCb.indeterminate = false; onSourceChange(personName, srcName); }
+            applyFilters();
+        }
 
-            // 検索を再実行
-            const query = document.getElementById('queryInput').value.trim();
-            if (query) {
-                performSearch();
-            }
+        function removeCategoryFilter(personName, srcName, cat) {
+            const catCb = document.getElementById(`cat-${personName}-${srcName}-${cat}`);
+            if (catCb) { catCb.checked = false; onCategoryChange(personName, srcName); }
+            applyFilters();
         }
 
         function handleKeyPress(event) {
@@ -1088,12 +1158,13 @@
             hideResults();
 
             try {
-                // ステップ1: ベクトル検索（✅ フィルタ配列を送信）
+                // ステップ1: ベクトル検索（person / source / category フィルタ送信）
                 const searchPayload = {
                     query,
                     limit,
                     persons: selectedPersons,
                     sources: selectedSources,
+                    categories: selectedCategories,
                     threshold: parseFloat(document.getElementById('thresholdInput').value) || 0.4
                 };
 
@@ -1126,7 +1197,10 @@
                         query,
                         documents: currentDocuments,
                         flow: selectedFlow,
-                        max_context_chars: parseInt(document.getElementById('maxContextInput').value) || null
+                        max_context_chars: parseInt(document.getElementById('maxContextInput').value) || null,
+                        persons: selectedPersons,
+                        sources: selectedSources,
+                        categories: selectedCategories,
                     })
                 });
 

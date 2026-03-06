@@ -244,7 +244,7 @@ class WasedaNoticeIngestionPipeline:
             if not pdfs:
                 logger.info(f"PDFリンクなし、テキストのみで登録: {title}")
                 raw_row = {
-                    'person': 'ikuya',
+                    'person': '育哉',
                     'source': '早稲アカオンライン',
                     'category': category.get('label', 'その他'),
                     'post_id': notice_id,
@@ -261,7 +261,7 @@ class WasedaNoticeIngestionPipeline:
                         self.db.client.table('pipeline_meta').insert({
                             'raw_id': raw_id,
                             'raw_table': '05_ikuya_waseaca_01_raw',
-                            'person': 'ikuya',
+                            'person': '育哉',
                             'source': '早稲アカオンライン',
                             'processing_status': 'pending',
                             'owner_id': self.owner_id,
@@ -320,7 +320,7 @@ class WasedaNoticeIngestionPipeline:
 
                 # 5. Supabaseに基本情報のみ保存（05_ikuya_waseaca_01_raw + pipeline_meta）
                 raw_row = {
-                    'person': 'ikuya',
+                    'person': '育哉',
                     'source': '早稲アカオンライン',
                     'category': category.get('label', 'その他'),
                     'post_id': notice_id,
@@ -340,7 +340,7 @@ class WasedaNoticeIngestionPipeline:
                         self.db.client.table('pipeline_meta').insert({
                             'raw_id': raw_id,
                             'raw_table': '05_ikuya_waseaca_01_raw',
-                            'person': 'ikuya',
+                            'person': '育哉',
                             'source': '早稲アカオンライン',
                             'processing_status': 'pending',
                             'owner_id': self.owner_id,
@@ -388,13 +388,13 @@ async def main():
             return
 
         # 1ページ目をデバッグ用に保存
-        temp_html_file = Path(__file__).parent.parent.parent / "waseda_notice_page.html"
+        temp_html_file = Path(__file__).parent / "waseda_notice_page.html"
         with open(temp_html_file, 'w', encoding='utf-8') as f:
             f.write(html_content[0])
         logger.info(f"取得したHTMLを保存（1ページ目）: {temp_html_file}")
     else:
         # ローカルHTMLファイルから読み込み（デバッグ用）
-        html_file = Path(__file__).parent.parent.parent / "pasted_content.txt"
+        html_file = Path(__file__).parent / "pasted_content.txt"
 
         if not html_file.exists():
             logger.error(f"HTMLファイルが見つかりません: {html_file}")

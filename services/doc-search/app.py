@@ -63,12 +63,15 @@ def get_filters():
         # workspace別のdoc_type階層構造を取得
         hierarchy = db_client.get_workspace_hierarchy()
 
-        # 階層構造をリスト形式に変換（フロントエンド用）
+        # 3階層構造をリスト形式に変換（フロントエンド用）
         workspace_list = []
-        for workspace, sources in hierarchy.items():
+        for person, sources in hierarchy.items():
             workspace_list.append({
-                'name': workspace,
-                'sources': sources
+                'name': person,
+                'sources': [
+                    {'name': src, 'categories': cats}
+                    for src, cats in sources.items()
+                ]
             })
 
         print(f"[DEBUG] フィルタ取得: {len(workspace_list)} workspaces（階層構造）")
@@ -101,13 +104,14 @@ def search_documents():
         requested_limit = data.get('limit', 3)
         limit = min(requested_limit, 50)  # 50件取得→高精度な5件にリランク可能
 
-        persons   = data.get('persons', [])
-        sources   = data.get('sources', [])
+        persons    = data.get('persons', [])
+        sources    = data.get('sources', [])
+        categories = data.get('categories', [])
 
         enable_query_expansion = data.get('enable_query_expansion', False)  # デフォルトで無効
         threshold = float(data.get('threshold', 0.4))  # 足切りスコア閾値
 
-        print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, persons={persons}, sources={sources}, threshold={threshold}")
+        print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, persons={persons}, sources={sources}, categories={categories}, threshold={threshold}")
 
         if not query:
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
@@ -191,20 +195,20 @@ def search_documents():
                 print(f"[WARNING] クロスリファレンス検索エラー: {e}")
 
         # ベクトル検索を実行
-        person_filter = persons[0] if len(persons) == 1 else None
         results = db_client.search_documents_sync(
             expanded_query,
             embedding,
             limit,
             sources=sources if sources else None,
-            person=person_filter,
+            persons=persons if persons else None,
+            category=categories if categories else None,
             date_filter=date_filter,
             threshold=threshold,
         )
 
         # GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
-        cal_results   = [d for d in results if d.get('source') == 'GOOGLE_CALENDAR']
-        other_results = [d for d in results if d.get('source') != 'GOOGLE_CALENDAR']
+        cal_results   = [d for d in results if d.get('source') == 'Googleカレンダー']
+        other_results = [d for d in results if d.get('source') != 'Googleカレンダー']
         results = cal_results + other_results
 
         # ✅ クロスリファレンス結果を先頭に追加
@@ -216,7 +220,7 @@ def search_documents():
             results = cross_reference_results + results
             print(f"[DEBUG] クロスリファレンス結果を先頭に追加: 合計 {len(results)} 件")
 
-        print(f"[DEBUG] 検索結果: {len(results)} 件（doc_types={doc_types}）")
+        print(f"[DEBUG] 検索結果: {len(results)} 件（sources={sources}）")
 
         print(f"[DEBUG] 最終検索結果: {len(results)} 件返却")
 
@@ -243,250 +247,473 @@ def search_documents():
 @app.route('/api/answer', methods=['POST'])
 def generate_answer():
     """
-    回答生成API（構成フロー対応）
-    検索結果を元にAIで自然な回答を生成
+    回答生成API
+
+    compress-1step: 回答生成+Evidence同時（1回呼び出し）
+    compress-2step: Evidence整理 → 回答生成（2回呼び出し）
+    compress-3step: Evidence抽出 → 論点整理 → 最終回答（3回呼び出し）
+
+    共通前処理:
+      Step0: クエリ改善（Flash-lite固定）
+      RAG:   改善クエリでベクトル+全文検索+rerank
     """
     try:
-        # クライアント取得（遅延初期化）
+        import uuid as _uuid
         db_client, llm_client, _ = get_clients()
 
         data = request.get_json()
         query = data.get('query', '')
-        documents = data.get('documents', [])
-        flow_id = data.get('flow', 'flash-x1')  # ユーザーが選択した構成フロー
-        model_override = data.get('model')       # モデル直接指定（flowより優先）
-        max_context_chars = data.get('max_context_chars')  # トークン上限（文字数）
+        flow_id = data.get('flow', 'compress-1step')
+        max_context_chars = int(data.get('max_context_chars') or 30000)
+        persons    = data.get('persons', [])
+        sources    = data.get('sources', [])
+        categories = data.get('categories', [])
 
         if not query:
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
 
-        # ✅ 構成フローを取得（model直接指定がある場合はそちらを優先）
+        # リクエストID生成（このリクエスト内の全AI呼び出しを紐づける）
+        request_id = str(_uuid.uuid4())
+
         from shared.common.config.model_tiers import ResearchFlow
-        if model_override:
-            steps = [model_override]
-            print(f"[INFO] モデル直接指定: {model_override}")
-        else:
-            flow_config = ResearchFlow.get_flow(flow_id)
-            steps = flow_config.get('steps', ['gemini-2.5-flash'])
+        flow_config = ResearchFlow.get_flow(flow_id)
+        steps = flow_config.get('steps')
+        rounds = flow_config.get('rounds', 1)
 
-        print(f"[INFO] 構成フロー実行: {flow_id} ({len(steps)}ステップ)")
+        today = datetime.now().strftime('%Y-%m-%d')
 
-        # ✅ 構成フローの実行
-        current_query = query
-        current_documents = documents
+        # Step0: クエリ改善（Flash-lite固定）
+        refined = _refine_query(
+            llm_client, query, today,
+            log_context={'app': 'doc-search', 'stage': 'search-refine', 'session_id': request_id},
+        )
+        refined_query = refined["query"]
+        date_range = refined["date_range"]
+        print(f"[INFO] クエリ改善: '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
+        print(f"[INFO] フィルタ: persons={persons}, sources={sources}, categories={categories}", flush=True)
 
-        for step_idx, model_name in enumerate(steps, 1):
-            print(f"[INFO] ステップ {step_idx}/{len(steps)}: {model_name}")
+        # RAG検索
+        embedding = llm_client.generate_embedding(refined_query)
+        search_limit = max(10, max_context_chars // 2000)
+        search_results = db_client.search_documents_sync(
+            refined_query, embedding, limit=search_limit,
+            sources=sources if sources else None,
+            persons=persons if persons else None,
+            category=categories if categories else None,
+            date_range=date_range,
+        )
+        print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
-            # 2ステップ目以降は、前の回答を使ってクエリを改善
-            if step_idx > 1 and 'answer' in locals():
-                # クエリ改善プロンプト
-                refinement_prompt = f"""以下のユーザーの質問と、これまでの回答を踏まえて、より的確な検索クエリを生成してください。
+        # コンテキスト構築・切り詰め
+        context = _build_context(search_results)
+        if len(context) > max_context_chars:
+            context = context[:max_context_chars]
+        print(f"[INFO] コンテキスト: {len(context)}字 / フロー: {flow_id}", flush=True)
 
-【元の質問】
-{query}
-
-【これまでの回答】
-{answer}
-
-【指示】
-- 元の質問の意図を保ちつつ、より具体的で詳細な検索キーワードを含むクエリを生成してください
-- 回答から得られた重要なキーワードを追加してください
-- 改善されたクエリのみを出力してください（説明は不要）
-
-【改善されたクエリ】"""
-
-                refinement_response = llm_client.call_model(
-                    tier="ui_response",
-                    prompt=refinement_prompt,
-                    model_name=model_name
-                )
-
-                if refinement_response.get('success'):
-                    current_query = refinement_response.get('content', current_query).strip()
-                    print(f"[INFO] クエリ改善: '{query}' → '{current_query}'")
-
-                    # 改善されたクエリで再検索
-                    embedding = llm_client.generate_embedding(current_query)
-                    current_documents = db_client.search_documents_sync(
-                        current_query,
-                        embedding,
-                        limit=5,
-                        doc_types=None
-                    )
-                    print(f"[INFO] 再検索結果: {len(current_documents)} 件")
-
-            # 現在のステップで回答生成
-            answer, model_used = _generate_answer_with_model(
-                llm_client,
-                model_name,
-                query,
-                current_documents,
-                is_final_step=(step_idx == len(steps)),
-                max_context_chars=max_context_chars,
+        # フロー別実行
+        if rounds == 1:
+            # 1段: 回答生成+Evidence同時
+            print(f"[INFO] 1段実行 ({steps[0]})", flush=True)
+            answer = _answer_1step(
+                llm_client, steps[0], query, context,
+                log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
 
-            if not answer:
-                return jsonify({
-                    'success': False,
-                    'error': f'ステップ{step_idx}で回答生成に失敗しました'
-                }), 500
+        elif rounds == 2:
+            # 2段: Evidence整理 → 回答生成
+            step1_limit = int(max_context_chars * 0.33)
+            print(f"[INFO] 2段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
+            evidence_list = _evidence_1step(
+                llm_client, steps[0], context, step1_limit,
+                log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
+            )
+            print(f"[INFO] 2段Step2 ({steps[1]}): 内容依存", flush=True)
+            answer = _answer_from_evidence(
+                llm_client, steps[1], query, evidence_list,
+                log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
+            )
 
-        # 最終回答を返す
+        else:
+            # 3段: Evidence抽出 → 論点整理 → 最終回答
+            step1_limit = int(max_context_chars * 0.4)
+            print(f"[INFO] 3段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
+            step1_output = _compress_step1(
+                llm_client, steps[0], query, context, step1_limit,
+                log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
+            )
+
+            step2_limit = int(step1_limit * 0.33)
+            print(f"[INFO] 3段Step2 ({steps[1]}): →{step2_limit}字上限", flush=True)
+            step2_output = _compress_step2(
+                llm_client, steps[1], query, step1_output, step2_limit,
+                log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
+            )
+
+            print(f"[INFO] 3段Step3 ({steps[2]}): 内容依存", flush=True)
+            answer = _compress_step3(
+                llm_client, steps[2], query, step2_output,
+                log_context={'app': 'doc-search', 'stage': 'search-step3', 'session_id': request_id},
+            )
+
+        if not answer:
+            return jsonify({'success': False, 'error': '回答生成に失敗しました'}), 500
+
         return jsonify({
             'success': True,
             'answer': answer,
-            'model': model_used,
+            'model': steps[-1],
             'provider': 'gemini',
             'flow': flow_id,
-            'steps': len(steps)
+            'steps': rounds,
+            'refined_query': refined_query,
+            'date_range': date_range,
         })
 
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        import traceback
+        print(f"[ERROR] generate_answer: {e}\n{traceback.format_exc()}", flush=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _generate_answer_with_model(
-    llm_client,
-    model_name: str,
-    query: str,
-    documents: List[Dict[str, Any]],
-    is_final_step: bool = True,
-    max_context_chars: Optional[int] = None,
-) -> tuple:
+def _answer_1step(llm_client, model_name: str, query: str, context: str, log_context: dict = None) -> str:
     """
-    指定されたモデルで回答を生成
+    1段: 回答生成+Evidence抽出を同時実行
 
-    Args:
-        llm_client: LLMクライアント
-        model_name: 使用するモデル名
-        query: ユーザーの質問
-        documents: 検索結果
-        is_final_step: 最終ステップかどうか
-
-    Returns:
-        (回答テキスト, モデル名)
+    抽象化・根拠なし断定は禁止。各根拠にSourceを付けて出力する。
     """
     try:
-        # ユーザーコンテキストを読み込み、関連情報を抽出（回答生成用：詳細）
+        from shared.common.utils.context_extractor import ContextExtractor
+        from shared.common.config.yaml_loader import load_user_context
+        user_context = load_user_context()
+        ctx_extractor = ContextExtractor(user_context)
+        extracted = ctx_extractor.extract_relevant_context(query, include_schedules=True)
+        user_ctx = ctx_extractor.build_answer_context_string(extracted)
+    except Exception:
+        user_ctx = ""
+
+    prompt_parts = []
+    if user_ctx:
+        prompt_parts.append(user_ctx)
+
+    prompt_parts.append(f"""あなたはRAG回答エンジンです。
+以下の文書チャンクを使い、ユーザーの質問に回答してください。
+
+【質問】
+{query}
+
+【文書】
+{context}
+
+【ルール】
+- Evidenceが存在する内容のみ回答する（新しい主張の創作禁止）
+- 根拠なし断定禁止
+- Evidenceは原文から1〜2文抜粋し、Sourceを必ず付ける
+- 不明・不足情報は「不確実性」欄に明示する
+- 重要情報（期限・場所・提出方法）は太字で強調する
+- カレンダー確定情報がある場合は最優先で反映し、矛盾は「⚠️ 注記：」で明示する
+
+【出力形式】
+回答:
+<自然文回答>
+
+Evidence:
+- 「原文抜粋」 (タイトル/Source)
+- 「原文抜粋」 (タイトル/Source)
+
+不確実性:
+<不足情報や条件。なければ「なし」>
+""")
+
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt="\n".join(prompt_parts),
+        model_name=model_name,
+        log_context=log_context,
+    )
+    if response.get('success'):
+        return response.get('content', '').strip()
+    return ''
+
+
+def _evidence_1step(llm_client, model_name: str, context: str, output_limit: int, log_context: dict = None) -> str:
+    """
+    2段Step1: Evidence整理+Topicタグ付け（抽象化禁止）
+
+    原文から使える情報を抜き出し、Topicラベルを付けて並べる。
+    要約・言い換え禁止。Source必須。
+    """
+    prompt = f"""あなたはRAGのEvidence抽出器です。
+以下の文書チャンクから、回答に使える情報を抽出してください。
+
+【文書】
+{context}
+
+【ルール】
+- 要約・抽象化・言い換え禁止
+- Evidenceは原文から1〜2文の抜粋のみ
+- Topicタグを付ける（日程/範囲/持ち物/注意事項/例外 など）
+- Source（タイトルまたはchunk_id）を必ず付ける
+- 新しい主張の創作禁止
+- 出力上限: {output_limit}字
+
+【出力形式】
+Topic: <ラベル>
+Evidence: 「<原文抜粋>」
+Source: <タイトル/chunk_id>
+Confidence: <0〜1>
+
+【抽出結果】
+"""
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt=prompt,
+        model_name=model_name,
+        log_context=log_context,
+    )
+    if response.get('success'):
+        return response.get('content', '').strip()
+    return context[:output_limit]
+
+
+def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list: str, log_context: dict = None) -> str:
+    """
+    2段Step2: EvidenceリストからユーザーへのRAG回答を生成
+
+    Evidenceなき記述禁止。ここで初めて抽象化OK。
+    """
+    try:
+        from shared.common.utils.context_extractor import ContextExtractor
+        from shared.common.config.yaml_loader import load_user_context
+        user_context = load_user_context()
+        ctx_extractor = ContextExtractor(user_context)
+        extracted = ctx_extractor.extract_relevant_context(query, include_schedules=True)
+        user_ctx = ctx_extractor.build_answer_context_string(extracted)
+    except Exception:
+        user_ctx = ""
+
+    prompt_parts = []
+    if user_ctx:
+        prompt_parts.append(user_ctx)
+
+    prompt_parts.append(f"""以下のEvidenceリストを基に、ユーザーの質問に回答してください。
+
+【質問】
+{query}
+
+【Evidenceリスト】
+{evidence_list}
+
+【ルール】
+- Evidenceがある内容のみ回答する（創作禁止）
+- 不確実・不足情報は「不確実性」欄に明示する
+- 見出し・箇条書きを活用して読みやすく整形する
+- 重要情報（期限・場所・提出方法）は太字で強調する
+- カレンダー確定情報がある場合は最優先で反映し、矛盾は「⚠️ 注記：」で明示する
+
+【出力形式】
+回答:
+<自然文回答>
+
+根拠:
+- <Source>
+- <Source>
+
+不確実性:
+<なければ「なし」>
+""")
+
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt="\n".join(prompt_parts),
+        model_name=model_name,
+        log_context=log_context,
+    )
+    if response.get('success'):
+        return response.get('content', '').strip()
+    return ''
+
+
+def _refine_query(llm_client, query: str, today: str, log_context: dict = None) -> Dict[str, Any]:
+    """
+    Step0: クエリ改善（Flash-lite固定）
+
+    相対日を絶対日付レンジに変換し、検索に適した形に整形する。
+    出力文字数は入力と同程度（最大1.5倍まで）。
+
+    Returns:
+        {
+            "query": "整形後の質問（YYYY-MM-DD形式の日付を含む）",
+            "date_range": "YYYY-MM-DD..YYYY-MM-DD"  # 日付なければ空文字
+        }
+    """
+    import json as _json
+    max_len = int(len(query) * 1.5)
+    prompt = f"""以下の質問を、検索に適した形に整形し、JSON1行で出力してください。
+
+【ルール】
+- 相対日（来週/今週/明日/〇月〇日など）は今日の日付を基準に絶対日付レンジ（YYYY-MM-DD）に変換する
+- queryフィールド: 整形後の質問（最大{max_len}字、自然語を保つ・ISO日付を混ぜない）
+- date_rangeフィールド: 日付レンジ（YYYY-MM-DD..YYYY-MM-DD）、日付なければ空文字
+- JSON以外の出力禁止
+
+今日の日付: {today}
+元の質問: {query}
+出力例: {{"query":"来週月曜のテストの範囲は","date_range":"2026-03-09..2026-03-09"}}
+出力:"""
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt=prompt,
+        model_name="gemini-2.5-flash-lite",
+        log_context=log_context,
+    )
+    if response.get('success'):
+        content = response.get('content', '').strip()
+        # JSONコードブロックを除去
+        content = content.replace('```json', '').replace('```', '').strip()
+        try:
+            result = _json.loads(content)
+            return {
+                "query": result.get("query", query),
+                "date_range": result.get("date_range", ""),
+            }
+        except Exception:
+            pass
+    return {"query": query, "date_range": ""}
+
+
+def _compress_step1(llm_client, model_name: str, query: str, context: str, output_limit: int, log_context: dict = None) -> str:
+    """
+    Step1: Evidenceノート生成（抽象要約禁止）
+
+    各文書から質問に関連する情報を抜粋・構造化する。
+    重複をまとめ、必ずSourceを付ける。
+    """
+    prompt = f"""以下の文書群から、質問に関連する情報を構造化して抽出してください。
+
+【質問】
+{query}
+
+【文書】
+{context}
+
+【ルール】
+- 抽象要約禁止。原文の短い抜粋（1〜2文）をEvidenceとして必ず残す
+- 重複する情報はまとめる（Evidenceは最大2つ）
+- SourceはタイトルまたはDocIDを使う
+- 出力形式（1エントリごと）:
+  Claim: （短い主張）
+  Evidence: （原文抜粋1〜2文）
+  Source: （タイトル/ファイル名）
+  Tag: （dates/scope/items/rules/exceptions/numbers から該当するもの）
+  Confidence: （0〜1）
+- 出力上限: {output_limit}字
+
+【抽出結果】
+"""
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt=prompt,
+        model_name=model_name,
+        log_context=log_context,
+    )
+    if response.get('success'):
+        return response.get('content', '').strip()
+    return context[:output_limit]
+
+
+def _compress_step2(llm_client, model_name: str, query: str, step1_output: str, output_limit: int, log_context: dict = None) -> str:
+    """
+    Step2: 論点別証拠束への再編（抽象化最小）
+
+    Step1のEvidenceノートを論点(Topic)ごとに再編成する。
+    新しい主張の創作禁止。根拠は必ず残す。
+    """
+    prompt = f"""以下のEvidenceノートを、論点(Topic)ごとに再編成してください。
+
+【質問】
+{query}
+
+【Evidenceノート】
+{step1_output}
+
+【ルール】
+- タグ単位で束ねる（日付/範囲/持ち物/注意事項/例外など）
+- 各TopicにKey takeaway + Evidence（抜粋）+ Sourcesを残す
+- 新しい主張の創作禁止
+- 出力形式:
+  Topic: （論点名）
+    Key takeaway: （1行の結論）
+    Evidence: （抜粋2〜5個）
+    Sources: （ファイル名列挙）
+- 出力上限: {output_limit}字
+
+【論点別整理】
+"""
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt=prompt,
+        model_name=model_name,
+        log_context=log_context,
+    )
+    if response.get('success'):
+        return response.get('content', '').strip()
+    return step1_output[:output_limit]
+
+
+def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, log_context: dict = None) -> str:
+    """
+    Step3: 最終回答生成（ここで初めて抽象化OK）
+
+    Topic別証拠束を基にユーザー向けの自然文にまとめる。
+    Evidenceがある内容のみ記載。曖昧な点は明示。
+    """
+    try:
         from shared.common.utils.context_extractor import ContextExtractor
         from shared.common.config.yaml_loader import load_user_context
 
         user_context = load_user_context()
         context_extractor = ContextExtractor(user_context)
         extracted_context = context_extractor.extract_relevant_context(
-            query,
-            include_schedules=True  # 回答生成時はスケジュールも含める
+            query, include_schedules=True
         )
         user_context_prompt = context_extractor.build_answer_context_string(extracted_context)
+    except Exception:
+        user_context_prompt = ""
 
-        # ドキュメントコンテキストを構築
-        context = _build_context(documents)
+    prompt_parts = []
+    if user_context_prompt:
+        prompt_parts.append(user_context_prompt)
 
-        import sys
-        print(f"[DEBUG] 文書数: {len(documents)}件", flush=True, file=sys.stderr)
-        print(f"[DEBUG] コンテキスト文字数: {len(context)}文字", flush=True, file=sys.stderr)
+    prompt_parts.append(f"""以下のTopic別証拠束を基に、ユーザーの質問に回答してください。
 
-        # コンテキスト長を決定（優先順位: 明示指定 > モデル別デフォルト）
-        is_lite = 'lite' in model_name
-        default_max = 30000 if is_lite else 50000
-        MAX_CONTEXT_LENGTH = int(max_context_chars) if max_context_chars else default_max
-        max_output_tokens_override = 8192 if is_lite else None  # Liteは出力も制限
-
-        if len(context) > MAX_CONTEXT_LENGTH:
-            context = context[:MAX_CONTEXT_LENGTH] + "\n\n[... 以降は省略されました ...]"
-            print(f"[WARNING] コンテキストを切り詰めました: {MAX_CONTEXT_LENGTH} 文字（モデル: {model_name}）")
-
-        # プロンプトを作成（Phase 2.2.3: 構造的クエリ対応 + ユーザーコンテキスト追加）
-        prompt_parts = []
-
-        prompt_parts.append("以下の文書情報を参考に、ユーザーの質問に日本語で回答してください。")
-
-        # ユーザーコンテキストがあれば追加
-        if user_context_prompt:
-            prompt_parts.append(f"\n{user_context_prompt}\n")
-
-        prompt_parts.append(f"""
 【質問】
 {query}
 
-【参考文書】
-{context}
+【Topic別証拠束】
+{step2_output}
 
-【回答の条件】
-- **最重要：質問「{query}」に直接関連する情報は、具体的かつ詳細に回答してください**
-  * 課題名、ファイル名、期限、提出方法、解答の場所など、実行に必要な全ての詳細情報を含めてください
-  * ただし、質問に無関係な背景情報（生活態度、安全な生活などの一般的注意事項）は省略してください
-  * 例：「宿題をリストにして」→宿題の詳細情報は全て記載、生活態度の一般的注意事項は省略
-
-- **読みやすさを最優先してください**
-  * **見出し**を使って科目やカテゴリーごとに明確に区切る（例：### 理科、### 英語）
-  * **箇条書きとインデント**を活用して階層構造を明確にする
-  * **重要な情報**（期限、提出方法など）は太字で強調する
-  * 適切に空白行を入れて視覚的に見やすくする
-  * **長くなっても構いません**。詳細かつ読みやすい回答を心がけてください
-
-- **具体的な記載例：**
-  * ✅ 良い例：「**理科：** 「植物が生きるしくみ 演習問題(自習課題)」を解く。解答は「【解答】植物がいきるしくみ（自習課題）.pdf」で確認し、丸付けと直しを丁寧に行うこと」
-  * ❌ 悪い例：「理科：演習問題を解く」
-
-- 参考文書の情報を基に、正確に回答してください
-- **ユーザーの前提情報を考慮してください**（上記に記載された子供の情報、学校や塾のスケジュールなど）
-- **重要：ファイル名も重視してください**
-  * ユーザーが特定のファイル名を質問している場合（例：「学年通信（29）」）、そのファイル名と完全一致または部分一致する文書を優先的に参照してください
-  * ファイル名が一致する文書があれば、必ずその内容を回答に含めてください
-- **【表データ】**が含まれている場合、表形式の情報を積極的に活用してください
-  * 時間割やスケジュールに関する質問には、表データから該当する科目や予定を抽出して回答してください
-  * 議事録の質問には、議題グループや担当者・期限情報を参照してください
-  * 複数のクラスやグループがある場合、質問に該当するものを絞り込んで回答してください
-- **【カレンダー確定情報】の扱い：**
-  * 参考文書の中に「【カレンダー確定情報】」と記載された情報がある場合、それは実際にカレンダーに登録された確定済みの予定です
-  * カレンダー情報は他の文書より**最優先**で回答に反映してください
-  * カレンダー情報と他の文書の内容が**矛盾する場合**（日時・場所・内容が異なるなど）は：
-    1. カレンダー情報を正として回答する
-    2. 回答の末尾に「⚠️ 注記：」として矛盾内容を明示する
-    * 例：「⚠️ 注記：文書「〇〇」では△△と記載されていますが、カレンダーの確定情報と異なります。」
-
-- 情報が不足している場合は、その旨を伝えてください
-- **参考文書の記載方法：**
-  * 回答の最後に「参考文書：」として、実際に使用した全ての文書のファイル名を列挙してください
-  * 根拠確認のため、参照した文書は全て記載してください
-  * ファイル名のみを記載し、文書番号は不要です
+【ルール】
+- Evidenceがある内容のみ記載（創作禁止）
+- 曖昧・不確かな点は「〜の可能性があります」と明示
+- 見出し・箇条書きを活用して読みやすく整形する
+- 重要情報（期限・提出方法・場所など）は太字で強調する
+- カレンダー確定情報がある場合は最優先で反映し、矛盾は「⚠️ 注記：」で明示する
+- 回答末尾に「参考文書：」として使用したファイル名を列挙する
+- 長さは内容に応じて調整する（不要な冗長は避け、必要な情報は省略しない）
 
 【回答】
 """)
 
-        # プロンプトを結合
-        prompt = "\n".join(prompt_parts)
-
-        print(f"[DEBUG] 最終プロンプト文字数: {len(prompt)}文字", flush=True, file=sys.stderr)
-        print(f"[DEBUG] 推定トークン数: {len(prompt) // 4}トークン（概算）", flush=True, file=sys.stderr)
-
-        # AIモデルで回答生成
-        call_kwargs = {"model_name": model_name}
-        if max_output_tokens_override:
-            call_kwargs["max_tokens"] = max_output_tokens_override
-        response = llm_client.call_model(
-            tier="ui_response",
-            prompt=prompt,
-            **call_kwargs
-        )
-
-        if not response.get('success'):
-            error_msg = response.get('error', 'Unknown error')
-            print(f"[ERROR] LLM呼び出し失敗: {error_msg}", flush=True, file=sys.stderr)
-            print(f"[ERROR] finish_reason: {response.get('error_details', {}).get('finish_reason_name', 'N/A')}", flush=True, file=sys.stderr)
-            print(f"[ERROR] Full response: {response}", flush=True, file=sys.stderr)
-            return None, None
-
-        return response.get('content', ''), model_name
-
-    except Exception as e:
-        print(f"[ERROR] 回答生成エラー: {e}")
-        return None, None
+    prompt = "\n".join(prompt_parts)
+    response = llm_client.call_model(
+        tier="ui_response",
+        prompt=prompt,
+        model_name=model_name,
+        log_context=log_context,
+    )
+    if response.get('success'):
+        return response.get('content', '').strip()
+    return ''
 
 
 def _format_table_to_markdown(table_data: Dict[str, Any]) -> str:
@@ -837,7 +1064,7 @@ def _build_context(documents: List[Dict[str, Any]]) -> str:
             full_text = doc.get('chunk_content', '')
 
         date_tag = "（日付一致✓）" if date_matched else ""
-        is_calendar = (source == 'GOOGLE_CALENDAR')
+        is_calendar = (source == 'Googleカレンダー')
         block_header = "【カレンダー確定情報】" if is_calendar else f"【文書{doc_idx}】"
         context_part = f"""{block_header}{date_tag}
 タイトル: {title}
@@ -910,7 +1137,7 @@ def extract_schedules():
             ui_data   = doc.get('ui_data') or {}
 
             # Google Calendar イベントはそのままスケジュールとして扱う
-            if source == 'GOOGLE_CALENDAR':
+            if source == 'Googleカレンダー':
                 schedules.append({
                     'doc_id':       doc_id,
                     'title':        title,

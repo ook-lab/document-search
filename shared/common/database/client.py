@@ -259,9 +259,11 @@ class DatabaseClient:
         embedding: List[float],
         limit: int = 50,
         sources: Optional[List[str]] = None,
-        person: Optional[str] = None,
+        persons: Optional[List[str]] = None,
+        category: Optional[List[str]] = None,
         date_filter: Optional[str] = None,
-        threshold: float = 0.4
+        threshold: float = 0.4,
+        date_range: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         ハイブリッド検索: 09_unified_documents + 10_ix_search_index を使用。
@@ -271,12 +273,14 @@ class DatabaseClient:
             embedding: クエリのembeddingベクトル
             limit: 取得する最大件数
             sources: ソースフィルタ（例: ['GOOGLE_GMAIL', 'GOOGLE_CLASSROOM']）
-            person: person フィルタ（例: 'エマ'）
+            persons: person フィルタ（複数可、例: ['エマ', '太郎']）
+            category: カテゴリフィルタ（複数可、例: ['school', 'work']）
             date_filter: 日付フィルタ ('today', 'this_week', 'this_month', 'recent')
             threshold: 足切りスコア閾値
+            date_range: クエリ改善で得た日付レンジ "YYYY-MM-DD..YYYY-MM-DD"（time_score 計算に使用）
 
         Returns:
-            検索結果のリスト（スコア降順）
+            検索結果のリスト（final_score 降順）
         """
         try:
             rpc_params = {
@@ -288,10 +292,11 @@ class DatabaseClient:
                 "fulltext_weight": 0.3,
                 "filter_sources": sources,
                 "filter_chunk_types": None,
-                "filter_person": person,
+                "filter_persons": persons,
+                "filter_category": category,
             }
 
-            print(f"[DEBUG] unified_search_v2 呼び出し: query='{query}', sources={sources}, person={person}")
+            print(f"[DEBUG] unified_search_v2 呼び出し: query='{query}', sources={sources}, persons={persons}, category={category}")
             response = self.client.rpc("unified_search_v2", rpc_params).execute()
             results = response.data if response.data else []
 
@@ -386,27 +391,54 @@ class DatabaseClient:
                 for doc_result in final_results:
                     doc_result['all_chunks'] = []
 
-            # リランク（日付・キーワード数値ブースト）
+            # キーワードブースト（similarity に加算）
             for doc in final_results:
-                if target_date:
-                    date_boost = self._check_date_match(doc, target_date)
-                    doc['similarity'] += date_boost
-                    if date_boost > 0:
-                        doc['is_date_matched'] = True
                 if keywords:
                     kw_boost = self._calculate_keyword_match_score(
                         doc.get('title', ''), keywords, query
                     )
                     doc['similarity'] += kw_boost * 0.2
 
-            final_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
-
-            cutoff = [r for r in final_results if r.get('similarity', 0) >= threshold]
+            # 足切り（date_rangeがある時だけ threshold を緩める）
+            from shared.common.config.settings import settings
+            delta = settings.DATE_RANGE_THRESHOLD_DELTA
+            effective_threshold = threshold - (float(delta) if date_range else 0.0)
+            print(f"[DEBUG] 足切り前 全{len(final_results)}件: " + " / ".join(
+                f"sim={r.get('similarity',0):.3f} {str(r.get('title',''))[:20]}"
+                for r in sorted(final_results, key=lambda x: x.get('similarity',0), reverse=True)
+            ))
+            cutoff = [r for r in final_results if r.get('similarity', 0) >= effective_threshold]
             final_results = cutoff if cutoff else final_results[:3]
 
+            # similarity 降順にソート（キーワードブースト後の順位確定）
+            final_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+
+            # rank-based 正規化 + εだけ similarity を混ぜる
+            eps = settings.REL_SIM_MIX_EPS
+            n = len(final_results)
+            for rank, doc in enumerate(final_results):  # similarity 降順
+                rel_rank = 1.0 - (rank / (n - 1)) if n > 1 else 1.0
+                if eps > 0.0:
+                    sim_norm = max(0.0, min(1.0, doc.get('similarity', 0)))
+                    rel = (1.0 - eps) * rel_rank + eps * sim_norm
+                else:
+                    rel = rel_rank
+                rel = max(0.0, min(1.0, rel))
+                ts = self._calc_time_score(doc.get('document_date'), date_range)
+                doc['time_score'] = ts
+                doc['rel'] = rel
+                doc['final_score'] = max(0.0, min(1.0, 0.75 * rel + 0.25 * ts))
+                if ts > 0:
+                    doc['is_date_matched'] = True
+
+            final_results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
+
             print(f"[DEBUG] 最終検索結果: {len(final_results)} 件（unified_search_v2）")
-            print(f"[DEBUG] 日付抽出: {target_date}, キーワード: {keywords}")
-            print(f"[DEBUG] 足切り({threshold})通過: {len(cutoff)} 件 → {len(final_results)} 件に絞り込み")
+            print(f"[DEBUG] date_range={date_range}, キーワード: {keywords}")
+            print(f"[DEBUG] 足切り base={threshold} delta={delta} effective={effective_threshold:.3f} / eps={eps}")
+            print(f"[DEBUG] 足切り通過: {len(cutoff)} 件 → {len(final_results)} 件")
+            for i, doc in enumerate(final_results[:3]):
+                print(f"[DEBUG] top{i+1}: sim={doc.get('similarity',0):.3f} rel={doc.get('rel',0):.3f} ts={doc.get('time_score',0):.2f} final={doc.get('final_score',0):.3f} title={str(doc.get('title',''))[:30]}")
 
             return final_results
 
@@ -422,9 +454,11 @@ class DatabaseClient:
         embedding: List[float],
         limit: int = 50,
         sources: Optional[List[str]] = None,
-        person: Optional[str] = None,
+        persons: Optional[List[str]] = None,
+        category: Optional[List[str]] = None,
         date_filter: Optional[str] = None,
-        threshold: float = 0.4
+        threshold: float = 0.4,
+        date_range: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         同期版の search_documents（Flask エンドポイント用）
@@ -434,9 +468,11 @@ class DatabaseClient:
             embedding: クエリのembeddingベクトル
             limit: 取得する最大件数
             sources: ソースフィルタ（例: ['GOOGLE_GMAIL']）
-            person: person フィルタ（例: 'エマ'）
+            persons: person フィルタ（複数可）
+            category: カテゴリフィルタ（複数可）
             date_filter: 日付フィルタ ('today', 'this_week', 'this_month', 'recent')
             threshold: 足切りスコア閾値
+            date_range: クエリ改善で得た日付レンジ "YYYY-MM-DD..YYYY-MM-DD"
 
         Returns:
             検索結果のリスト
@@ -448,14 +484,14 @@ class DatabaseClient:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     result = loop.run_until_complete(
-                        self.search_documents(query, embedding, limit, sources, person, date_filter, threshold)
+                        self.search_documents(query, embedding, limit, sources, persons, category, date_filter, threshold, date_range)
                     )
                     return result
             except RuntimeError:
                 pass
 
             return asyncio.run(
-                self.search_documents(query, embedding, limit, sources, person, date_filter, threshold)
+                self.search_documents(query, embedding, limit, sources, persons, category, date_filter, threshold, date_range)
             )
         except Exception as e:
             print(f"[ERROR] search_documents_sync 失敗: {e}")
@@ -614,6 +650,47 @@ class DatabaseClient:
             print(f"[ERROR] フォールバック検索エラー: {e}")
             return []
 
+    def _calc_time_score(self, document_date: Optional[str], date_range: Optional[str]) -> float:
+        """
+        document_date と date_range の距離から time_score（0〜1）を計算する。
+
+        Args:
+            document_date: 文書日付（YYYY-MM-DD）
+            date_range: クエリ改善で得た日付レンジ "YYYY-MM-DD..YYYY-MM-DD"（空文字または None なら 0）
+
+        Returns:
+            time_score:
+                レンジ内   → 1.0
+                ±7日      → 0.7
+                ±30日     → 0.3
+                それ以上   → 0.0
+                日付なし   → 0.0
+        """
+        if not document_date or not date_range or '..' not in date_range:
+            return 0.0
+        try:
+            from datetime import date as date_type, timedelta
+            start_str, end_str = date_range.split('..', 1)
+            start = date_type.fromisoformat(start_str.strip())
+            # end_str が空（"2026-03-05.." のように終端なし）→ 遠い未来として扱う
+            end = date_type.fromisoformat(end_str.strip()) if end_str.strip() else date_type(9999, 12, 31)
+            doc_dt = date_type.fromisoformat(document_date[:10])
+
+            print(f"[DEBUG] time_score input: date_range={date_range!r}, document_date={document_date!r}, start={start}, end={end}, doc_dt={doc_dt}")
+
+            if start <= doc_dt <= end:
+                return 1.0
+            # レンジ端までの距離（doc_dt < start → start側、doc_dt > end → end側）
+            dist = (start - doc_dt).days if doc_dt < start else (doc_dt - end).days
+            if dist <= 7:
+                return 0.7
+            elif dist <= 30:
+                return 0.3
+            return 0.0
+        except Exception as e:
+            print(f"[DEBUG] time_score parse error: date_range={date_range!r}, document_date={document_date!r}, err={e}")
+            return 0.0
+
     def _check_date_match(self, doc: Dict[str, Any], target_date: str) -> float:
         """
         日付スコアブースト（加算方式）
@@ -729,6 +806,15 @@ class DatabaseClient:
 
         # 現在の年を取得
         current_year = datetime.now().year
+
+        # パターン0: YYYY-MM-DD形式（例：2026-03-09）
+        match = re.search(r'(\d{4})-(\d{2})-(\d{2})', query)
+        if match:
+            try:
+                date_obj = datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                return date_obj.strftime('%Y-%m-%d')
+            except ValueError:
+                pass
 
         # パターン1: MM/DD形式（例：12/4）
         match = re.search(r'(\d{1,2})/(\d{1,2})', query)
@@ -992,25 +1078,30 @@ class DatabaseClient:
             print(f"Error getting available sources: {e}")
             return []
 
-    def get_workspace_hierarchy(self) -> Dict[str, List[str]]:
+    def get_workspace_hierarchy(self) -> Dict[str, Dict[str, List[str]]]:
         """
-        person 別の source 階層構造を取得（09_unified_documents ベース）
+        person → source → [category] の3階層構造を取得（09_unified_documents ベース）
 
         Returns:
-            {person: [source1, source2, ...]} の辞書
+            {person: {source: [category, ...]}} の辞書
         """
         try:
-            response = self.client.table('09_unified_documents').select('person, source').execute()
+            response = self.client.table('09_unified_documents').select('person, source, category').execute()
 
-            hierarchy: Dict[str, set] = {}
+            hierarchy: Dict[str, Dict[str, set]] = {}
             for doc in response.data:
                 person = doc.get('person')
                 source = doc.get('source')
+                cat    = doc.get('category')
                 if person and source:
-                    hierarchy.setdefault(person, set()).add(source)
+                    hierarchy.setdefault(person, {}).setdefault(source, set())
+                    if cat:
+                        hierarchy[person][source].add(cat)
 
-            result = {p: sorted(list(srcs)) for p, srcs in hierarchy.items()}
-            result = dict(sorted(result.items()))
+            result = {
+                p: {s: sorted(list(cats)) for s, cats in sorted(srcs.items())}
+                for p, srcs in sorted(hierarchy.items())
+            }
 
             print(f"[DEBUG] person 階層構造: {len(result)} persons")
             return result
@@ -1037,16 +1128,24 @@ class DatabaseClient:
                 try:
                     ud = (
                         self.client.table('09_unified_documents')
-                        .select('title, ui_data, meta')
+                        .select('title, ui_data, meta, from_name, from_email, snippet, body, post_at')
                         .eq('raw_id', doc['raw_id'])
                         .eq('raw_table', doc['raw_table'])
                         .limit(1)
                         .execute()
                     )
                     if ud.data:
-                        doc['file_name'] = ud.data[0].get('title')
-                        doc['stage_g_structured_data'] = ud.data[0].get('ui_data')
-                        doc['ud_meta'] = ud.data[0].get('meta')
+                        ud_row = ud.data[0]
+                        doc['file_name'] = ud_row.get('title')
+                        doc['stage_g_structured_data'] = ud_row.get('ui_data')
+                        doc['ud_meta'] = ud_row.get('meta')
+                        # Gmail 表示用フィールド
+                        if doc.get('raw_table') == '01_gmail_01_raw':
+                            doc['display_subject']      = ud_row.get('title') or ''
+                            doc['display_sender']       = ud_row.get('from_name') or ''
+                            doc['display_sender_email'] = ud_row.get('from_email') or ''
+                            doc['display_sent_at']      = ud_row.get('post_at') or ''
+                            doc['display_snippet']      = ud_row.get('body') or ud_row.get('snippet') or ''
                 except Exception:
                     pass
                 return doc

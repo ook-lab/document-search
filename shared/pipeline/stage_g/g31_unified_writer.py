@@ -98,6 +98,7 @@ class G31UnifiedWriter:
             'from_email': raw.get('from_email'),
             'from_name':  raw.get('from_name'),
             'snippet':    raw.get('snippet'),
+            'body':       raw.get('body_plain'),
             'post_at':    raw.get('sent_at'),
             # NULL（Gmail にはカレンダー・課題の概念なし）
             'start_at':   None,

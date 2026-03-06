@@ -73,6 +73,7 @@ class E21ContextExtractor:
         vision_text: Optional[str] = None,
         anchor_text: Optional[str] = None,
         log_file=None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """
         画像からテキストを忠実に抽出
@@ -112,7 +113,8 @@ class E21ContextExtractor:
         try:
             return self._extract_impl(
                 image_path, page, words, blocks, block_hint,
-                custom_prompt, vision_text, anchor_text
+                custom_prompt, vision_text, anchor_text,
+                session_id=session_id,
             )
         finally:
             if _sink_id is not None:
@@ -128,6 +130,7 @@ class E21ContextExtractor:
         custom_prompt: Optional[str] = None,
         vision_text: Optional[str] = None,
         anchor_text: Optional[str] = None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """extract() の実装本体"""
         if not GENAI_AVAILABLE or not self.model:
@@ -212,8 +215,32 @@ class E21ContextExtractor:
                     bbox = block.get('bbox', [])
                     logger.info(f"[E-21]   Block {idx}: bbox={bbox}, text='{text}'")
 
-            # トークン数を概算（文字数 / 4）
-            tokens_used = (len(prompt) + len(raw_text)) // 4
+            # トークン数を正確に取得（usage_metadata）
+            usage_meta = getattr(response, 'usage_metadata', None)
+            prompt_tokens     = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            candidates_tokens = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            thoughts_tokens   = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            total_tokens      = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            if not total_tokens:
+                total_tokens = prompt_tokens + candidates_tokens + thoughts_tokens
+            # fallback: 概算
+            if not total_tokens:
+                total_tokens = (len(prompt) + len(raw_text)) // 4
+            tokens_used = total_tokens
+
+            # コスト記録
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                log_ai_usage(
+                    app='doc-processor', stage='E-21', model=self.model_name,
+                    prompt_token_count=prompt_tokens,
+                    candidates_token_count=candidates_tokens,
+                    thoughts_token_count=thoughts_tokens,
+                    total_token_count=tokens_used,
+                    session_id=session_id,
+                )
+            except Exception as _e:
+                logger.warning(f"[E-21] cost log failed: {_e}")
 
             logger.info("[E-21] " + "=" * 80)
             logger.info(f"[E-21] 抽出完了")

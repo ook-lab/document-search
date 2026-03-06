@@ -97,13 +97,13 @@ def setup_master_logging(
     # 既存のハンドラーをクリア（重複防止）
     logger.remove()
 
-    # コンソール出力（マスターログ用フィルター付き）
+    # コンソール出力（カラーなし・文字化け防止）
     logger.add(
         sys.stderr,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{extra[task_id]}</cyan> | {message}",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {extra[task_id]} | {message}",
         level=level,
         filter=lambda r: _task_filter(r),
-        colorize=True
+        colorize=False,
     )
 
     # マスターログファイル出力

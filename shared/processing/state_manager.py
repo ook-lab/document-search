@@ -179,7 +179,7 @@ class StateManager:
                     return True
             return False
         except Exception as e:
-            logger.error(f"Failed to check lock: {e}")
+            logger.warning(f"Failed to check lock: {e}")
             return False
 
     def start_processing(self, total_count: int) -> bool:
@@ -217,12 +217,11 @@ class StateManager:
                 'current_workers': 0
             }
 
-        # DBロック設定
-        success = self._set_lock(True)
-        if success:
-            self.add_log(f"処理開始: {total_count}件")
-            self._reset_stuck_documents()
-        return success
+        # DBロック設定（失敗しても処理は継続。dequeue_pipeline RPC が並列安全を保証）
+        self._set_lock(True)
+        self.add_log(f"処理開始: {total_count}件")
+        self._reset_stuck_documents()
+        return True
 
     def stop_processing(self):
         """処理停止をリクエスト"""
@@ -417,7 +416,7 @@ class StateManager:
             logger.info(f"Lock set: {is_processing}")
             return True
         except Exception as e:
-            logger.error(f"Failed to set lock: {e}")
+            logger.warning(f"Failed to set lock: {e}")
             return False
 
     def _reset_stuck_documents(self):

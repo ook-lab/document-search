@@ -39,6 +39,7 @@ class F1DataFusionMerger:
         e40_table_ssot: Optional[List[Dict[str, Any]]] = None,
         log_dir=None,
         rawdata_record: Optional[Dict[str, Any]] = None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """
         各ステージの結果を統合
@@ -65,7 +66,7 @@ class F1DataFusionMerger:
         """
         return self._merge_impl(
             stage_a_result, stage_b_result, stage_d_result, stage_e_result,
-            e40_table_ssot, rawdata_record=rawdata_record
+            e40_table_ssot, rawdata_record=rawdata_record, session_id=session_id
         )
 
     def _merge_impl(
@@ -76,6 +77,7 @@ class F1DataFusionMerger:
         stage_e_result: Optional[Dict[str, Any]] = None,
         e40_table_ssot: Optional[List[Dict[str, Any]]] = None,
         rawdata_record: Optional[Dict[str, Any]] = None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """merge() の実装本体"""
         logger.info("[F-1] データ統合開始")
@@ -160,6 +162,7 @@ class F1DataFusionMerger:
                     events=events,
                     year_context=document_info.get('year_context'),
                     merge_result=result,
+                    session_id=session_id,
                 )
 
             return result

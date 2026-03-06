@@ -1,5 +1,0 @@
-{
-  "is_structured": false,
-  "error": "GATE_BLOCKED: LOW_CONFIDENCE confidence!=HIGH のため遮断（confidence=LOW）",
-  "processor_name": "B1_CONTROLLER"
-}

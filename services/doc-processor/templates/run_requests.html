@@ -1137,31 +1137,31 @@
             }
         }
 
-        // キューをクリア（queued → pending に戻す）
+        // キューをクリア（pending → failed に移動してリストから消す）
+        // ※ 処理失敗一覧の「失敗を再実行」ボタンで pending に戻せる
         async function clearQueue() {
-            if (!confirm('キュー内のドキュメントをすべて pending に戻しますか？\n（processing 中のものは自然完了します）')) {
+            if (!confirm('キュー内の queued ドキュメントをすべて除外しますか？\n\n処理失敗一覧に移動します。\n「失敗を再実行」ボタンで再度キューに戻せます。')) {
                 return;
             }
 
             const workspace = document.getElementById('workspace').value || null;
 
             try {
-                const url = workspace
-                    ? `/internal/queue/clear?workspace=${encodeURIComponent(workspace)}`
-                    : '/internal/queue/clear';
+                const body = {};
+                if (workspace) body.workspace = workspace;
 
-                const response = await fetch(url, {
+                const response = await fetch('/internal/queue/skip-all', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage('success', `✅ ${data.cleared_count}件を pending に戻しました`);
+                    showMessage('success', `✅ ${data.skipped_count}件をキューから除外しました（失敗一覧に移動）`);
                     refreshQueue();
+                    loadFailedDocuments();
                     loadDashboard();
                 } else {
                     showMessage('error', `❌ ${data.error}`);
@@ -1199,8 +1199,7 @@
                 if (queuedDocs.length === 0) {
                     listEl.innerHTML = `
                         <div class="empty-state">
-                            <p>📭 キュー（queued）にドキュメントがありません</p>
-                            <p>上のフォームで pending からキューに追加してください</p>
+                            <p>📭 queued のドキュメントがありません</p>
                             <p style="margin-top: 10px; font-size: 0.9em; color: #6b7280;">
                                 pending: ${status.pending || 0} / processing: ${status.processing || 0} / completed: ${status.completed || 0}
                             </p>
@@ -1224,7 +1223,7 @@
                             <div class="request-info">
                                 <div class="info-item">
                                     <div class="label">ワークスペース</div>
-                                    <div class="value">${doc.workspace || '-'}</div>
+                                    <div class="value">${doc.source || '-'}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">ドキュメント種別</div>
@@ -1240,7 +1239,7 @@
                                 </div>
                             </div>
                             <div class="action-buttons">
-                                <button class="btn-delete" onclick="removeFromQueue('${doc.id}')" title="キューから削除（pending に戻す）">
+                                <button class="btn-delete" onclick="removeFromQueue('${doc.id}')" title="キューから削除（failed に移動）">
                                     🗑 キューから削除
                                 </button>
                             </div>
@@ -1514,14 +1513,15 @@
             }
         }
 
-        // キューから削除（queued → pending に戻す）
+        // キューから除外（queued → failed にして一覧から消す）
+        // ※ 処理失敗一覧の「失敗を再実行」ボタンで pending に戻せる
         async function removeFromQueue(docId) {
-            if (!confirm('このドキュメントをキューから削除しますか？\n（pending に戻ります）')) {
+            if (!confirm('このドキュメントをキューから除外しますか？\n\n処理失敗一覧に移動します。\n「失敗を再実行」ボタンで再度キューに戻せます。')) {
                 return;
             }
 
             try {
-                const response = await fetch(`/internal/queue/remove/${docId}`, {
+                const response = await fetch(`/internal/queue/skip/${docId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1531,14 +1531,15 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showMessage('success', '🗑 キューから削除しました（pending に戻りました）');
+                    showMessage('success', '🗑 キューから除外しました（失敗一覧に移動）');
                     refreshQueue();
+                    loadFailedDocuments();
                     loadDashboard();
                 } else {
-                    showMessage('error', `❌ 削除失敗: ${data.error || 'Unknown error'}`);
+                    showMessage('error', `❌ 除外失敗: ${data.error || 'Unknown error'}`);
                 }
             } catch (error) {
-                console.error('削除エラー:', error);
+                console.error('除外エラー:', error);
                 showMessage('error', `❌ 通信エラー: ${error.message}`);
             }
         }

@@ -73,6 +73,12 @@ class Settings:
     # プロジェクトルート
     PROJECT_ROOT: Path = _project_root
 
+    # 検索リランク調整（デフォルトは影響ゼロ）
+    # date_range がある時だけ threshold を緩める量（0.0=変更なし）
+    DATE_RANGE_THRESHOLD_DELTA: float = float(os.getenv("DATE_RANGE_THRESHOLD_DELTA", "0.0"))
+    # rel に similarity を少し混ぜる割合（0.0=混ぜない）
+    REL_SIM_MIX_EPS: float = float(os.getenv("REL_SIM_MIX_EPS", "0.0"))
+
     # データディレクトリ
     DATA_DIR: Path = Path("/tmp/data")
     TEMP_DIR: Path = Path("/tmp/temp")

@@ -80,7 +80,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY
 # ========================================
 # 処理設定
 # ========================================
-TEMP_DIR = Path("K_kakeibo/temp")  # 一時ダウンロードフォルダ
+TEMP_DIR = Path("services/kakeibo/temp")  # 一時ダウンロードフォルダ
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_RETRY = 3  # Gemini API リトライ回数

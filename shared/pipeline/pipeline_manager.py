@@ -136,6 +136,38 @@ def generate_batch_summary(
     return summary_path
 
 
+def _assemble_gmail_text(slots: list, stage_e_result: dict) -> str:
+    """
+    B27 のスロットリストと E1 の OCR 結果を文章順に結合して文字列を返す。
+
+    - text スロット: そのまま挿入
+    - image スロット: E1 の non_table_content.blocks から OCR テキストを取得して挿入
+    """
+    # E1 の blocks から page（= slot_idx）順に OCR テキストを収集
+    ocr_by_slot: dict = {}
+    non_table_content = stage_e_result.get('non_table_content') or {}
+    blocks = non_table_content.get('blocks') or []
+    for block in blocks:
+        page_idx = block.get('page', 0)
+        text = (block.get('text') or '').strip()
+        if text:
+            ocr_by_slot.setdefault(page_idx, []).append(text)
+
+    parts = []
+    for slot in slots:
+        if slot['type'] == 'text':
+            text = (slot.get('text') or '').strip()
+            if text:
+                parts.append(text)
+        elif slot['type'] == 'image':
+            idx = slot.get('slot_idx', 0)
+            ocr_texts = ocr_by_slot.get(idx, [])
+            if ocr_texts:
+                parts.append('\n'.join(ocr_texts))
+
+    return '\n\n'.join(parts)
+
+
 class PipelineManager:
     """
     パイプライン管理クラス
@@ -217,7 +249,7 @@ class PipelineManager:
         try:
             query = self.db.client.table('pipeline_meta').select(
                 'id, raw_id, raw_table, person, source, processing_status'
-            ).eq('processing_status', 'pending')
+            ).eq('processing_status', 'queued')
             if source != 'all':
                 query = query.eq('source', source)
             result = query.order('created_at').limit(limit).execute()
@@ -533,6 +565,23 @@ class PipelineManager:
                 'mimeType':          None,
                 'screenshot_url':    None,
             }
+        if raw_table == '01_gmail_01_raw':
+            return {
+                'id':                    raw_doc.get('id'),
+                'file_name':             None,
+                'file_url':              None,
+                'title':                 raw_doc.get('header_subject', ''),
+                'display_subject':       raw_doc.get('header_subject', ''),
+                'display_sender':        raw_doc.get('from_name', ''),
+                'display_sender_email':  raw_doc.get('from_email', ''),
+                'display_sent_at':       raw_doc.get('sent_at'),
+                'display_post_text':     raw_doc.get('body_plain') or '',
+                'doc_type':              'gmail-DM',
+                'person':                raw_doc.get('person'),
+                'organizations':         None,
+                'workspace':             raw_doc.get('source', 'gmail'),
+                'mimeType':              None,
+            }
         # デフォルト: そのまま返す（将来の raw テーブル追加に備え）
         return dict(raw_doc)
 
@@ -613,7 +662,11 @@ class PipelineManager:
             # --------------------------------------------------
             # 添付ファイルあり / なし で分岐
             # --------------------------------------------------
-            if doc.get('file_url'):
+            if raw_table == '01_gmail_01_raw':
+                result = await self._process_pipeline_meta_gmail(
+                    doc, meta_id, raw_table, raw_doc, doc_temp_dir
+                )
+            elif doc.get('file_url'):
                 result = await self._process_pipeline_meta_with_attachment(
                     doc, meta_id, raw_table, raw_doc, doc_temp_dir
                 )
@@ -773,6 +826,7 @@ class PipelineManager:
                 stage_d_result=stage_d_result,
                 output_dir=doc_temp_dir,
                 stage_b_result=stage_b_result,
+                session_id=meta_id,
             )
             if not stage_e_result or not stage_e_result.get('success'):
                 detail = (stage_e_result or {}).get('error', '')
@@ -787,6 +841,7 @@ class PipelineManager:
                 stage_d_result=stage_d_result,
                 stage_e_result=stage_e_result,
                 rawdata_record=doc,
+                session_id=meta_id,
             )
             if not stage_f_result or not stage_f_result.get('success'):
                 detail = (stage_f_result or {}).get('error', '')
@@ -897,6 +952,222 @@ class PipelineManager:
         finally:
             pass  # temp 削除は process_pipeline_meta_job の finally で行う
 
+    async def _process_pipeline_meta_gmail(
+        self,
+        doc: Dict[str, Any],
+        meta_id: str,
+        raw_table: str,
+        raw_doc: Dict[str, Any],
+        doc_temp_dir: Path,
+    ) -> Dict[str, Any]:
+        """
+        Gmail メールのパイプライン処理（B26/B27 → E1 → F1 → G1 → G31 → J → K）
+
+        - HTML あり: B27 → 画像 OCR (E1) → テキスト結合
+        - テキストのみ: B26 → 段落整形
+        Stage A/D スキップ
+        """
+        from shared.pipeline.stage_g.g31_unified_writer import G31UnifiedWriter
+        from shared.common.processing.metadata_chunker import MetadataChunker
+        from shared.pipeline.stage_b.b26_gmail_text import B26GmailTextProcessor
+        from shared.pipeline.stage_b.b27_gmail_html import B27GmailHTMLProcessor
+
+        file_name = 'gmail'
+        body_html = raw_doc.get('body_html') or ''
+
+        self._update_pipeline_meta_progress(meta_id, 0.10, 'メール解析')
+
+        body_plain_chars = len(raw_doc.get('body_plain') or '')
+
+        if body_html:
+            logger.info("[PM-Gmail] HTML メール: B27 処理開始")
+            b27 = B27GmailHTMLProcessor()
+            b_result = b27.process(raw_doc, temp_dir=doc_temp_dir)
+
+            text_slots  = [s for s in b_result.get('slots', []) if s['type'] == 'text']
+            image_slots = [s for s in b_result.get('slots', []) if s['type'] == 'image']
+            plain_chars = len(b_result.get('plain_text') or '')
+            logger.info(f"[PM-Gmail] B27完了: テキストスロット={len(text_slots)}件 / 画像スロット={len(image_slots)}件 / plain_text={plain_chars}文字")
+            for i, ts in enumerate(text_slots):
+                ts_text = (ts.get('text') or '').strip()
+                logger.debug(f"[PM-Gmail]   テキストスロット[{i}] ({len(ts_text)}文字):\n{ts_text}")
+
+            if b_result['image_paths']:
+                logger.info(f"[PM-Gmail] E1(AI/OCR)開始: {len(b_result['image_paths'])}枚")
+                self._update_pipeline_meta_progress(meta_id, 0.25, '画像OCR')
+                stage_d_mock = {
+                    'non_table_image_paths': b_result['image_paths'],
+                    'tables': [],
+                    'page_index': 0,
+                }
+                stage_e_result = self.stage_e.process(
+                    purged_pdf_path=None,
+                    stage_d_result=stage_d_mock,
+                    output_dir=str(doc_temp_dir),
+                    min_gemini_chars=50,
+                    session_id=meta_id,
+                )
+                # E1 結果の詳細ログ（画像ごとの抽出文字数）
+                blocks = (stage_e_result.get('non_table_content') or {}).get('blocks') or []
+                for blk in blocks:
+                    blk_text  = (blk.get('text') or '').strip()
+                    blk_chars = len(blk_text)
+                    page_idx  = blk.get('page', '?')
+                    if blk_chars:
+                        logger.info(f"[PM-Gmail]   画像[{page_idx}]: AI抽出={blk_chars}文字")
+                        logger.debug(f"[PM-Gmail]   画像[{page_idx}] 内容:\n{blk_text}")
+                    else:
+                        logger.warning(f"[PM-Gmail]   画像[{page_idx}]: AI抽出=0文字（空）")
+                total_ocr_chars = sum(len((b.get('text') or '').strip()) for b in blocks)
+                logger.info(f"[PM-Gmail] E1完了: 合計OCR文字数={total_ocr_chars}文字")
+
+                assembled_text = _assemble_gmail_text(b_result['slots'], stage_e_result)
+            else:
+                logger.info("[PM-Gmail] 画像なし: plain_text を使用")
+                assembled_text = b_result['plain_text']
+        else:
+            logger.info("[PM-Gmail] テキストメール: B26 処理開始")
+            b26 = B26GmailTextProcessor()
+            assembled_text = b26.process(raw_doc)['assembled_text']
+
+        assembled_chars = len(assembled_text or '')
+        logger.info(f"[PM-Gmail] テキスト結合完了: assembled={assembled_chars}文字 / 元body_plain={body_plain_chars}文字")
+        logger.debug(f"[PM-Gmail] assembled_text 内容:\n{assembled_text}")
+
+        if not assembled_text and not doc.get('display_subject'):
+            return {'success': False, 'error': 'Gmail メール: テキストが空です'}
+
+        # F1: assembled_text を display_post_text に渡す
+        self._update_pipeline_meta_progress(meta_id, 0.40, 'データ統合')
+        logger.info("[PM-Gmail] Stage F 開始")
+        rawdata_for_f = {**doc, 'display_post_text': assembled_text}
+        stage_f_result = self.stage_f.process(rawdata_record=rawdata_for_f, session_id=meta_id)
+        if not stage_f_result or not stage_f_result.get('success'):
+            detail = (stage_f_result or {}).get('error', '')
+            return {'success': False, 'error': f'Stage F失敗: {detail}' if detail else 'Stage F失敗'}
+
+        # Stage G
+        self._update_pipeline_meta_progress(meta_id, 0.55, 'UI最適化')
+        logger.info("[PM-Gmail] Stage G 開始")
+        stage_g = G1Controller(document_id=meta_id, api_key=self._gemini_key)
+        stage_g_result = stage_g.process(f5_result=stage_f_result)
+        if not stage_g_result or not stage_g_result.get('success'):
+            detail = (stage_g_result or {}).get('error', '')
+            return {'success': False, 'error': f'Stage G失敗: {detail}' if detail else 'Stage G失敗'}
+
+        ui_data        = stage_g_result.get('ui_data', {})
+        final_metadata = stage_g_result.get('final_metadata', {})
+
+        logger.info(
+            f"[PM-Gmail] Stage G完了: "
+            f"sections={len(ui_data.get('sections') or [])}件 / "
+            f"tables={len(ui_data.get('tables') or [])}件 / "
+            f"timeline={len(ui_data.get('timeline') or [])}件 / "
+            f"actions={len(ui_data.get('actions') or [])}件 / "
+            f"notices={len(ui_data.get('notices') or [])}件"
+        )
+        for sec in (ui_data.get('sections') or []):
+            logger.debug(f"[PM-Gmail]   section: {sec.get('title', '')} / {len(sec.get('body') or '')}文字")
+        for ev in (ui_data.get('timeline') or []):
+            logger.debug(f"[PM-Gmail]   timeline: {ev.get('date', '')} {ev.get('event', '')}")
+        for act in (ui_data.get('actions') or []):
+            logger.debug(f"[PM-Gmail]   action: {act.get('label', '')} → {act.get('url', '')}")
+
+        if not final_metadata:
+            return {'success': False, 'error': 'Stage G: final_metadata が生成されませんでした'}
+
+        # G31: 09_unified_documents へ書き込み
+        g31 = G31UnifiedWriter(self.db)
+        g31_result = g31.process(
+            raw_data=raw_doc,
+            raw_table=raw_table,
+            ui_data=ui_data,
+        )
+        if not g31_result.get('success'):
+            logger.warning(f"[PM-G31] 09_unified_documents 書き込み失敗: {g31_result.get('error')}")
+        unified_doc_id = g31_result.get('doc_id')
+
+        # G 中間データを 09_unified_documents.meta に保存
+        if unified_doc_id:
+            try:
+                g_meta = {}
+                if final_metadata.get('g11_output'): g_meta['g11_output'] = final_metadata['g11_output']
+                if final_metadata.get('g14_output'): g_meta['g14_output'] = final_metadata['g14_output']
+                if final_metadata.get('g17_output'): g_meta['g17_output'] = final_metadata['g17_output']
+                if final_metadata.get('g21_output'): g_meta['g21_output'] = final_metadata['g21_output']
+                if final_metadata.get('g22_output'): g_meta['g22_output'] = final_metadata['g22_output']
+                if g_meta:
+                    existing = self.db.client.table('09_unified_documents').select('meta').eq('id', unified_doc_id).execute()
+                    current_meta = (existing.data[0].get('meta') or {}) if existing.data else {}
+                    self.db.client.table('09_unified_documents').update(
+                        {'meta': {**current_meta, **g_meta}}
+                    ).eq('id', unified_doc_id).execute()
+                    logger.info("[PM-G31] G中間データを 09_unified_documents.meta に保存完了")
+            except Exception as e:
+                logger.warning(f"[PM-G31] 09_unified_documents.meta 保存エラー（継続）: {e}")
+
+        # Stage J
+        self._update_pipeline_meta_progress(meta_id, 0.65, 'チャンク化')
+        metadata_chunker = MetadataChunker()
+        g22_output = final_metadata.get('g22_output', {})
+        all_dates  = stage_f_result.get('all_dates') or []
+        document_data = {
+            'file_name':         file_name,
+            'doc_type':          doc.get('doc_type'),
+            'display_subject':   doc.get('display_subject'),
+            'display_post_text': assembled_text,
+            'display_sender':    doc.get('display_sender'),
+            'display_sent_at':   doc.get('display_sent_at'),
+            'document_date':     all_dates[0] if all_dates else None,
+            'person':            doc.get('person'),
+            'organizations':     doc.get('organizations'),
+            'summary':           g22_output.get('summary', ''),
+            'tags':              g22_output.get('tags', []),
+            'people':            g22_output.get('people', []),
+            'text_blocks': [
+                {'title': a.get('title', ''), 'content': a.get('body', '')}
+                for a in final_metadata.get('g21_output', [])
+                if a.get('body', '').strip()
+            ],
+            'structured_tables': [
+                {
+                    'table_title': t.get('description', ''),
+                    'semantic_title': (t.get('sections') or [{}])[0].get('semantic_title', ''),
+                    'headers': t.get('headers', []),
+                    'rows': t.get('rows', []),
+                    'metadata': t.get('metadata', {}),
+                }
+                for t in final_metadata.get('g17_output', [])
+                if t.get('rows')
+            ],
+            'calendar_events': [
+                {'event_date': e.get('date', ''), 'event_time': e.get('time', ''), 'event_name': e.get('event', ''), 'location': e.get('location', '')}
+                for e in g22_output.get('calendar_events', [])
+            ],
+            'tasks': [
+                {'task_name': t.get('item', ''), 'deadline': t.get('deadline', ''), 'description': t.get('description', '')}
+                for t in g22_output.get('tasks', [])
+            ],
+            'notices': [
+                {'category': n.get('category', ''), 'content': n.get('content', '')}
+                for n in g22_output.get('notices', [])
+            ],
+        }
+        chunks = metadata_chunker.create_metadata_chunks(document_data)
+
+        # Stage K
+        self._update_pipeline_meta_progress(meta_id, 0.80, 'Embedding')
+        stage_k_result = self.stage_k.embed_and_save(
+            doc_id=unified_doc_id,
+            chunks=chunks,
+            delete_existing=True,
+        )
+        if not stage_k_result.get('success'):
+            return {'success': False, 'error': f"Stage K失敗: {stage_k_result.get('failed_count', 0)}/{len(chunks)}チャンク保存失敗"}
+
+        logger.info("[PM-Gmail] B26/B27→E1→F→G→G31→J→K すべて成功")
+        return {'success': True}
+
     async def _process_pipeline_meta_text_only(
         self,
         doc: Dict[str, Any],
@@ -926,7 +1197,7 @@ class PipelineManager:
         # Stage F（テキストのみ: A/B/D/E スキップ）
         self._update_pipeline_meta_progress(meta_id, 0.2, 'データ統合')
         logger.info("[PM-Stage F] テキストのみ: データ統合開始")
-        stage_f_result = self.stage_f.process(rawdata_record=doc)
+        stage_f_result = self.stage_f.process(rawdata_record=doc, session_id=meta_id)
         if not stage_f_result or not stage_f_result.get('success'):
             detail = (stage_f_result or {}).get('error', '')
             return {'success': False, 'error': f'Stage F失敗: {detail}' if detail else 'Stage F失敗'}
@@ -1054,9 +1325,9 @@ class PipelineManager:
             logger.warning(f"バッチ実行拒否: {policy_result.deny_code} - {policy_result.deny_reason}")
             return
 
-        # pending の raw_table 一覧を取得（ラウンドロビン用）
+        # queued の raw_table 一覧を取得（ラウンドロビン用）
         try:
-            q = self.db.client.table('pipeline_meta').select('raw_table').eq('processing_status', 'pending')
+            q = self.db.client.table('pipeline_meta').select('raw_table').eq('processing_status', 'queued')
             if source != 'all':
                 q = q.eq('source', source)
             qt = q.execute()

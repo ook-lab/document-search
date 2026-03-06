@@ -291,6 +291,22 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
+    # コスト記録
+    try:
+        from shared.common.ai_cost_logger import log_ai_usage
+        usage_meta = getattr(response, 'usage_metadata', None)
+        pt  = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+        ct  = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+        tt  = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+        tot = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+        log_ai_usage(
+            app='calendar-register', stage='parse-events', model=GEMINI_MODEL,
+            prompt_token_count=pt, candidates_token_count=ct,
+            thoughts_token_count=tt, total_token_count=tot or (pt + ct + tt),
+        )
+    except Exception:
+        pass
+
     # ```json ... ``` を除去
     if '```json' in raw:
         raw = raw[raw.find('```json') + 7:raw.rfind('```')].strip()
@@ -932,6 +948,23 @@ def api_assign():
     try:
         response = model.generate_content(prompt)
         raw = response.text.strip()
+
+        # コスト記録
+        try:
+            from shared.common.ai_cost_logger import log_ai_usage
+            usage_meta = getattr(response, 'usage_metadata', None)
+            pt  = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            ct  = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            tt  = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            tot = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            log_ai_usage(
+                app='calendar-register', stage='assign-events', model=GEMINI_MODEL,
+                prompt_token_count=pt, candidates_token_count=ct,
+                thoughts_token_count=tt, total_token_count=tot or (pt + ct + tt),
+            )
+        except Exception:
+            pass
+
         if '```json' in raw:
             raw = raw[raw.find('```json') + 7:raw.rfind('```')].strip()
         elif '```' in raw:

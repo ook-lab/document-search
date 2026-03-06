@@ -162,6 +162,8 @@ class E1Controller:
         output_dir=None,
         gemini_api_key=None,
         log_dir=None,
+        min_gemini_chars: int = 0,
+        session_id=None,
     ):
         """
         Stage E 処理実行
@@ -173,6 +175,8 @@ class E1Controller:
             output_dir: 出力ディレクトリ
             gemini_api_key: API Key（オプション）
             log_dir: ログディレクトリ（オプション）
+            min_gemini_chars: Gemini 呼び出しに必要な最小文字数（0=常に呼び出す）
+                              Gmail など画像が多い用途で Gemini コストを削減する目的で使用。
 
         Returns:
             {
@@ -185,7 +189,9 @@ class E1Controller:
             }
         """
         return self._process_impl(
-            purged_pdf_path, stage_d_result, stage_b_result, output_dir, gemini_api_key
+            purged_pdf_path, stage_d_result, stage_b_result, output_dir, gemini_api_key,
+            min_gemini_chars=min_gemini_chars,
+            session_id=session_id,
         )
 
     def _process_impl(
@@ -195,6 +201,8 @@ class E1Controller:
         stage_b_result=None,
         output_dir=None,
         gemini_api_key=None,
+        min_gemini_chars: int = 0,
+        session_id=None,
     ):
         """process() の実装本体"""
         page = stage_d_result.get('page_index', 0)
@@ -250,17 +258,43 @@ class E1Controller:
                 tesseract_text = ' '.join(
                     w.get('text', '') for w in words if w.get('text', '').strip()
                 ) if words else ''
-                logger.info(f"[E-1] 非表[{img_idx}]: Tesseract参照テキスト {len(tesseract_text)}文字 → E21へ渡す")
+                tesseract_chars = len(tesseract_text.replace(' ', ''))
 
-                # E21: Gemini で意味段落を抽出（座標は近似）
-                page_ntc = self.context_extractor.extract(
-                    e21_input_path,
-                    page=page + img_idx,
-                    words=words,
-                    blocks=[],
-                    block_hint='',
-                    vision_text=tesseract_text,
-                )
+                if min_gemini_chars > 0 and tesseract_chars < min_gemini_chars:
+                    logger.info(f"[E-1] 非表[{img_idx}]: {tesseract_chars}文字 < {min_gemini_chars} → Geminiスキップ / Tesseractテキスト使用")
+                    blocks_skip = [
+                        {
+                            'text': tesseract_text,
+                            'bbox': [0, 0, 0, 0],
+                            'page': page + img_idx,
+                            'type': 'paragraph',
+                        }
+                    ] if tesseract_text.strip() else []
+                    page_ntc = {
+                        'success': True,
+                        'extracted_content': {'text': tesseract_text},
+                        'blocks': blocks_skip,
+                        'raw_response': '',
+                        'model_used': 'SKIP_BELOW_MIN_CHARS',
+                        'tokens_used': 0,
+                        'route': 'E1_TEXT_ONLY',
+                        'vision_text_used': False,
+                        'role': 'NON_TABLE_FINAL_TEXT',
+                        'priority': 100,
+                        'is_final_non_table': True,
+                    }
+                else:
+                    logger.info(f"[E-1] 非表[{img_idx}]: Tesseract参照テキスト {tesseract_chars}文字 → E21へ渡す")
+                    # E21: Gemini で意味段落を抽出（座標は近似）
+                    page_ntc = self.context_extractor.extract(
+                        e21_input_path,
+                        page=page + img_idx,
+                        words=words,
+                        blocks=[],
+                        block_hint='',
+                        vision_text=tesseract_text,
+                        session_id=session_id,
+                    )
                 total_tokens += int(page_ntc.get('tokens_used', 0))
                 m = page_ntc.get('model_used')
                 if m and m not in models_used:
@@ -342,6 +376,7 @@ class E1Controller:
                     page_index=d10_table.get('page_index', page),
                     table_index=d10_table.get('table_index'),
                     d10_table=d10_table,
+                    session_id=session_id,
                 )
             else:
                 logger.info(f"[E-1]   char_count<{_TABLE_OCR_THRESHOLD} → 表 OCR スキップ")

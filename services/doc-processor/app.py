@@ -101,6 +101,44 @@ def safe_error_response(error: Exception, status_code: int = 500):
     logger.error(f"ERROR: {error}\n{tb}")
     return jsonify({'success': False, 'error': str(error), 'traceback': tb}), status_code
 
+# raw テーブルごとのタイトルカラム名
+_RAW_TABLE_TITLE_COLUMN = {
+    '01_gmail_01_raw':         'header_subject',
+    '02_gcal_01_raw':          'summary',
+    '05_ikuya_waseaca_01_raw': 'title',
+}
+
+def _get_document_titles(db, pm_rows):
+    """raw_table からタイトルを取得する。"""
+    if not pm_rows:
+        return {}
+
+    by_table = {}
+    for r in pm_rows:
+        raw_id = str(r.get('raw_id'))
+        raw_table = r.get('raw_table')
+        if not raw_id or not raw_table:
+            continue
+        if raw_table not in by_table:
+            by_table[raw_table] = []
+        by_table[raw_table].append(raw_id)
+
+    title_map = {}
+    for rt, ids in by_table.items():
+        col = _RAW_TABLE_TITLE_COLUMN.get(rt)
+        if not col:
+            continue
+        try:
+            result = db.client.table(rt).select(f'id, {col}').in_('id', ids).execute()
+            for r in (result.data or []):
+                if r.get(col):
+                    title_map[(str(r['id']), rt)] = r[col]
+        except Exception as e:
+            logger.error(f"{rt} タイトル取得エラー: {e}")
+
+    return title_map
+
+
 
 # ========== ルートエンドポイント ==========
 
@@ -265,19 +303,8 @@ def search_documents():
         result = query.order('created_at', desc=True).limit(limit).execute()
         pm_rows = result.data or []
 
-        # 09_unified_documents からタイトルを取得
-        title_map = {}
-        if pm_rows:
-            raw_ids = list({str(r['raw_id']) for r in pm_rows if r.get('raw_id')})
-            try:
-                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
-                    .in_('raw_id', raw_ids).execute()
-                title_map = {
-                    (str(r['raw_id']), r['raw_table']): r['title']
-                    for r in (ud_result.data or [])
-                }
-            except Exception as e:
-                logger.warning(f"title 取得エラー: {e}")
+        # 09_unified_documents と raw_tables からタイトルを取得
+        title_map = _get_document_titles(db, pm_rows)
 
         documents = []
         for r in pm_rows:
@@ -353,7 +380,7 @@ def get_dashboard():
             'workspace': source,
             'queue': {
                 'pending':    pending_count,
-                'queued':     0,
+                'queued':     _pm_count('queued'),
                 'processing': processing_count,
                 'completed':  completed_count,
                 'failed':     failed_count
@@ -388,13 +415,13 @@ def get_ops_requests():
     """
     try:
         db = DatabaseClient()
-        status_filter = request.args.get('status', 'queued')
+        status_filter = request.args.get('status', 'pending')
         limit = min(int(request.args.get('limit', 100)), 500)
 
-        query = db.client.table('ops_requests').select('*')
+        query = db.client.table('pipeline_meta').select('*')
 
         if status_filter and status_filter != 'all':
-            query = query.eq('status', status_filter)
+            query = query.eq('processing_status', status_filter)
 
         result = query.order('created_at', desc=True).limit(limit).execute()
 
@@ -536,7 +563,7 @@ def request_release_lease():
             return jsonify({
                 'success': False,
                 'error': 'ops_requests テーブルが存在しません',
-                'hint': 'マイグレーションを実行してください: database/migrations/create_ops_requests.sql'
+                'hint': 'マイグレーションを実行してください: supabase db push'
             }), 500
 
         return jsonify({
@@ -577,57 +604,47 @@ def get_queue_status_api():
 
         status_data = {
             'pending':    _pm_count('pending'),
-            'queued':     0,
+            'queued':     _pm_count('queued'),
             'processing': _pm_count('processing'),
             'completed':  _pm_count('completed'),
             'failed':     _pm_count('failed'),
         }
 
-        # pending 一覧を返す
+        # queued 一覧を返す
         pm_q = db.client.table('pipeline_meta').select(
             'id, raw_id, raw_table, person, source, attempt_count, '
-            'gate_decision, gate_block_code, origin_app, origin_confidence, created_at'
-        ).eq('processing_status', 'pending')
+            'gate_decision, gate_block_code, origin_app, origin_confidence, created_at, processing_status'
+        ).eq('processing_status', 'queued')
         if source != 'all':
             pm_q = pm_q.eq('source', source)
         pm_result = pm_q.order('created_at', desc=False).limit(100).execute()
         pm_rows = pm_result.data or []
 
-        # 09_unified_documents からタイトルを取得（処理済みの再キュー分）
-        title_map = {}
-        if pm_rows:
-            raw_ids = list({str(r['raw_id']) for r in pm_rows if r.get('raw_id')})
-            try:
-                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
-                    .in_('raw_id', raw_ids).execute()
-                title_map = {
-                    (str(r['raw_id']), r['raw_table']): r['title']
-                    for r in (ud_result.data or [])
-                }
-            except Exception as e:
-                logger.warning(f"pending タイトル取得エラー: {e}")
+        # 09_unified_documents と raw_tables からタイトルを取得（無題防止）
+        title_map = _get_document_titles(db, pm_rows)
 
-        pending_docs = []
+        queued_docs = []
         for r in pm_rows:
             title = title_map.get((str(r.get('raw_id')), r.get('raw_table')))
-            pending_docs.append({
-                'id':            r['id'],
-                'title':         title,
-                'file_name':     title,
-                'source':        r.get('source'),
-                'person':        r.get('person'),
-                'attempt_count': r.get('attempt_count', 0),
-                'gate_decision': r.get('gate_decision'),
-                'gate_block_code': r.get('gate_block_code'),
-                'origin_app':    r.get('origin_app'),
-                'created_at':    r.get('created_at'),
+            queued_docs.append({
+                'id':                r['id'],
+                'title':             title,
+                'file_name':         title,
+                'source':            r.get('source'),
+                'person':            r.get('person'),
+                'attempt_count':     r.get('attempt_count', 0),
+                'gate_decision':     r.get('gate_decision'),
+                'gate_block_code':   r.get('gate_block_code'),
+                'origin_app':        r.get('origin_app'),
+                'created_at':        r.get('created_at'),
+                'processing_status': r.get('processing_status'),
             })
 
         return jsonify({
             'success': True,
             'status': status_data,
-            'queued_docs': pending_docs,
-            'count': len(pending_docs)
+            'queued_docs': queued_docs,
+            'count': len(queued_docs)
         })
 
     except Exception as e:
@@ -637,24 +654,26 @@ def get_queue_status_api():
 
 @app.route('/internal/queue/clear', methods=['POST'])
 def clear_queue_api():
-    """キューをクリア: queued → pending（停止）"""
+    """キューをクリア: pending → failed（旧 clear_queue RPC は Rawdata_FILE_AND_MAIL 参照のため廃止）"""
     try:
         db = DatabaseClient(use_service_role=True)
-        # クエリパラメータまたはJSONボディから取得
         workspace = request.args.get('workspace') or (request.get_json(silent=True) or {}).get('workspace', 'all')
 
-        result = db.client.rpc('clear_queue', {
-            'p_workspace': workspace
-        }).execute()
+        query = db.client.table('pipeline_meta').update({
+            'processing_status': 'failed',
+            'last_error_reason':  'キューから手動除外',
+        }).eq('processing_status', 'queued')
 
-        cleared_count = 0
-        if result.data:
-            data = result.data[0] if isinstance(result.data, list) else result.data
-            cleared_count = data.get('cleared_count', 0)
+        if workspace and workspace != 'all':
+            query = query.eq('source', workspace)
+
+        result = query.execute()
+        cleared_count = len(result.data) if result.data else 0
+        logger.info(f"キュークリア: {cleared_count}件を failed に移動 (workspace={workspace})")
 
         return jsonify({
             'success': True,
-            'message': f'{cleared_count}件をキューから削除しました',
+            'message': f'{cleared_count}件をキューから除外しました',
             'cleared_count': cleared_count
         })
 
@@ -713,60 +732,8 @@ def retry_failed_documents():
 
 @app.route('/internal/queue/clear-lock', methods=['POST'])
 def clear_processing_lock():
-    """処理ロックをクリア
-
-    【用途】
-    - Worker がクラッシュしてロックが残った場合にクリア
-    - processing_lock テーブルの is_processing を false に
-
-    【注意】
-    - 実行中の Worker がある場合も強制クリアされる
-    - 重複処理のリスクがあるため、慎重に使用
-    """
-    try:
-        db = DatabaseClient(use_service_role=True)
-
-        # ロック状態を確認
-        check_result = db.client.table('processing_lock').select('*').eq('id', 1).execute()
-
-        if not check_result.data:
-            return jsonify({
-                'success': False,
-                'error': 'processing_lock テーブルにレコードがありません'
-            }), 404
-
-        current_state = check_result.data[0]
-        was_locked = current_state.get('is_processing', False)
-
-        # ロックをクリア
-        result = db.client.table('processing_lock').update({
-            'is_processing': False,
-            'current_workers': 0,
-            'locked_at': None,
-            'locked_by': None
-        }).eq('id', 1).execute()
-
-        if result.data:
-            return jsonify({
-                'success': True,
-                'message': 'ロックをクリアしました' if was_locked else 'ロックは既にクリア状態でした',
-                'was_locked': was_locked,
-                'previous_state': {
-                    'is_processing': current_state.get('is_processing'),
-                    'current_workers': current_state.get('current_workers'),
-                    'locked_by': current_state.get('locked_by'),
-                    'locked_at': current_state.get('locked_at')
-                }
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'ロックのクリアに失敗しました'
-            }), 500
-
-    except Exception as e:
-        logger.error(f"ロッククリアエラー: {e}")
-        return safe_error_response(e)
+    """処理ロッククリア（processing_lock テーブル廃止により無効）"""
+    return jsonify({'success': True, 'message': 'processing_lock は廃止済みです。操作不要です。'})
 
 
 @app.route('/internal/queue/execute', methods=['POST'])
@@ -818,6 +785,7 @@ def execute_queue():
 
         # Popen でバックグラウンド実行（ファイルは subprocess に任せる）
         import platform
+        worker_env = {**os.environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}
         log_handle = open(log_file, 'a', encoding='utf-8')
         if platform.system() == 'Windows':
             process = subprocess.Popen(
@@ -826,6 +794,7 @@ def execute_queue():
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 cwd=str(_project_root),
+                env=worker_env,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
             )
         else:
@@ -835,6 +804,7 @@ def execute_queue():
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 cwd=str(_project_root),
+                env=worker_env,
                 start_new_session=True
             )
         # 注意: log_handle は subprocess が終了するまで開いたまま（意図的）
@@ -881,6 +851,97 @@ def remove_from_queue(doc_id):
         return safe_error_response(e)
 
 
+@app.route('/internal/queue/skip-all', methods=['POST'])
+def skip_all_from_queue():
+    """pending 全件を failed に移動してキューリストから除外。失敗一覧から再実行可能。"""
+    try:
+        db = DatabaseClient(use_service_role=True)
+        data = request.get_json(silent=True) or {}
+        workspace = data.get('workspace') or data.get('source')
+
+        query = db.client.table('pipeline_meta').update({
+            'processing_status': 'failed',
+            'last_error_reason':  'キューから手動除外',
+        }).eq('processing_status', 'queued')
+
+        if workspace and workspace != 'all':
+            query = query.eq('source', workspace)
+
+        result = query.execute()
+        skipped_count = len(result.data) if result.data else 0
+        logger.info(f"キュー全件除外: {skipped_count}件 (workspace={workspace})")
+        return jsonify({'success': True, 'skipped_count': skipped_count})
+
+    except Exception as e:
+        logger.error(f"キュー全件除外エラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/queue/skip/<doc_id>', methods=['POST'])
+def skip_from_queue(doc_id):
+    """pending アイテムをキューから除外（failed にセット）。失敗一覧から再実行可能。"""
+    try:
+        db = DatabaseClient(use_service_role=True)
+
+        result = db.client.table('pipeline_meta').update({
+            'processing_status': 'failed',
+            'last_error_reason':  'キューから手動除外',
+        }).eq('id', doc_id).eq('processing_status', 'queued').execute()
+
+        if result.data:
+            logger.info(f"キューから除外（failed）: {doc_id}")
+            return jsonify({'success': True, 'doc_id': doc_id})
+        else:
+            return jsonify({'success': False, 'error': 'レコードが見つからないか既に処理中です'}), 404
+
+    except Exception as e:
+        logger.error(f"キュー除外エラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/pipeline-meta/<doc_id>', methods=['DELETE'])
+def delete_pipeline_meta(doc_id):
+    """pipeline_meta レコードを完全削除（doc_id は pipeline_meta.id）"""
+    try:
+        db = DatabaseClient(use_service_role=True)
+
+        result = db.client.table('pipeline_meta').delete().eq('id', doc_id).execute()
+
+        if result.data:
+            logger.info(f"pipeline_meta 削除: {doc_id}")
+            return jsonify({'success': True, 'doc_id': doc_id})
+        else:
+            return jsonify({'success': False, 'error': 'レコードが見つかりません'}), 404
+
+    except Exception as e:
+        logger.error(f"pipeline_meta 削除エラー: {e}")
+        return safe_error_response(e)
+
+
+@app.route('/internal/blocked-documents/<doc_id>/reset', methods=['POST'])
+def reset_blocked_document(doc_id):
+    """GATE_BLOCKED ドキュメントを pending にリセット（ゲート判定をクリア）"""
+    try:
+        db = DatabaseClient(use_service_role=True)
+
+        result = db.client.table('pipeline_meta').update({
+            'gate_decision':    None,
+            'gate_block_code':  None,
+            'gate_block_reason': None,
+            'processing_status': 'pending',
+        }).eq('id', doc_id).execute()
+
+        if result.data:
+            logger.info(f"ゲートリセット: {doc_id}")
+            return jsonify({'success': True, 'doc_id': doc_id})
+        else:
+            return jsonify({'success': False, 'error': 'レコードが見つかりません'}), 404
+
+    except Exception as e:
+        logger.error(f"ゲートリセットエラー: {e}")
+        return safe_error_response(e)
+
+
 @app.route('/internal/blocked-documents', methods=['GET'])
 def get_blocked_documents():
     """Gatekeeperによってブロックされたドキュメント一覧を取得
@@ -911,20 +972,11 @@ def get_blocked_documents():
         result = query.order('updated_at', desc=True).limit(limit).execute()
         blocked_docs = result.data or []
 
-        # 09_unified_documents からタイトルを取得
+        # 09_unified_documents と raw_tables からタイトルを取得
         if blocked_docs:
-            raw_ids = list({str(r['raw_id']) for r in blocked_docs if r.get('raw_id')})
-            try:
-                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
-                    .in_('raw_id', raw_ids).execute()
-                title_map = {
-                    (str(r['raw_id']), r['raw_table']): r['title']
-                    for r in (ud_result.data or [])
-                }
-                for doc in blocked_docs:
-                    doc['title'] = title_map.get((str(doc.get('raw_id')), doc.get('raw_table')))
-            except Exception as e:
-                logger.warning(f"blocked docs タイトル取得エラー: {e}")
+            title_map = _get_document_titles(db, blocked_docs)
+            for doc in blocked_docs:
+                doc['title'] = title_map.get((str(doc.get('raw_id')), doc.get('raw_table')))
 
         block_stats = {}
         for doc in blocked_docs:
@@ -975,24 +1027,15 @@ def get_failed_documents():
         result = query.order('updated_at', desc=True).limit(limit).execute()
         failed_docs = result.data or []
 
-        # 09_unified_documents からタイトルを取得
+        # 09_unified_documents と raw_tables からタイトルを取得
         if failed_docs:
-            raw_ids = list({str(r['raw_id']) for r in failed_docs if r.get('raw_id')})
-            try:
-                ud_result = db.client.table('09_unified_documents').select('raw_id, raw_table, title') \
-                    .in_('raw_id', raw_ids).execute()
-                title_map = {
-                    (str(r['raw_id']), r['raw_table']): r['title']
-                    for r in (ud_result.data or [])
-                }
-                for doc in failed_docs:
-                    doc['title'] = title_map.get((str(doc.get('raw_id')), doc.get('raw_table')))
-            except Exception as e:
-                logger.warning(f"failed docs タイトル取得エラー: {e}")
+            title_map = _get_document_titles(db, failed_docs)
+            for doc in failed_docs:
+                doc['title'] = title_map.get((str(doc.get('raw_id')), doc.get('raw_table')))
 
         error_stats = {}
         for doc in failed_docs:
-            error_msg = doc.get('error_message', 'Unknown error')
+            error_msg = doc.get('last_error_reason') or doc.get('error_message') or 'Unknown error'
             error_key = error_msg[:50] if error_msg else 'Unknown'
             error_stats[error_key] = error_stats.get(error_key, 0) + 1
 
@@ -1202,35 +1245,47 @@ def create_run_request():
             doc_ids = [data.get('doc_id')]
 
         if doc_ids:
-            # 特定ドキュメント: pending にリセット
+            # 特定ドキュメント: queued にセット
             result = db.client.table('pipeline_meta').update({
-                'processing_status':  'pending',
+                'processing_status':  'queued',
                 'processing_progress': 0.0,
             }).in_('id', doc_ids).execute()
             enqueued_count = len(result.data) if result.data else 0
-            logger.info(f"[run-requests] {enqueued_count}件を pending にリセット: {doc_ids}")
+            logger.info(f"[run-requests] {enqueued_count}件を queued にセット: {doc_ids}")
 
             return jsonify({
                 'success': True,
-                'message': f'{enqueued_count}件を pending にリセットしました',
+                'message': f'{enqueued_count}件をキューに追加しました',
                 'enqueued_count': enqueued_count,
                 'doc_ids': doc_ids,
-                'note': 'Worker が pending を順番に処理します'
+                'note': 'Worker が queued を順番に処理します'
             })
         else:
-            # 自動: pending 件数を返す
-            q = db.client.table('pipeline_meta').select('id', count='exact').eq('processing_status', 'pending')
+            # 自動: pending から limit 件を取得して queued に更新
+            q = db.client.table('pipeline_meta').select('id').eq('processing_status', 'pending')
             if source != 'all':
                 q = q.eq('source', source)
+            
             result = q.limit(limit).execute()
-            pending_count = result.count or 0
+            pending_docs = result.data or []
+            
+            enqueued_count = 0
+            doc_ids_to_queue = []
+            if pending_docs:
+                doc_ids_to_queue = [doc['id'] for doc in pending_docs]
+                update_res = db.client.table('pipeline_meta').update({
+                    'processing_status': 'queued',
+                    'processing_progress': 0.0,
+                }).in_('id', doc_ids_to_queue).execute()
+                enqueued_count = len(update_res.data) if update_res.data else 0
+                logger.info(f"[run-requests] {enqueued_count}件を pending から queued に自動追加 (limit={limit})")
 
             return jsonify({
                 'success': True,
-                'message': f'pending {pending_count}件（Worker が自動処理します）',
-                'enqueued_count': pending_count,
-                'doc_ids': [],
-                'note': 'Worker が pending を順番に処理します'
+                'message': f'{enqueued_count}件をキューに追加しました' if enqueued_count > 0 else 'キューに追加するpendingドキュメントがありません',
+                'enqueued_count': enqueued_count,
+                'doc_ids': doc_ids_to_queue,
+                'note': 'Worker が queued を順番に処理します'
             })
 
     except Exception as e:

@@ -80,7 +80,7 @@ class GmailIngestionPipeline:
         # コネクタの初期化
         self.gmail = GmailConnector(user_email=self.user_email)
         self.drive = GoogleDriveConnector()
-        self.db = DatabaseClient()
+        self.db = DatabaseClient(use_service_role=True)
 
         # ラベルキャッシュ
         self._label_cache = None
@@ -132,7 +132,7 @@ class GmailIngestionPipeline:
                 'remove_source_label_after_import': True
             },
             'import_settings': {
-                'workspace': 'gmail',
+                'workspace': 'Gmail',
                 'doc_type': f'{self.mail_type}-mail',
                 'person': ['宜紀'],  # 固定値
                 'organization': [],
@@ -415,23 +415,35 @@ class GmailIngestionPipeline:
 
             # ヘッダー情報を抽出
             headers = self.gmail.parse_message_headers(message)
-            subject = headers.get('Subject', '（件名なし）')
-            from_header = headers.get('From', '不明')
-            to_email = headers.get('To', '')
-            date_str = headers.get('Date', '')
+            subject     = headers.get('subject', '')
+            from_header = headers.get('from', '')
+            to_email    = headers.get('to', '')
+            date_str    = headers.get('date', '')
 
             # From ヘッダーをパース（"名前 <email@example.com>" → (名前, email) に分離）
             from email.utils import parseaddr
             sender_name, sender_email = parseaddr(from_header)
             if not sender_name:
-                sender_name = sender_email  # 名前がない場合はメールアドレスを使用
-
-            logger.info(f"メール処理開始: {subject}")
+                sender_name = sender_email
 
             # 本文と添付ファイルを抽出
             parts = self.gmail.extract_message_parts(message)
             text_plain = parts.get('text_plain', '')
             text_html = parts.get('text_html', '')
+
+            # 件名が空の場合 body_html の <title> タグから補完
+            if not subject and text_html:
+                import re
+                m = re.search(r'<title[^>]*>([^<]+)</title>', text_html, re.IGNORECASE)
+                if m:
+                    subject = m.group(1).strip()
+
+            # 差出人が空の場合のフォールバック
+            if not sender_name and not sender_email:
+                sender_name = '不明'
+                sender_email = '不明'
+
+            logger.info(f"メール処理開始: {subject or '（件名なし）'}")
             attachments = parts.get('attachments', [])
 
             # HTMLメール内のCID参照画像をBASE64形式に変換
@@ -501,6 +513,36 @@ class GmailIngestionPipeline:
                 'has_attachments': len(attachment_info_list) > 0
             }
 
+            # プレーンテキストが空の場合、HTML からタグを除去して生成
+            if not text_plain and text_html:
+                from html.parser import HTMLParser
+
+                class _TextExtractor(HTMLParser):
+                    def __init__(self):
+                        super().__init__()
+                        self._chunks = []
+                        self._skip = False
+                    def handle_starttag(self, tag, attrs):
+                        if tag in ('style', 'script'):
+                            self._skip = True
+                    def handle_endtag(self, tag):
+                        if tag in ('style', 'script'):
+                            self._skip = False
+                        if tag in ('p', 'br', 'div', 'li', 'tr'):
+                            self._chunks.append('\n')
+                    def handle_data(self, data):
+                        if not self._skip:
+                            self._chunks.append(data)
+                    def get_text(self):
+                        import re
+                        text = ''.join(self._chunks)
+                        text = re.sub(r'\n{3,}', '\n\n', text)
+                        return text.strip()
+
+                extractor = _TextExtractor()
+                extractor.feed(text_html)
+                text_plain = extractor.get_text()
+
             # 本文テキストを結合（プレーンテキスト優先）
             email_body = text_plain if text_plain else text_html
 
@@ -524,8 +566,10 @@ class GmailIngestionPipeline:
                         logger.info(f"HTMLメール処理: HTML={email_html_file_id}, PNG={email_png_file_id}")
 
             # 01_gmail_01_raw に1件保存（メール + 添付をまとめて）
+            _person = self.config['import_settings']['person']
+            _person_str = _person[0] if isinstance(_person, list) else _person
             raw_row = {
-                'person':          self.config['import_settings']['person'],
+                'person':          _person_str,
                 'source':          self.config['import_settings']['workspace'],
                 'category':        self.config['import_settings'].get('category'),
                 'message_id':      message_id,
@@ -552,7 +596,7 @@ class GmailIngestionPipeline:
                     self.db.client.table('pipeline_meta').insert({
                         'raw_id':            raw_id,
                         'raw_table':         '01_gmail_01_raw',
-                        'person':            self.config['import_settings']['person'],
+                        'person':            _person_str,
                         'source':            self.config['import_settings']['workspace'],
                         'processing_status': 'pending',
                         'owner_id':          self.owner_id,
@@ -684,17 +728,38 @@ class GmailIngestionPipeline:
             raise
 
 
+def _setup_file_logging() -> Path:
+    """ログファイルを設定して返す"""
+    log_dir = root_dir / 'logs' / 'gmail'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_path = log_dir / f"gmail_{timestamp}.log"
+    logger.add(
+        log_path,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+        level="DEBUG",
+        encoding="utf-8",
+    )
+    return log_path
+
+
 async def main():
     """メインエントリーポイント"""
     import argparse
 
     parser = argparse.ArgumentParser(description='Gmail取り込みパイプライン')
     parser.add_argument('--mail-type', type=str, default='DM', help='メールタイプ（DM, JOBなど）デフォルト: DM')
+    parser.add_argument('--query', type=str, default=None, help='Gmail検索クエリ（例: label:DM）指定時は config の query を上書き')
+    parser.add_argument('--max-results', type=int, default=None, help='取得件数上限（指定時は config の max_results を上書き）')
     parser.add_argument('--email', type=str, help='アクセス対象のメールアドレス（省略時は環境変数から取得）')
     parser.add_argument('--config', type=str, help='設定ファイルのパス')
     parser.add_argument('--email-folder-id', type=str, help='メール本文HTML保存先のDriveフォルダID（省略時は環境変数から取得）')
     parser.add_argument('--attachment-folder-id', type=str, help='添付ファイル保存先のDriveフォルダID（省略時は環境変数から取得）')
     args = parser.parse_args()
+
+    # ログファイル設定
+    log_path = _setup_file_logging()
+    logger.info(f"ログファイル: {log_path}")
 
     # パイプラインの初期化
     config_file = Path(args.config) if args.config else None
@@ -705,6 +770,14 @@ async def main():
         email_folder_id=args.email_folder_id,
         attachment_folder_id=args.attachment_folder_id
     )
+
+    # --query / --max-results で config を上書き
+    if args.query:
+        pipeline.config['gmail']['query'] = args.query
+        logger.info(f"クエリ上書き: {args.query}")
+    if args.max_results:
+        pipeline.config['gmail']['max_results'] = args.max_results
+        logger.info(f"取得件数上書き: {args.max_results}")
 
     # 実行
     await pipeline.run()

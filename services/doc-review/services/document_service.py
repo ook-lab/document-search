@@ -150,7 +150,7 @@ def get_emails_with_review_status(
     """
     レビューステータス付きでメール一覧を取得（pipeline_meta ベース）
 
-    メールは raw_table = '01_gmail_01_raw' で固定
+    pipeline_meta から取得後、01_gmail_01_raw の display_* フィールドを結合する。
 
     Args:
         db_client: DatabaseClient インスタンス
@@ -159,12 +159,13 @@ def get_emails_with_review_status(
         review_status: 'reviewed', 'pending', 'all', または None
 
     Returns:
-        review_status フィールドを付与したメールリスト
+        display_* / is_reviewed フィールドを付与したメールリスト
     """
     try:
         query = db_client.client.table('pipeline_meta').select('*')
 
         query = query.eq('raw_table', '01_gmail_01_raw')
+        query = query.eq('processing_status', 'completed')
 
         if category:
             query = query.eq('category', category)
@@ -179,9 +180,36 @@ def get_emails_with_review_status(
         response = query.execute()
         emails = response.data if response.data else []
 
-        _fetch_titles(db_client, emails)
+        if not emails:
+            return []
+
+        # 09_unified_documents から display_* フィールドを結合
+        raw_ids = [str(e['raw_id']) for e in emails if e.get('raw_id')]
+        ud_map: Dict[str, Dict] = {}
+        if raw_ids:
+            try:
+                ud_res = (
+                    db_client.client
+                    .table('09_unified_documents')
+                    .select('raw_id, title, from_name, from_email, snippet, body, post_at')
+                    .eq('raw_table', '01_gmail_01_raw')
+                    .in_('raw_id', raw_ids)
+                    .execute()
+                )
+                ud_map = {str(r['raw_id']): r for r in (ud_res.data or [])}
+            except Exception as e:
+                logger.warning(f"09_unified_documents 結合失敗（継続）: {e}")
+
         for email in emails:
-            email['review_status'] = derive_review_status(email)
+            ud = ud_map.get(str(email.get('raw_id')), {})
+            email['display_subject']      = ud.get('title') or ''
+            email['display_sender']       = ud.get('from_name') or ''
+            email['display_sender_email'] = ud.get('from_email') or ''
+            email['display_sent_at']      = ud.get('post_at') or email.get('created_at', '')
+            email['display_snippet']      = ud.get('body') or ud.get('snippet') or ''
+            email['doc_type']             = email.get('category', '')
+            email['review_status']        = derive_review_status(email)
+            email['is_reviewed']          = email['review_status'] == 'reviewed'
 
         return emails
 

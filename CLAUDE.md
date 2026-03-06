@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # ローカル全サービス起動
-.\start_all.ps1
+.\scripts\start_all.ps1
 
 # ドキュメント処理（Worker）
 python scripts/processing/process_queued_documents.py
@@ -30,7 +30,7 @@ python scripts/debug/run_debug_pipeline.py <test_id> --start D --end G --force
 python -m pytest tests/ -v
 
 # GCPデプロイ
-.\run_build.ps1
+.\scripts\deploy\run_build.ps1
 ```
 
 ## アーキテクチャ

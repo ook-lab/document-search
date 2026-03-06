@@ -73,12 +73,20 @@
                     <!-- タブ -->
                     <div class="tabs">
                         <button class="tab active" data-tab="tab-metadata">📝 メタデータ</button>
+                        <button class="tab" data-tab="tab-g22">📊 G22</button>
                         <button class="tab" data-tab="tab-json">🔍 JSON</button>
                     </div>
 
                     <!-- メタデータタブ -->
                     <div id="tab-metadata" class="tab-content active">
                         <div id="metadata-editor-container">
+                            <p>メールを選択してください</p>
+                        </div>
+                    </div>
+
+                    <!-- G22タブ -->
+                    <div id="tab-g22" class="tab-content">
+                        <div id="g22-container">
                             <p>メールを選択してください</p>
                         </div>
                     </div>
@@ -258,10 +266,32 @@ function renderEmailDetail(email) {
         <div style="margin-bottom:10px;">
             <strong>日時:</strong> ${email.display_sent_at || ''}
         </div>
-        <div>
+        <div style="margin-bottom:10px;">
             <strong>種別:</strong> ${email.doc_type || ''}
         </div>
+        ${email.display_snippet ? `
+        <div style="margin-top:12px; padding:10px; background:#f9fafb; border-radius:6px; white-space:pre-wrap; font-size:0.9em; color:#374151;">
+            ${escapeHtml(email.display_snippet)}
+        </div>` : ''}
     `;
+
+    // G22 構造化データ表示
+    const g22 = (email.stage_g_structured_data) || {};
+    const timeline = g22.timeline || [];
+    const actions  = g22.actions  || [];
+    const notices  = g22.notices  || [];
+    const g22Container = document.getElementById('g22-container');
+    if (g22Container) {
+        if (!timeline.length && !actions.length && !notices.length) {
+            g22Container.innerHTML = '<p style="color:#9ca3af;">G22データなし</p>';
+        } else {
+            g22Container.innerHTML = [
+                timeline.length ? `<div><strong>📅 予定</strong><ul>${timeline.map(e => `<li>${e.event_date || ''} ${e.event_name || ''}</li>`).join('')}</ul></div>` : '',
+                actions.length  ? `<div><strong>✅ タスク</strong><ul>${actions.map(a => `<li>${a.task_name || ''} ${a.deadline ? '（' + a.deadline + '）' : ''}</li>`).join('')}</ul></div>` : '',
+                notices.length  ? `<div><strong>📢 通知</strong><ul>${notices.map(n => `<li>${n.content || ''}</li>`).join('')}</ul></div>` : '',
+            ].join('');
+        }
+    }
 
     // メタデータ編集
     renderMetadataEditor(email.metadata || {});

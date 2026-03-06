@@ -177,16 +177,38 @@ class G22TextAIProcessor:
             logger.info(f"[G-22] {raw_text}")
             logger.info("[G-22] " + "=" * 60)
 
-            # トークン使用量をログ出力
-            tokens_input = len(prompt) // 4
-            tokens_output = len(raw_text) // 4
-            tokens_used = tokens_input + tokens_output
+            # トークン数を正確に取得（usage_metadata）
+            usage_meta = getattr(response, 'usage_metadata', None)
+            tokens_input  = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            tokens_output = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            tokens_thinking = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            tokens_used = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            if not tokens_used:
+                tokens_used = tokens_input + tokens_output + tokens_thinking
+            if not tokens_used:
+                tokens_input  = len(prompt) // 4
+                tokens_output = len(raw_text) // 4
+                tokens_used   = tokens_input + tokens_output
+
+            # コスト記録
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                log_ai_usage(
+                    app='doc-processor', stage='G-22', model=self.model_name,
+                    prompt_token_count=tokens_input,
+                    candidates_token_count=tokens_output,
+                    thoughts_token_count=tokens_thinking,
+                    total_token_count=tokens_used,
+                    session_id=self.document_id,
+                )
+            except Exception as _e:
+                logger.warning(f"[G-22] cost log failed: {_e}")
 
             logger.info("[G-22]")
             logger.info("[G-22] ========== トークン使用量 ==========")
-            logger.info(f"[G-22] 入力トークン（概算）: {tokens_input}")
-            logger.info(f"[G-22] 出力トークン（概算）: {tokens_output}")
-            logger.info(f"[G-22] 合計トークン（概算）: {tokens_used}")
+            logger.info(f"[G-22] 入力トークン: {tokens_input}")
+            logger.info(f"[G-22] 出力トークン: {tokens_output}")
+            logger.info(f"[G-22] 合計トークン: {tokens_used}")
             logger.info("[G-22] " + "=" * 60)
 
             # JSONをパース

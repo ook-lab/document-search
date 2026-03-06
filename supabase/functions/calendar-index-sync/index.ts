@@ -186,6 +186,9 @@ serve(async (req) => {
     }
 
     const calendar_name: string = syncState.calendar_name ?? calendar_id;
+    const calendar_category: string = calendar_name.includes('/')
+      ? calendar_name.split('/').pop()!
+      : calendar_name;
     const person: string = syncState.person || calendar_name;
     let syncToken: string | null = syncState.next_sync_token ?? null;
 
@@ -303,8 +306,8 @@ serve(async (req) => {
             const rawRow = {
               // 共通
               person,
-              source:             "GOOGLE_CALENDAR",
-              category:           calendar_name,
+              source:             "Googleカレンダー",
+              category:           calendar_category,
 
               // 識別
               event_id,
@@ -393,8 +396,8 @@ serve(async (req) => {
               raw_id,
               raw_table:   RAW_TABLE,
               person,
-              source:      "GOOGLE_CALENDAR",
-              category:    calendar_name,
+              source:      "Googleカレンダー",
+              category:    calendar_category,
               title:       payload.summary              ?? null,
               file_url:    payload.htmlLink              ?? null,
               from_email:  payload.organizer?.email      ?? null,
@@ -442,8 +445,8 @@ serve(async (req) => {
               const { error: chunkErr } = await supabase.from(INDEX_TABLE).insert({
                 doc_id,
                 person,
-                source:       "GOOGLE_CALENDAR",
-                category:     calendar_name,
+                source:       "Googleカレンダー",
+                category:     calendar_category,
                 chunk_index:  0,
                 chunk_text,
                 chunk_type:   "calendar_event",

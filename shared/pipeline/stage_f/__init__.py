@@ -45,6 +45,7 @@ class F1Controller:
         stage_e_result=None,
         year_context=None,
         rawdata_record=None,
+        session_id=None,
     ):
         """
         Stage F 処理実行（チェーン開始）
@@ -66,6 +67,7 @@ class F1Controller:
             stage_d_result=stage_d_result,
             stage_e_result=stage_e_result,
             rawdata_record=rawdata_record,
+            session_id=session_id,
         )
 
 

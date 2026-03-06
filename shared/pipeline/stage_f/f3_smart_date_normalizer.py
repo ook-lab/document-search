@@ -61,6 +61,7 @@ class F3SmartDateNormalizer:
         events: List[Dict[str, Any]],
         year_context: Optional[int] = None,
         merge_result: Optional[Dict[str, Any]] = None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """
         チェーンパターン用: イベントを正規化して次のステージへ
@@ -80,6 +81,7 @@ class F3SmartDateNormalizer:
             year_context=year_context,
             merge_result=merge_result,
             display_sent_at=display_sent_at,
+            session_id=session_id,
         )
 
         if not norm_result.get('success'):
@@ -113,6 +115,7 @@ class F3SmartDateNormalizer:
         reference_date: Optional[str] = None,
         merge_result: Optional[Dict[str, Any]] = None,
         display_sent_at=None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """
         イベントリストの日付を正規化
@@ -195,20 +198,43 @@ class F3SmartDateNormalizer:
             # レスポンスをパース
             normalized_events, all_dates, date_string_map = self._parse_response(raw_text, events)
 
-            # トークン数を概算
-            tokens_used = (len(prompt) + len(raw_text)) // 4
+            # トークン数を正確に取得（usage_metadata）
+            usage_meta = getattr(response, 'usage_metadata', None)
+            prompt_tokens_exact     = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            candidates_tokens_exact = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            thoughts_tokens_exact   = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            total_tokens_exact      = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            if not total_tokens_exact:
+                total_tokens_exact = prompt_tokens_exact + candidates_tokens_exact + thoughts_tokens_exact
+            if not total_tokens_exact:
+                total_tokens_exact = (len(prompt) + len(raw_text)) // 4
+            tokens_used = total_tokens_exact
+
+            # コスト記録
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                log_ai_usage(
+                    app='doc-processor', stage='F-3', model=self.model_name,
+                    prompt_token_count=prompt_tokens_exact,
+                    candidates_token_count=candidates_tokens_exact,
+                    thoughts_token_count=thoughts_tokens_exact,
+                    total_token_count=tokens_used,
+                    session_id=session_id,
+                )
+            except Exception as _e:
+                logger.warning(f"[F-3] cost log failed: {_e}")
 
             normalization_count = sum(
                 1 for e in normalized_events if e.get('normalized_date')
             )
 
             # トークン使用量の詳細をログ出力
-            prompt_tokens = len(prompt) // 4
-            response_tokens = len(raw_text) // 4
+            prompt_tokens = prompt_tokens_exact or len(prompt) // 4
+            response_tokens = candidates_tokens_exact or len(raw_text) // 4
             logger.info(f"[F-3] トークン使用量詳細:")
-            logger.info(f"  ├─ プロンプト: 約{prompt_tokens} tokens")
-            logger.info(f"  ├─ レスポンス: 約{response_tokens} tokens")
-            logger.info(f"  └─ 合計: 約{tokens_used} tokens")
+            logger.info(f"  ├─ プロンプト: {prompt_tokens} tokens")
+            logger.info(f"  ├─ レスポンス: {response_tokens} tokens")
+            logger.info(f"  └─ 合計: {tokens_used} tokens")
 
             # 正規化されたイベントの詳細（変換前→変換後）をログ出力
             logger.info("=" * 80)

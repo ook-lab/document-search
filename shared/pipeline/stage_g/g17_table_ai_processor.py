@@ -352,7 +352,26 @@ class G17TableAIProcessor:
         try:
             response = self.model.generate_content(prompt)
             raw = response.text
-            tokens = len(prompt + raw) // 4
+
+            # トークン数を正確に取得
+            usage_meta = getattr(response, 'usage_metadata', None)
+            pt = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            ct = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            tt = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            tot = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            tokens = tot or (pt + ct + tt) or (len(prompt + raw) // 4)
+
+            # コスト記録
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                log_ai_usage(
+                    app='doc-processor', stage='G-17', model=self.model_name,
+                    prompt_token_count=pt, candidates_token_count=ct,
+                    thoughts_token_count=tt, total_token_count=tokens,
+                    session_id=self.document_id,
+                )
+            except Exception as _e:
+                logger.warning(f"[G-17] cost log failed (sections): {_e}")
 
             logger.info(f"[G-17] セクション分析 AI応答:\n{raw}")
 
@@ -516,7 +535,26 @@ class G17TableAIProcessor:
         try:
             response = self.model.generate_content(prompt)
             raw = response.text
-            tokens = len(prompt + raw) // 4
+
+            # トークン数を正確に取得
+            usage_meta = getattr(response, 'usage_metadata', None)
+            pt = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            ct = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            tt = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            tot = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            tokens = tot or (pt + ct + tt) or (len(prompt + raw) // 4)
+
+            # コスト記録
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                log_ai_usage(
+                    app='doc-processor', stage='G-17', model=self.model_name,
+                    prompt_token_count=pt, candidates_token_count=ct,
+                    thoughts_token_count=tt, total_token_count=tokens,
+                    session_id=self.document_id,
+                )
+            except Exception as _e:
+                logger.warning(f"[G-17] cost log failed (commonality): {_e}")
 
             logger.info(f"[G-17] 共通性分析 AI応答:\n{raw}")
 

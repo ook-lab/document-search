@@ -1,5 +1,4 @@
 steps:
-  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -10,35 +9,26 @@ steps:
       - '.'
     dir: '.'
 
-  # Push the container image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:latest'
 
-  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
       - 'mail-doc-search-system'
-      - '--image'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:latest'
-      - '--region'
-      - 'asia-northeast1'
-      - '--memory'
-      - '4Gi'
-      - '--cpu'
-      - '2'
-      - '--timeout'
-      - '300'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:latest'
+      - '--region=asia-northeast1'
       - '--allow-unauthenticated'
-
-options:
-  logging: CLOUD_LOGGING_ONLY
+      - '--timeout=300'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
 
 timeout: 1200s

@@ -349,12 +349,13 @@ def setup_file_logging(run_request_id: str = None) -> Path:
 
     log_path = log_dir / log_filename
 
-    # loguru にファイル出力を追加
+    # ファイルシンクを追加（setup_master_logging の後に呼ぶこと）
     logger.add(
         log_path,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
         level="DEBUG",
-        encoding="utf-8"
+        encoding="utf-8",
+        colorize=False,
     )
 
     logger.info(f"ログファイル: {log_path}")
@@ -470,8 +471,9 @@ async def main():
 
     # ログファイル出力設定（--stats 以外の場合）
     if not args.stats:
-        log_path = setup_file_logging(args.run_request_id)
+        # setup_master_logging が logger.remove() するため、その後に file logging を追加する
         master_log_path = setup_master_logging(log_dir=_root_dir / 'logs')
+        log_path = setup_file_logging(args.run_request_id)
         logger.info(f"マスターログ: {master_log_path}")
         logger.info("Per-Task Logging有効: 各タスクのログは logs/tasks/ に出力されます")
 

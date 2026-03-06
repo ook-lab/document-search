@@ -1,5 +1,0 @@
-{
-  "is_structured": false,
-  "error": "GATE_MISSING: a_result['a5_gatekeeper'] not found",
-  "processor_name": "B1_CONTROLLER"
-}

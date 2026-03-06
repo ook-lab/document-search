@@ -368,7 +368,7 @@ async def test_browser_automation():
     if html_content:
         logger.info(f"HTML取得成功: {len(html_content)} bytes")
         # HTMLをファイルに保存
-        with open('waseda_notice_page.html', 'w', encoding='utf-8') as f:
+        with open(Path(__file__).parent / 'waseda_notice_page.html', 'w', encoding='utf-8') as f:
             f.write(html_content)
         logger.info("HTMLをwaseda_notice_page.htmlに保存しました")
     else:

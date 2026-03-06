@@ -228,8 +228,7 @@ def cmd_stop(args):
         # ops_requests テーブルがない場合はエラー（フォールバックしない）
         logger.error(f"ops_requests への登録失敗: {e}")
         print("\n[ERROR] ops_requests テーブルが存在しません")
-        print("  マイグレーションを実行してください:")
-        print("  database/migrations/create_ops_requests.sql")
+        print("  マイグレーションを実行してください: supabase db push")
         print("\n  緊急時の直接停止（非推奨）:")
         print("  python -c \"from shared.common.database.client import DatabaseClient; DatabaseClient().client.table('worker_state').update({'stop_requested': True}).eq('id', 1).execute()\"")
         return 1

@@ -151,6 +151,7 @@ class LLMClient:
         tier: str,
         prompt: str,
         file_path: Optional[Path] = None,
+        log_context: Optional[Dict] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -178,6 +179,9 @@ class LLMClient:
                 provider = AIProvider.GEMINI
             elif 'gpt' in model_name.lower() or 'text-embedding' in model_name.lower():
                 provider = AIProvider.OPENAI
+
+        if log_context:
+            kwargs['log_context'] = log_context
 
         if provider == AIProvider.GEMINI:
             if not self.gemini_api_key:
@@ -292,11 +296,31 @@ class LLMClient:
             usage = {}
             if hasattr(response, 'usage_metadata') and response.usage_metadata:
                 usage = {
-                    "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
-                    "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
-                    "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0)
+                    "prompt_tokens":    getattr(response.usage_metadata, 'prompt_token_count', 0) or 0,
+                    "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0) or 0,
+                    "thinking_tokens":  getattr(response.usage_metadata, 'thoughts_token_count', 0) or 0,
+                    "total_tokens":     getattr(response.usage_metadata, 'total_token_count', 0) or 0,
                 }
-                logger.info(f"[Gemini] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
+                logger.info(f"[Gemini] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, thinking={usage['thinking_tokens']}, total={usage['total_tokens']}")
+
+            # ログ記録
+            log_context = kwargs.get('log_context')
+            if log_context and usage:
+                try:
+                    from shared.common.ai_cost_logger import log_ai_usage
+                    log_ai_usage(
+                        app=log_context.get('app', 'unknown'),
+                        stage=log_context.get('stage', 'unknown'),
+                        model=model_name,
+                        prompt_token_count=usage['prompt_tokens'],
+                        candidates_token_count=usage['completion_tokens'],
+                        thoughts_token_count=usage['thinking_tokens'],
+                        total_token_count=usage['total_tokens'],
+                        session_id=log_context.get('session_id'),
+                        workspace_id=log_context.get('workspace_id'),
+                    )
+                except Exception as _log_err:
+                    logger.warning(f"[Gemini] cost log failed: {_log_err}")
 
             # ファイルを削除
             self._cleanup_uploaded_file(uploaded_file)
@@ -371,12 +395,38 @@ class LLMClient:
             # トークン使用量を取得
             usage = {}
             if hasattr(response, 'usage') and response.usage:
+                input_tokens  = getattr(response.usage, 'input_tokens', 0) or 0
+                output_tokens = getattr(response.usage, 'output_tokens', 0) or 0
+                # thinking tokens (extended thinking の場合)
+                thinking_tokens = 0
+                if hasattr(response.usage, 'cache_creation_input_tokens'):
+                    pass  # Claude の thinking は別途対応
                 usage = {
-                    "prompt_tokens": getattr(response.usage, 'input_tokens', 0),
-                    "completion_tokens": getattr(response.usage, 'output_tokens', 0),
-                    "total_tokens": getattr(response.usage, 'input_tokens', 0) + getattr(response.usage, 'output_tokens', 0)
+                    "prompt_tokens":    input_tokens,
+                    "completion_tokens": output_tokens,
+                    "thinking_tokens":  thinking_tokens,
+                    "total_tokens":     input_tokens + output_tokens + thinking_tokens,
                 }
                 logger.info(f"[Anthropic] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
+
+            # ログ記録
+            log_context = kwargs.get('log_context')
+            if log_context and usage:
+                try:
+                    from shared.common.ai_cost_logger import log_ai_usage
+                    log_ai_usage(
+                        app=log_context.get('app', 'unknown'),
+                        stage=log_context.get('stage', 'unknown'),
+                        model=model_name,
+                        prompt_token_count=usage['prompt_tokens'],
+                        candidates_token_count=usage['completion_tokens'],
+                        thoughts_token_count=usage['thinking_tokens'],
+                        total_token_count=usage['total_tokens'],
+                        session_id=log_context.get('session_id'),
+                        workspace_id=log_context.get('workspace_id'),
+                    )
+                except Exception as _log_err:
+                    logger.warning(f"[Anthropic] cost log failed: {_log_err}")
 
             return {
                 "success": True,
@@ -429,11 +479,31 @@ class LLMClient:
             usage = {}
             if hasattr(response, 'usage') and response.usage:
                 usage = {
-                    "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0),
-                    "completion_tokens": getattr(response.usage, 'completion_tokens', 0),
-                    "total_tokens": getattr(response.usage, 'total_tokens', 0)
+                    "prompt_tokens":    getattr(response.usage, 'prompt_tokens', 0) or 0,
+                    "completion_tokens": getattr(response.usage, 'completion_tokens', 0) or 0,
+                    "thinking_tokens":  0,
+                    "total_tokens":     getattr(response.usage, 'total_tokens', 0) or 0,
                 }
                 logger.info(f"[OpenAI] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
+
+            # ログ記録
+            log_context = kwargs.get('log_context')
+            if log_context and usage:
+                try:
+                    from shared.common.ai_cost_logger import log_ai_usage
+                    log_ai_usage(
+                        app=log_context.get('app', 'unknown'),
+                        stage=log_context.get('stage', 'unknown'),
+                        model=model_name,
+                        prompt_token_count=usage['prompt_tokens'],
+                        candidates_token_count=usage['completion_tokens'],
+                        thoughts_token_count=0,
+                        total_token_count=usage['total_tokens'],
+                        session_id=log_context.get('session_id'),
+                        workspace_id=log_context.get('workspace_id'),
+                    )
+                except Exception as _log_err:
+                    logger.warning(f"[OpenAI] cost log failed: {_log_err}")
 
             return {
                 "success": True,
@@ -446,12 +516,13 @@ class LLMClient:
         except Exception as e:
             return {"success": False, "error": str(e), "model": model_name, "provider": "openai"}
 
-    def generate_embedding(self, text: str) -> List[float]:
+    def generate_embedding(self, text: str, log_context: Optional[Dict] = None) -> List[float]:
         """
         Embedding生成
 
         Args:
             text: Embeddingを生成するテキスト
+            log_context: コスト記録コンテキスト（省略可）
 
         Returns:
             1536次元のembeddingベクトル
@@ -467,6 +538,22 @@ class LLMClient:
             input=text,
             dimensions=config.get("dimensions", 1536)  # デフォルト1536次元
         )
+
+        # ログ記録
+        if log_context and hasattr(response, 'usage') and response.usage:
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                prompt_tokens = getattr(response.usage, 'prompt_tokens', 0) or 0
+                log_ai_usage(
+                    app=log_context.get('app', 'unknown'),
+                    stage=log_context.get('stage', 'embedding'),
+                    model=config["model"],
+                    prompt_token_count=prompt_tokens,
+                    total_token_count=prompt_tokens,
+                    session_id=log_context.get('session_id'),
+                )
+            except Exception as _log_err:
+                logger.warning(f"[Embedding] cost log failed: {_log_err}")
 
         return response.data[0].embedding
 
@@ -623,12 +710,13 @@ class LLMClient:
             self.last_usage = {}
             if hasattr(response, 'usage_metadata') and response.usage_metadata:
                 self.last_usage = {
-                    "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
-                    "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
-                    "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0),
+                    "prompt_tokens":    getattr(response.usage_metadata, 'prompt_token_count', 0) or 0,
+                    "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0) or 0,
+                    "thinking_tokens":  getattr(response.usage_metadata, 'thoughts_token_count', 0) or 0,
+                    "total_tokens":     getattr(response.usage_metadata, 'total_token_count', 0) or 0,
                     "model": model
                 }
-                logger.info(f"[Gemini Vision] トークン使用量: prompt={self.last_usage['prompt_tokens']}, completion={self.last_usage['completion_tokens']}, total={self.last_usage['total_tokens']}")
+                logger.info(f"[Gemini Vision] トークン使用量: prompt={self.last_usage['prompt_tokens']}, completion={self.last_usage['completion_tokens']}, thinking={self.last_usage['thinking_tokens']}, total={self.last_usage['total_tokens']}")
 
             return text_content
 

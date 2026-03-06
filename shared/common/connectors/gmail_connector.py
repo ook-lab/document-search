@@ -214,9 +214,8 @@ class GmailConnector:
         headers = {}
         if 'payload' in message and 'headers' in message['payload']:
             for header in message['payload']['headers']:
-                name = header['name']
-                value = header['value']
-                headers[name] = value
+                # RFC 2822: ヘッダー名は大文字小文字不問のため小文字で統一
+                headers[header['name'].lower()] = header['value']
 
         return headers
 

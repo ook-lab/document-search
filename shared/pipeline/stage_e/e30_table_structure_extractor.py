@@ -61,6 +61,7 @@ class E30TableStructureExtractor:
         page_index: Optional[int] = None,
         table_index: Optional[int] = None,
         d10_table: Optional[Dict[str, Any]] = None,
+        session_id=None,
     ) -> Dict[str, Any]:
         """
         表画像からセル構造（bbox/row/col）を抽出する。
@@ -161,7 +162,31 @@ class E30TableStructureExtractor:
                               f"bbox=({cell.get('x0'):.3f},{cell.get('y0'):.3f})-({cell.get('x1'):.3f},{cell.get('y1'):.3f}), "
                               f"span={cell.get('rowspan')}x{cell.get('colspan')}, text='{cell.get('text', '')}')")
 
-            tokens_used = (len(prompt) + len(raw_text)) // 4
+            # トークン数を正確に取得（usage_metadata）
+            usage_meta = getattr(response, 'usage_metadata', None)
+            prompt_tokens     = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
+            candidates_tokens = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
+            thoughts_tokens   = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
+            total_tokens      = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
+            if not total_tokens:
+                total_tokens = prompt_tokens + candidates_tokens + thoughts_tokens
+            if not total_tokens:
+                total_tokens = (len(prompt) + len(raw_text)) // 4
+            tokens_used = total_tokens
+
+            # コスト記録
+            try:
+                from shared.common.ai_cost_logger import log_ai_usage
+                log_ai_usage(
+                    app='doc-processor', stage='E-30', model=self.model_name,
+                    prompt_token_count=prompt_tokens,
+                    candidates_token_count=candidates_tokens,
+                    thoughts_token_count=thoughts_tokens,
+                    total_token_count=tokens_used,
+                    session_id=session_id,
+                )
+            except Exception as _e:
+                logger.warning(f"[E-30] cost log failed: {_e}")
 
             logger.info("[E-30] " + "=" * 80)
             logger.info(f"[E-30] 構造抽出完了: {n_rows}行 × {n_cols}列, {len(cells)}セル")
