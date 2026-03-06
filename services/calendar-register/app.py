@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
-import google.generativeai as genai
+from google import genai
 from supabase import create_client
 
 load_dotenv(Path(__file__).parent.parent.parent / '.env')
@@ -240,8 +240,7 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
     if not GEMINI_API_KEY:
         raise RuntimeError('GEMINI_API_KEY が設定されていません')
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     today = datetime.now()
     preset_section = f"""
@@ -288,7 +287,7 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
 ]
 """
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     raw = response.text.strip()
 
     # コスト記録
@@ -902,8 +901,7 @@ def api_assign():
     if not GEMINI_API_KEY:
         return jsonify({'error': 'GEMINI_API_KEY が設定されていません'}), 500
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     def _slot_line(s):
         time_str = f'{s.get("start_time","") or "終日"}-{s.get("end_time","") or ""}'
@@ -946,7 +944,7 @@ def api_assign():
 """
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         raw = response.text.strip()
 
         # コスト記録
