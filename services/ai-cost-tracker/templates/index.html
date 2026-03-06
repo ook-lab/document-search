@@ -159,6 +159,8 @@
         <option value="200">200件</option>
       </select>
       <button onclick="loadSessions()">更新</button>
+      <button class="secondary" onclick="fetchRate()">¥ レート取得</button>
+      <span id="rateDisplay" style="color:var(--yellow);font-size:12px;"></span>
       <span id="sessionCount" style="color:var(--text-muted);font-size:12px;"></span>
     </div>
     <div class="section" style="overflow-x:auto;padding:0;">
@@ -168,12 +170,14 @@
             <th style="width:100px;">UUID</th>
             <th style="min-width:200px;">タイトル / ファイル名</th>
             <th style="width:80px;">ステージ</th>
+            <th style="min-width:140px;">モデル</th>
             <th style="width:50px;text-align:right;">回数</th>
             <th style="width:90px;text-align:right;">入力</th>
             <th style="width:90px;text-align:right;">思考</th>
             <th style="width:90px;text-align:right;">出力</th>
             <th style="width:90px;text-align:right;">合計</th>
             <th style="width:90px;text-align:right;">コスト(USD)</th>
+            <th id="thJpy" style="width:90px;text-align:right;display:none;">円換算</th>
           </tr>
         </thead>
         <tbody id="sessionsTbody"></tbody>
@@ -286,6 +290,22 @@
 </div>
 
 <script>
+let usdJpyRate = null;
+let lastSessions = null;
+
+async function fetchRate() {
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=JPY');
+    const d = await res.json();
+    usdJpyRate = d.rates.JPY;
+    document.getElementById('rateDisplay').textContent = `1USD = ¥${usdJpyRate.toFixed(2)}`;
+    document.getElementById('thJpy').style.display = '';
+    if (lastSessions) renderSessions(lastSessions);
+  } catch(e) {
+    document.getElementById('rateDisplay').textContent = '取得失敗';
+  }
+}
+
 // 初期値
 (function() {
   const now = new Date();
@@ -357,58 +377,67 @@ async function loadSessions() {
   const d = await res.json();
   if (!d.success) { showMsg('エラー: '+d.error, 'err'); return; }
 
+  lastSessions = d.sessions;
+  renderSessions(d.sessions);
+}
+
+function renderSessions(sessions) {
   const tbody = document.getElementById('sessionsTbody');
   const empty = document.getElementById('sessionsEmpty');
   tbody.innerHTML = '';
 
-  if (!d.sessions || d.sessions.length === 0) {
+  if (!sessions || sessions.length === 0) {
     empty.style.display = 'block';
     document.getElementById('sessionCount').textContent = '';
     return;
   }
   empty.style.display = 'none';
-  document.getElementById('sessionCount').textContent = `${d.sessions.length} セッション`;
+  document.getElementById('sessionCount').textContent = `${sessions.length} セッション`;
 
-  d.sessions.forEach((sess, si) => {
+  sessions.forEach((sess, si) => {
     const stages = sess.stages || [];
     const rowCount = stages.length || 1;
     const shortId = (sess.session_id || '').slice(0, 8) + '…';
     const title = sess.title || sess.file_name || '(タイトル不明)';
-    const bgClass = si % 2 === 0 ? '' : 'style="background:rgba(255,255,255,0.02)"';
+    const bg = si % 2 === 0 ? '' : 'rgba(255,255,255,0.02)';
 
     stages.forEach((st, idx) => {
       const tr = document.createElement('tr');
-      tr.style.background = si % 2 === 0 ? '' : 'rgba(255,255,255,0.02)';
+      tr.style.background = bg;
 
       let idCell = '';
       let titleCell = '';
       if (idx === 0) {
         idCell = `<td rowspan="${rowCount}" style="font-family:monospace;font-size:11px;color:var(--text-muted);vertical-align:top;padding-top:10px;border-right:1px solid var(--border);" title="${sess.session_id}">${shortId}</td>`;
         const appBadge = `<span style="font-size:10px;color:var(--text-muted);background:var(--surface2);border-radius:4px;padding:1px 5px;margin-left:6px;">${sess.app||''}</span>`;
-        const costBadge = `<span style="float:right;font-size:11px;color:var(--yellow);">$${(sess.total_cost_usd||0).toFixed(5)}</span>`;
+        const jpyTotal = usdJpyRate ? ` <span style="font-size:10px;color:var(--text-muted);">¥${((sess.total_cost_usd||0)*usdJpyRate).toFixed(3)}</span>` : '';
+        const costBadge = `<span style="float:right;font-size:11px;color:var(--yellow);">$${(sess.total_cost_usd||0).toFixed(5)}${jpyTotal}</span>`;
         titleCell = `<td rowspan="${rowCount}" style="vertical-align:top;padding-top:10px;border-right:1px solid var(--border);">${costBadge}<span title="${title}">${title}</span>${appBadge}</td>`;
       }
 
+      const jpyCell = usdJpyRate
+        ? `<td style="text-align:right;font-size:11px;color:var(--text-muted);">¥${((st.cost_usd||0)*usdJpyRate).toFixed(3)}</td>`
+        : '';
+
       tr.innerHTML = idCell + titleCell + `
         <td style="color:var(--accent);font-weight:600;">${st.stage}</td>
+        <td style="font-size:11px;color:var(--text-muted);">${st.models||''}</td>
         <td style="text-align:right;">${st.count}</td>
         <td style="text-align:right;">${(st.prompt_tokens||0).toLocaleString()}</td>
         <td style="text-align:right;color:var(--yellow);">${(st.thoughts_tokens||0).toLocaleString()}</td>
         <td style="text-align:right;">${(st.candidates_tokens||0).toLocaleString()}</td>
         <td style="text-align:right;color:var(--text-muted);">${(st.total_tokens||0).toLocaleString()}</td>
-        <td style="text-align:right;font-size:11px;">$${(st.cost_usd||0).toFixed(6)}</td>`;
+        <td style="text-align:right;font-size:11px;">$${(st.cost_usd||0).toFixed(6)}</td>` + jpyCell;
       tbody.appendChild(tr);
     });
 
     if (stages.length === 0) {
       const tr = document.createElement('tr');
-      tr.style.background = si % 2 === 0 ? '' : 'rgba(255,255,255,0.02)';
-      const shortId = (sess.session_id || '').slice(0, 8) + '…';
-      const title = sess.title || sess.file_name || '(タイトル不明)';
+      tr.style.background = bg;
       tr.innerHTML = `
         <td style="font-family:monospace;font-size:11px;color:var(--text-muted);" title="${sess.session_id}">${shortId}</td>
         <td>${title}</td>
-        <td colspan="7" style="color:var(--text-muted);">データなし</td>`;
+        <td colspan="8" style="color:var(--text-muted);">データなし</td>`;
       tbody.appendChild(tr);
     }
   });

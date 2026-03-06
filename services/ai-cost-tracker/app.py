@@ -212,6 +212,7 @@ def api_sessions():
             if sk not in sessions[sid]['stages']:
                 sessions[sid]['stages'][sk] = {
                     'stage': sk,
+                    'models': set(),
                     'count': 0,
                     'prompt_tokens': 0,
                     'candidates_tokens': 0,
@@ -220,6 +221,7 @@ def api_sessions():
                     'cost_usd': 0.0,
                 }
             s = sessions[sid]['stages'][sk]
+            s['models'].add(log.get('model', '') or '')
             s['count']             += 1
             s['prompt_tokens']     += log.get('prompt_token_count', 0) or 0
             s['candidates_tokens'] += log.get('candidates_token_count', 0) or 0
@@ -295,6 +297,7 @@ def api_sessions():
             s['total_cost_usd'] = round(s['total_cost_usd'], 6)
             for st in s['stages'].values():
                 st['cost_usd'] = round(st['cost_usd'], 6)
+                st['models'] = ', '.join(sorted(m for m in st['models'] if m))
             s['stages'] = sorted(s['stages'].values(), key=lambda x: x['stage'])
             result.append(s)
 

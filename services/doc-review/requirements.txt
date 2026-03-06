@@ -13,5 +13,8 @@ loguru>=0.7.0
 # Environment
 python-dotenv>=1.0.0
 
-# Note: Other dependencies (google-api-python-client, etc.)
-# are inherited from the main project's requirements.txt
+# Google
+google-genai>=1.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+google-cloud-secret-manager>=2.0.0

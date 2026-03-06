@@ -27,6 +27,10 @@
                class="nav-link {% if request.path.startswith('/emails') %}active{% endif %}">
                 📬 メール受信トレイ
             </a>
+            <a href="{{ url_for('gmail_cleaner.index') }}"
+               class="nav-link {% if request.path.startswith('/gmail-cleaner') %}active{% endif %}">
+                🗑️ メール削除
+            </a>
         </div>
         <div class="nav-user">
             <span id="user-email"></span>

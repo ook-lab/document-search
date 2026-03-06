@@ -29,6 +29,7 @@ from loguru import logger
 from blueprints.api import api_bp
 from blueprints.documents import documents_bp
 from blueprints.emails import emails_bp
+from blueprints.gmail_cleaner import gmail_cleaner_bp
 
 
 def create_app():
@@ -61,6 +62,7 @@ def create_app():
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(documents_bp, url_prefix='/documents')
     app.register_blueprint(emails_bp, url_prefix='/emails')
+    app.register_blueprint(gmail_cleaner_bp)
 
     # ルートリダイレクト
     @app.route('/')
