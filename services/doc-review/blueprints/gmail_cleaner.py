@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session
-from google import genai
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
@@ -152,6 +151,8 @@ def index():
 @gmail_cleaner_bp.route('/gmail-cleaner/auth')
 @login_required
 def auth_start():
+    import os as _os
+    _os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
     cred_json = _read_credentials_json()
     if not cred_json:
         return jsonify({'error': 'credentials.json が見つかりません'}), 500
@@ -165,6 +166,8 @@ def auth_start():
 
 @gmail_cleaner_bp.route('/gmail-cleaner/auth/callback')
 def auth_callback():
+    import os as _os
+    _os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
     state = session.get('gmail_cleaner_state')
     cred_json = _read_credentials_json()
     flow = google_auth_oauthlib.flow.Flow.from_client_config(
@@ -252,6 +255,7 @@ def api_analyze():
         if not mails:
             return jsonify({'success': True, 'results': []})
 
+        from google import genai
         today  = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         client = genai.Client(api_key=GEMINI_API_KEY)
 

@@ -356,15 +356,16 @@ function closeConfirm() {
 }
 
 async function executeDelete() {
+  const ids = [...pendingIds];
   closeConfirm();
   document.getElementById('btnDelete').disabled = true;
-  showMsg(`${pendingIds.length} 件を削除中…`, '');
+  showMsg(`${ids.length} 件を削除中…`, '');
 
   try {
     const res = await fetch('/api/gmail-cleaner/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: pendingIds }),
+      body: JSON.stringify({ ids }),
     });
     const d = await res.json();
     if (!d.success) { showMsg('エラー: ' + d.error, 'err'); return; }
@@ -372,7 +373,7 @@ async function executeDelete() {
     // テーブルから削除行を除去
     const deletedSet = new Set(pendingIds);
     allMails = allMails.filter(m => !deletedSet.has(m.id));
-    pendingIds.forEach(id => delete analyzeMap[id]);
+    ids.forEach(id => delete analyzeMap[id]);
     renderTable();
 
     let msg = `${d.deleted} 件削除しました`;
