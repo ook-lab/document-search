@@ -31,7 +31,6 @@ from dotenv import load_dotenv
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
-from google import genai
 from supabase import create_client
 
 load_dotenv(Path(__file__).parent.parent.parent / '.env')
@@ -54,6 +53,29 @@ def _get_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def _log_ai_usage(stage: str, model: str, response):
+    try:
+        db = _get_supabase()
+        if not db:
+            return
+        um = getattr(response, 'usage_metadata', None)
+        pt  = getattr(um, 'prompt_token_count',     0) or 0
+        ct  = getattr(um, 'candidates_token_count', 0) or 0
+        tt  = getattr(um, 'thoughts_token_count',   0) or 0
+        tot = getattr(um, 'total_token_count',      0) or 0
+        db.table('ai_usage_logs').insert({
+            'app':                    'calendar-register',
+            'stage':                  stage,
+            'model':                  model,
+            'prompt_token_count':     pt,
+            'candidates_token_count': ct,
+            'thoughts_token_count':   tt,
+            'total_token_count':      tot or (pt + ct + tt),
+        }).execute()
+    except Exception:
+        pass
 
 # Secret Manager の設定（Cloud Run 時に使用）
 GCP_PROJECT_ID = os.environ.get('GCP_PROJECT_ID')
@@ -240,6 +262,7 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
     if not GEMINI_API_KEY:
         raise RuntimeError('GEMINI_API_KEY が設定されていません')
 
+    from google import genai
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     today = datetime.now()
@@ -290,21 +313,7 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
     response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
     raw = response.text.strip()
 
-    # コスト記録
-    try:
-        from shared.common.ai_cost_logger import log_ai_usage
-        usage_meta = getattr(response, 'usage_metadata', None)
-        pt  = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
-        ct  = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
-        tt  = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
-        tot = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
-        log_ai_usage(
-            app='calendar-register', stage='parse-events', model=GEMINI_MODEL,
-            prompt_token_count=pt, candidates_token_count=ct,
-            thoughts_token_count=tt, total_token_count=tot or (pt + ct + tt),
-        )
-    except Exception:
-        pass
+    _log_ai_usage('parse-events', GEMINI_MODEL, response)
 
     # ```json ... ``` を除去
     if '```json' in raw:
@@ -901,6 +910,7 @@ def api_assign():
     if not GEMINI_API_KEY:
         return jsonify({'error': 'GEMINI_API_KEY が設定されていません'}), 500
 
+    from google import genai
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     def _slot_line(s):
@@ -947,21 +957,7 @@ def api_assign():
         response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         raw = response.text.strip()
 
-        # コスト記録
-        try:
-            from shared.common.ai_cost_logger import log_ai_usage
-            usage_meta = getattr(response, 'usage_metadata', None)
-            pt  = getattr(usage_meta, 'prompt_token_count', 0) or 0 if usage_meta else 0
-            ct  = getattr(usage_meta, 'candidates_token_count', 0) or 0 if usage_meta else 0
-            tt  = getattr(usage_meta, 'thoughts_token_count', 0) or 0 if usage_meta else 0
-            tot = getattr(usage_meta, 'total_token_count', 0) or 0 if usage_meta else 0
-            log_ai_usage(
-                app='calendar-register', stage='assign-events', model=GEMINI_MODEL,
-                prompt_token_count=pt, candidates_token_count=ct,
-                thoughts_token_count=tt, total_token_count=tot or (pt + ct + tt),
-            )
-        except Exception:
-            pass
+        _log_ai_usage('assign-events', GEMINI_MODEL, response)
 
         if '```json' in raw:
             raw = raw[raw.find('```json') + 7:raw.rfind('```')].strip()

@@ -834,10 +834,8 @@ let calendarTags = [];   // 現在のカレンダーのタグ一覧
     sel.addEventListener('change', () => {
       const cal = calendars.find(c => c.id === sel.value);
       if (cal) dot.style.background = cal.color;
-      if (presetOpen) {
-        loadPreset(sel.value, cal?.name || sel.value);
-        loadIndexSetting(sel.value);
-      }
+      loadPreset(sel.value, cal?.name || sel.value);
+      loadIndexSetting(sel.value);
     });
 
     // 初期プリセット読み込み（パネルが開いたときのために）
@@ -1105,6 +1103,9 @@ function renderPreview(events) {
         <div class="ev-edit-row">
           <input class="ev-input ev-input-location" type="text" value="${_esc(ev.location || '')}" placeholder="📍 場所（任意）">
         </div>
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-description" type="text" value="${_esc(ev.description || '')}" placeholder="📝 内容（任意）" style="flex:1;">
+        </div>
         <div class="ev-att-row">
           <button class="btn-reg-att active-accepted" data-att="accepted" onclick="selectEvAtt(this)">○ 出席</button>
           <button class="btn-reg-att" data-att="declined" onclick="selectEvAtt(this)">✕ 欠席</button>
@@ -1294,7 +1295,7 @@ async function registerEvents() {
     const startTime  = allDay ? null : (item.querySelector('.ev-start')?.value || null);
     const endTime    = allDay ? null : (item.querySelector('.ev-end')?.value || null);
     const attendance = item.querySelector('.btn-reg-att[class*="active"]')?.dataset.att || 'accepted';
-    let description  = parsedEvents[i]?.description || null;
+    let description  = item.querySelector('.ev-input-description')?.value || null;
     if (checkedTags.length) {
       const tagStr = checkedTags.map(t => `#${t}`).join(' ');
       description = description ? `${description}\n${tagStr}` : tagStr;

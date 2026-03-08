@@ -149,8 +149,6 @@
       <label>App</label>
       <select id="breakdownApp">
         <option value="">すべて</option>
-        <option value="doc-processor">doc-processor</option>
-        <option value="doc-search">doc-search</option>
       </select>
       <label>表示件数</label>
       <select id="breakdownLimit">
@@ -200,8 +198,6 @@
       <label>App</label>
       <select id="filterApp">
         <option value="">すべて</option>
-        <option value="doc-processor">doc-processor</option>
-        <option value="doc-search">doc-search</option>
       </select>
       <label>Stage</label>
       <input type="text" id="filterStage" placeholder="例: E-21" style="width:120px;">
@@ -563,7 +559,21 @@ async function runSimulate() {
     </table>`;
 }
 
+// App選択肢を動的ロード
+async function loadApps() {
+  try {
+    const res = await fetch('/api/apps');
+    const data = await res.json();
+    const opts = data.apps.map(a => `<option value="${a}">${a}</option>`).join('');
+    ['breakdownApp', 'filterApp'].forEach(id => {
+      const sel = document.getElementById(id);
+      if (sel) sel.innerHTML = '<option value="">すべて</option>' + opts;
+    });
+  } catch (e) {}
+}
+
 // 初回ロード
+loadApps();
 loadSummary();
 loadSessions();
 </script>

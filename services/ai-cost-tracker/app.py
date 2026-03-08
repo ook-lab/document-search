@@ -43,6 +43,17 @@ def index():
 # API: サマリー集計
 # ===========================================================================
 
+@app.route('/api/apps')
+def api_apps():
+    try:
+        db = get_db()
+        resp = db.table('ai_usage_logs').select('app').execute()
+        apps = sorted(set(r['app'] for r in (resp.data or []) if r.get('app')))
+        return jsonify({'apps': apps})
+    except Exception as e:
+        return jsonify({'apps': [], 'error': str(e)})
+
+
 @app.route('/api/summary')
 def api_summary():
     """期間別集計（app/stage/model/日別）"""
