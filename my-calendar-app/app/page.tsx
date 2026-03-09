@@ -1,12 +1,6 @@
 "use client";
 
-import { signIn, signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-// ── 許可カレンダー ───────────────────────────────────────────
-const ALLOWED_CALENDARS_BY_USER: Record<string, "*" | string[]> = {
-  "ookubo.y@workspace-o.com": "*",
-};
 
 // ── 型定義 ──────────────────────────────────────────────────
 type CalendarEntry = {
@@ -16,7 +10,6 @@ type CalendarEntry = {
   primary?: boolean;
 };
 
-/** ベース + _pen + _arc の3つをまとめたセット */
 type CalendarTriad = {
   baseId: string;
   baseSummary: string;
@@ -249,14 +242,13 @@ function GroupModal({
 
 // ── メインコンポーネント ─────────────────────────────────────
 export default function Home() {
-  const { data: session } = useSession();
-  const [calendars, setCalendars]           = useState<CalendarEntry[]>([]);
+  const [calendars, setCalendars]             = useState<CalendarEntry[]>([]);
   const [selectedBaseIds, setSelectedBaseIds] = useState<Set<string>>(new Set());
-  const [activeStatuses, setActiveStatuses] = useState<Set<StatusKey>>(new Set(["base", "pen", "arc"]));
-  const [groups, setGroups]                 = useState<CalendarGroup[]>([]);
+  const [activeStatuses, setActiveStatuses]   = useState<Set<StatusKey>>(new Set(["base", "pen", "arc"]));
+  const [groups, setGroups]                   = useState<CalendarGroup[]>([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [editingGroup, setEditingGroup]     = useState<CalendarGroup | null>(null);
+  const [showGroupModal, setShowGroupModal]   = useState(false);
+  const [editingGroup, setEditingGroup]       = useState<CalendarGroup | null>(null);
 
   const [events, setEvents]     = useState<CalendarEvent[]>([]);
   const [loading, setLoading]   = useState(false);
@@ -271,22 +263,12 @@ export default function Home() {
   const [saveError, setSaveError]       = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const userEmail   = session?.user?.email ?? "";
-  const allowedRule = ALLOWED_CALENDARS_BY_USER[userEmail];
-  const isUnauthorized = !!session && allowedRule === undefined;
-
+  // 初回ロード
   useEffect(() => {
-    if (!session) return;
     fetchGroupsFromAPI().then(setGroups);
-  }, [session]);
+  }, []);
 
-  const allowedCalendars = useMemo(() => {
-    if (allowedRule === "*") return calendars;
-    if (Array.isArray(allowedRule)) return calendars.filter((c) => allowedRule.includes(c.id));
-    return [];
-  }, [calendars, allowedRule]);
-
-  const triads = useMemo(() => parseTriads(allowedCalendars), [allowedCalendars]);
+  const triads = useMemo(() => parseTriads(calendars), [calendars]);
 
   const allCalendarMap = useMemo(() => {
     const m = new Map<string, { summary: string; color: string; statusKey: StatusKey }>();
@@ -299,8 +281,8 @@ export default function Home() {
   }, [triads]);
 
   const primaryBaseId = useMemo(
-    () => triads.find((t) => allowedCalendars.find((c) => c.id === t.baseId && c.primary))?.baseId ?? triads[0]?.baseId ?? "",
-    [triads, allowedCalendars]
+    () => triads.find((t) => calendars.find((c) => c.id === t.baseId && c.primary))?.baseId ?? triads[0]?.baseId ?? "",
+    [triads, calendars]
   );
 
   const effectiveBaseIds = useMemo(() => {
@@ -316,18 +298,10 @@ export default function Home() {
 
   // ── カレンダー一覧取得 ────────────────────────────────
   useEffect(() => {
-    if ((session as { error?: string })?.error === "RefreshTokenError") {
-      signIn("google");
-      return;
-    }
-    if (!session?.accessToken || isUnauthorized) return;
     (async () => {
       setCalLoading(true);
       try {
-        const res = await fetch(
-          "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250",
-          { headers: { Authorization: `Bearer ${session.accessToken}` } }
-        );
+        const res = await fetch("/api/calendar?action=list");
         if (!res.ok) throw new Error();
         const data = await res.json();
         const items: CalendarEntry[] = (data.items ?? []).map((c: Record<string, unknown>) => ({
@@ -345,46 +319,43 @@ export default function Home() {
         setCalLoading(false);
       }
     })();
-  }, [session, isUnauthorized]);
+  }, []);
 
   // ── イベント取得 ─────────────────────────────────────
   const fetchEvents = useCallback(async () => {
-    if (!session?.accessToken || calendarIdsToFetch.length === 0) { setEvents([]); return; }
+    if (calendarIdsToFetch.length === 0) { setEvents([]); return; }
     setLoading(true); setError("");
     try {
       const y = currentMonth.getFullYear(), m = currentMonth.getMonth();
       const timeMin = new Date(y, m, 1).toISOString();
       const timeMax = new Date(y, m + 1, 0, 23, 59, 59).toISOString();
-      const results = await Promise.all(
-        calendarIdsToFetch.map(async (calId) => {
-          const info = allCalendarMap.get(calId);
-          const res = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=500`,
-            { headers: { Authorization: `Bearer ${session.accessToken}` } }
-          );
-          if (!res.ok) return [];
-          const data = await res.json();
-          return (data.items ?? []).map((ev: Record<string, unknown>) => ({
-            id: `${calId}__${ev.id as string}`,
-            googleEventId: ev.id as string,
-            summary: ev.summary as string | undefined,
-            description: ev.description as string | undefined,
-            start: ev.start as CalendarEvent["start"],
-            end: ev.end as CalendarEvent["end"],
-            calendarId: calId,
-            calendarSummary: info?.summary ?? calId,
-            calendarColor: info?.color ?? "#4285F4",
-            statusKey: info?.statusKey ?? "base",
-          }));
-        })
+      const res = await fetch(
+        `/api/calendar?action=events&calendarIds=${encodeURIComponent(calendarIdsToFetch.join(","))}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`
       );
-      setEvents(results.flat().sort((a, b) => getEventSortKey(a).localeCompare(getEventSortKey(b))));
+      if (!res.ok) throw new Error();
+      const results: { calendarId: string; items: Record<string, unknown>[] }[] = await res.json();
+      const flat: CalendarEvent[] = results.flatMap(({ calendarId: calId, items }) => {
+        const info = allCalendarMap.get(calId);
+        return items.map((ev) => ({
+          id: `${calId}__${ev.id as string}`,
+          googleEventId: ev.id as string,
+          summary: ev.summary as string | undefined,
+          description: ev.description as string | undefined,
+          start: ev.start as CalendarEvent["start"],
+          end: ev.end as CalendarEvent["end"],
+          calendarId: calId,
+          calendarSummary: info?.summary ?? calId,
+          calendarColor: info?.color ?? "#4285F4",
+          statusKey: info?.statusKey ?? "base",
+        }));
+      });
+      setEvents(flat.sort((a, b) => getEventSortKey(a).localeCompare(getEventSortKey(b))));
     } catch {
       setError("予定の取得に失敗しました");
     } finally {
       setLoading(false);
     }
-  }, [session, currentMonth, calendarIdsToFetch, allCalendarMap]);
+  }, [currentMonth, calendarIdsToFetch, allCalendarMap]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
 
@@ -410,21 +381,24 @@ export default function Home() {
   const updateForm = (p: Partial<EventForm>) => setForm((prev) => (prev ? { ...prev, ...p } : prev));
 
   const saveEvent = async () => {
-    if (!form || !session?.accessToken) return;
+    if (!form) return;
     if (!form.summary.trim()) { setSaveError("タイトルを入力してください"); return; }
     setSaving(true); setSaveError("");
     try {
       const isCreate = modal?.mode === "create";
       const calId = isCreate ? form.calendarId : (modal as { mode: "edit"; event: CalendarEvent }).event.calendarId;
       const evId  = isCreate ? "" : (modal as { mode: "edit"; event: CalendarEvent }).event.googleEventId;
-      const url   = isCreate
-        ? `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`
-        : `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(evId)}`;
-      const res = await fetch(url, {
-        method: isCreate ? "POST" : "PUT",
-        headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify(buildEventBody(form)),
-      });
+      const res = isCreate
+        ? await fetch("/api/calendar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ calendarId: calId, event: buildEventBody(form) }),
+          })
+        : await fetch("/api/calendar", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ calendarId: calId, eventId: evId, event: buildEventBody(form) }),
+          });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error((err as Record<string, { message?: string }>).error?.message || "保存失敗");
@@ -436,15 +410,15 @@ export default function Home() {
   };
 
   const deleteEvent = async () => {
-    if (modal?.mode !== "edit" || !session?.accessToken) return;
+    if (modal?.mode !== "edit") return;
     const ev = modal.event;
     setSaving(true); setSaveError("");
     try {
-      const res = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(ev.calendarId)}/events/${encodeURIComponent(ev.googleEventId)}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${session.accessToken}` } }
-      );
-      if (!res.ok && res.status !== 204) throw new Error("削除失敗");
+      await fetch("/api/calendar", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ calendarId: ev.calendarId, eventId: ev.googleEventId }),
+      });
       closeModal(); await fetchEvents();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "削除に失敗しました");
@@ -483,44 +457,11 @@ export default function Home() {
     setEditingGroup(null);
   };
 
-  // ── ログイン ─────────────────────────────────────────
-  if (!session) return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg text-center space-y-5">
-        <div className="text-4xl">📅</div>
-        <h1 className="text-2xl font-bold text-gray-800">My Calendar</h1>
-        <p className="text-gray-500 text-sm">Googleアカウントでログインしてください</p>
-        <button onClick={() => signIn("google")} className="w-full rounded-xl bg-blue-600 px-6 py-3 text-white font-semibold hover:bg-blue-700 transition-colors">
-          Googleでログイン
-        </button>
-      </div>
-    </main>
-  );
-
-  if (isUnauthorized) return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-8 shadow-lg text-center space-y-5">
-        <div className="text-4xl">🚫</div>
-        <h2 className="text-lg font-bold text-gray-800">アクセス権限がありません</h2>
-        <p className="text-sm text-gray-500">{userEmail}</p>
-        <button onClick={() => signOut()} className="w-full rounded-xl bg-gray-200 px-6 py-3 text-gray-700 font-semibold hover:bg-gray-300 transition-colors">
-          ログアウト
-        </button>
-      </div>
-    </main>
-  );
-
   // ── メイン ───────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <h1 className="text-lg font-bold text-gray-800">📅 My Calendar</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500 hidden sm:block truncate max-w-[200px]">{session.user?.email}</span>
-          <button onClick={() => signOut()} className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 transition-colors">
-            ログアウト
-          </button>
-        </div>
       </header>
 
       {/* ステータスボタン + カレンダー選択 */}
@@ -556,7 +497,6 @@ export default function Home() {
                   style={checked ? { backgroundColor: t.baseColor } : {}}>
                   <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
                   {t.baseSummary}
-                  {/* _pen/_arc がある場合のインジケーター */}
                   {(t.penId || t.arcId) && <span className="text-[9px] opacity-60">▸</span>}
                 </button>
               );

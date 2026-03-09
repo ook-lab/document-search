@@ -1,8 +1,6 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "../auth/[...nextauth]/route";
-
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const OWNER_EMAIL  = process.env.CALENDAR_OWNER_EMAIL!;
 
 function sbHeaders() {
   return {
@@ -14,11 +12,8 @@ function sbHeaders() {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/calendar_groups?owner_email=eq.${encodeURIComponent(session.user.email)}&order=sort_order`,
+    `${SUPABASE_URL}/rest/v1/calendar_groups?owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&order=sort_order`,
     { headers: sbHeaders() }
   );
   const data = await res.json();
@@ -26,15 +21,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
   const body = await req.json();
   const res = await fetch(`${SUPABASE_URL}/rest/v1/calendar_groups`, {
     method: "POST",
     headers: sbHeaders(),
     body: JSON.stringify({
-      owner_email: session.user.email,
+      owner_email: OWNER_EMAIL,
       name:        body.name,
       color:       body.color,
       base_ids:    body.baseIds,
