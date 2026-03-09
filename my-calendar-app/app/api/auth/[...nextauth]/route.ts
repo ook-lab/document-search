@@ -1,15 +1,14 @@
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-const handler = NextAuth({
+export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/calendar",
+          scope: "openid email profile https://www.googleapis.com/auth/calendar",
           prompt: "consent",
           access_type: "offline",
           response_type: "code",
@@ -19,9 +18,7 @@ const handler = NextAuth({
   ],
   callbacks: {
     async jwt({ token, account }) {
-      if (account?.access_token) {
-        token.accessToken = account.access_token;
-      }
+      if (account?.access_token) token.accessToken = account.access_token;
       return token;
     },
     async session({ session, token }) {
@@ -29,6 +26,7 @@ const handler = NextAuth({
       return session;
     },
   },
-});
+};
 
+const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };

@@ -1,8 +1,7 @@
 """
-日次レポート生成エンジン
+日次レポート生成エンジン（v2）
 
-Supabase (09_unified_documents + unified_search_v2) から
-8ページの日次レポートを生成する。
+10_report_candidates を検索して 8ページの日次レポートを生成する。
 
 Pages 1-7: 今日〜6日後の1日1ページ
 Page  8  : 今後2週間以内の未完了タスク
@@ -10,35 +9,17 @@ Page  8  : 今後2週間以内の未完了タスク
 import json
 from datetime import date, timedelta, datetime, timezone
 from typing import Optional
-from zoneinfo import ZoneInfo
 
-JST = ZoneInfo("Asia/Tokyo")
-GEMINI_MODEL = "gemini-2.5-flash-lite-preview-06-17"
+# tzdata 不要・JST = UTC+9 固定
+JST = timezone(timedelta(hours=9))
+GEMINI_MODEL = "gemini-2.5-flash-lite"
 WEEKDAYS_JP = ["日", "月", "火", "水", "木", "金", "土"]
+
+TABLE = "10_report_candidates"
 
 
 def _weekday_jp(d: date) -> str:
-    # Python isoweekday: Mon=1, Sun=7 → JP: Sun=0, Mon=1, ..., Sat=6
     return WEEKDAYS_JP[d.isoweekday() % 7]
-
-
-def _jst_day_to_utc_range(target: date) -> tuple[str, str]:
-    """JST の1日分を UTC ISO文字列の範囲に変換"""
-    start = datetime(target.year, target.month, target.day, 0, 0, 0, tzinfo=JST)
-    end   = datetime(target.year, target.month, target.day, 23, 59, 59, tzinfo=JST)
-    return (
-        start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-        end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-    )
-
-
-def _parse_ui(ui_raw) -> dict:
-    if isinstance(ui_raw, str):
-        try:
-            return json.loads(ui_raw)
-        except Exception:
-            return {}
-    return ui_raw or {}
 
 
 class ReportGenerator:
@@ -65,19 +46,19 @@ class ReportGenerator:
         pages.append(self._build_incomplete_page(base_date))
 
         return {
-            "base_date": base_date.isoformat(),
+            "base_date":    base_date.isoformat(),
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "pages": pages,
+            "pages":        pages,
         }
 
     def save(self, report: dict) -> str:
-        """daily_reports テーブルに upsert して id を返す"""
+        """11_daily_reports テーブルに upsert して id を返す"""
         result = (
-            self.db.client.table("daily_reports")
+            self.db.client.table("11_daily_reports")
             .upsert(
                 {
-                    "base_date": report["base_date"],
-                    "report_json": report,
+                    "base_date":    report["base_date"],
+                    "report_json":  report,
                     "generated_at": report["generated_at"],
                 },
                 on_conflict="base_date",
@@ -91,61 +72,74 @@ class ReportGenerator:
     # ─────────────────────────────────────────────────────────
 
     def _build_day_page(self, target: date, page_no: int) -> dict:
-        wday  = _weekday_jp(target)
+        wday      = _weekday_jp(target)
         title_map = {1: "今日", 2: "明日", 3: "明後日"}
-        title = title_map.get(page_no) or f"{page_no}日後"
+        title     = title_map.get(page_no) or f"{page_no}日後"
 
-        # 1. 構造化データ（カレンダー予定 / due_date）
-        events = self._get_structured(target)
+        # 1. 構造化データ（10_report_candidates から）
+        candidates = self._get_candidates(target)
 
         # 2. ベクトル検索（補足情報：持ち物・注意事項・課題説明など）
         vector_hits = self._vector_search(target, top_k=12)
 
         # 3. AI合成（Gemini Flash-lite）
-        ai_page = self._synthesize_day(target, events, vector_hits)
+        ai_page = self._synthesize_day(target, candidates, vector_hits)
 
         return {
-            "page_no":  page_no,
-            "date":     target.isoformat(),
-            "weekday":  wday,
-            "title":    title,
-            "display":  f"{target.month}/{target.day}({wday})",
+            "page_no": page_no,
+            "date":    target.isoformat(),
+            "weekday": wday,
+            "title":   title,
+            "display": f"{target.month}/{target.day}({wday})",
             **ai_page,
         }
 
     # ─────────────────────────────────────────────────────────
-    # Structured search
+    # 10_report_candidates 検索
     # ─────────────────────────────────────────────────────────
 
-    def _get_structured(self, target: date) -> list[dict]:
-        """09_unified_documents から当日 start_at / due_date に関係するデータを取得"""
-        start_utc, end_utc = _jst_day_to_utc_range(target)
+    def _get_candidates(self, target: date) -> list[dict]:
+        """
+        10_report_candidates から当日に関係するレコードを取得する。
+        date_primary = target OR (date_start が当日) OR (due_date = target)
+        """
         target_str = target.isoformat()
-        cols = "id,person,source,category,title,start_at,end_at,due_date,ui_data,meta"
+        cols = (
+            "id,record_type,subtype,title,summary,person,source,category,"
+            "source_priority,date_primary,date_start,date_end,due_date,"
+            "is_actionable,is_completed,report_priority,details_json"
+        )
 
-        # ① start_at が当日 JST 範囲のもの（カレンダー予定）
+        # ① date_primary = target
         r1 = (
-            self.db.client.table("09_unified_documents")
+            self.db.client.table(TABLE)
             .select(cols)
-            .gte("start_at", start_utc)
-            .lte("start_at", end_utc)
+            .eq("date_primary", target_str)
+            .eq("is_report_worthy", True)
+            .order("report_priority")
             .execute()
         )
 
-        # ② due_date が当日のもの（課題・締切）
+        # ② due_date = target（date_primary != target のもの）
         r2 = (
-            self.db.client.table("09_unified_documents")
+            self.db.client.table(TABLE)
             .select(cols)
             .eq("due_date", target_str)
+            .neq("date_primary", target_str)
+            .eq("is_report_worthy", True)
+            .order("report_priority")
             .execute()
         )
 
-        # 重複除去（同じ ID は1件のみ）
+        # 重複除去
         seen, rows = set(), []
         for row in (r1.data or []) + (r2.data or []):
             if row["id"] not in seen:
                 seen.add(row["id"])
                 rows.append(row)
+
+        # report_priority 昇順にソート
+        rows.sort(key=lambda x: (x.get("report_priority") or 5, x.get("source_priority") or 5))
         return rows
 
     # ─────────────────────────────────────────────────────────
@@ -178,21 +172,32 @@ class ReportGenerator:
     # AI synthesis – 1 day → 1 Gemini call
     # ─────────────────────────────────────────────────────────
 
-    def _synthesize_day(self, target: date, events: list, vector_hits: list) -> dict:
+    def _synthesize_day(
+        self,
+        target: date,
+        candidates: list,
+        vector_hits: list,
+    ) -> dict:
         """Gemini Flash-lite で1日分ページを合成"""
 
-        def _compact_event(e: dict) -> dict:
-            ui = _parse_ui(e.get("ui_data"))
+        def _compact_candidate(c: dict) -> dict:
+            details = c.get("details_json") or {}
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = {}
             return {
-                "title":    e.get("title"),
-                "person":   e.get("person"),
-                "source":   e.get("source"),
-                "start":    (str(e.get("start_at") or ""))[:16],
-                "end":      (str(e.get("end_at") or ""))[:16],
-                "due":      str(e.get("due_date") or ""),
-                "actions":  ui.get("actions", []),
-                "notices":  ui.get("notices", []),
-                "timeline": ui.get("timeline", []),
+                "type":        c.get("record_type"),
+                "title":       c.get("title"),
+                "person":      c.get("person"),
+                "source":      c.get("source"),
+                "start":       (str(c.get("date_start") or ""))[:16],
+                "end":         (str(c.get("date_end") or ""))[:16],
+                "due":         str(c.get("due_date") or ""),
+                "actionable":  c.get("is_actionable"),
+                "description": details.get("description"),
+                "location":    details.get("location"),
             }
 
         def _compact_hit(h: dict) -> dict:
@@ -203,10 +208,9 @@ class ReportGenerator:
                 "score":  round(h.get("combined_score") or 0, 3),
             }
 
-        events_json = json.dumps(
-            [_compact_event(e) for e in events], ensure_ascii=False
+        candidates_json = json.dumps(
+            [_compact_candidate(c) for c in candidates], ensure_ascii=False
         )
-        # スコア 0.3 以上のベクトルヒットのみ渡す
         hits = [h for h in vector_hits if (h.get("combined_score") or 0) >= 0.3]
         hits_json = json.dumps(
             [_compact_hit(h) for h in hits[:8]], ensure_ascii=False
@@ -216,8 +220,8 @@ class ReportGenerator:
         prompt = f"""あなたは家族のスケジュール管理アシスタントです。
 以下のデータから {date_str} の1ページレポートを日本語で作成してください。
 
-## カレンダー・構造化データ
-{events_json}
+## 候補レコード（カレンダー・課題・注意事項等）
+{candidates_json}
 
 ## 関連ドキュメント（ベクトル検索結果）
 {hits_json}
@@ -236,6 +240,7 @@ class ReportGenerator:
 }}
 
 ルール:
+- type=event → schedule に、type=task/homework_item → homework に、type=notice → notices に分類
 - 重複する情報は1つにまとめる
 - データがない項目は空配列 []
 - 事実のみ記載し、推測で補完しない
@@ -251,14 +256,18 @@ class ReportGenerator:
             from shared.common.config.settings import settings
             genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
             model = genai.GenerativeModel(GEMINI_MODEL)
-            resp = model.generate_content(
+            resp  = model.generate_content(
                 prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                ),
+                generation_config=genai.GenerationConfig(temperature=0.1),
             )
-            return json.loads(resp.text)
+            text = resp.text.strip()
+            # マークダウンコードブロックを除去
+            if "```" in text:
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+                text = text.strip()
+            return json.loads(text)
         except Exception as e:
             print(f"[WARN] AI synthesis failed ({target}): {e}")
             return empty
@@ -272,41 +281,41 @@ class ReportGenerator:
         horizon     = base_date + timedelta(days=13)
         today_str   = base_date.isoformat()
         horizon_str = horizon.isoformat()
-        cols = "id,person,source,category,title,due_date,ui_data"
+        cols = (
+            "id,record_type,title,person,source,due_date,"
+            "is_completed,is_actionable,report_priority,details_json"
+        )
 
         rows = (
-            self.db.client.table("09_unified_documents")
+            self.db.client.table(TABLE)
             .select(cols)
             .gte("due_date", today_str)
             .lte("due_date", horizon_str)
+            .eq("is_completed", False)
+            .eq("is_actionable", True)
+            .eq("is_report_worthy", True)
             .order("due_date", desc=False)
-            .limit(60)
+            .order("report_priority", desc=False)
+            .limit(80)
             .execute()
         ).data or []
 
         tasks = []
         for row in rows:
-            ui      = _parse_ui(row.get("ui_data"))
-            actions = ui.get("actions") or []
-            if actions:
-                for a in actions:
-                    tasks.append({
-                        "person":      row.get("person"),
-                        "source":      row.get("source"),
-                        "doc_title":   row.get("title"),
-                        "task":        a.get("item") or a.get("text") or a.get("title"),
-                        "description": a.get("description"),
-                        "deadline":    a.get("deadline") or str(row.get("due_date") or ""),
-                    })
-            else:
-                tasks.append({
-                    "person":      row.get("person"),
-                    "source":      row.get("source"),
-                    "doc_title":   row.get("title"),
-                    "task":        row.get("title"),
-                    "description": None,
-                    "deadline":    str(row.get("due_date") or ""),
-                })
+            details = row.get("details_json") or {}
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = {}
+            tasks.append({
+                "person":      row.get("person"),
+                "source":      row.get("source"),
+                "doc_title":   details.get("doc_title") or row.get("title"),
+                "task":        row.get("title"),
+                "description": details.get("description"),
+                "deadline":    str(row.get("due_date") or ""),
+            })
 
         return {
             "page_no": 8,

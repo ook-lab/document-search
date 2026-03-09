@@ -54,6 +54,11 @@ tmpclaude-*
 
 .tmp.driveupload/
 
+# Next.js
+my-calendar-app/.env.local
+my-calendar-app/.next/
+my-calendar-app/node_modules/
+
 # Test fixtures (large binary files)
 tests/fixtures/**/*.pdf
 # OAuth2 tokens & credentials

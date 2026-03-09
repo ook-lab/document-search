@@ -32,7 +32,7 @@ steps:
       - '--allow-unauthenticated'
       - '--port=8080'
       - '--timeout=60'
-      - '--set-env-vars=GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID},GOOGLE_CLIENT_SECRET=${_GOOGLE_CLIENT_SECRET},NEXTAUTH_URL=${_NEXTAUTH_URL},NEXTAUTH_SECRET=${_NEXTAUTH_SECRET}'
+      - '--set-env-vars=GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID},GOOGLE_CLIENT_SECRET=${_GOOGLE_CLIENT_SECRET},NEXTAUTH_URL=${_NEXTAUTH_URL},NEXTAUTH_SECRET=${_NEXTAUTH_SECRET},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
@@ -42,6 +42,8 @@ substitutions:
   _GOOGLE_CLIENT_SECRET: ''
   _NEXTAUTH_URL: ''
   _NEXTAUTH_SECRET: ''
+  _SUPABASE_URL: ''
+  _SUPABASE_SERVICE_ROLE_KEY: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY

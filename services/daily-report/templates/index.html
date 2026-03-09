@@ -28,6 +28,10 @@
     border-radius: 8px; border: none; padding: 6px 10px;
     font-size: 13px; cursor: pointer;
   }
+  #days-select {
+    border-radius: 8px; border: none; padding: 6px 10px;
+    font-size: 13px; cursor: pointer; background: #fff; color: #1e40af;
+  }
 
   /* ── Tabs ── */
   .tab-bar {
@@ -179,6 +183,15 @@
 <header>
   <h1>📋 日次レポート</h1>
   <div class="header-right">
+    <select id="days-select">
+      <option value="1">1日</option>
+      <option value="2">2日</option>
+      <option value="3">3日</option>
+      <option value="4">4日</option>
+      <option value="5">5日</option>
+      <option value="6">6日</option>
+      <option value="7" selected>7日</option>
+    </select>
     <input type="date" id="date-input">
     <button id="gen-btn">⚡ 生成</button>
   </div>
@@ -204,6 +217,7 @@
 const TARGET_DATE = {{ target_date | tojson }};
 
 let currentPageNo = 1;
+let visibleDays = 7;
 
 // ── Utilities ──────────────────────────────────────────────
 
@@ -229,9 +243,13 @@ function renderReport(report) {
   container.innerHTML = '';
 
   pages.forEach((page, idx) => {
+    const isDayPage = page.page_no < 8;
+    const hidden = isDayPage && page.page_no > visibleDays;
+
     // Tab
     const tab = document.createElement('div');
-    tab.className = 'tab' + (idx === 0 ? ' active' : '');
+    tab.className = 'tab' + (idx === 0 && !hidden ? ' active' : '');
+    if (hidden) tab.classList.add('hidden');
     tab.textContent = page.display || page.title;
     tab.dataset.no = page.page_no;
     tab.addEventListener('click', () => activatePage(page.page_no));
@@ -239,13 +257,32 @@ function renderReport(report) {
 
     // Page
     const div = document.createElement('div');
-    div.className = 'page' + (idx === 0 ? ' active' : '');
+    div.className = 'page' + (idx === 0 && !hidden ? ' active' : '');
     div.dataset.no = page.page_no;
-    div.innerHTML = page.page_no < 8
-      ? renderDayPage(page)
-      : renderTaskPage(page);
+    div.innerHTML = isDayPage ? renderDayPage(page) : renderTaskPage(page);
     container.appendChild(div);
   });
+
+  // 最初に表示するタブを確定
+  const firstVisible = document.querySelector('.tab:not(.hidden)');
+  if (firstVisible) {
+    activatePage(+firstVisible.dataset.no);
+  }
+}
+
+function applyDaysFilter() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    const no = +tab.dataset.no;
+    const isDayPage = no < 8;
+    const hide = isDayPage && no > visibleDays;
+    tab.classList.toggle('hidden', hide);
+  });
+  // アクティブなタブが非表示になったら最初の可視タブへ
+  const activeTab = document.querySelector('.tab.active');
+  if (!activeTab || activeTab.classList.contains('hidden')) {
+    const firstVisible = document.querySelector('.tab:not(.hidden)');
+    if (firstVisible) activatePage(+firstVisible.dataset.no);
+  }
 }
 
 function activatePage(no) {
@@ -465,6 +502,12 @@ async function generate(targetDate) {
 }
 
 // ── Init ────────────────────────────────────────────────────
+
+const daysSelect = document.getElementById('days-select');
+daysSelect.addEventListener('change', () => {
+  visibleDays = +daysSelect.value;
+  applyDaysFilter();
+});
 
 const dateInput = document.getElementById('date-input');
 dateInput.value = TARGET_DATE;

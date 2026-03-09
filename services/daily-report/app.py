@@ -12,8 +12,7 @@ Routes:
 import os
 import sys
 from pathlib import Path
-from datetime import datetime, date
-from zoneinfo import ZoneInfo
+from datetime import datetime, date, timezone, timedelta
 
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
@@ -25,7 +24,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-JST = ZoneInfo("Asia/Tokyo")
+JST = timezone(timedelta(hours=9))
 
 _db  = None
 _llm = None
@@ -56,7 +55,7 @@ def report_latest():
     try:
         db, _ = _get_clients()
         result = (
-            db.client.table("daily_reports")
+            db.client.table("11_daily_reports")
             .select("base_date")
             .order("base_date", desc=True)
             .limit(1)
@@ -84,7 +83,7 @@ def api_report(target_date: str):
     try:
         db, _ = _get_clients()
         result = (
-            db.client.table("daily_reports")
+            db.client.table("11_daily_reports")
             .select("base_date,generated_at,report_json")
             .eq("base_date", target_date)
             .limit(1)
@@ -108,7 +107,7 @@ def api_reports_list():
     try:
         db, _ = _get_clients()
         result = (
-            db.client.table("daily_reports")
+            db.client.table("11_daily_reports")
             .select("id,base_date,generated_at")
             .order("base_date", desc=True)
             .limit(30)
