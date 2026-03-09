@@ -13,13 +13,14 @@ function sbHeaders() {
   };
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${params.id}&owner_email=eq.${encodeURIComponent(session.user.email)}`,
+    `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${id}&owner_email=eq.${encodeURIComponent(session.user.email)}`,
     {
       method: "PATCH",
       headers: sbHeaders(),
@@ -36,12 +37,13 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   return Response.json(data, { status: res.ok ? 200 : 500 });
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   await fetch(
-    `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${params.id}&owner_email=eq.${encodeURIComponent(session.user.email)}`,
+    `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${id}&owner_email=eq.${encodeURIComponent(session.user.email)}`,
     { method: "DELETE", headers: sbHeaders() }
   );
   return Response.json({ ok: true });
