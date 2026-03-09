@@ -394,6 +394,7 @@ function renderSessions(sessions) {
     const stages = sess.stages || [];
     const rowCount = stages.length || 1;
     const shortId = (sess.session_id || '').slice(0, 8) + '…';
+    const dt = sess.first_seen ? (() => { const d = new Date(sess.first_seen); return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })() : '';
     const title = sess.title || sess.file_name || '(タイトル不明)';
     const bg = si % 2 === 0 ? '' : 'rgba(255,255,255,0.02)';
 
@@ -404,7 +405,7 @@ function renderSessions(sessions) {
       let idCell = '';
       let titleCell = '';
       if (idx === 0) {
-        idCell = `<td rowspan="${rowCount}" style="font-family:monospace;font-size:11px;color:var(--text-muted);vertical-align:top;padding-top:10px;border-right:1px solid var(--border);" title="${sess.session_id}">${shortId}</td>`;
+        idCell = `<td rowspan="${rowCount}" style="font-family:monospace;font-size:11px;color:var(--text-muted);vertical-align:top;padding-top:10px;border-right:1px solid var(--border);" title="${sess.session_id}">${dt}<br>${shortId}</td>`;
         const appBadge = `<span style="font-size:10px;color:var(--text-muted);background:var(--surface2);border-radius:4px;padding:1px 5px;margin-left:6px;">${sess.app||''}</span>`;
         const jpyTotal = usdJpyRate ? ` <span style="font-size:10px;color:var(--text-muted);">¥${((sess.total_cost_usd||0)*usdJpyRate).toFixed(3)}</span>` : '';
         const costBadge = `<span style="float:right;font-size:11px;color:var(--yellow);">$${(sess.total_cost_usd||0).toFixed(5)}${jpyTotal}</span>`;
@@ -431,7 +432,7 @@ function renderSessions(sessions) {
       const tr = document.createElement('tr');
       tr.style.background = bg;
       tr.innerHTML = `
-        <td style="font-family:monospace;font-size:11px;color:var(--text-muted);" title="${sess.session_id}">${shortId}</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--text-muted);" title="${sess.session_id}">${dt}<br>${shortId}</td>
         <td>${title}</td>
         <td colspan="8" style="color:var(--text-muted);">データなし</td>`;
       tbody.appendChild(tr);

@@ -185,7 +185,6 @@ def api_sessions():
             .select('session_id, app, stage, model, prompt_token_count, candidates_token_count, thoughts_token_count, total_token_count, created_at')
             .gte('created_at', f'{date_from}T00:00:00')
             .lte('created_at', f'{date_to}T23:59:59')
-            .not_.is_('session_id', 'null')
             .order('created_at', desc=True)
         )
         if app_filter:
@@ -198,10 +197,16 @@ def api_sessions():
 
         # session_id ごとに集計
         sessions: dict = {}
+        _no_sid_counter = 0
         for log in logs:
-            sid = log['session_id']
+            raw_sid = log['session_id']
             app_name = log.get('app', 'unknown')
             stage = log.get('stage', 'unknown')
+            if raw_sid is None:
+                _no_sid_counter += 1
+                sid = f'__nosid_{app_name}_{log.get("created_at", _no_sid_counter)}'
+            else:
+                sid = raw_sid
 
             if sid not in sessions:
                 sessions[sid] = {

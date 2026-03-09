@@ -36,3 +36,8 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# Next.js build artifacts
+my-calendar-app/.next/
+my-calendar-app/node_modules/
+my-calendar-app/.env.local
