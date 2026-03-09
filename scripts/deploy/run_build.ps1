@@ -1,6 +1,6 @@
 param(
-    [string]$Service = ""  # 例: "doc-processor", "doc-search", "doc-review", "calendar-register", "kakeibo"
-                           # 省略時は全サービスをビルド
+    [string]$Service = ""  # 例: "doc-processor", "doc-search", "doc-review", "calendar-register", "kakeibo", "daily-report"
+                           # 省略時は全サービスをビルド（my-calendar-app は除く）
 )
 
 Set-Location "C:\Users\ookub\document-management-system"
