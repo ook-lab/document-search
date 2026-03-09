@@ -316,6 +316,10 @@ export default function Home() {
 
   // ── カレンダー一覧取得 ────────────────────────────────
   useEffect(() => {
+    if ((session as { error?: string })?.error === "RefreshTokenError") {
+      signIn("google");
+      return;
+    }
     if (!session?.accessToken || isUnauthorized) return;
     (async () => {
       setCalLoading(true);
