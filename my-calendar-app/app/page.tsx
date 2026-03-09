@@ -80,7 +80,11 @@ async function createGroupAPI(g: Omit<CalendarGroup, "id">): Promise<CalendarGro
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(g),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const err = await res.text().catch(() => "unknown");
+    console.error("createGroupAPI failed:", res.status, err);
+    return null;
+  }
   const rows = await res.json();
   const r = Array.isArray(rows) ? rows[0] : rows;
   return r ? { id: r.id, name: r.name, color: r.color, baseIds: r.base_ids } : null;
@@ -444,7 +448,12 @@ export default function Home() {
   const handleGroupSave = async (action: "create" | "update" | "delete", g: CalendarGroup) => {
     if (action === "create") {
       const created = await createGroupAPI({ name: g.name, color: g.color, baseIds: g.baseIds });
-      if (created) setGroups((p) => [...p, created]);
+      if (created) {
+        setGroups((p) => [...p, created]);
+      } else {
+        alert("グループの保存に失敗しました。ブラウザのコンソールを確認してください。");
+        return;
+      }
     } else if (action === "update") {
       await updateGroupAPI(g.id, { name: g.name, color: g.color, baseIds: g.baseIds });
       setGroups((p) => p.map((x) => (x.id === g.id ? g : x)));
