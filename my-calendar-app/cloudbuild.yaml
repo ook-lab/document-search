@@ -13,8 +13,8 @@ steps:
       - '-t'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
       - '-f'
-      - 'my-calendar-app/Dockerfile'
-      - 'my-calendar-app'
+      - 'Dockerfile'
+      - '.'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
@@ -32,21 +32,11 @@ steps:
       - '--allow-unauthenticated'
       - '--port=8080'
       - '--timeout=60'
-      - '--set-env-vars=GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID},GOOGLE_CLIENT_SECRET=${_GOOGLE_CLIENT_SECRET},GOOGLE_REFRESH_TOKEN=${_GOOGLE_REFRESH_TOKEN},CALENDAR_OWNER_EMAIL=${_CALENDAR_OWNER_EMAIL},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
 
-substitutions:
-  _GOOGLE_CLIENT_ID: ''
-  _GOOGLE_CLIENT_SECRET: ''
-  _GOOGLE_REFRESH_TOKEN: ''
-  _CALENDAR_OWNER_EMAIL: ''
-  _SUPABASE_URL: ''
-  _SUPABASE_SERVICE_ROLE_KEY: ''
-
 options:
   logging: CLOUD_LOGGING_ONLY
-  substitutionOption: ALLOW_LOOSE
 
 timeout: 1200s

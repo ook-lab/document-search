@@ -3,6 +3,47 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 // ── 型定義 ──────────────────────────────────────────────────
+type TrelloLabel = { id: string; name: string; color: string };
+
+type Task = {
+  id: string;
+  cardName: string;
+  description?: string;
+  dueDate?: string;
+  dueComplete?: boolean;
+  assignees?: string[];
+  labels?: TrelloLabel[];
+  checklistTotal?: number;
+  checklistDone?: number;
+  calendarGroupId?: string;
+  trelloCardId?: string;
+  trelloListId?: string;
+  listName?: string;
+  boardId?: string;
+  boardName?: string;
+};
+
+type TrelloList = {
+  id: string;
+  listId: string;
+  listName: string;
+  boardId: string;
+};
+
+type TrelloBoard = {
+  id: string;
+  boardId: string;
+  boardName: string;
+};
+
+type TaskForm = {
+  cardName: string;
+  description: string;
+  dueDate: string;
+  assignees: string;
+  calendarGroupId: string;
+};
+
 type CalendarEntry = {
   id: string;
   summary: string;
@@ -60,6 +101,76 @@ type ModalState =
 const STATUS_LABELS: Record<StatusKey, string> = { base: "参加", pen: "未決定", arc: "不参加" };
 const STATUS_COLORS: Record<StatusKey, string> = { base: "#16a34a", pen: "#d97706", arc: "#6b7280" };
 const STATUS_ICONS: Record<StatusKey, string>  = { base: "✓", pen: "?", arc: "✗" };
+
+// ── タスク API ───────────────────────────────────────────
+async function fetchTasksFromAPI(groupId?: string): Promise<Task[]> {
+  const url = groupId ? `/api/tasks?groupId=${encodeURIComponent(groupId)}` : "/api/tasks";
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const rows = await res.json();
+  return (rows ?? []).map((r: Record<string, unknown>) => ({
+    id:              r.id as string,
+    cardName:        (r.card_name ?? r.title) as string,
+    description:     r.description as string | undefined,
+    dueDate:         r.due_date as string | undefined,
+    dueComplete:     r.due_complete as boolean | undefined,
+    assignees:       (r.assignees ?? []) as string[],
+    labels:          (r.labels ?? []) as TrelloLabel[],
+    checklistTotal:  r.checklist_total as number | undefined,
+    checklistDone:   r.checklist_done as number | undefined,
+    calendarGroupId: r.calendar_group_id as string | undefined,
+    trelloCardId:    r.trello_card_id as string | undefined,
+    trelloListId:    r.trello_list_id as string | undefined,
+    listName:        r.list_name as string | undefined,
+    boardId:         r.board_id as string | undefined,
+    boardName:       r.board_name as string | undefined,
+  }));
+}
+
+async function createTaskAPI(t: Omit<Task, "id">): Promise<Task | null> {
+  const res = await fetch("/api/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cardName:        t.cardName,
+      description:     t.description || null,
+      dueDate:         t.dueDate || null,
+      calendarGroupId: t.calendarGroupId || null,
+    }),
+  });
+  if (!res.ok) return null;
+  const rows = await res.json();
+  const r = Array.isArray(rows) ? rows[0] : rows;
+  return r ? {
+    id: r.id, cardName: r.card_name ?? r.title, description: r.description,
+    dueDate: r.due_date, assignees: r.assignees ?? [], labels: r.labels ?? [],
+    calendarGroupId: r.calendar_group_id, trelloCardId: r.trello_card_id,
+    trelloListId: r.trello_list_id, listName: r.list_name,
+    boardId: r.board_id, boardName: r.board_name,
+  } : null;
+}
+
+async function deleteTaskAPI(id: string): Promise<void> {
+  await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+}
+
+async function fetchTrelloBoardsAndListsFromAPI(): Promise<{ boards: TrelloBoard[]; lists: TrelloList[] }> {
+  const res = await fetch("/api/trello/boards");
+  if (!res.ok) return { boards: [], lists: [] };
+  const data = await res.json();
+  const boards: TrelloBoard[] = (data.boards ?? []).map((r: Record<string, unknown>) => ({
+    id:        r.id as string,
+    boardId:   r.board_id as string,
+    boardName: r.board_name as string,
+  }));
+  const lists: TrelloList[] = (data.lists ?? []).map((r: Record<string, unknown>) => ({
+    id:       r.id as string,
+    listId:   r.list_id as string,
+    listName: r.list_name as string,
+    boardId:  r.board_id as string,
+  }));
+  return { boards, lists };
+}
 
 // ── グループ API ─────────────────────────────────────────
 async function fetchGroupsFromAPI(): Promise<CalendarGroup[]> {
@@ -244,6 +355,51 @@ function GroupModal({
   );
 }
 
+// ── タスクフォームモーダル ─────────────────────────────────────
+function TaskFormModal({
+  onSave, onClose,
+}: {
+  onSave: (t: Omit<Task, "id">) => void;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState<TaskForm>({
+    cardName: "", description: "", dueDate: "", assignees: "", calendarGroupId: "",
+  });
+  const update = (p: Partial<TaskForm>) => setForm((prev) => ({ ...prev, ...p }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full sm:max-w-sm bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold">カードを追加</h3>
+          <button onClick={onClose} className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center">✕</button>
+        </div>
+        <input className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="カード名（必須）" value={form.cardName} onChange={(e) => update({ cardName: e.target.value })} autoFocus />
+        <textarea className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm mb-3 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="内容（任意）" rows={2} value={form.description} onChange={(e) => update({ description: e.target.value })} />
+        <div className="flex gap-2 mb-3">
+          <input type="date" className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            value={form.dueDate} onChange={(e) => update({ dueDate: e.target.value })} />
+          <input className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="担当者" value={form.assignees} onChange={(e) => update({ assignees: e.target.value })} />
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">キャンセル</button>
+          <button onClick={() => {
+            if (!form.cardName.trim()) return;
+            onSave({ cardName: form.cardName.trim(), description: form.description || undefined,
+              dueDate: form.dueDate || undefined,
+              assignees: form.assignees ? form.assignees.split(",").map(s => s.trim()).filter(Boolean) : [] });
+          }} disabled={!form.cardName.trim()}
+            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm text-white font-semibold hover:bg-indigo-700 disabled:opacity-50">追加</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── メインコンポーネント ─────────────────────────────────────
 export default function Home() {
   const [calendars, setCalendars]             = useState<CalendarEntry[]>([]);
@@ -267,9 +423,21 @@ export default function Home() {
   const [saveError, setSaveError]       = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // タスク
+  const [tasks, setTasks]               = useState<Task[]>([]);
+  const [trelloBoards, setTrelloBoards] = useState<TrelloBoard[]>([]);
+  const [trelloLists, setTrelloLists]   = useState<TrelloList[]>([]);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [activeTab, setActiveTab]       = useState<"calendar" | "tasks">("calendar");
+
   // 初回ロード
   useEffect(() => {
     fetchGroupsFromAPI().then(setGroups);
+    fetchTasksFromAPI().then(setTasks);
+    fetchTrelloBoardsAndListsFromAPI().then(({ boards, lists }) => {
+      setTrelloBoards(boards);
+      setTrelloLists(lists);
+    });
   }, []);
 
   const triads = useMemo(() => parseTriads(calendars), [calendars]);
@@ -466,14 +634,174 @@ export default function Home() {
     setEditingGroup(null);
   };
 
+  // ── タスク操作 ─────────────────────────────────────────
+  const handleTaskCreate = async (t: Omit<Task, "id">) => {
+    const created = await createTaskAPI(t);
+    if (created) setTasks((p) => [...p, created]);
+    setShowTaskModal(false);
+  };
+
+  const handleTaskListChange = async (id: string, listId: string, listName: string, boardId: string, boardName: string) => {
+    setTasks((p) => p.map((t) => t.id === id ? { ...t, trelloListId: listId, listName, boardId, boardName } : t));
+    await fetch(`/api/tasks/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trelloListId: listId, listName, boardId, boardName }),
+    });
+  };
+
+  const handleTaskDelete = async (id: string) => {
+    setTasks((p) => p.filter((t) => t.id !== id));
+    await deleteTaskAPI(id);
+  };
+
   // ── メイン ───────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <h1 className="text-lg font-bold text-gray-800">📅 My Calendar</h1>
+        <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm">
+          <button onClick={() => setActiveTab("calendar")}
+            className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+            カレンダー
+          </button>
+          <button onClick={() => setActiveTab("tasks")}
+            className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+            タスク {tasks.length > 0 && (
+              <span className="ml-1 bg-indigo-100 text-indigo-700 rounded-full px-1.5 text-xs">{tasks.length}</span>
+            )}
+          </button>
+        </div>
       </header>
 
-      {/* ステータスボタン + カレンダー選択 */}
+      {/* ── タスクビュー ── */}
+      {activeTab === "tasks" && (
+        <div className="flex-1 w-full p-3 md:p-6 overflow-x-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-gray-800">タスク</h2>
+            <button onClick={() => setShowTaskModal(true)}
+              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white font-semibold hover:bg-indigo-700">
+              <span className="text-base leading-none">+</span> 追加
+            </button>
+          </div>
+
+          {/* ボード → リスト → カード の階層 */}
+          {trelloBoards.length > 0 ? (
+            <div className="space-y-8">
+              {trelloBoards.map((board) => {
+                const boardLists = trelloLists.filter((l) => l.boardId === board.boardId);
+                return (
+                  <div key={board.boardId}>
+                    {/* ボード名 */}
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3 px-1">
+                      📋 {board.boardName}
+                    </h3>
+                    {/* リスト横並び */}
+                    <div className="flex gap-4 overflow-x-auto pb-2">
+                      {boardLists.map((list) => {
+                        const cardTasks = tasks.filter((t) => t.trelloListId === list.listId);
+                        const otherLists = boardLists.filter((l) => l.listId !== list.listId);
+                        return (
+                          <div key={list.listId} className="bg-white rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0">
+                            {/* リスト名 */}
+                            <div className="flex items-center gap-2 mb-3">
+                              <h4 className="text-sm font-bold text-gray-700 truncate flex-1">{list.listName}</h4>
+                              <span className="text-xs text-gray-400 flex-shrink-0">{cardTasks.length}</span>
+                            </div>
+                            {/* カード一覧 */}
+                            <div className="space-y-2">
+                              {cardTasks.map((task) => (
+                                <div key={task.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 group">
+                                  <div className="flex items-start gap-1">
+                                    <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
+                                    <button onClick={() => handleTaskDelete(task.id)}
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
+                                  </div>
+                                  {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
+                                  {/* ラベル */}
+                                  {task.labels && task.labels.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {task.labels.map((lb) => (
+                                        <span key={lb.id} className="text-[9px] rounded px-1.5 py-0.5 text-white font-medium"
+                                          style={{ backgroundColor: lb.color || "#aaa" }}>
+                                          {lb.name || lb.color}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    {task.dueDate && (
+                                      <span className={`text-[10px] ${task.dueComplete ? "line-through text-gray-300" : "text-gray-500"}`}>
+                                        📅 {task.dueDate}{task.dueComplete ? " ✓" : ""}
+                                      </span>
+                                    )}
+                                    {task.assignees && task.assignees.length > 0 && (
+                                      <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">
+                                        👤 {task.assignees.join(", ")}
+                                      </span>
+                                    )}
+                                    {task.checklistTotal != null && task.checklistTotal > 0 && (
+                                      <span className={`text-[10px] rounded px-1.5 py-0.5 ${task.checklistDone === task.checklistTotal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                                        ☑ {task.checklistDone}/{task.checklistTotal}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {/* 同ボード内の他リストへ移動 */}
+                                  {otherLists.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {otherLists.map((l) => (
+                                        <button key={l.listId} onClick={() => handleTaskListChange(task.id, l.listId, l.listName, board.boardId, board.boardName)}
+                                          className="text-[10px] rounded-full px-2 py-0.5 border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                                          → {l.listName}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                              {cardTasks.length === 0 && <p className="text-xs text-gray-300 text-center py-4">なし</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* どのボードにも属さないタスク */}
+              {tasks.filter((t) => !t.trelloListId).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3 px-1">未分類</h3>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
+                    <div className="bg-white rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0">
+                      <div className="space-y-2">
+                        {tasks.filter((t) => !t.trelloListId).map((task) => (
+                          <div key={task.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 group">
+                            <div className="flex items-start gap-1">
+                              <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
+                              <button onClick={() => handleTaskDelete(task.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
+                            </div>
+                            {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
+                            {task.dueDate && <span className="text-[10px] text-gray-500 mt-1 block">📅 {task.dueDate}</span>}
+                            {task.assignees && task.assignees.length > 0 && <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-2 py-0.5 mt-1 inline-block">👤 {task.assignees.join(", ")}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-12">Trelloボードが登録されていません</p>
+          )}
+        </div>
+      )}
+
+      {/* ステータスボタン + カレンダー選択 + カレンダー本体 */}
+      {activeTab === "calendar" && (<>
       <div className="bg-white border-b px-4 py-3 space-y-2.5">
         {/* 参加 / 未決定 / 不参加 */}
         <div className="flex gap-2">
@@ -720,11 +1048,19 @@ export default function Home() {
         </div>
       )}
 
+      </>)}
+
       {/* グループ管理モーダル */}
       {showGroupModal && (
         <GroupModal triads={triads} editGroup={editingGroup}
           onSave={handleGroupSave}
           onClose={() => { setShowGroupModal(false); setEditingGroup(null); }} />
+      )}
+
+      {/* タスク追加モーダル */}
+      {showTaskModal && (
+        <TaskFormModal onSave={handleTaskCreate}
+          onClose={() => setShowTaskModal(false)} />
       )}
     </div>
   );
