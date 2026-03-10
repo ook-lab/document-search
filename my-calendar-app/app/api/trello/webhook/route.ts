@@ -38,9 +38,9 @@ async function getListInfo(listId: string | null | undefined, boardId?: string |
           const lj = await lr.json();
           listName = lj.name ?? null;
           if (!resolvedBoardId) resolvedBoardId = lj.idBoard ?? null;
-          await fetch(`${SUPABASE_URL}/rest/v1/trello_lists`, {
+          await fetch(`${SUPABASE_URL}/rest/v1/trello_lists?on_conflict=list_id`, {
             method: "POST",
-            headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates", "on-conflict": "list_id" },
+            headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates" },
             body: JSON.stringify({ board_id: resolvedBoardId ?? "", list_id: listId, list_name: listName, list_pos: lj.pos ?? 0 }),
           });
         }
@@ -111,11 +111,55 @@ export async function POST(req: Request) {
     if (!action) return Response.json({ ok: true });
 
     const { type, data } = action;
+    const now = new Date().toISOString();
+
+    // ── リスト系イベント ──────────────────────────────────
+    if (type === "updateList") {
+      const list = data?.list;
+      if (list?.id) {
+        if (list.closed === true) {
+          // リストがアーカイブ→trello_listsから削除、そのリストのタスクをarchived化
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/trello_lists?list_id=eq.${list.id}`,
+            { method: "DELETE", headers: sbHeaders() }
+          );
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/tasks?trello_list_id=eq.${list.id}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
+            { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ archived: true, sync_updated_at: now }) }
+          );
+        } else {
+          // リスト名変更→trello_listsを更新、そのリストのタスクのlist_nameも更新
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/trello_lists?list_id=eq.${list.id}?on_conflict=list_id`,
+            { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ list_name: list.name }) }
+          );
+          await fetch(
+            `${SUPABASE_URL}/rest/v1/tasks?trello_list_id=eq.${list.id}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
+            { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ list_name: list.name, sync_updated_at: now }) }
+          );
+        }
+      }
+      return Response.json({ ok: true });
+    }
+
+    if (type === "createList") {
+      const list = data?.list;
+      const boardId = data?.board?.id ?? null;
+      if (list?.id && boardId) {
+        await fetch(`${SUPABASE_URL}/rest/v1/trello_lists?on_conflict=list_id`, {
+          method: "POST",
+          headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates" },
+          body: JSON.stringify({ board_id: boardId, list_id: list.id, list_name: list.name, list_pos: list.pos ?? 0 }),
+        });
+      }
+      return Response.json({ ok: true });
+    }
+
+    // ── カード系イベント ──────────────────────────────────
     const card = data?.card;
     if (!card) return Response.json({ ok: true });
 
     const trelloCardId = card.id as string;
-    const now = new Date().toISOString();
     const rawListId = data.listAfter?.id ?? data.list?.id ?? null;
     const boardId   = data.board?.id ?? null;
 
