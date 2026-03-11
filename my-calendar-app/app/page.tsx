@@ -83,6 +83,10 @@ type CalendarEvent = {
   googleEventId: string;
   summary?: string;
   description?: string;
+  location?: string;
+  colorId?: string;
+  attendees?: { email: string; displayName?: string }[];
+  recurrence?: string[];
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
   calendarId: string;
@@ -90,6 +94,8 @@ type CalendarEvent = {
   calendarColor: string;
   statusKey: StatusKey;
 };
+
+type RepeatOption = "none" | "daily" | "weekly" | "monthly" | "yearly";
 
 type EventForm = {
   summary: string;
@@ -99,6 +105,10 @@ type EventForm = {
   startTime: string;
   endTime: string;
   description: string;
+  location: string;
+  repeat: RepeatOption;
+  guests: string;
+  colorId: string;
 };
 
 type ModalState =
@@ -109,6 +119,21 @@ type ModalState =
 const STATUS_LABELS: Record<StatusKey, string> = { base: "参加", pen: "未決定", arc: "不参加" };
 const STATUS_COLORS: Record<StatusKey, string> = { base: "#16a34a", pen: "#d97706", arc: "#6b7280" };
 const STATUS_ICONS: Record<StatusKey, string>  = { base: "✓", pen: "?", arc: "✗" };
+
+const EVENT_COLORS = [
+  { id: "1",  color: "#7986CB", name: "ラベンダー" },
+  { id: "2",  color: "#33B679", name: "セージ" },
+  { id: "3",  color: "#8E24AA", name: "グレープ" },
+  { id: "4",  color: "#E67C73", name: "フラミンゴ" },
+  { id: "5",  color: "#F6BF26", name: "バナナ" },
+  { id: "6",  color: "#F4511E", name: "タンジェリン" },
+  { id: "7",  color: "#039BE5", name: "ピーコック" },
+  { id: "8",  color: "#3F51B5", name: "ブルーベリー" },
+  { id: "9",  color: "#0B8043", name: "バジル" },
+  { id: "10", color: "#D50000", name: "トマト" },
+  { id: "11", color: "#616161", name: "グラファイト" },
+];
+const RRULE_DAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 // ── タスク API ───────────────────────────────────────────
 async function fetchTasksFromAPI(groupId?: string): Promise<Task[]> {
@@ -261,6 +286,23 @@ function buildEventBody(form: EventForm) {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const body: Record<string, unknown> = { summary: form.summary };
   if (form.description) body.description = form.description;
+  if (form.location)    body.location    = form.location;
+  if (form.colorId)     body.colorId     = form.colorId;
+  if (form.guests.trim()) {
+    body.attendees = form.guests.split(",")
+      .map(e => e.trim()).filter(Boolean)
+      .map(email => ({ email }));
+  }
+  if (form.repeat !== "none") {
+    const day = RRULE_DAYS[new Date(`${form.date}T12:00:00`).getDay()];
+    const rules: Record<string, string> = {
+      daily:   "RRULE:FREQ=DAILY",
+      weekly:  `RRULE:FREQ=WEEKLY;BYDAY=${day}`,
+      monthly: "RRULE:FREQ=MONTHLY",
+      yearly:  "RRULE:FREQ=YEARLY",
+    };
+    body.recurrence = [rules[form.repeat]];
+  }
   if (form.allDay) {
     const end = new Date(form.date); end.setDate(end.getDate() + 1);
     body.start = { date: form.date };
@@ -801,14 +843,18 @@ export default function Home() {
         return items.map((ev) => ({
           id: `${calId}__${ev.id as string}`,
           googleEventId: ev.id as string,
-          summary: ev.summary as string | undefined,
+          summary:     ev.summary     as string | undefined,
           description: ev.description as string | undefined,
+          location:    ev.location    as string | undefined,
+          colorId:     ev.colorId     as string | undefined,
+          attendees:   ev.attendees   as { email: string; displayName?: string }[] | undefined,
+          recurrence:  ev.recurrence  as string[] | undefined,
           start: ev.start as CalendarEvent["start"],
-          end: ev.end as CalendarEvent["end"],
-          calendarId: calId,
+          end:   ev.end   as CalendarEvent["end"],
+          calendarId:      calId,
           calendarSummary: info?.summary ?? calId,
-          calendarColor: info?.color ?? "#4285F4",
-          statusKey: info?.statusKey ?? "base",
+          calendarColor:   info?.color ?? "#4285F4",
+          statusKey:       info?.statusKey ?? "base",
         }));
       });
       setEvents(flat.sort((a, b) => getEventSortKey(a).localeCompare(getEventSortKey(b))));
@@ -824,18 +870,23 @@ export default function Home() {
   // ── モーダル ──────────────────────────────────────────
   const openCreate = (date: string) => {
     setModal({ mode: "create", date });
-    setForm({ summary: "", calendarId: primaryBaseId, allDay: false, date, startTime: "09:00", endTime: "10:00", description: "" });
+    setForm({ summary: "", calendarId: primaryBaseId, allDay: false, date, startTime: "09:00", endTime: "10:00", description: "", location: "", repeat: "none", guests: "", colorId: "" });
     setSaveError(""); setConfirmDelete(false);
   };
   const openEdit = (ev: CalendarEvent) => {
     setModal({ mode: "edit", event: ev });
     setForm({
-      summary: ev.summary ?? "", calendarId: ev.calendarId,
-      allDay: !ev.start?.dateTime,
-      date: ev.start?.date || ev.start?.dateTime?.slice(0, 10) || "",
-      startTime: ev.start?.dateTime ? formatTime(ev.start.dateTime) : "09:00",
-      endTime: ev.end?.dateTime ? formatTime(ev.end.dateTime) : "10:00",
+      summary:     ev.summary ?? "",
+      calendarId:  ev.calendarId,
+      allDay:      !ev.start?.dateTime,
+      date:        ev.start?.date || ev.start?.dateTime?.slice(0, 10) || "",
+      startTime:   ev.start?.dateTime ? formatTime(ev.start.dateTime) : "09:00",
+      endTime:     ev.end?.dateTime   ? formatTime(ev.end.dateTime)   : "10:00",
       description: ev.description ?? "",
+      location:    ev.location ?? "",
+      repeat:      "none",
+      guests:      (ev.attendees ?? []).map(a => a.email).join(", "),
+      colorId:     ev.colorId ?? "",
     });
     setSaveError(""); setConfirmDelete(false);
   };
@@ -885,6 +936,35 @@ export default function Home() {
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "削除に失敗しました");
     } finally { setSaving(false); setConfirmDelete(false); }
+  };
+
+  const changeStatus = async (ev: CalendarEvent, newStatus: StatusKey) => {
+    if (ev.statusKey === newStatus) return;
+    const triad = triads.find(t =>
+      t.baseId === ev.calendarId || t.penId === ev.calendarId || t.arcId === ev.calendarId
+    );
+    if (!triad) return;
+    const targetCalId =
+      newStatus === "base" ? triad.baseId :
+      newStatus === "pen"  ? triad.penId  :
+                             triad.arcId;
+    if (!targetCalId) { alert("対象カレンダーが見つかりません"); return; }
+
+    // 楽観的 UI 更新
+    const newColor = EVENT_COLORS.find(c => c.id === ev.colorId)?.color ?? STATUS_COLORS[newStatus];
+    setEvents(p => p.map(e =>
+      e.id === ev.id
+        ? { ...e, calendarId: targetCalId, statusKey: newStatus, calendarColor: newColor }
+        : e
+    ));
+    closeModal();
+
+    await fetch("/api/calendar/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromCalendarId: ev.calendarId, toCalendarId: targetCalId, eventId: ev.googleEventId }),
+    });
+    await fetchEvents();
   };
 
   const calendarDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
@@ -1291,7 +1371,23 @@ export default function Home() {
                   <p className="text-xs text-gray-500 mt-1">
                     {!ev.start?.dateTime ? "終日" : `${formatTime(ev.start.dateTime)} 〜 ${formatTime(ev.end?.dateTime)}`}
                   </p>
+                  {ev.location && <p className="text-xs text-gray-400 mt-0.5">📍 {ev.location}</p>}
                   {ev.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{ev.description}</p>}
+                  <div className="flex gap-1 mt-2">
+                    {(["base", "pen", "arc"] as StatusKey[]).map(s => {
+                      const active = ev.statusKey === s;
+                      return (
+                        <button key={s}
+                          onClick={e => { e.stopPropagation(); changeStatus(ev, s); }}
+                          className={`flex-1 py-0.5 text-[10px] font-semibold rounded-lg border transition-all ${
+                            active ? "text-white border-transparent" : "text-gray-400 border-gray-200 hover:border-gray-300"
+                          }`}
+                          style={active ? { backgroundColor: STATUS_COLORS[s] } : {}}>
+                          {STATUS_ICONS[s]} {STATUS_LABELS[s]}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1308,6 +1404,29 @@ export default function Home() {
               <h3 className="text-base font-bold text-gray-800">{modal.mode === "create" ? "予定を追加" : "予定を編集"}</h3>
               <button onClick={closeModal} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200">✕</button>
             </div>
+
+            {/* ステータス切り替え */}
+            {modal.mode === "edit" && (() => {
+              const ev = (modal as { mode: "edit"; event: CalendarEvent }).event;
+              return (
+                <div className="flex gap-2 mb-4">
+                  {(["base", "pen", "arc"] as StatusKey[]).map(s => {
+                    const active = ev.statusKey === s;
+                    return (
+                      <button key={s}
+                        onClick={() => changeStatus(ev, s)}
+                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                          active ? "text-white border-transparent" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                        }`}
+                        style={active ? { backgroundColor: STATUS_COLORS[s] } : {}}>
+                        {STATUS_ICONS[s]} {STATUS_LABELS[s]}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
             <div className="mb-3">
               <input type="text" placeholder="タイトル（必須）" value={form.summary}
                 onChange={(e) => updateForm({ summary: e.target.value })} autoFocus
@@ -1343,11 +1462,56 @@ export default function Home() {
                   className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             )}
-            <div className="mb-4">
+            <div className="mb-3">
               <textarea placeholder="内容（任意）" value={form.description} rows={3}
                 onChange={(e) => updateForm({ description: e.target.value })}
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             </div>
+
+            {/* 場所 */}
+            <div className="mb-3">
+              <input type="text" placeholder="📍 場所（任意）" value={form.location}
+                onChange={(e) => updateForm({ location: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+
+            {/* 繰り返し */}
+            <div className="mb-3">
+              <select value={form.repeat}
+                onChange={(e) => updateForm({ repeat: e.target.value as RepeatOption })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="none">🔁 繰り返しなし</option>
+                <option value="daily">毎日</option>
+                <option value="weekly">毎週</option>
+                <option value="monthly">毎月</option>
+                <option value="yearly">毎年</option>
+              </select>
+            </div>
+
+            {/* ゲスト */}
+            <div className="mb-3">
+              <input type="text" placeholder="👥 ゲスト（メール、カンマ区切り）" value={form.guests}
+                onChange={(e) => updateForm({ guests: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+
+            {/* カラー */}
+            <div className="mb-4">
+              <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={() => updateForm({ colorId: "" })}
+                  className={`w-6 h-6 rounded-full border-2 bg-gray-200 ${form.colorId === "" ? "border-gray-500" : "border-transparent"}`}
+                  title="カレンダーの色を使用" />
+                {EVENT_COLORS.map(c => (
+                  <button key={c.id}
+                    onClick={() => updateForm({ colorId: c.id })}
+                    className={`w-6 h-6 rounded-full border-2 ${form.colorId === c.id ? "border-gray-500 scale-110" : "border-transparent"} transition-transform`}
+                    style={{ backgroundColor: c.color }}
+                    title={c.name} />
+                ))}
+              </div>
+            </div>
+
             {saveError && <p className="text-sm text-red-500 mb-3">{saveError}</p>}
             <div className="flex gap-2">
               {modal.mode === "edit" && !confirmDelete && (
