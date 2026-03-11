@@ -356,6 +356,96 @@ function GroupModal({
 }
 
 // ── タスクフォームモーダル ─────────────────────────────────────
+// ── ボードビューコンポーネント ──────────────────────────────
+function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete }: {
+  board: TrelloBoard | null;
+  lists: TrelloList[];
+  tasks: Task[];
+  draggingTaskId: string | null;
+  dragOverListId: string | null;
+  onDragStart: (taskId: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (listId: string) => void;
+  onDragLeave: () => void;
+  onDrop: (taskId: string, list: TrelloList) => void;
+  onDelete: (taskId: string) => void;
+}) {
+  if (!board) return (
+    <p className="text-sm text-gray-400 text-center py-12">
+      ボードIDを入力して追加してください<br/>
+      <span className="text-xs">（TrelloボードURL例: trello.com/b/<strong>AbCd1234</strong>/board-name）</span>
+    </p>
+  );
+  const boardLists = lists.filter((l) => l.boardId === board.boardId);
+  return (
+    <div className="flex gap-4 pb-2">
+      {boardLists.map((list) => {
+        const cardTasks = tasks.filter((t) => t.trelloListId === list.listId);
+        const isDragOver = dragOverListId === list.listId;
+        return (
+          <div key={list.listId}
+            className={`rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0 transition-colors ${isDragOver ? "bg-indigo-50 border-indigo-300" : "bg-white"}`}
+            onDragOver={(e) => { e.preventDefault(); onDragOver(list.listId); }}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeave(); }}
+            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("taskId"); if (id) onDrop(id, list); }}>
+            <div className="flex items-center gap-2 mb-3">
+              <h4 className="text-sm font-bold text-gray-700 truncate flex-1">{list.listName}</h4>
+              <span className="text-xs text-gray-400 flex-shrink-0">{cardTasks.length}</span>
+            </div>
+            <div className="space-y-2 min-h-[40px]">
+              {cardTasks.map((task) => (
+                <div key={task.id} draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("taskId", task.id); onDragStart(task.id); }}
+                  onDragEnd={onDragEnd}
+                  className={`rounded-xl border border-gray-100 bg-white p-3 group cursor-grab active:cursor-grabbing transition-opacity ${draggingTaskId === task.id ? "opacity-40" : "opacity-100"}`}>
+                  <div className="flex items-start gap-1">
+                    <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
+                    <button onClick={() => onDelete(task.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
+                  </div>
+                  {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
+                  {task.labels && task.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {task.labels.map((lb) => (
+                        <span key={lb.id} className="text-[9px] rounded px-1.5 py-0.5 text-white font-medium"
+                          style={{ backgroundColor: lb.color || "#aaa" }}>
+                          {lb.name || lb.color}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {task.dueDate && (
+                      <span className={`text-[10px] ${task.dueComplete ? "line-through text-gray-300" : "text-gray-500"}`}>
+                        📅 {task.dueDate}{task.dueComplete ? " ✓" : ""}
+                      </span>
+                    )}
+                    {task.assignees && task.assignees.length > 0 && (
+                      <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">
+                        👤 {task.assignees.join(", ")}
+                      </span>
+                    )}
+                    {task.checklistTotal != null && task.checklistTotal > 0 && (
+                      <span className={`text-[10px] rounded px-1.5 py-0.5 ${task.checklistDone === task.checklistTotal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                        ☑ {task.checklistDone}/{task.checklistTotal}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {cardTasks.length === 0 && (
+                <p className={`text-xs text-center py-4 ${isDragOver ? "text-indigo-300" : "text-gray-300"}`}>
+                  {isDragOver ? "ここにドロップ" : "なし"}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TaskFormModal({
   onSave, onClose,
 }: {
@@ -425,10 +515,49 @@ export default function Home() {
 
   // タスク
   const [tasks, setTasks]               = useState<Task[]>([]);
-  const [trelloBoards, setTrelloBoards] = useState<TrelloBoard[]>([]);
-  const [trelloLists, setTrelloLists]   = useState<TrelloList[]>([]);
+  const [trelloBoards, setTrelloBoards]   = useState<TrelloBoard[]>([]);
+  const [trelloLists, setTrelloLists]     = useState<TrelloList[]>([]);
+  const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [activeTab, setActiveTab]       = useState<"calendar" | "tasks">("calendar");
+  const [activeTab, setActiveTab]         = useState<"calendar" | "tasks">("calendar");
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragOverListId, setDragOverListId] = useState<string | null>(null);
+  const [boardInput, setBoardInput]       = useState("");
+  const [boardAdding, setBoardAdding]     = useState(false);
+  const [boardAddError, setBoardAddError] = useState("");
+  const [syncing, setSyncing]             = useState(false);
+  const [showSettings, setShowSettings]   = useState(false);
+
+  const handleSync = async (boardId?: string) => {
+    setSyncing(true);
+    try {
+      const url = boardId ? `/api/trello/sync?boardId=${boardId}` : "/api/trello/sync";
+      await fetch(url, { method: "POST" });
+      const updated = await fetchTasksFromAPI();
+      setTasks(updated);
+    } catch { /* ignore */ }
+    finally { setSyncing(false); }
+  };
+
+  const handleAddBoard = async () => {
+    const id = boardInput.trim();
+    if (!id) return;
+    setBoardAdding(true); setBoardAddError("");
+    try {
+      const res = await fetch("/api/trello/boards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boardId: id }),
+      });
+      if (!res.ok) { setBoardAddError("登録失敗"); return; }
+      const { boards, lists } = await fetchTrelloBoardsAndListsFromAPI();
+      setTrelloBoards(boards);
+      setTrelloLists(lists);
+      setActiveBoardId(boards.find(b => b.boardId === id)?.boardId ?? boards[0]?.boardId ?? null);
+      setBoardInput("");
+    } catch { setBoardAddError("エラーが発生しました"); }
+    finally { setBoardAdding(false); }
+  };
 
   // 初回ロード
   useEffect(() => {
@@ -437,7 +566,27 @@ export default function Home() {
     fetchTrelloBoardsAndListsFromAPI().then(({ boards, lists }) => {
       setTrelloBoards(boards);
       setTrelloLists(lists);
+      if (boards.length > 0) setActiveBoardId(boards[0].boardId);
     });
+  }, []);
+
+  // Supabase ↔ UI ポーリング（アクティブウィンドウ時のみ・30秒間隔）
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const refresh = () => { fetchTasksFromAPI().then(setTasks); };
+
+    const start = () => { if (!timer) timer = setInterval(refresh, 30_000); };
+    const stop  = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") { refresh(); start(); }
+      else { stop(); }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    start();
+    return () => { stop(); document.removeEventListener("visibilitychange", onVisibilityChange); };
   }, []);
 
   const triads = useMemo(() => parseTriads(calendars), [calendars]);
@@ -642,11 +791,12 @@ export default function Home() {
   };
 
   const handleTaskListChange = async (id: string, listId: string, listName: string, boardId: string, boardName: string) => {
+    const task = tasks.find(t => t.id === id);
     setTasks((p) => p.map((t) => t.id === id ? { ...t, trelloListId: listId, listName, boardId, boardName } : t));
     await fetch(`/api/tasks/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trelloListId: listId, listName, boardId, boardName }),
+      body: JSON.stringify({ trelloListId: listId, listName, boardId, boardName, trelloCardId: task?.trelloCardId }),
     });
   };
 
@@ -660,149 +810,82 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <h1 className="text-lg font-bold text-gray-800">📅 My Calendar</h1>
-        <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm">
-          <button onClick={() => setActiveTab("calendar")}
-            className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-            カレンダー
-          </button>
-          <button onClick={() => setActiveTab("tasks")}
-            className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-            タスク {tasks.length > 0 && (
-              <span className="ml-1 bg-indigo-100 text-indigo-700 rounded-full px-1.5 text-xs">{tasks.length}</span>
-            )}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm">
+            <button onClick={() => setActiveTab("calendar")}
+              className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+              カレンダー
+            </button>
+            <button onClick={() => setActiveTab("tasks")}
+              className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+              タスク {tasks.length > 0 && (
+                <span className="ml-1 bg-indigo-100 text-indigo-700 rounded-full px-1.5 text-xs">{tasks.length}</span>
+              )}
+            </button>
+          </div>
+          <button onClick={() => setShowSettings(true)}
+            className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 transition-colors">
+            ⚙️
           </button>
         </div>
       </header>
 
-      {/* ── タスクビュー ── */}
+      {/* ── ボードビュー ── */}
       {activeTab === "tasks" && (
-        <div className="flex-1 w-full p-3 md:p-6 overflow-x-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold text-gray-800">タスク</h2>
-            <button onClick={() => setShowTaskModal(true)}
-              className="flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white font-semibold hover:bg-indigo-700">
-              <span className="text-base leading-none">+</span> 追加
+        <div className="flex-1 flex flex-col min-h-0">
+          {/* ボードタブ行 */}
+          <div className="bg-white border-b px-4 py-2 flex items-center gap-2 overflow-x-auto">
+            {trelloBoards.map((board) => (
+              <button key={board.boardId} onClick={() => setActiveBoardId(board.boardId)}
+                className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeBoardId === board.boardId ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-100"
+                }`}>
+                {board.boardName}
+              </button>
+            ))}
+            <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+              <input value={boardInput} onChange={(e) => setBoardInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddBoard()}
+                placeholder="ボードID" className="w-32 rounded-lg border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <button onClick={handleAddBoard} disabled={boardAdding || !boardInput.trim()}
+                className="rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 disabled:opacity-50">
+                {boardAdding ? "…" : "+ 追加"}
+              </button>
+              {boardAddError && <span className="text-xs text-red-500">{boardAddError}</span>}
+            </div>
+            <button onClick={() => handleSync(activeBoardId ?? undefined)} disabled={syncing || !activeBoardId}
+              className="flex-shrink-0 ml-2 rounded-lg bg-green-100 px-3 py-1.5 text-xs text-green-700 font-medium hover:bg-green-200 disabled:opacity-50">
+              {syncing ? "同期中…" : "↻ 同期"}
             </button>
           </div>
 
-          {/* ボード → リスト → カード の階層 */}
-          {trelloBoards.length > 0 ? (
-            <div className="space-y-8">
-              {trelloBoards.map((board) => {
-                const boardLists = trelloLists.filter((l) => l.boardId === board.boardId);
-                return (
-                  <div key={board.boardId}>
-                    {/* ボード名 */}
-                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3 px-1">
-                      📋 {board.boardName}
-                    </h3>
-                    {/* リスト横並び */}
-                    <div className="flex gap-4 overflow-x-auto pb-2">
-                      {boardLists.map((list) => {
-                        const cardTasks = tasks.filter((t) => t.trelloListId === list.listId);
-                        const otherLists = boardLists.filter((l) => l.listId !== list.listId);
-                        return (
-                          <div key={list.listId} className="bg-white rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0">
-                            {/* リスト名 */}
-                            <div className="flex items-center gap-2 mb-3">
-                              <h4 className="text-sm font-bold text-gray-700 truncate flex-1">{list.listName}</h4>
-                              <span className="text-xs text-gray-400 flex-shrink-0">{cardTasks.length}</span>
-                            </div>
-                            {/* カード一覧 */}
-                            <div className="space-y-2">
-                              {cardTasks.map((task) => (
-                                <div key={task.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 group">
-                                  <div className="flex items-start gap-1">
-                                    <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
-                                    <button onClick={() => handleTaskDelete(task.id)}
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
-                                  </div>
-                                  {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
-                                  {/* ラベル */}
-                                  {task.labels && task.labels.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {task.labels.map((lb) => (
-                                        <span key={lb.id} className="text-[9px] rounded px-1.5 py-0.5 text-white font-medium"
-                                          style={{ backgroundColor: lb.color || "#aaa" }}>
-                                          {lb.name || lb.color}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                    {task.dueDate && (
-                                      <span className={`text-[10px] ${task.dueComplete ? "line-through text-gray-300" : "text-gray-500"}`}>
-                                        📅 {task.dueDate}{task.dueComplete ? " ✓" : ""}
-                                      </span>
-                                    )}
-                                    {task.assignees && task.assignees.length > 0 && (
-                                      <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">
-                                        👤 {task.assignees.join(", ")}
-                                      </span>
-                                    )}
-                                    {task.checklistTotal != null && task.checklistTotal > 0 && (
-                                      <span className={`text-[10px] rounded px-1.5 py-0.5 ${task.checklistDone === task.checklistTotal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                                        ☑ {task.checklistDone}/{task.checklistTotal}
-                                      </span>
-                                    )}
-                                  </div>
-                                  {/* 同ボード内の他リストへ移動 */}
-                                  {otherLists.length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                      {otherLists.map((l) => (
-                                        <button key={l.listId} onClick={() => handleTaskListChange(task.id, l.listId, l.listName, board.boardId, board.boardName)}
-                                          className="text-[10px] rounded-full px-2 py-0.5 border border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors">
-                                          → {l.listName}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                              {cardTasks.length === 0 && <p className="text-xs text-gray-300 text-center py-4">なし</p>}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* どのボードにも属さないタスク */}
-              {tasks.filter((t) => !t.trelloListId).length > 0 && (
-                <div>
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-3 px-1">未分類</h3>
-                  <div className="flex gap-4 overflow-x-auto pb-2">
-                    <div className="bg-white rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0">
-                      <div className="space-y-2">
-                        {tasks.filter((t) => !t.trelloListId).map((task) => (
-                          <div key={task.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 group">
-                            <div className="flex items-start gap-1">
-                              <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
-                              <button onClick={() => handleTaskDelete(task.id)}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
-                            </div>
-                            {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
-                            {task.dueDate && <span className="text-[10px] text-gray-500 mt-1 block">📅 {task.dueDate}</span>}
-                            {task.assignees && task.assignees.length > 0 && <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-2 py-0.5 mt-1 inline-block">👤 {task.assignees.join(", ")}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 text-center py-12">Trelloボードが登録されていません</p>
-          )}
+          {/* 選択中ボードのリスト・カード */}
+          <div className="flex-1 overflow-x-auto p-4">
+            <BoardView
+              board={trelloBoards.find(b => b.boardId === activeBoardId) ?? null}
+              lists={trelloLists}
+              tasks={tasks}
+              draggingTaskId={draggingTaskId}
+              dragOverListId={dragOverListId}
+              onDragStart={(taskId) => setDraggingTaskId(taskId)}
+              onDragEnd={() => { setDraggingTaskId(null); setDragOverListId(null); }}
+              onDragOver={(listId) => setDragOverListId(listId)}
+              onDragLeave={() => setDragOverListId(null)}
+              onDrop={(taskId, list) => {
+                handleTaskListChange(taskId, list.listId, list.listName,
+                  trelloBoards.find(b => b.boardId === activeBoardId)?.boardId ?? "",
+                  trelloBoards.find(b => b.boardId === activeBoardId)?.boardName ?? "");
+                setDragOverListId(null); setDraggingTaskId(null);
+              }}
+              onDelete={handleTaskDelete}
+            />
+          </div>
         </div>
       )}
 
-      {/* ステータスボタン + カレンダー選択 + カレンダー本体 */}
+      {/* ステータスボタン + カレンダー本体 */}
       {activeTab === "calendar" && (<>
-      <div className="bg-white border-b px-4 py-3 space-y-2.5">
+      <div className="bg-white border-b px-4 py-3">
         {/* 参加 / 未決定 / 不参加 */}
         <div className="flex gap-2">
           {(["base", "pen", "arc"] as StatusKey[]).map((key) => {
@@ -818,50 +901,6 @@ export default function Home() {
             );
           })}
         </div>
-
-        {/* カレンダー選択 */}
-        {calLoading ? (
-          <p className="text-xs text-gray-400">カレンダー読み込み中...</p>
-        ) : (
-          <div className="flex flex-wrap gap-2 items-center">
-            {triads.map((t) => {
-              const checked = selectedBaseIds.has(t.baseId);
-              return (
-                <button key={t.baseId} onClick={() => toggleBaseCalendar(t.baseId)}
-                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                    checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
-                  }`}
-                  style={checked ? { backgroundColor: t.baseColor } : {}}>
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
-                  {t.baseSummary}
-                  {(t.penId || t.arcId) && <span className="text-[9px] opacity-60">▸</span>}
-                </button>
-              );
-            })}
-
-            {/* グループ */}
-            {groups.map((g) => {
-              const checked = selectedGroupIds.has(g.id);
-              return (
-                <button key={g.id} onClick={() => toggleGroup(g.id)}
-                  onDoubleClick={() => { setEditingGroup(g); setShowGroupModal(true); }}
-                  title="ダブルクリックで編集"
-                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                    checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
-                  }`}
-                  style={checked ? { backgroundColor: g.color } : {}}>
-                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
-                  📁 {g.name}
-                </button>
-              );
-            })}
-
-            <button onClick={() => { setEditingGroup(null); setShowGroupModal(true); }}
-              className="rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
-              + グループ
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Body */}
@@ -1061,6 +1100,69 @@ export default function Home() {
       {showTaskModal && (
         <TaskFormModal onSave={handleTaskCreate}
           onClose={() => setShowTaskModal(false)} />
+      )}
+
+      {/* 設定パネル */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex">
+          {/* オーバーレイ */}
+          <div className="flex-1 bg-black/40" onClick={() => setShowSettings(false)} />
+          {/* パネル本体 */}
+          <div className="w-80 bg-white h-full shadow-2xl flex flex-col overflow-y-auto">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h2 className="font-bold text-gray-800">⚙️ 設定</h2>
+              <button onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+
+            <div className="px-4 py-4 space-y-4">
+              <h3 className="text-sm font-semibold text-gray-600">カレンダー選択</h3>
+              {calLoading ? (
+                <p className="text-xs text-gray-400">読み込み中...</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {triads.map((t) => {
+                    const checked = selectedBaseIds.has(t.baseId);
+                    return (
+                      <button key={t.baseId} onClick={() => toggleBaseCalendar(t.baseId)}
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                          checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
+                        }`}
+                        style={checked ? { backgroundColor: t.baseColor } : {}}>
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
+                        {t.baseSummary}
+                        {(t.penId || t.arcId) && <span className="text-[9px] opacity-60">▸</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <h3 className="text-sm font-semibold text-gray-600 pt-2">グループ</h3>
+              <div className="flex flex-wrap gap-2">
+                {groups.map((g) => {
+                  const checked = selectedGroupIds.has(g.id);
+                  return (
+                    <button key={g.id} onClick={() => toggleGroup(g.id)}
+                      onDoubleClick={() => { setEditingGroup(g); setShowGroupModal(true); }}
+                      title="ダブルクリックで編集"
+                      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                        checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
+                      }`}
+                      style={checked ? { backgroundColor: g.color } : {}}>
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
+                      📁 {g.name}
+                    </button>
+                  );
+                })}
+                <button onClick={() => { setEditingGroup(null); setShowGroupModal(true); }}
+                  className="rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                  + グループ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

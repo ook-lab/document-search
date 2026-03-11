@@ -79,6 +79,21 @@ async function getMemberNames(memberIds: string[]): Promise<string[]> {
   return names;
 }
 
+// カードの現在のメンバー一覧をTrello APIから取得（removeMemberFromCard等で使用）
+async function getCardAssignees(cardId: string): Promise<string[]> {
+  if (!TRELLO_KEY || !TRELLO_TOKEN) return [];
+  try {
+    const res = await fetch(
+      `https://api.trello.com/1/cards/${cardId}/members?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}&fields=fullName`
+    );
+    if (!res.ok) return [];
+    const members: { fullName: string }[] = await res.json();
+    return members.map(m => m.fullName).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 async function getChecklistProgress(cardId: string): Promise<{ total: number; done: number }> {
   if (!TRELLO_KEY || !TRELLO_TOKEN) return { total: 0, done: 0 };
   try {
@@ -104,6 +119,16 @@ export async function HEAD() {
   return new Response(null, { status: 200 });
 }
 
+// チェックリスト構成が変わるイベント（進捗を再計算する）
+const CHECKLIST_EVENT_TYPES = new Set([
+  "addChecklistToCard",
+  "removeChecklistFromCard",
+  "createCheckItem",
+  "deleteCheckItem",
+  "updateCheckItem",
+  "updateCheckItemStateOnCard",
+]);
+
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
@@ -112,6 +137,19 @@ export async function POST(req: Request) {
 
     const { type, data } = action;
     const now = new Date().toISOString();
+
+    // ── ボード系イベント ──────────────────────────────────
+    if (type === "updateBoard") {
+      const board = data?.board;
+      if (board?.id && board?.closed === true) {
+        // ボードがアーカイブ→そのボードの全タスクをarchived化
+        await fetch(
+          `${SUPABASE_URL}/rest/v1/tasks?board_id=eq.${board.id}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
+          { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ archived: true, sync_updated_at: now }) }
+        );
+      }
+      return Response.json({ ok: true });
+    }
 
     // ── リスト系イベント ──────────────────────────────────
     if (type === "updateList") {
@@ -128,9 +166,9 @@ export async function POST(req: Request) {
             { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ archived: true, sync_updated_at: now }) }
           );
         } else {
-          // リスト名変更→trello_listsを更新、そのリストのタスクのlist_nameも更新
+          // リスト名変更・復元→trello_listsを更新、そのリストのタスクのlist_nameも更新
           await fetch(
-            `${SUPABASE_URL}/rest/v1/trello_lists?list_id=eq.${list.id}?on_conflict=list_id`,
+            `${SUPABASE_URL}/rest/v1/trello_lists?list_id=eq.${list.id}`,
             { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ list_name: list.name }) }
           );
           await fetch(
@@ -160,6 +198,33 @@ export async function POST(req: Request) {
     if (!card) return Response.json({ ok: true });
 
     const trelloCardId = card.id as string;
+
+    // チェックリスト系イベント（進捗を再計算してDBを更新）
+    if (CHECKLIST_EVENT_TYPES.has(type)) {
+      const { total, done } = await getChecklistProgress(trelloCardId);
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/tasks?trello_card_id=eq.${trelloCardId}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
+        {
+          method: "PATCH", headers: sbHeaders(),
+          body: JSON.stringify({ checklist_total: total, checklist_done: done, sync_updated_at: now }),
+        }
+      );
+      return Response.json({ ok: true });
+    }
+
+    // メンバー変更（Trello APIから最新メンバー一覧を取得して反映）
+    if (type === "addMemberToCard" || type === "removeMemberFromCard") {
+      const assignees = await getCardAssignees(trelloCardId);
+      await fetch(
+        `${SUPABASE_URL}/rest/v1/tasks?trello_card_id=eq.${trelloCardId}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
+        {
+          method: "PATCH", headers: sbHeaders(),
+          body: JSON.stringify({ assignees, sync_updated_at: now }),
+        }
+      );
+      return Response.json({ ok: true });
+    }
+
     const rawListId = data.listAfter?.id ?? data.list?.id ?? null;
     const boardId   = data.board?.id ?? null;
 
@@ -172,6 +237,7 @@ export async function POST(req: Request) {
     const isClosed    = card.closed === true;
 
     const memberIds: string[] = card.idMembers ?? [];
+    // 空配列も正しく反映（全員削除のケース）
     const assignees = await getMemberNames(memberIds);
 
     // ラベル
@@ -179,7 +245,8 @@ export async function POST(req: Request) {
       id: l.id, name: l.name, color: l.color,
     }));
 
-    if (type === "createCard") {
+    if (type === "createCard" || type === "copyCard") {
+      // 重複チェック
       const chk = await fetch(
         `${SUPABASE_URL}/rest/v1/tasks?trello_card_id=eq.${trelloCardId}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&select=id`,
         { headers: sbHeaders() }
@@ -213,7 +280,7 @@ export async function POST(req: Request) {
         }),
       });
 
-    } else if (type === "updateCard") {
+    } else if (type === "updateCard" || type === "moveCardToBoard" || type === "moveCardFromBoard") {
       const existing = await fetch(
         `${SUPABASE_URL}/rest/v1/tasks?trello_card_id=eq.${trelloCardId}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&select=id`,
         { headers: sbHeaders() }
@@ -222,11 +289,12 @@ export async function POST(req: Request) {
       const prev = existingRows[0] ?? null;
 
       const patch: Record<string, unknown> = {
-        updated_at:      now,
         sync_updated_at: now,
         archived:        isClosed,
         due_complete:    dueComplete,
         labels:          labels,
+        assignees:       assignees,  // 空配列でも必ず更新（全員削除を反映）
+        due_date:        due,
       };
       if (rawListId)                 patch.trello_list_id = rawListId;
       if (listName)                  patch.list_name      = listName;
@@ -234,15 +302,6 @@ export async function POST(req: Request) {
       if (boardName)                 patch.board_name     = boardName;
       if (cardName !== undefined)    patch.card_name      = cardName;
       if (description !== undefined) patch.description    = description || null;
-      if (due !== undefined)         patch.due_date       = due;
-      if (assignees.length > 0)      patch.assignees      = assignees;
-
-      // チェックリスト更新はupdateChecklist / updateCheckItemStateなど特定typeのみ取得
-      if (type === "updateCard" && (data.checkItem || data.checklist)) {
-        const { total, done } = await getChecklistProgress(trelloCardId);
-        patch.checklist_total = total;
-        patch.checklist_done  = done;
-      }
 
       if (prev) {
         await fetch(
@@ -250,6 +309,7 @@ export async function POST(req: Request) {
           { method: "PATCH", headers: sbHeaders(), body: JSON.stringify(patch) }
         );
       } else {
+        // DBに存在しない場合は新規作成（webhook missed時の救済）
         const { total, done } = await getChecklistProgress(trelloCardId);
         await fetch(`${SUPABASE_URL}/rest/v1/tasks`, {
           method: "POST",
@@ -264,17 +324,6 @@ export async function POST(req: Request) {
           }),
         });
       }
-
-    } else if (type === "updateCheckItemStateOnCard") {
-      // チェックリスト項目の完了/未完了変更
-      const { total, done } = await getChecklistProgress(trelloCardId);
-      await fetch(
-        `${SUPABASE_URL}/rest/v1/tasks?trello_card_id=eq.${trelloCardId}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
-        {
-          method: "PATCH", headers: sbHeaders(),
-          body: JSON.stringify({ checklist_total: total, checklist_done: done, sync_updated_at: now }),
-        }
-      );
 
     } else if (type === "deleteCard") {
       await fetch(
