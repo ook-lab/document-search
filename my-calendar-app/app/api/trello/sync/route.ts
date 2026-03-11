@@ -42,23 +42,32 @@ async function getMemberNames(memberIds: string[]): Promise<string[]> {
   return names;
 }
 
-async function getChecklistProgress(cardId: string): Promise<{ total: number; done: number }> {
+async function getChecklistsData(cardId: string): Promise<{
+  total: number;
+  done: number;
+  checklists: {id: string; name: string; checkItems: {id: string; name: string; state: string}[]}[];
+}> {
   try {
     const res = await fetch(
-      `https://api.trello.com/1/cards/${cardId}/checklists?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}`
+      `https://api.trello.com/1/cards/${cardId}/checklists?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}&checkItems=all&checkItem_fields=id,name,state`
     );
-    if (!res.ok) return { total: 0, done: 0 };
-    const checklists = await res.json();
+    if (!res.ok) return { total: 0, done: 0, checklists: [] };
+    const raw = await res.json();
+    const checklists = raw.map((cl: {id: string; name: string; checkItems: {id: string; name: string; state: string}[]}) => ({
+      id: cl.id,
+      name: cl.name,
+      checkItems: (cl.checkItems ?? []).map((item) => ({ id: item.id, name: item.name, state: item.state })),
+    }));
     let total = 0, done = 0;
     for (const cl of checklists) {
-      for (const item of cl.checkItems ?? []) {
+      for (const item of cl.checkItems) {
         total++;
         if (item.state === "complete") done++;
       }
     }
-    return { total, done };
+    return { total, done, checklists };
   } catch {
-    return { total: 0, done: 0 };
+    return { total: 0, done: 0, checklists: [] };
   }
 }
 
@@ -122,8 +131,9 @@ async function syncBoard(boardId: string): Promise<{ synced: number; errors: num
   for (const card of allCards) {
     trelloCardIds.push(card.id);
     try {
-      const assignees = await getMemberNames(card.idMembers ?? []);
-      const { total, done } = await getChecklistProgress(card.id);
+      const memberNames = await getMemberNames(card.idMembers ?? []);
+      const membersData = (card.idMembers ?? []).map((memberId, i) => ({ id: memberId, name: memberNames[i] ?? "" }));
+      const checklistsData = await getChecklistsData(card.id);
       const labels = (card.labels ?? []).map(l => ({ id: l.id, name: l.name, color: l.color }));
       const due = card.due ? card.due.slice(0, 10) : null;
       // アーカイブされたカード OR アーカイブされたリストのカードはarchived扱い
@@ -139,10 +149,12 @@ async function syncBoard(boardId: string): Promise<{ synced: number; errors: num
           description:     card.desc || null,
           due_date:        due,
           due_complete:    card.dueComplete ?? false,
-          assignees:       assignees,
+          assignees:       memberNames,
           labels:          labels,
-          checklist_total: total,
-          checklist_done:  done,
+          checklist_total: checklistsData.total,
+          checklist_done:  checklistsData.done,
+          checklists:      checklistsData.checklists,
+          members_data:    membersData,
           trello_card_id:  card.id,
           trello_list_id:  card.idList,
           list_name:       listName,

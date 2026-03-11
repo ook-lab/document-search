@@ -5,6 +5,9 @@ import TaskDetailModal from "./components/TaskDetailModal";
 
 // ── 型定義 ──────────────────────────────────────────────────
 type TrelloLabel = { id: string; name: string; color: string };
+type CheckItem   = { id: string; name: string; state: "complete" | "incomplete" };
+type Checklist   = { id: string; name: string; checkItems: CheckItem[] };
+type MemberData  = { id: string; name: string };
 
 type Task = {
   id: string;
@@ -16,6 +19,8 @@ type Task = {
   labels?: TrelloLabel[];
   checklistTotal?: number;
   checklistDone?: number;
+  checklists?: Checklist[];
+  membersData?: MemberData[];
   calendarGroupId?: string;
   trelloCardId?: string;
   trelloListId?: string;
@@ -120,6 +125,8 @@ async function fetchTasksFromAPI(groupId?: string): Promise<Task[]> {
     labels:          (r.labels ?? []) as TrelloLabel[],
     checklistTotal:  r.checklist_total as number | undefined,
     checklistDone:   r.checklist_done as number | undefined,
+    checklists:      (r.checklists   ?? []) as Checklist[],
+    membersData:     (r.members_data ?? []) as MemberData[],
     calendarGroupId: r.calendar_group_id as string | undefined,
     trelloCardId:    r.trello_card_id as string | undefined,
     trelloListId:    r.trello_list_id as string | undefined,
@@ -360,7 +367,7 @@ function GroupModal({
 
 // ── タスクフォームモーダル ─────────────────────────────────────
 // ── ボードビューコンポーネント ──────────────────────────────
-function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete, onTaskClick }: {
+function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete, onTaskClick, onListRename, onListCreate }: {
   board: TrelloBoard | null;
   lists: TrelloList[];
   tasks: Task[];
@@ -373,7 +380,27 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
   onDrop: (taskId: string, list: TrelloList) => void;
   onDelete: (taskId: string) => void;
   onTaskClick: (taskId: string) => void;
+  onListRename: (listId: string, newName: string) => void;
+  onListCreate: (boardId: string, name: string) => void;
 }) {
+  const [editingListId,   setEditingListId]   = useState<string | null>(null);
+  const [editingListName, setEditingListName] = useState("");
+  const [showNewList,     setShowNewList]     = useState(false);
+  const [newListName,     setNewListName]     = useState("");
+
+  const commitListRename = (listId: string) => {
+    const name = editingListName.trim();
+    if (name) onListRename(listId, name);
+    setEditingListId(null);
+  };
+
+  const commitListCreate = () => {
+    const name = newListName.trim();
+    if (name && board) { onListCreate(board.boardId, name); }
+    setShowNewList(false);
+    setNewListName("");
+  };
+
   if (!board) return (
     <p className="text-sm text-gray-400 text-center py-12">
       ボードIDを入力して追加してください<br/>
@@ -393,7 +420,27 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeave(); }}
             onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("taskId"); if (id) onDrop(id, list); }}>
             <div className="flex items-center gap-2 mb-3">
-              <h4 className="text-sm font-bold text-gray-700 truncate flex-1">{list.listName}</h4>
+              {editingListId === list.listId ? (
+                <input
+                  className="flex-1 text-sm font-bold border-b-2 border-indigo-400 focus:outline-none bg-transparent py-0.5"
+                  value={editingListName}
+                  onChange={e => setEditingListName(e.target.value)}
+                  onBlur={() => commitListRename(list.listId)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); commitListRename(list.listId); }
+                    if (e.key === "Escape") setEditingListId(null);
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <h4
+                  className="text-sm font-bold text-gray-700 truncate flex-1 cursor-pointer hover:text-indigo-600"
+                  onClick={() => { setEditingListId(list.listId); setEditingListName(list.listName); }}
+                  title="クリックして名前を変更"
+                >
+                  {list.listName}
+                </h4>
+              )}
               <span className="text-xs text-gray-400 flex-shrink-0">{cardTasks.length}</span>
             </div>
             <div className="space-y-2 min-h-[40px]">
@@ -447,6 +494,46 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
           </div>
         );
       })}
+
+      {/* + リストを追加 */}
+      <div className="min-w-[220px] w-[220px] flex-shrink-0">
+        {showNewList ? (
+          <div className="rounded-2xl shadow-sm border p-4 bg-white flex flex-col gap-2">
+            <input
+              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              placeholder="リスト名"
+              value={newListName}
+              onChange={e => setNewListName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") { e.preventDefault(); commitListCreate(); }
+                if (e.key === "Escape") { setShowNewList(false); setNewListName(""); }
+              }}
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={commitListCreate}
+                className="flex-1 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+              >
+                追加
+              </button>
+              <button
+                onClick={() => { setShowNewList(false); setNewListName(""); }}
+                className="px-2 py-1 text-gray-400 hover:text-gray-600 text-xs"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowNewList(true)}
+            className="w-full rounded-2xl border border-dashed border-gray-300 p-4 text-sm text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors text-left"
+          >
+            + リストを追加
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -835,6 +922,27 @@ export default function Home() {
     await deleteTaskAPI(id);
   };
 
+  const handleListRename = async (listId: string, newName: string) => {
+    setTrelloLists(p => p.map(l => l.listId === listId ? { ...l, listName: newName } : l));
+    await fetch("/api/trello/lists", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listId, name: newName }),
+    });
+  };
+
+  const handleListCreate = async (boardId: string, name: string) => {
+    const res = await fetch("/api/trello/lists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ boardId, name }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setTrelloLists(p => [...p, { id: data.id, listId: data.listId, listName: data.listName, boardId }]);
+    }
+  };
+
   // ── メイン ───────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -909,6 +1017,8 @@ export default function Home() {
               }}
               onDelete={handleTaskDelete}
               onTaskClick={(taskId) => setSelectedTaskId(taskId)}
+              onListRename={handleListRename}
+              onListCreate={handleListCreate}
             />
           </div>
         </div>

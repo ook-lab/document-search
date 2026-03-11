@@ -115,6 +115,28 @@ async function getChecklistProgress(cardId: string): Promise<{ total: number; do
   }
 }
 
+async function getFullChecklists(cardId: string): Promise<{id: string; name: string; checkItems: {id: string; name: string; state: string}[]}[]> {
+  if (!TRELLO_KEY || !TRELLO_TOKEN) return [];
+  try {
+    const res = await fetch(
+      `https://api.trello.com/1/cards/${cardId}/checklists?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}&checkItems=all&checkItem_fields=id,name,state`
+    );
+    if (!res.ok) return [];
+    const raw = await res.json();
+    return raw.map((cl: {id: string; name: string; checkItems: {id: string; name: string; state: string}[]}) => ({
+      id: cl.id,
+      name: cl.name,
+      checkItems: (cl.checkItems ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        state: item.state,
+      })),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function HEAD() {
   return new Response(null, { status: 200 });
 }
@@ -201,12 +223,19 @@ export async function POST(req: Request) {
 
     // チェックリスト系イベント（進捗を再計算してDBを更新）
     if (CHECKLIST_EVENT_TYPES.has(type)) {
-      const { total, done } = await getChecklistProgress(trelloCardId);
+      const checklists = await getFullChecklists(trelloCardId);
+      let total = 0, done = 0;
+      for (const cl of checklists) {
+        for (const item of cl.checkItems ?? []) {
+          total++;
+          if (item.state === "complete") done++;
+        }
+      }
       await fetch(
         `${SUPABASE_URL}/rest/v1/tasks?trello_card_id=eq.${trelloCardId}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
         {
           method: "PATCH", headers: sbHeaders(),
-          body: JSON.stringify({ checklist_total: total, checklist_done: done, sync_updated_at: now }),
+          body: JSON.stringify({ checklist_total: total, checklist_done: done, checklists, sync_updated_at: now }),
         }
       );
       return Response.json({ ok: true });

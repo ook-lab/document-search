@@ -75,9 +75,9 @@ export async function POST(req: Request) {
     );
 
     // ボードをSupabaseに保存
-    const boardSave = await fetch(`${SUPABASE_URL}/rest/v1/trello_boards`, {
+    const boardSave = await fetch(`${SUPABASE_URL}/rest/v1/trello_boards?on_conflict=board_id`, {
       method: "POST",
-      headers: { ...sbHeaders(), "Prefer": "return=representation,resolution=merge-duplicates", "on-conflict": "board_id" },
+      headers: { ...sbHeaders(), "Prefer": "return=representation,resolution=merge-duplicates" },
       body: JSON.stringify({
         owner_email: OWNER_EMAIL,
         board_id:    boardInfo.id,
@@ -88,9 +88,9 @@ export async function POST(req: Request) {
 
     // リストをSupabaseに保存
     if (trelloLists.length > 0) {
-      await fetch(`${SUPABASE_URL}/rest/v1/trello_lists`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/trello_lists?on_conflict=list_id`, {
         method: "POST",
-        headers: { ...sbHeaders(), "Prefer": "return=representation,resolution=merge-duplicates", "on-conflict": "list_id" },
+        headers: { ...sbHeaders(), "Prefer": "return=representation,resolution=merge-duplicates" },
         body: JSON.stringify(
           trelloLists.map((l: { id: string; name: string; pos: number }) => ({
             board_id:  boardInfo.id,

@@ -2,6 +2,10 @@
 import { useState, useEffect, useRef } from "react";
 
 export type TrelloLabel = { id: string; name: string; color: string };
+export type CheckItem   = { id: string; name: string; state: "complete" | "incomplete" };
+export type Checklist   = { id: string; name: string; checkItems: CheckItem[] };
+export type MemberData  = { id: string; name: string };
+export type BoardMember = { id: string; fullName: string; username: string };
 
 export type Task = {
   id: string;
@@ -13,6 +17,8 @@ export type Task = {
   labels?: TrelloLabel[];
   checklistTotal?: number;
   checklistDone?: number;
+  checklists?: Checklist[];
+  membersData?: MemberData[];
   calendarGroupId?: string;
   trelloCardId?: string;
   trelloListId?: string;
@@ -49,6 +55,15 @@ export default function TaskDetailModal({ task, availableLabels, onUpdate, onDel
   const [dueComplete, setDueComplete] = useState(task.dueComplete ?? false);
   const [labels,      setLabels]      = useState<TrelloLabel[]>(task.labels ?? []);
   const [saving,      setSaving]      = useState(false);
+
+  const [checklists,        setChecklists]        = useState<Checklist[]>(task.checklists ?? []);
+  const [membersData,       setMembersData]       = useState<MemberData[]>(task.membersData ?? []);
+  const [boardMembers,      setBoardMembers]      = useState<BoardMember[]>([]);
+  const [newChecklistName,  setNewChecklistName]  = useState("");
+  const [showAddChecklist,  setShowAddChecklist]  = useState(false);
+  const [newItemNames,      setNewItemNames]      = useState<Record<string, string>>({});
+  const [showAddItem,       setShowAddItem]       = useState<Record<string, boolean>>({});
+
   const titleRef = useRef<HTMLInputElement>(null);
 
   // タスクが切り替わったらフォームをリセット
@@ -58,7 +73,22 @@ export default function TaskDetailModal({ task, availableLabels, onUpdate, onDel
     setDueDate(task.dueDate ?? "");
     setDueComplete(task.dueComplete ?? false);
     setLabels(task.labels ?? []);
+    setChecklists(task.checklists ?? []);
+    setMembersData(task.membersData ?? []);
+    setNewChecklistName("");
+    setShowAddChecklist(false);
+    setNewItemNames({});
+    setShowAddItem({});
   }, [task.id]);
+
+  // ボードメンバーのfetch
+  useEffect(() => {
+    if (!task.boardId) return;
+    fetch(`/api/trello/board-members?boardId=${task.boardId}`)
+      .then(r => r.json())
+      .then(setBoardMembers)
+      .catch(() => {});
+  }, [task.boardId]);
 
   const save = async (patch: Partial<Task>) => {
     setSaving(true);
@@ -111,9 +141,107 @@ export default function TaskDetailModal({ task, availableLabels, onUpdate, onDel
     onClose();
   };
 
-  const checklistPct = task.checklistTotal
-    ? Math.round(((task.checklistDone ?? 0) / task.checklistTotal) * 100)
-    : 0;
+  // ── チェックリスト操作 ──────────────────────────────────
+
+  const handleItemToggle = async (checklistId: string, item: CheckItem) => {
+    const newState = item.state === "complete" ? "incomplete" : "complete";
+    // optimistic update
+    setChecklists(prev => prev.map(cl =>
+      cl.id !== checklistId ? cl : {
+        ...cl,
+        checkItems: cl.checkItems.map(i => i.id === item.id ? { ...i, state: newState } : i),
+      }
+    ));
+    const res = await fetch(`/api/tasks/${task.id}/checklist-item`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checklistId, checkItemId: item.id, state: newState, trelloCardId: task.trelloCardId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      onUpdate(task.id, { checklistTotal: data.checklist_total, checklistDone: data.checklist_done });
+    }
+  };
+
+  const handleAddItem = async (checklistId: string) => {
+    const name = newItemNames[checklistId]?.trim();
+    if (!name) return;
+    setNewItemNames(p => ({ ...p, [checklistId]: "" }));
+    const res = await fetch(`/api/tasks/${task.id}/checklist-item`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checklistId, name, trelloCardId: task.trelloCardId }),
+    });
+    if (res.ok) {
+      const newItem: CheckItem = await res.json();
+      setChecklists(prev => prev.map(cl =>
+        cl.id !== checklistId ? cl : { ...cl, checkItems: [...cl.checkItems, newItem] }
+      ));
+    }
+  };
+
+  const handleAddChecklist = async () => {
+    const name = newChecklistName.trim();
+    if (!name || !task.trelloCardId) return;
+    setNewChecklistName("");
+    setShowAddChecklist(false);
+    const res = await fetch(`/api/tasks/${task.id}/checklist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, trelloCardId: task.trelloCardId }),
+    });
+    if (res.ok) {
+      const newChecklist: Checklist = await res.json();
+      setChecklists(prev => [...prev, newChecklist]);
+    }
+  };
+
+  const handleDeleteChecklist = async (checklistId: string) => {
+    setChecklists(prev => prev.filter(cl => cl.id !== checklistId));
+    await fetch(`/api/tasks/${task.id}/checklist?checklistId=${checklistId}`, { method: "DELETE" });
+  };
+
+  const handleDeleteItem = async (checklistId: string, checkItemId: string) => {
+    setChecklists(prev => prev.map(cl =>
+      cl.id !== checklistId ? cl : { ...cl, checkItems: cl.checkItems.filter(i => i.id !== checkItemId) }
+    ));
+    const params = new URLSearchParams({ checklistId, checkItemId, trelloCardId: task.trelloCardId ?? "" });
+    await fetch(`/api/tasks/${task.id}/checklist-item?${params}`, { method: "DELETE" });
+  };
+
+  // ── メンバー操作 ────────────────────────────────────────
+
+  const handleMemberToggle = async (member: BoardMember) => {
+    const isAssigned = membersData.some(m => m.id === member.id);
+    if (isAssigned) {
+      // 削除
+      setMembersData(prev => prev.filter(m => m.id !== member.id));
+      const params = new URLSearchParams({ memberId: member.id, trelloCardId: task.trelloCardId ?? "" });
+      await fetch(`/api/tasks/${task.id}/members?${params}`, { method: "DELETE" });
+      onUpdate(task.id, {
+        assignees: membersData.filter(m => m.id !== member.id).map(m => m.name),
+        membersData: membersData.filter(m => m.id !== member.id),
+      });
+    } else {
+      // 追加
+      const newMember: MemberData = { id: member.id, name: member.fullName };
+      setMembersData(prev => [...prev, newMember]);
+      await fetch(`/api/tasks/${task.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId: member.id, memberName: member.fullName, trelloCardId: task.trelloCardId }),
+      });
+      onUpdate(task.id, {
+        assignees: [...membersData, newMember].map(m => m.name),
+        membersData: [...membersData, newMember],
+      });
+    }
+  };
+
+  // チェックリスト進捗計算
+  const totalItems = checklists.reduce((sum, cl) => sum + (cl.checkItems?.length ?? 0), 0);
+  const doneItems  = checklists.reduce((sum, cl) => sum + (cl.checkItems?.filter(i => i.state === "complete").length ?? 0), 0);
+  const checklistPct = totalItems > 0 ? Math.round((doneItems / totalItems) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
@@ -208,37 +336,198 @@ export default function TaskDetailModal({ task, availableLabels, onUpdate, onDel
             </div>
           )}
 
-          {/* 担当者（表示のみ・変更はTrello側で） */}
-          {(task.assignees ?? []).length > 0 && (
+          {/* メンバー */}
+          {boardMembers.length > 0 && (
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">担当者</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">メンバー</label>
               <div className="flex flex-wrap gap-2">
-                {(task.assignees ?? []).map((a, i) => (
-                  <span key={i} className="bg-gray-100 text-gray-700 rounded-full px-3 py-1 text-sm">{a}</span>
-                ))}
+                {boardMembers.map(member => {
+                  const assigned = membersData.some(m => m.id === member.id);
+                  return (
+                    <button
+                      key={member.id}
+                      onClick={() => handleMemberToggle(member)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all"
+                      style={{
+                        opacity: assigned ? 1 : 0.4,
+                        backgroundColor: assigned ? "#dbeafe" : "#f3f4f6",
+                        borderColor: assigned ? "#93c5fd" : "#e5e7eb",
+                        color: assigned ? "#1d4ed8" : "#374151",
+                      }}
+                    >
+                      {assigned && <span>✓</span>}
+                      {member.fullName}
+                    </button>
+                  );
+                })}
               </div>
-              <p className="text-xs text-gray-400 mt-1">担当者の変更はTrelloで行ってください</p>
             </div>
           )}
 
-          {/* チェックリスト（表示のみ） */}
-          {(task.checklistTotal ?? 0) > 0 && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                チェックリスト {task.checklistDone}/{task.checklistTotal} ({checklistPct}%)
-              </label>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+          {/* チェックリスト */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              チェックリスト
+              {totalItems > 0 && (
+                <span className="ml-2 font-normal normal-case text-gray-400">
+                  {doneItems}/{totalItems} ({checklistPct}%)
+                </span>
+              )}
+            </label>
+
+            {/* 全体進捗バー */}
+            {totalItems > 0 && (
+              <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
                 <div
-                  className="h-2 rounded-full transition-all"
+                  className="h-1.5 rounded-full transition-all"
                   style={{
                     width: `${checklistPct}%`,
                     backgroundColor: checklistPct === 100 ? "#22c55e" : "#6366f1",
                   }}
                 />
               </div>
-              <p className="text-xs text-gray-400 mt-1">チェックリストの編集はTrelloで行ってください</p>
+            )}
+
+            {/* 各チェックリスト */}
+            <div className="flex flex-col gap-4">
+              {checklists.map(cl => {
+                const clTotal = cl.checkItems?.length ?? 0;
+                const clDone  = cl.checkItems?.filter(i => i.state === "complete").length ?? 0;
+                const clPct   = clTotal > 0 ? Math.round((clDone / clTotal) * 100) : 0;
+                return (
+                  <div key={cl.id} className="border rounded-lg p-3">
+                    {/* チェックリストヘッダー */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-700">{cl.name}</span>
+                      <div className="flex items-center gap-2">
+                        {clTotal > 0 && (
+                          <span className="text-xs text-gray-400">{clDone}/{clTotal}</span>
+                        )}
+                        <button
+                          onClick={() => handleDeleteChecklist(cl.id)}
+                          className="text-gray-300 hover:text-red-500 text-xs transition-colors"
+                          title="チェックリストを削除"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 進捗バー */}
+                    {clTotal > 0 && (
+                      <div className="w-full bg-gray-100 rounded-full h-1 mb-2">
+                        <div
+                          className="h-1 rounded-full transition-all"
+                          style={{
+                            width: `${clPct}%`,
+                            backgroundColor: clPct === 100 ? "#22c55e" : "#6366f1",
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* アイテム一覧 */}
+                    <div className="flex flex-col gap-1">
+                      {(cl.checkItems ?? []).map(item => (
+                        <div key={item.id} className="flex items-center gap-2 group py-0.5">
+                          <input
+                            type="checkbox"
+                            checked={item.state === "complete"}
+                            onChange={() => handleItemToggle(cl.id, item)}
+                            className="w-4 h-4 accent-indigo-500 flex-shrink-0 cursor-pointer"
+                          />
+                          <span className={`flex-1 text-sm ${item.state === "complete" ? "line-through text-gray-400" : "text-gray-700"}`}>
+                            {item.name}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteItem(cl.id, item.id)}
+                            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 text-xs transition-all flex-shrink-0"
+                            title="アイテムを削除"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* アイテム追加 */}
+                    {showAddItem[cl.id] ? (
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          className="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                          placeholder="アイテム名"
+                          value={newItemNames[cl.id] ?? ""}
+                          onChange={e => setNewItemNames(p => ({ ...p, [cl.id]: e.target.value }))}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") { e.preventDefault(); handleAddItem(cl.id); }
+                            if (e.key === "Escape") setShowAddItem(p => ({ ...p, [cl.id]: false }));
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleAddItem(cl.id)}
+                          className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+                        >
+                          追加
+                        </button>
+                        <button
+                          onClick={() => setShowAddItem(p => ({ ...p, [cl.id]: false }))}
+                          className="px-2 py-1 text-gray-400 hover:text-gray-600 text-xs"
+                        >
+                          キャンセル
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowAddItem(p => ({ ...p, [cl.id]: true }))}
+                        className="mt-2 text-xs text-indigo-500 hover:text-indigo-700 hover:underline"
+                      >
+                        + アイテムを追加
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          )}
+
+            {/* チェックリスト追加 */}
+            {task.trelloCardId && (
+              showAddChecklist ? (
+                <div className="mt-3 flex gap-2">
+                  <input
+                    className="flex-1 border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    placeholder="チェックリスト名"
+                    value={newChecklistName}
+                    onChange={e => setNewChecklistName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { e.preventDefault(); handleAddChecklist(); }
+                      if (e.key === "Escape") { setShowAddChecklist(false); setNewChecklistName(""); }
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleAddChecklist}
+                    className="px-2 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
+                  >
+                    追加
+                  </button>
+                  <button
+                    onClick={() => { setShowAddChecklist(false); setNewChecklistName(""); }}
+                    className="px-2 py-1 text-gray-400 hover:text-gray-600 text-xs"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddChecklist(true)}
+                  className="mt-3 text-xs text-indigo-500 hover:text-indigo-700 hover:underline"
+                >
+                  + チェックリストを追加
+                </button>
+              )
+            )}
+          </div>
         </div>
 
         {/* フッター：アクション */}
