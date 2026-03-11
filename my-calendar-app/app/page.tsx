@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import TaskDetailModal from "./components/TaskDetailModal";
 
 // ── 型定義 ──────────────────────────────────────────────────
 type TrelloLabel = { id: string; name: string; color: string };
@@ -21,6 +22,7 @@ type Task = {
   listName?: string;
   boardId?: string;
   boardName?: string;
+  archived?: boolean;
 };
 
 type TrelloList = {
@@ -124,6 +126,7 @@ async function fetchTasksFromAPI(groupId?: string): Promise<Task[]> {
     listName:        r.list_name as string | undefined,
     boardId:         r.board_id as string | undefined,
     boardName:       r.board_name as string | undefined,
+    archived:        r.archived as boolean | undefined,
   }));
 }
 
@@ -357,7 +360,7 @@ function GroupModal({
 
 // ── タスクフォームモーダル ─────────────────────────────────────
 // ── ボードビューコンポーネント ──────────────────────────────
-function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete }: {
+function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete, onTaskClick }: {
   board: TrelloBoard | null;
   lists: TrelloList[];
   tasks: Task[];
@@ -369,6 +372,7 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
   onDragLeave: () => void;
   onDrop: (taskId: string, list: TrelloList) => void;
   onDelete: (taskId: string) => void;
+  onTaskClick: (taskId: string) => void;
 }) {
   if (!board) return (
     <p className="text-sm text-gray-400 text-center py-12">
@@ -397,10 +401,11 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
                 <div key={task.id} draggable
                   onDragStart={(e) => { e.dataTransfer.setData("taskId", task.id); onDragStart(task.id); }}
                   onDragEnd={onDragEnd}
-                  className={`rounded-xl border border-gray-100 bg-white p-3 group cursor-grab active:cursor-grabbing transition-opacity ${draggingTaskId === task.id ? "opacity-40" : "opacity-100"}`}>
+                  onClick={() => onTaskClick(task.id)}
+                  className={`rounded-xl border border-gray-100 bg-white p-3 group cursor-pointer transition-opacity ${draggingTaskId === task.id ? "opacity-40" : "opacity-100"}`}>
                   <div className="flex items-start gap-1">
                     <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
-                    <button onClick={() => onDelete(task.id)}
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
                       className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
                   </div>
                   {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
@@ -527,6 +532,7 @@ export default function Home() {
   const [boardAddError, setBoardAddError] = useState("");
   const [syncing, setSyncing]             = useState(false);
   const [showSettings, setShowSettings]   = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   const handleSync = async (boardId?: string) => {
     setSyncing(true);
@@ -783,6 +789,30 @@ export default function Home() {
     setEditingGroup(null);
   };
 
+  // ── タスク詳細モーダル用 ──────────────────────────────────
+  const selectedTask = useMemo(
+    () => tasks.find(t => t.id === selectedTaskId) ?? null,
+    [tasks, selectedTaskId]
+  );
+
+  // ボード上のタスクから使用中のラベルを集約
+  const availableLabels = useMemo(() => {
+    const map = new Map<string, TrelloLabel>();
+    for (const t of tasks) {
+      if (!activeBoardId || t.boardId === activeBoardId) {
+        for (const l of t.labels ?? []) { if (l.id) map.set(l.id, l); }
+      }
+    }
+    return Array.from(map.values());
+  }, [tasks, activeBoardId]);
+
+  const handleTaskUpdate = useCallback((id: string, patch: Partial<Task>) => {
+    setTasks(p => {
+      const updated = p.map(t => t.id === id ? { ...t, ...patch } : t);
+      return patch.archived ? updated.filter(t => !t.archived) : updated;
+    });
+  }, []);
+
   // ── タスク操作 ─────────────────────────────────────────
   const handleTaskCreate = async (t: Omit<Task, "id">) => {
     const created = await createTaskAPI(t);
@@ -878,9 +908,21 @@ export default function Home() {
                 setDragOverListId(null); setDraggingTaskId(null);
               }}
               onDelete={handleTaskDelete}
+              onTaskClick={(taskId) => setSelectedTaskId(taskId)}
             />
           </div>
         </div>
+      )}
+
+      {/* タスク詳細モーダル */}
+      {selectedTask && (
+        <TaskDetailModal
+          task={selectedTask}
+          availableLabels={availableLabels}
+          onUpdate={handleTaskUpdate}
+          onDelete={(id) => setTasks(p => p.filter(t => t.id !== id))}
+          onClose={() => setSelectedTaskId(null)}
+        />
       )}
 
       {/* ステータスボタン + カレンダー本体 */}

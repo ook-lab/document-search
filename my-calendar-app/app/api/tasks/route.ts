@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const groupId = searchParams.get("groupId");
 
-    let url = `${SUPABASE_URL}/rest/v1/tasks?owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&order=sort_order,due_date`;
+    let url = `${SUPABASE_URL}/rest/v1/tasks?owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&archived=eq.false&order=sort_order,due_date`;
     if (groupId) url += `&calendar_group_id=eq.${encodeURIComponent(groupId)}`;
 
     const res = await fetch(url, { headers: sbHeaders() });
