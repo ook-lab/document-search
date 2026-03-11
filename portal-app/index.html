@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 16px 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111827;
+      letter-spacing: -.3px;
+    }
+    header p {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+
+    main {
+      flex: 1;
+      padding: 32px 24px;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      margin-bottom: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 36px;
+    }
+
+    .card {
+      display: block;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 20px 18px;
+      text-decoration: none;
+      transition: box-shadow .15s, transform .15s, border-color .15s;
+      cursor: pointer;
+    }
+    .card:hover {
+      box-shadow: 0 6px 20px rgba(0,0,0,.09);
+      transform: translateY(-2px);
+      border-color: #d1d5db;
+    }
+    .card:active { transform: translateY(0); }
+
+    .card-icon {
+      font-size: 28px;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .card-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+    .card-desc {
+      font-size: 11px;
+      color: #9ca3af;
+      line-height: 1.5;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 11px;
+      color: #d1d5db;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🏠 Dashboard</h1>
+  <p>サービス一覧</p>
+</header>
+
+<main>
+  <p class="section-title">業務ツール</p>
+  <div class="grid">
+
+    <a class="card" href="https://my-calendar-app-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">📅</span>
+      <div class="card-name">カレンダー & タスク</div>
+      <div class="card-desc">Trello 連携タスク管理・スケジュール</div>
+    </a>
+
+    <a class="card" href="https://calendar-register-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">📝</span>
+      <div class="card-name">カレンダー登録</div>
+      <div class="card-desc">予定の登録・管理</div>
+    </a>
+
+    <a class="card" href="https://daily-report-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">📋</span>
+      <div class="card-name">日報</div>
+      <div class="card-desc">日次レポートの作成・確認</div>
+    </a>
+
+    <a class="card" href="https://ai-cost-tracker-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">💰</span>
+      <div class="card-name">AI コスト管理</div>
+      <div class="card-desc">AI 利用コストの追跡・分析</div>
+    </a>
+
+    <a class="card" href="https://kakeibo-ui-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">💴</span>
+      <div class="card-name">家計簿</div>
+      <div class="card-desc">収支の記録・管理</div>
+    </a>
+
+  </div>
+
+  <p class="section-title">ドキュメント</p>
+  <div class="grid">
+
+    <a class="card" href="https://doc-processor-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">⚙️</span>
+      <div class="card-name">ドキュメント処理</div>
+      <div class="card-desc">PDF・書類の自動処理パイプライン</div>
+    </a>
+
+    <a class="card" href="https://doc-review-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">🔍</span>
+      <div class="card-name">ドキュメントレビュー</div>
+      <div class="card-desc">書類の確認・レビュー</div>
+    </a>
+
+    <a class="card" href="https://doc-search-983922127476.asia-northeast1.run.app" target="_blank">
+      <span class="card-icon">🔎</span>
+      <div class="card-name">ドキュメント検索</div>
+      <div class="card-desc">書類の全文検索・抽出</div>
+    </a>
+
+  </div>
+</main>
+
+<footer>© 2026 Workspace-O</footer>
+
+</body>
+</html>
