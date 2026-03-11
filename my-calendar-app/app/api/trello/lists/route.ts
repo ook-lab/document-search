@@ -59,34 +59,38 @@ export async function POST(req: Request) {
       body: JSON.stringify({ board_id: boardId, list_id: trelloList.id, list_name: name, list_pos: trelloList.pos ?? 0 }),
     });
 
-    return Response.json({ id: trelloList.id, boardId, listId: trelloList.id, listName: name });
+    return Response.json({ id: trelloList.id, boardId, listId: trelloList.id, listName: name, listPos: trelloList.pos ?? 0 });
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 500 });
   }
 }
 
-// PUT: リスト名変更
+// PUT: リスト名変更 / 並び順変更
+// body: { listId, name? } または { listId, pos? }
 export async function PUT(req: Request) {
   try {
-    const { listId, name } = await req.json();
-    if (!listId || !name) return Response.json({ error: "listId, name required" }, { status: 400 });
+    const { listId, name, pos } = await req.json();
+    if (!listId || (name === undefined && pos === undefined))
+      return Response.json({ error: "listId and name or pos required" }, { status: 400 });
 
-    // Trelloでリスト名変更
+    // Trelloに反映
     if (TRELLO_KEY && TRELLO_TOKEN) {
+      const trelloBody: Record<string, unknown> = {};
+      if (name !== undefined) trelloBody.name = name;
+      if (pos  !== undefined) trelloBody.pos  = pos;
       await fetch(
         `https://api.trello.com/1/lists/${listId}?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        }
+        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(trelloBody) }
       );
     }
 
     // Supabase更新
+    const sbPatch: Record<string, unknown> = {};
+    if (name !== undefined) sbPatch.list_name = name;
+    if (pos  !== undefined) sbPatch.list_pos  = pos;
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/trello_lists?list_id=eq.${listId}`,
-      { method: "PATCH", headers: sbHeaders(), body: JSON.stringify({ list_name: name }) }
+      { method: "PATCH", headers: sbHeaders(), body: JSON.stringify(sbPatch) }
     );
     return Response.json(await res.json());
   } catch (e) {

@@ -35,6 +35,7 @@ type TrelloList = {
   listId: string;
   listName: string;
   boardId: string;
+  listPos: number;
 };
 
 type TrelloBoard = {
@@ -178,6 +179,7 @@ async function fetchTrelloBoardsAndListsFromAPI(): Promise<{ boards: TrelloBoard
     listId:   r.list_id as string,
     listName: r.list_name as string,
     boardId:  r.board_id as string,
+    listPos:  (r.list_pos as number) ?? 0,
   }));
   return { boards, lists };
 }
@@ -367,7 +369,7 @@ function GroupModal({
 
 // ── タスクフォームモーダル ─────────────────────────────────────
 // ── ボードビューコンポーネント ──────────────────────────────
-function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete, onTaskClick, onListRename, onListCreate }: {
+function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, onDelete, onTaskClick, onListRename, onListCreate, onListReorder }: {
   board: TrelloBoard | null;
   lists: TrelloList[];
   tasks: Task[];
@@ -382,11 +384,14 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
   onTaskClick: (taskId: string) => void;
   onListRename: (listId: string, newName: string) => void;
   onListCreate: (boardId: string, name: string) => void;
+  onListReorder: (draggedListId: string, targetListId: string) => void;
 }) {
   const [editingListId,   setEditingListId]   = useState<string | null>(null);
   const [editingListName, setEditingListName] = useState("");
   const [showNewList,     setShowNewList]     = useState(false);
   const [newListName,     setNewListName]     = useState("");
+  const [draggingListId,  setDraggingListId]  = useState<string | null>(null);
+  const [listDragOverId,  setListDragOverId]  = useState<string | null>(null);
 
   const commitListRename = (listId: string) => {
     const name = editingListName.trim();
@@ -407,19 +412,59 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
       <span className="text-xs">（TrelloボードURL例: trello.com/b/<strong>AbCd1234</strong>/board-name）</span>
     </p>
   );
-  const boardLists = lists.filter((l) => l.boardId === board.boardId);
+  const boardLists = lists
+    .filter((l) => l.boardId === board.boardId)
+    .sort((a, b) => a.listPos - b.listPos);
   return (
     <div className="flex gap-4 pb-2">
       {boardLists.map((list) => {
         const cardTasks = tasks.filter((t) => t.trelloListId === list.listId);
-        const isDragOver = dragOverListId === list.listId;
+        const isTaskDragOver = dragOverListId === list.listId && !draggingListId;
+        const isListDragOver = listDragOverId === list.listId && draggingListId && draggingListId !== list.listId;
         return (
           <div key={list.listId}
-            className={`rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0 transition-colors ${isDragOver ? "bg-indigo-50 border-indigo-300" : "bg-white"}`}
-            onDragOver={(e) => { e.preventDefault(); onDragOver(list.listId); }}
-            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) onDragLeave(); }}
-            onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("taskId"); if (id) onDrop(id, list); }}>
+            className={`rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0 transition-colors ${
+              isListDragOver  ? "ring-2 ring-indigo-400 bg-indigo-50 border-indigo-300"
+              : isTaskDragOver ? "bg-indigo-50 border-indigo-300"
+              : draggingListId === list.listId ? "opacity-40 bg-white"
+              : "bg-white"
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (draggingListId) setListDragOverId(list.listId);
+              else onDragOver(list.listId);
+            }}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                if (draggingListId) setListDragOverId(null);
+                else onDragLeave();
+              }
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const lId = e.dataTransfer.getData("listId");
+              const tId = e.dataTransfer.getData("taskId");
+              if (lId && lId !== list.listId) {
+                onListReorder(lId, list.listId);
+                setDraggingListId(null);
+                setListDragOverId(null);
+              } else if (tId) {
+                onDrop(tId, list);
+              }
+            }}>
             <div className="flex items-center gap-2 mb-3">
+              {/* リスト並び替えドラッグハンドル */}
+              <span
+                className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing text-base flex-shrink-0 select-none"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("listId", list.listId);
+                  e.stopPropagation();
+                  setDraggingListId(list.listId);
+                }}
+                onDragEnd={() => { setDraggingListId(null); setListDragOverId(null); }}
+                title="ドラッグして並び替え"
+              >⠿</span>
               {editingListId === list.listId ? (
                 <input
                   className="flex-1 text-sm font-bold border-b-2 border-indigo-400 focus:outline-none bg-transparent py-0.5"
@@ -486,8 +531,8 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
                 </div>
               ))}
               {cardTasks.length === 0 && (
-                <p className={`text-xs text-center py-4 ${isDragOver ? "text-indigo-300" : "text-gray-300"}`}>
-                  {isDragOver ? "ここにドロップ" : "なし"}
+                <p className={`text-xs text-center py-4 ${isTaskDragOver ? "text-indigo-300" : "text-gray-300"}`}>
+                  {isTaskDragOver ? "ここにドロップ" : "なし"}
                 </p>
               )}
             </div>
@@ -614,6 +659,9 @@ export default function Home() {
   const [activeTab, setActiveTab]         = useState<"calendar" | "tasks">("calendar");
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverListId, setDragOverListId] = useState<string | null>(null);
+  const [boardOrder, setBoardOrder]         = useState<string[]>([]);
+  const [draggingBoardId, setDraggingBoardId] = useState<string | null>(null);
+  const [boardDragOverId, setBoardDragOverId] = useState<string | null>(null);
   const [boardInput, setBoardInput]       = useState("");
   const [boardAdding, setBoardAdding]     = useState(false);
   const [boardAddError, setBoardAddError] = useState("");
@@ -939,8 +987,75 @@ export default function Home() {
     });
     if (res.ok) {
       const data = await res.json();
-      setTrelloLists(p => [...p, { id: data.id, listId: data.listId, listName: data.listName, boardId }]);
+      setTrelloLists(p => [...p, { id: data.id, listId: data.listId, listName: data.listName, boardId, listPos: data.listPos ?? 0 }]);
     }
+  };
+
+  // ── ボード並び替え（localStorage で永続化）────────────────
+  // ボード読み込み時に localStorage の保存順を適用
+  useEffect(() => {
+    if (trelloBoards.length === 0) return;
+    const saved: string[] = JSON.parse(localStorage.getItem("boardOrder") ?? "[]");
+    const existingIds = new Set(trelloBoards.map(b => b.boardId));
+    const merged = [
+      ...saved.filter(id => existingIds.has(id)),
+      ...trelloBoards.map(b => b.boardId).filter(id => !saved.includes(id)),
+    ];
+    setBoardOrder(merged);
+  }, [trelloBoards]);
+
+  const sortedBoards = useMemo(() => {
+    if (boardOrder.length === 0) return trelloBoards;
+    const map = new Map(trelloBoards.map(b => [b.boardId, b]));
+    return boardOrder.map(id => map.get(id)).filter(Boolean) as TrelloBoard[];
+  }, [trelloBoards, boardOrder]);
+
+  const handleBoardReorder = (draggedId: string, targetId: string) => {
+    setBoardOrder(prev => {
+      const current = prev.length > 0 ? prev : trelloBoards.map(b => b.boardId);
+      const dragIdx   = current.indexOf(draggedId);
+      const targetIdx = current.indexOf(targetId);
+      if (dragIdx === -1 || targetIdx === -1 || dragIdx === targetIdx) return prev;
+      const next = [...current];
+      next.splice(dragIdx, 1);
+      next.splice(targetIdx, 0, draggedId);
+      localStorage.setItem("boardOrder", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleListReorder = async (draggedListId: string, targetListId: string) => {
+    if (!activeBoardId || draggedListId === targetListId) return;
+    const boardLists = trelloLists
+      .filter(l => l.boardId === activeBoardId)
+      .sort((a, b) => a.listPos - b.listPos);
+    const dragIdx   = boardLists.findIndex(l => l.listId === draggedListId);
+    const targetIdx = boardLists.findIndex(l => l.listId === targetListId);
+    if (dragIdx === -1 || targetIdx === -1) return;
+
+    // 並び替え後の配列
+    const reordered = [...boardLists];
+    const [dragged] = reordered.splice(dragIdx, 1);
+    reordered.splice(targetIdx, 0, dragged);
+
+    // 挿入位置の前後から新しい pos を計算
+    const insertIdx = reordered.findIndex(l => l.listId === draggedListId);
+    const prev = reordered[insertIdx - 1];
+    const next = reordered[insertIdx + 1];
+    let newPos: number;
+    if (!prev)       newPos = (next?.listPos ?? 16384) / 2;
+    else if (!next)  newPos = prev.listPos + 16384;
+    else             newPos = (prev.listPos + next.listPos) / 2;
+
+    // 楽観的 UI 更新
+    setTrelloLists(p => p.map(l => l.listId === draggedListId ? { ...l, listPos: newPos } : l));
+
+    // Trello + Supabase に反映
+    await fetch("/api/trello/lists", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listId: draggedListId, pos: newPos }),
+    });
   };
 
   // ── メイン ───────────────────────────────────────────
@@ -973,11 +1088,28 @@ export default function Home() {
         <div className="flex-1 flex flex-col min-h-0">
           {/* ボードタブ行 */}
           <div className="bg-white border-b px-4 py-2 flex items-center gap-2 overflow-x-auto">
-            {trelloBoards.map((board) => (
-              <button key={board.boardId} onClick={() => setActiveBoardId(board.boardId)}
-                className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  activeBoardId === board.boardId ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-100"
-                }`}>
+            {sortedBoards.map((board) => (
+              <button
+                key={board.boardId}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("boardId", board.boardId);
+                  setDraggingBoardId(board.boardId);
+                }}
+                onDragEnd={() => { setDraggingBoardId(null); setBoardDragOverId(null); }}
+                onDragOver={(e) => { e.preventDefault(); setBoardDragOverId(board.boardId); }}
+                onDragLeave={() => setBoardDragOverId(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData("boardId");
+                  if (draggedId && draggedId !== board.boardId) handleBoardReorder(draggedId, board.boardId);
+                  setDraggingBoardId(null); setBoardDragOverId(null);
+                }}
+                onClick={() => setActiveBoardId(board.boardId)}
+                className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-all select-none cursor-grab active:cursor-grabbing ${
+                  draggingBoardId === board.boardId ? "opacity-40" :
+                  boardDragOverId === board.boardId && draggingBoardId !== board.boardId ? "ring-2 ring-indigo-400" : ""
+                } ${activeBoardId === board.boardId ? "bg-indigo-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}>
                 {board.boardName}
               </button>
             ))}
@@ -1019,6 +1151,7 @@ export default function Home() {
               onTaskClick={(taskId) => setSelectedTaskId(taskId)}
               onListRename={handleListRename}
               onListCreate={handleListCreate}
+              onListReorder={handleListReorder}
             />
           </div>
         </div>
