@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import TaskDetailModal from "./components/TaskDetailModal";
 
 // ── 型定義 ──────────────────────────────────────────────────
@@ -57,6 +58,7 @@ type CalendarEntry = {
   summary: string;
   backgroundColor?: string;
   primary?: boolean;
+  accessRole?: string;
 };
 
 type CalendarTriad = {
@@ -71,11 +73,16 @@ type CalendarTriad = {
 
 type StatusKey = "base" | "pen" | "arc";
 
+type CalendarGroupEntry = {
+  calendarId: string;
+  viewType: "month" | "day" | "both";
+};
+
 type CalendarGroup = {
   id: string;
   name: string;
   color: string;
-  baseIds: string[];
+  calendars: CalendarGroupEntry[];
 };
 
 type CalendarEvent = {
@@ -102,6 +109,7 @@ type EventForm = {
   calendarId: string;
   allDay: boolean;
   date: string;
+  endDate: string;
   startTime: string;
   endTime: string;
   description: string;
@@ -215,10 +223,10 @@ async function fetchGroupsFromAPI(): Promise<CalendarGroup[]> {
   if (!res.ok) return [];
   const rows = await res.json();
   return (rows ?? []).map((r: Record<string, unknown>) => ({
-    id:      r.id as string,
-    name:    r.name as string,
-    color:   r.color as string,
-    baseIds: r.base_ids as string[],
+    id:        r.id as string,
+    name:      r.name as string,
+    color:     r.color as string,
+    calendars: r.calendar_configs as CalendarGroupEntry[],
   }));
 }
 
@@ -235,7 +243,7 @@ async function createGroupAPI(g: Omit<CalendarGroup, "id">): Promise<CalendarGro
   }
   const rows = await res.json();
   const r = Array.isArray(rows) ? rows[0] : rows;
-  return r ? { id: r.id, name: r.name, color: r.color, baseIds: r.base_ids } : null;
+  return r ? { id: r.id, name: r.name, color: r.color, calendars: r.calendar_configs } : null;
 }
 
 async function updateGroupAPI(id: string, g: Omit<CalendarGroup, "id">): Promise<void> {
@@ -251,7 +259,8 @@ async function deleteGroupAPI(id: string): Promise<void> {
 }
 
 // ── ユーティリティ ───────────────────────────────────────────
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
+const WEEKDAYS     = ["日", "月", "火", "水", "木", "金", "土"];
+const WEEKDAYS_MON = ["月", "火", "水", "木", "金", "土", "日"];
 
 function formatDateOnly(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -271,11 +280,14 @@ function getEventDateKey(ev: CalendarEvent) {
 }
 function getEventSortKey(ev: CalendarEvent) { return ev.start?.dateTime || ev.start?.date || ""; }
 
-function buildCalendarDays(month: Date): Date[] {
+function buildCalendarDays(month: Date, startMonday = false): Date[] {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const last  = new Date(month.getFullYear(), month.getMonth() + 1, 0);
-  const start = new Date(first); start.setDate(start.getDate() - start.getDay());
-  const end   = new Date(last);  end.setDate(end.getDate() + (6 - end.getDay()));
+  const startDow = startMonday ? 1 : 0;
+  const startPad = (first.getDay() - startDow + 7) % 7;
+  const endPad   = (startDow + 6 - last.getDay() + 7) % 7;
+  const start = new Date(first); start.setDate(start.getDate() - startPad);
+  const end   = new Date(last);  end.setDate(end.getDate() + endPad);
   const days: Date[] = [];
   const cur = new Date(start);
   while (cur <= end) { days.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
@@ -304,14 +316,100 @@ function buildEventBody(form: EventForm) {
     body.recurrence = [rules[form.repeat]];
   }
   if (form.allDay) {
-    const end = new Date(form.date); end.setDate(end.getDate() + 1);
+    const endD = new Date(form.endDate || form.date); endD.setDate(endD.getDate() + 1);
     body.start = { date: form.date };
-    body.end   = { date: formatDateOnly(end) };
+    body.end   = { date: formatDateOnly(endD) };
   } else {
+    const endDate = (form.endDate && form.endDate >= form.date) ? form.endDate : form.date;
     body.start = { dateTime: `${form.date}T${form.startTime}:00`, timeZone: tz };
-    body.end   = { dateTime: `${form.date}T${form.endTime}:00`, timeZone: tz };
+    body.end   = { dateTime: `${endDate}T${form.endTime}:00`, timeZone: tz };
   }
   return body;
+}
+
+// ── くすみカラー 3ツール ─────────────────────────────────────
+const COLOR_THEMES = [
+  { name: "Morning Mist", colors: ["#A3B18A","#588157","#DAD7CD","#A8DADC","#457B9D"] },
+  { name: "Dusty Rose",   colors: ["#E5989B","#B5828C","#6D597A","#E29578","#FFB4A2"] },
+  { name: "Urban Nuance", colors: ["#8D99AE","#CED4DA","#6C757D","#ADB5BD","#495057"] },
+  { name: "Sand & Stone", colors: ["#D4A373","#FAEDCD","#FEFAE0","#E9EDC1","#CCD5AE"] },
+  { name: "Midnight Ash", colors: ["#5F797B","#81909E","#A5A5A5","#4A4E69","#22223B"] },
+];
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  s /= 100; l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const [r, g, b] = hslToRgb(h, s, l);
+  return `#${r.toString(16).padStart(2,"0")}${g.toString(16).padStart(2,"0")}${b.toString(16).padStart(2,"0")}`;
+}
+
+function SliderTrack({ value, min, max, onChange, gradient }: {
+  value: number; min: number; max: number; onChange: (v: number) => void; gradient: string;
+}) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div className="relative h-4 flex items-center">
+      <div className="absolute inset-0 rounded-full" style={{ background: gradient }} />
+      <div className="absolute w-4 h-4 rounded-full bg-white border-2 border-gray-300 shadow-sm pointer-events-none z-10"
+        style={{ left: `calc(${pct}% - 8px)` }} />
+      <input type="range" min={min} max={max} value={value}
+        onChange={e => onChange(+e.target.value)}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20" />
+    </div>
+  );
+}
+
+function MutedColorWheel({ onSelect }: { onSelect: (c: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const SIZE = 220;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const imageData = ctx.createImageData(SIZE, SIZE);
+    const cx = SIZE / 2, cy = SIZE / 2, r = SIZE / 2 - 2;
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const dx = x - cx, dy = y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > r) continue;
+        const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+        const t = dist / r;
+        const [rr, gg, bb] = hslToRgb(angle, 15 + t * 25, 78 - t * 43);
+        const idx = (y * SIZE + x) * 4;
+        imageData.data[idx] = rr;
+        imageData.data[idx + 1] = gg;
+        imageData.data[idx + 2] = bb;
+        imageData.data[idx + 3] = 255;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }, []);
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left) * (SIZE / rect.width));
+    const y = Math.round((e.clientY - rect.top) * (SIZE / rect.height));
+    const px = ctx.getImageData(x, y, 1, 1).data;
+    const hex = `#${px[0].toString(16).padStart(2,"0")}${px[1].toString(16).padStart(2,"0")}${px[2].toString(16).padStart(2,"0")}`;
+    onSelect(hex);
+  };
+  return (
+    <canvas ref={canvasRef} width={SIZE} height={SIZE}
+      onClick={handleClick}
+      className="cursor-crosshair rounded-full border border-gray-100"
+      style={{ width: SIZE, height: SIZE }} />
+  );
 }
 
 // ── _pen/_arc を検出してトライアドを構築 ──────────────────────
@@ -359,16 +457,45 @@ function GroupModal({
 }) {
   const [name, setName]   = useState(editGroup?.name ?? "");
   const [color, setColor] = useState(editGroup?.color ?? "#4285F4");
-  const [sel, setSel]     = useState<Set<string>>(new Set(editGroup?.baseIds ?? []));
 
-  const toggle = (id: string) =>
-    setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // calendarId → viewType のマップ
+  const [calConfig, setCalConfig] = useState<Record<string, "month" | "day" | "both">>(() => {
+    const init: Record<string, "month" | "day" | "both"> = {};
+    for (const entry of editGroup?.calendars ?? []) {
+      init[entry.calendarId] = entry.viewType;
+    }
+    return init;
+  });
+
+  const isSelected = (id: string) => id in calConfig;
+
+  const toggleCal = (id: string) => {
+    setCalConfig((p) => {
+      if (id in p) {
+        const next = { ...p };
+        delete next[id];
+        return next;
+      }
+      return { ...p, [id]: "both" };
+    });
+  };
+
+  const setViewType = (id: string, vt: "month" | "day" | "both") => {
+    setCalConfig((p) => ({ ...p, [id]: vt }));
+  };
 
   const save = () => {
-    if (!name.trim() || sel.size === 0) return;
-    const g: CalendarGroup = { id: editGroup?.id ?? "", name: name.trim(), color, baseIds: [...sel] };
+    if (!name.trim() || Object.keys(calConfig).length === 0) return;
+    const calendars: CalendarGroupEntry[] = Object.entries(calConfig).map(([calendarId, viewType]) => ({ calendarId, viewType }));
+    const g: CalendarGroup = { id: editGroup?.id ?? "", name: name.trim(), color, calendars };
     onSave(editGroup ? "update" : "create", g);
   };
+
+  const VIEW_OPTIONS: { value: "month" | "day" | "both"; label: string }[] = [
+    { value: "month", label: "月" },
+    { value: "day",   label: "日" },
+    { value: "both",  label: "両方" },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
@@ -384,15 +511,33 @@ function GroupModal({
           <input type="color" value={color} onChange={(e) => setColor(e.target.value)}
             className="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer" />
         </div>
-        <p className="text-xs text-gray-500 mb-2">含めるカレンダーを選択</p>
+        <p className="text-xs text-gray-500 mb-2">含めるカレンダーと表示先を選択</p>
         <div className="overflow-y-auto flex-1 space-y-1">
-          {triads.map((t) => (
-            <label key={t.baseId} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
-              <input type="checkbox" checked={sel.has(t.baseId)} onChange={() => toggle(t.baseId)} className="rounded" />
-              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
-              <span className="text-sm">{t.baseSummary}</span>
-            </label>
-          ))}
+          {triads.map((t) => {
+            const selected = isSelected(t.baseId);
+            const vt = calConfig[t.baseId] ?? "both";
+            return (
+              <div key={t.baseId} className={`rounded-lg border p-2 transition-colors ${selected ? "border-blue-200 bg-blue-50" : "border-gray-100"}`}>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={selected} onChange={() => toggleCal(t.baseId)} className="rounded" />
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
+                  <span className="text-sm flex-1">{t.baseSummary}</span>
+                </label>
+                {selected && (
+                  <div className="flex gap-1 mt-1.5 ml-6">
+                    {VIEW_OPTIONS.map((opt) => (
+                      <button key={opt.value} onClick={() => setViewType(t.baseId, opt.value)}
+                        className={`flex-1 py-0.5 rounded-lg text-[11px] font-medium border transition-all ${
+                          vt === opt.value ? "bg-blue-500 text-white border-transparent" : "text-gray-400 border-gray-200 bg-white"
+                        }`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         <div className="flex gap-2 mt-4">
           {editGroup && (
@@ -401,7 +546,7 @@ function GroupModal({
           )}
           <div className="flex-1" />
           <button onClick={onClose} className="rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">キャンセル</button>
-          <button onClick={save} disabled={!name.trim() || sel.size === 0}
+          <button onClick={save} disabled={!name.trim() || Object.keys(calConfig).length === 0}
             className="rounded-xl bg-blue-600 px-4 py-2 text-sm text-white font-semibold hover:bg-blue-700 disabled:opacity-50">保存</button>
         </div>
       </div>
@@ -669,8 +814,34 @@ function TaskFormModal({
   );
 }
 
-// ── メインコンポーネント ─────────────────────────────────────
+// ── 認証ゲート ───────────────────────────────────────────────
 export default function Home() {
+  const { status } = useSession();
+  if (status === "loading") {
+    return <div className="min-h-screen flex items-center justify-center text-gray-400">読み込み中...</div>;
+  }
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white rounded-2xl shadow-lg p-10 flex flex-col items-center gap-5 max-w-sm w-full">
+          <div className="text-4xl">📅</div>
+          <h1 className="text-xl font-bold text-gray-800">Family Calendar</h1>
+          <p className="text-sm text-gray-500 text-center">Googleアカウントでログインしてください</p>
+          <button onClick={() => signIn("google")}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 text-white px-4 py-3 font-semibold hover:bg-blue-700 transition-colors">
+            Googleでログイン
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return <CalendarApp />;
+}
+
+// ── メインコンポーネント ─────────────────────────────────────
+function CalendarApp() {
+  const { data: session } = useSession();
+
   const [calendars, setCalendars]             = useState<CalendarEntry[]>([]);
   const [selectedBaseIds, setSelectedBaseIds] = useState<Set<string>>(new Set());
   const [activeStatuses, setActiveStatuses]   = useState<Set<StatusKey>>(new Set(["base", "pen", "arc"]));
@@ -710,6 +881,23 @@ export default function Home() {
   const [syncing, setSyncing]             = useState(false);
   const [showSettings, setShowSettings]   = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [trelloConnected, setTrelloConnected] = useState<boolean | null>(null);
+  // カレンダーごとの表示先設定 { [baseId]: { month: boolean, day: boolean } }
+  const [calViewMode, setCalViewMode] = useState<Record<string, { month: boolean; day: boolean }>>({});
+  // グループごとの表示先設定
+  const [groupViewMode, setGroupViewMode] = useState<Record<string, { month: boolean; day: boolean }>>({});
+  // カレンダー共有
+  type ShareMember = { key: string; label: string; email: string };
+  const [shareMembers, setShareMembers]   = useState<ShareMember[]>([]);
+  const [calendarAcls, setCalendarAcls]   = useState<Record<string, string[]>>({});
+  const [sharingLoading, setSharingLoading] = useState<Record<string, boolean>>({});
+  const [colorPickerOpenId, setColorPickerOpenId] = useState<string | null>(null);
+  const [colorPickerTab, setColorPickerTab]       = useState<"palette"|"spectrum"|"slider">("palette");
+  const [cpHue,   setCpHue]   = useState(210);
+  const [cpLight, setCpLight] = useState(75);
+  const [cpSat,   setCpSat]   = useState(20);
+  const [weekStartsMonday, setWeekStartsMonday]   = useState(false);
+  const [use24h, setUse24h]                       = useState(true);
 
   const handleSync = async (boardId?: string) => {
     setSyncing(true);
@@ -732,7 +920,11 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ boardId: id }),
       });
-      if (!res.ok) { setBoardAddError("登録失敗"); return; }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        if (errData.needsAuth) { setTrelloConnected(false); return; }
+        setBoardAddError("登録失敗"); return;
+      }
       const { boards, lists } = await fetchTrelloBoardsAndListsFromAPI();
       setTrelloBoards(boards);
       setTrelloLists(lists);
@@ -746,11 +938,16 @@ export default function Home() {
   useEffect(() => {
     fetchGroupsFromAPI().then(setGroups);
     fetchTasksFromAPI().then(setTasks);
-    fetchTrelloBoardsAndListsFromAPI().then(({ boards, lists }) => {
-      setTrelloBoards(boards);
-      setTrelloLists(lists);
-      if (boards.length > 0) setActiveBoardId(boards[0].boardId);
-    });
+    fetch("/api/trello/token").then(r => r.json()).then(d => {
+      setTrelloConnected(!!d.connected);
+      if (d.connected) {
+        fetchTrelloBoardsAndListsFromAPI().then(({ boards, lists }) => {
+          setTrelloBoards(boards);
+          setTrelloLists(lists);
+          if (boards.length > 0) setActiveBoardId(boards[0].boardId);
+        });
+      }
+    }).catch(() => setTrelloConnected(false));
   }, []);
 
   // Supabase ↔ UI ポーリング（アクティブウィンドウ時のみ・30秒間隔）
@@ -791,7 +988,9 @@ export default function Home() {
 
   const effectiveBaseIds = useMemo(() => {
     const ids = new Set(selectedBaseIds);
-    for (const gId of selectedGroupIds) groups.find((g) => g.id === gId)?.baseIds.forEach((id) => ids.add(id));
+    for (const gId of selectedGroupIds) {
+      groups.find((g) => g.id === gId)?.calendars.forEach((c) => ids.add(c.calendarId));
+    }
     return ids;
   }, [selectedBaseIds, selectedGroupIds, groups]);
 
@@ -806,19 +1005,67 @@ export default function Home() {
       setCalLoading(true);
       try {
         const res = await fetch("/api/calendar?action=list");
-        if (!res.ok) throw new Error();
         const data = await res.json();
+        if (!res.ok) throw new Error(data?.detail?.error?.message ?? data?.error ?? "unknown");
         const items: CalendarEntry[] = (data.items ?? []).map((c: Record<string, unknown>) => ({
           id: c.id as string,
           summary: (c.summary as string) || (c.id as string),
           backgroundColor: c.backgroundColor as string | undefined,
           primary: c.primary as boolean | undefined,
+          accessRole: c.accessRole as string | undefined,
         }));
         setCalendars(items);
+
+        const allIds = new Set(items.map(c => c.id));
         const primaryId = items.find((c) => c.primary && !c.summary.endsWith("_pen") && !c.summary.endsWith("_arc"))?.id;
-        if (primaryId) setSelectedBaseIds(new Set([primaryId]));
-      } catch {
-        setError("カレンダー一覧の取得に失敗しました");
+        const baseIds = items.filter(c => !c.summary.endsWith("_pen") && !c.summary.endsWith("_arc")).map(c => c.id);
+        const nonPrimaryBaseIds = baseIds.filter(id => id !== primaryId);
+
+        // Supabase から保存済み設定・shareMembers・ACL を並行取得
+        const [prefRes, membersRes, aclRes] = await Promise.all([
+          fetch("/api/preferences"),
+          fetch("/api/calendar/members"),
+          nonPrimaryBaseIds.length > 0
+            ? fetch(`/api/calendar/share?ids=${nonPrimaryBaseIds.join(",")}`)
+            : Promise.resolve(null),
+        ]);
+
+        // 表示選択・表示モードを復元（primary・存在しないIDは除外）
+        if (prefRes.ok) {
+          const prefs = await prefRes.json();
+
+          // グループ選択
+          const savedGroupIds: string[] = prefs.selected_group_ids ?? [];
+          setSelectedGroupIds(new Set(savedGroupIds));
+
+          // カレンダー選択（primary は絶対に除外）
+          const savedBaseIds: string[] = (prefs.selected_base_ids ?? [])
+            .filter((id: string) => allIds.has(id) && id !== primaryId);
+          if (savedBaseIds.length > 0) {
+            setSelectedBaseIds(new Set(savedBaseIds));
+          } else {
+            // 初回または全削除後：primary 以外のすべてを選択（共有カレンダーも含む）
+            setSelectedBaseIds(new Set(nonPrimaryBaseIds));
+            fetch("/api/preferences", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ selected_base_ids: nonPrimaryBaseIds, selected_group_ids: savedGroupIds }),
+            }).catch(() => { /* ignore */ });
+          }
+
+          // 月間/日別 表示モード
+          if (prefs.cal_view_mode)   setCalViewMode(prefs.cal_view_mode);
+          if (prefs.group_view_mode) setGroupViewMode(prefs.group_view_mode);
+          if (prefs.week_start_monday != null) setWeekStartsMonday(!!prefs.week_start_monday);
+          if (prefs.use_24h           != null) setUse24h(!!prefs.use_24h);
+        } else {
+          setSelectedBaseIds(new Set(nonPrimaryBaseIds));
+        }
+
+        if (membersRes.ok) setShareMembers(await membersRes.json());
+        if (aclRes?.ok) setCalendarAcls(await aclRes.json());
+      } catch (e) {
+        setError("カレンダー一覧の取得に失敗しました: " + (e instanceof Error ? e.message : ""));
       } finally {
         setCalLoading(false);
       }
@@ -870,16 +1117,27 @@ export default function Home() {
   // ── モーダル ──────────────────────────────────────────
   const openCreate = (date: string) => {
     setModal({ mode: "create", date });
-    setForm({ summary: "", calendarId: primaryBaseId, allDay: false, date, startTime: "09:00", endTime: "10:00", description: "", location: "", repeat: "none", guests: "", colorId: "" });
+    // 選択中のカレンダーのうち最初のbaseIdを使う（なければprimary）
+    const defaultCalId = [...effectiveBaseIds][0] ?? primaryBaseId;
+    setForm({ summary: "", calendarId: defaultCalId, allDay: false, date, endDate: date, startTime: "09:00", endTime: "10:00", description: "", location: "", repeat: "none", guests: "", colorId: "" });
     setSaveError(""); setConfirmDelete(false);
   };
   const openEdit = (ev: CalendarEvent) => {
     setModal({ mode: "edit", event: ev });
+    const startDate = ev.start?.date || ev.start?.dateTime?.slice(0, 10) || "";
+    const endDateRaw = ev.end?.date || ev.end?.dateTime?.slice(0, 10) || startDate;
+    // allDay の end は exclusive なので 1日戻す
+    let endDate = endDateRaw;
+    if (!ev.start?.dateTime && endDateRaw > startDate) {
+      const d = new Date(endDateRaw); d.setDate(d.getDate() - 1);
+      endDate = formatDateOnly(d);
+    }
     setForm({
       summary:     ev.summary ?? "",
       calendarId:  ev.calendarId,
       allDay:      !ev.start?.dateTime,
-      date:        ev.start?.date || ev.start?.dateTime?.slice(0, 10) || "",
+      date:        startDate,
+      endDate:     endDate,
       startTime:   ev.start?.dateTime ? formatTime(ev.start.dateTime) : "09:00",
       endTime:     ev.end?.dateTime   ? formatTime(ev.end.dateTime)   : "10:00",
       description: ev.description ?? "",
@@ -938,6 +1196,57 @@ export default function Home() {
     } finally { setSaving(false); setConfirmDelete(false); }
   };
 
+  // 設定パネルを開いたとき：ACL を最新状態に更新（shareMembers はページロード時に取得済み）
+  const openSettings = useCallback(async () => {
+    setShowSettings(true);
+    const baseIds = triads.map(t => t.baseId).filter(Boolean);
+    if (baseIds.length === 0) return;
+    const aclRes = await fetch(`/api/calendar/share?ids=${baseIds.join(",")}`);
+    if (aclRes.ok) setCalendarAcls(await aclRes.json());
+  }, [triads]);
+
+  const handleShareToggle = async (triad: CalendarTriad, member: ShareMember, currentlyShared: boolean) => {
+    const key = `${triad.baseId}:${member.key}`;
+    setSharingLoading(p => ({ ...p, [key]: true }));
+    try {
+      if (currentlyShared) {
+        await fetch("/api/calendar/share", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseId: triad.baseId, penId: triad.penId, arcId: triad.arcId, memberEmail: member.email }),
+        });
+        setCalendarAcls(p => ({ ...p, [triad.baseId]: (p[triad.baseId] ?? []).filter(e => e !== member.email) }));
+      } else {
+        const res = await fetch("/api/calendar/share", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseId: triad.baseId, baseName: triad.baseSummary, penId: triad.penId, arcId: triad.arcId, memberEmail: member.email }),
+        });
+        if (res.ok) {
+          setCalendarAcls(p => ({ ...p, [triad.baseId]: [...(p[triad.baseId] ?? []), member.email] }));
+          // _pen/_arc が新規作成された場合はカレンダー一覧を再取得
+          const data = await res.json();
+          if (!triad.penId || !triad.arcId) {
+            void data; // 再取得トリガー
+            const r = await fetch("/api/calendar/calendars");
+            if (r.ok) setCalendars(await r.json());
+          }
+        }
+      }
+    } finally {
+      setSharingLoading(p => ({ ...p, [key]: false }));
+    }
+  };
+
+  const handleColorChange = async (calendarId: string, backgroundColor: string) => {
+    await fetch("/api/calendar/color", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calendarId, backgroundColor }),
+    });
+    setCalendars(p => p.map(c => c.id === calendarId ? { ...c, backgroundColor } : c));
+  };
+
   const changeStatus = async (ev: CalendarEvent, newStatus: StatusKey) => {
     if (ev.statusKey === newStatus) return;
     const triad = triads.find(t =>
@@ -967,25 +1276,140 @@ export default function Home() {
     await fetchEvents();
   };
 
-  const calendarDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
+  // calendarId → baseId の逆引きマップ
+  const calIdToBaseId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of triads) {
+      m.set(t.baseId, t.baseId);
+      if (t.penId) m.set(t.penId, t.baseId);
+      if (t.arcId) m.set(t.arcId, t.baseId);
+    }
+    return m;
+  }, [triads]);
+
+  const toggleCalViewMode = (baseId: string, key: "month" | "day") => {
+    setCalViewMode(prev => {
+      const cur = prev[baseId] ?? { month: true, day: true };
+      const next = { ...prev, [baseId]: { ...cur, [key]: !cur[key] } };
+      fetch("/api/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cal_view_mode: next }),
+      }).catch(() => { /* ignore */ });
+      return next;
+    });
+  };
+
+  const toggleGroupViewMode = (groupId: string, key: "month" | "day") => {
+    setGroupViewMode(prev => {
+      const cur = prev[groupId] ?? { month: true, day: true };
+      const next = { ...prev, [groupId]: { ...cur, [key]: !cur[key] } };
+      fetch("/api/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_view_mode: next }),
+      }).catch(() => { /* ignore */ });
+      return next;
+    });
+  };
+
+  // baseId が月間/日別に表示すべきかを判定
+  const canShowInView = useCallback((bid: string, viewKey: "month" | "day"): boolean => {
+    // カレンダー個別設定
+    if ((calViewMode[bid]?.[viewKey] ?? true) === false) return false;
+    // アクティブグループ設定（グループOFF または グループ内viewType不一致）
+    for (const gId of selectedGroupIds) {
+      const g = groups.find(g => g.id === gId);
+      if (!g) continue;
+      // グループ自体の月間/日別トグル
+      if ((groupViewMode[gId]?.[viewKey] ?? true) === false) {
+        if (g.calendars.some(c => c.calendarId === bid)) return false;
+      }
+      // グループ内カレンダーのviewType設定
+      const entry = g.calendars.find(c => c.calendarId === bid);
+      if (entry) {
+        if (viewKey === "month" && entry.viewType === "day") return false;
+        if (viewKey === "day"   && entry.viewType === "month") return false;
+      }
+    }
+    return true;
+  }, [calViewMode, groupViewMode, selectedGroupIds, groups]);
+
+  const calendarDays = useMemo(() => buildCalendarDays(currentMonth, weekStartsMonday), [currentMonth, weekStartsMonday]);
+  // 複数日にわたるイベントを各日付に展開するヘルパー
+  function expandEventDates(ev: CalendarEvent): string[] {
+    const startKey = ev.start?.date || ev.start?.dateTime?.slice(0, 10);
+    if (!startKey) return [];
+    const rawEnd = ev.end?.date || ev.end?.dateTime?.slice(0, 10);
+    let endKey = rawEnd || startKey;
+    // allDay の end.date は exclusive（最終日+1）なので1日戻す
+    if (ev.start?.date && endKey > startKey) {
+      const d = new Date(endKey);
+      d.setDate(d.getDate() - 1);
+      endKey = formatDateOnly(d);
+    }
+    const keys: string[] = [];
+    const cur = new Date(startKey);
+    const end = new Date(endKey);
+    while (cur <= end) {
+      keys.push(formatDateOnly(cur));
+      cur.setDate(cur.getDate() + 1);
+    }
+    return keys;
+  }
+
+  // 月間カレンダー用（month:true のカレンダーのみ）
   const eventsByDate = useMemo(() => {
     const map: Record<string, CalendarEvent[]> = {};
-    for (const ev of events) { const k = getEventDateKey(ev); if (k) (map[k] ??= []).push(ev); }
+    for (const ev of events) {
+      const bid = calIdToBaseId.get(ev.calendarId);
+      if (bid && !canShowInView(bid, "month")) continue;
+      for (const k of expandEventDates(ev)) {
+        (map[k] ??= []).push(ev);
+      }
+    }
     return map;
-  }, [events]);
-  const selectedEvents = useMemo(() => eventsByDate[selectedDate] ?? [], [eventsByDate, selectedDate]);
+  }, [events, calIdToBaseId, canShowInView]);
+  // 日別詳細用（day:true のカレンダーのみ）
+  const selectedEvents = useMemo(() => {
+    const all: Record<string, CalendarEvent[]> = {};
+    for (const ev of events) {
+      const bid = calIdToBaseId.get(ev.calendarId);
+      if (bid && !canShowInView(bid, "day")) continue;
+      for (const k of expandEventDates(ev)) {
+        (all[k] ??= []).push(ev);
+      }
+    }
+    return all[selectedDate] ?? [];
+  }, [events, calIdToBaseId, canShowInView, selectedDate]);
   const todayKey = useMemo(() => formatDateOnly(new Date()), []);
 
   const toggleBaseCalendar = (id: string) =>
-    setSelectedBaseIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelectedBaseIds((p) => {
+      const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id);
+      fetch("/api/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected_base_ids: [...n], selected_group_ids: [...selectedGroupIds] }),
+      }).catch(() => { /* ignore */ });
+      return n;
+    });
   const toggleGroup = (id: string) =>
-    setSelectedGroupIds((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelectedGroupIds((p) => {
+      const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id);
+      fetch("/api/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selected_base_ids: [...selectedBaseIds], selected_group_ids: [...n] }),
+      }).catch(() => { /* ignore */ });
+      return n;
+    });
   const toggleStatus = (key: StatusKey) =>
     setActiveStatuses((p) => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   const handleGroupSave = async (action: "create" | "update" | "delete", g: CalendarGroup) => {
     if (action === "create") {
-      const created = await createGroupAPI({ name: g.name, color: g.color, baseIds: g.baseIds });
+      const created = await createGroupAPI({ name: g.name, color: g.color, calendars: g.calendars });
       if (created) {
         setGroups((p) => [...p, created]);
       } else {
@@ -993,7 +1417,7 @@ export default function Home() {
         return;
       }
     } else if (action === "update") {
-      await updateGroupAPI(g.id, { name: g.name, color: g.color, baseIds: g.baseIds });
+      await updateGroupAPI(g.id, { name: g.name, color: g.color, calendars: g.calendars });
       setGroups((p) => p.map((x) => (x.id === g.id ? g : x)));
     } else {
       await deleteGroupAPI(g.id);
@@ -1140,31 +1564,42 @@ export default function Home() {
 
   // ── メイン ───────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <h1 className="text-lg font-bold text-gray-800">📅 My Calendar</h1>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden text-sm">
-            <button onClick={() => setActiveTab("calendar")}
-              className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-              カレンダー
-            </button>
-            <button onClick={() => setActiveTab("tasks")}
-              className={`px-4 py-1.5 font-medium transition-colors ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-              タスク {tasks.length > 0 && (
-                <span className="ml-1 bg-indigo-100 text-indigo-700 rounded-full px-1.5 text-xs">{tasks.length}</span>
-              )}
-            </button>
-          </div>
-          <button onClick={() => setShowSettings(true)}
-            className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 transition-colors">
-            ⚙️
-          </button>
-        </div>
-      </header>
+    <div className="h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
+      <header className="bg-white border-b px-3 py-2 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+  <h1 className="text-sm font-bold text-gray-800 whitespace-nowrap">📅 Family Calendar</h1>
+  <div className="flex items-center gap-1.5">
+    <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+      <button onClick={() => setActiveTab("calendar")}
+        className={`px-3 py-1.5 text-base transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+        📅
+      </button>
+      <button onClick={() => setActiveTab("tasks")}
+        className={`px-3 py-1.5 text-base transition-colors relative ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+        📋{tasks.length > 0 && <span className="ml-0.5 text-[10px] font-bold">{tasks.length}</span>}
+      </button>
+    </div>
+    {session?.user?.image && (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={session.user.image} alt="avatar" className="w-6 h-6 rounded-full border border-gray-200 flex-shrink-0" />
+    )}
+    <button onClick={openSettings}
+      className="rounded-xl border border-gray-200 px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-50 transition-colors">
+      ⚙️
+    </button>
+  </div>
+</header>
 
       {/* ── ボードビュー ── */}
-      {activeTab === "tasks" && (
+      {activeTab === "tasks" && trelloConnected === false && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <p className="text-sm text-gray-500">Trelloアカウントに接続してボードを管理できます</p>
+          <button onClick={() => window.location.href = "/api/trello/auth"}
+            className="rounded-xl bg-blue-600 text-white px-6 py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors">
+            Trelloを接続する
+          </button>
+        </div>
+      )}
+      {activeTab === "tasks" && trelloConnected !== false && (
         <div className="flex-1 flex flex-col min-h-0">
           {/* ボードタブ行 */}
           <div className="bg-white border-b px-4 py-2 flex items-center gap-2 overflow-x-auto">
@@ -1248,47 +1683,34 @@ export default function Home() {
         />
       )}
 
-      {/* ステータスボタン + カレンダー本体 */}
+      {/* カレンダー本体 */}
       {activeTab === "calendar" && (<>
-      <div className="bg-white border-b px-4 py-3">
-        {/* 参加 / 未決定 / 不参加 */}
-        <div className="flex gap-2">
-          {(["base", "pen", "arc"] as StatusKey[]).map((key) => {
-            const active = activeStatuses.has(key);
-            return (
-              <button key={key} onClick={() => toggleStatus(key)}
-                className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold border transition-all ${
-                  active ? "text-white border-transparent" : "bg-white text-gray-400 border-gray-300"
-                }`}
-                style={active ? { backgroundColor: STATUS_COLORS[key] } : {}}>
-                <span>{STATUS_ICONS[key]}</span> {STATUS_LABELS[key]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Body */}
-      <div className="flex-1 mx-auto w-full max-w-7xl p-3 md:p-6 md:flex md:gap-6 md:items-start">
-        <section className="bg-white rounded-2xl shadow-sm border p-4 md:flex-1">
-          <div className="flex items-center justify-between mb-3">
+      {/* Body: モバイルはy-scroll、デスクトップはoverflow-hidden横並び */}
+      <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row md:gap-4 md:p-4">
+        <section className="shrink-0 md:shrink md:flex-1 min-h-[calc(100dvh-2.75rem)] md:min-h-0 flex flex-col bg-white md:overflow-hidden">
+          <div className="shrink-0 flex items-center justify-between mb-1 px-2 pt-1">
             <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-              className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">‹ 前月</button>
+              className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 transition-colors">‹ 前月</button>
             <h2 className="text-base font-bold text-gray-800">{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月</h2>
             <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
-              className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">次月 ›</button>
+              className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 transition-colors">次月 ›</button>
           </div>
 
-          <div className="grid grid-cols-7 mb-1">
-            {WEEKDAYS.map((w, i) => (
-              <div key={w} className={`text-center text-xs font-bold py-1 ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-gray-500"}`}>{w}</div>
-            ))}
+          <div className="shrink-0 grid grid-cols-7 mb-0.5">
+            {(weekStartsMonday ? WEEKDAYS_MON : WEEKDAYS).map((w, i) => {
+              const isSun = weekStartsMonday ? i === 6 : i === 0;
+              const isSat = weekStartsMonday ? i === 5 : i === 6;
+              return (
+                <div key={w} className={`text-center text-xs font-bold py-0.5 ${isSun ? "text-red-500" : isSat ? "text-blue-500" : "text-gray-500"}`}>{w}</div>
+              );
+            })}
           </div>
 
-          {loading && <p className="text-center text-sm text-gray-400 py-6">読み込み中...</p>}
-          {error && <p className="text-center text-sm text-red-500 py-2">{error}</p>}
+          {loading && <p className="shrink-0 text-center text-sm text-gray-400 py-4">読み込み中...</p>}
+          {error && <p className="shrink-0 text-center text-sm text-red-500 py-2">{error}</p>}
 
-          <div className="grid grid-cols-7 gap-0.5">
+          <div className="flex-1 min-h-0 grid grid-cols-7 gap-y-0.5 gap-x-px"
+            style={{ gridTemplateRows: `repeat(${Math.ceil(calendarDays.length / 7)}, 1fr)` }}>
             {calendarDays.map((day) => {
               const key = formatDateOnly(day);
               const dayEvents = eventsByDate[key] ?? [];
@@ -1298,14 +1720,13 @@ export default function Home() {
               const dow = day.getDay();
               return (
                 <div key={key}
-                  className={["relative rounded-lg p-1 text-left transition-all cursor-pointer group",
-                    "min-h-[58px] md:min-h-[88px]",
+                  className={["relative rounded-lg py-1 px-0 text-left transition-all cursor-pointer group overflow-hidden",
                     isCurrentMonth ? "bg-white hover:bg-blue-50" : "bg-gray-50",
                     isSelected ? "ring-2 ring-blue-500 bg-blue-50" : "",
                   ].join(" ")}
                   onClick={() => setSelectedDate(key)}>
                   <div className="flex items-start justify-between">
-                    <span className={["flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mb-0.5",
+                    <span className={["flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold",
                       isToday ? "bg-blue-600 text-white"
                         : isCurrentMonth ? (dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-gray-700")
                         : "text-gray-300",
@@ -1315,26 +1736,25 @@ export default function Home() {
                         className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center hover:bg-blue-600">+</button>
                     )}
                   </div>
-                  <div className="space-y-0.5">
-                    {dayEvents.slice(0, 2).map((ev) => (
+                  <div className="space-y-px">
+                    {dayEvents.slice(0, 4).map((ev) => (
                       <div key={ev.id}
-                        onClick={(e) => { e.stopPropagation(); setSelectedDate(key); openEdit(ev); }}
-                        className="truncate rounded px-1 leading-4 text-[9px] md:text-[11px] text-white cursor-pointer hover:opacity-80 flex items-center gap-0.5"
+                        onClick={(e) => { e.stopPropagation(); setSelectedDate(key); }}
+                        className="overflow-hidden whitespace-nowrap rounded-sm px-px leading-[13px] text-[10px] md:text-[11px] text-white font-medium cursor-pointer hover:opacity-80 flex items-center gap-px"
                         style={{ backgroundColor: ev.calendarColor }}>
-                        {ev.statusKey !== "base" && <span className="text-[8px] flex-shrink-0">{STATUS_ICONS[ev.statusKey]}</span>}
-                        <span className="truncate">{ev.summary || "（タイトルなし）"}</span>
+                        {ev.statusKey !== "base" && <span className="text-[7px] flex-shrink-0">{STATUS_ICONS[ev.statusKey]}</span>}
+                        {ev.start?.dateTime && (
+                          <span className="hidden md:inline flex-shrink-0 opacity-90 text-[9px]">
+                            {use24h
+                              ? `${String(new Date(ev.start.dateTime).getHours()).padStart(2,"0")}:${String(new Date(ev.start.dateTime).getMinutes()).padStart(2,"0")}`
+                              : (() => { const d = new Date(ev.start.dateTime); const h = d.getHours(); return `${h < 12 ? "午前" : "午後"}${h % 12 || 12}:${String(d.getMinutes()).padStart(2,"0")}`; })()
+                            }
+                          </span>
+                        )}
+                        <span>{ev.summary || "（タイトルなし）"}</span>
                       </div>
                     ))}
-                    {dayEvents[2] && (
-                      <div onClick={(e) => { e.stopPropagation(); setSelectedDate(key); openEdit(dayEvents[2]); }}
-                        className="hidden md:flex truncate rounded px-1 leading-4 text-[11px] text-white cursor-pointer hover:opacity-80 items-center gap-0.5"
-                        style={{ backgroundColor: dayEvents[2].calendarColor }}>
-                        {dayEvents[2].statusKey !== "base" && <span className="text-[9px] flex-shrink-0">{STATUS_ICONS[dayEvents[2].statusKey]}</span>}
-                        <span className="truncate">{dayEvents[2].summary || "（タイトルなし）"}</span>
-                      </div>
-                    )}
-                    {dayEvents.length > 2 && <div className="text-[9px] text-gray-400 pl-1 md:hidden">+{dayEvents.length - 2}</div>}
-                    {dayEvents.length > 3 && <div className="hidden md:block text-[10px] text-gray-400 pl-1">+{dayEvents.length - 3}</div>}
+                    {dayEvents.length > 4 && <div className="text-[9px] text-gray-400 pl-1">+{dayEvents.length - 4}</div>}
                   </div>
                 </div>
               );
@@ -1342,7 +1762,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-4 md:mt-0 md:w-72 lg:w-96 bg-white rounded-2xl shadow-sm border p-4 md:sticky md:top-20">
+        <section className="shrink-0 md:w-72 lg:w-96 bg-white md:rounded-2xl md:shadow-sm md:border p-3 md:p-4 md:overflow-y-auto md:self-stretch border-t">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-gray-800">{formatDisplayDate(selectedDate)} の予定</h2>
             <button onClick={() => openCreate(selectedDate)}
@@ -1449,9 +1869,14 @@ export default function Home() {
                 終日
               </label>
             </div>
-            <div className="mb-3">
-              <input type="date" value={form.date} onChange={(e) => updateForm({ date: e.target.value })}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="mb-3 flex gap-2 items-center">
+              <input type="date" value={form.date}
+                onChange={(e) => updateForm({ date: e.target.value, endDate: e.target.value > (form.endDate || e.target.value) ? e.target.value : form.endDate })}
+                className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <span className="text-gray-400 text-sm">〜</span>
+              <input type="date" value={form.endDate || form.date} min={form.date}
+                onChange={(e) => updateForm({ endDate: e.target.value })}
+                className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             {!form.allDay && (
               <div className="mb-3 flex gap-2 items-center">
@@ -1564,49 +1989,247 @@ export default function Home() {
                 className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
 
-            <div className="px-4 py-4 space-y-4">
-              <h3 className="text-sm font-semibold text-gray-600">カレンダー選択</h3>
-              {calLoading ? (
-                <p className="text-xs text-gray-400">読み込み中...</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {triads.map((t) => {
-                    const checked = selectedBaseIds.has(t.baseId);
+            <div className="px-4 py-4 space-y-6">
+
+              {/* 出席ステータスフィルター */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">表示ステータス</h3>
+                <div className="flex gap-2">
+                  {(["base", "pen", "arc"] as StatusKey[]).map((key) => {
+                    const active = activeStatuses.has(key);
                     return (
-                      <button key={t.baseId} onClick={() => toggleBaseCalendar(t.baseId)}
-                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                          checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
+                      <button key={key} onClick={() => toggleStatus(key)}
+                        className={`flex-1 flex items-center justify-center gap-1 rounded-xl py-2 text-sm font-semibold border transition-all ${
+                          active ? "text-white border-transparent" : "bg-white text-gray-400 border-gray-200"
                         }`}
-                        style={checked ? { backgroundColor: t.baseColor } : {}}>
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
-                        {t.baseSummary}
-                        {(t.penId || t.arcId) && <span className="text-[9px] opacity-60">▸</span>}
+                        style={active ? { backgroundColor: STATUS_COLORS[key] } : {}}>
+                        {STATUS_ICONS[key]} {STATUS_LABELS[key]}
                       </button>
                     );
                   })}
                 </div>
-              )}
+              </div>
 
-              <h3 className="text-sm font-semibold text-gray-600 pt-2">グループ</h3>
-              <div className="flex flex-wrap gap-2">
-                {groups.map((g) => {
-                  const checked = selectedGroupIds.has(g.id);
-                  return (
-                    <button key={g.id} onClick={() => toggleGroup(g.id)}
-                      onDoubleClick={() => { setEditingGroup(g); setShowGroupModal(true); }}
-                      title="ダブルクリックで編集"
-                      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                        checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
-                      }`}
-                      style={checked ? { backgroundColor: g.color } : {}}>
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
-                      📁 {g.name}
+              {/* グループ */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">グループ</h3>
+                <div className="space-y-2">
+                  {groups.map((g) => {
+                    const checked = selectedGroupIds.has(g.id);
+                    return (
+                      <div key={g.id} className="rounded-xl border border-gray-100 p-3 space-y-2">
+                        {/* グループ名 + 有効化トグル + 編集ボタン */}
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => toggleGroup(g.id)}
+                            className={`flex items-center gap-1.5 flex-1 min-w-0 rounded-full border px-2 py-1 text-xs font-medium transition-all text-left ${
+                              checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
+                            }`}
+                            style={checked ? { backgroundColor: g.color } : {}}>
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: g.color }} />
+                            <span className="truncate">📁 {g.name}</span>
+                          </button>
+                          <button onClick={() => { setEditingGroup(g); setShowGroupModal(true); }}
+                            className="w-7 h-7 rounded-full border border-gray-200 bg-white text-gray-400 hover:text-blue-500 hover:border-blue-300 flex items-center justify-center flex-shrink-0 text-sm transition-colors">
+                            ✏️
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button onClick={() => { setEditingGroup(null); setShowGroupModal(true); }}
+                    className="w-full rounded-xl border border-dashed border-gray-300 py-2 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                    + グループ
+                  </button>
+                </div>
+              </div>
+
+              {/* カレンダー */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">カレンダー</h3>
+                {calLoading ? (
+                  <p className="text-xs text-gray-400">読み込み中...</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {triads.map((t) => {
+                      const checked = selectedBaseIds.has(t.baseId);
+                      const acls = calendarAcls[t.baseId] ?? [];
+                      return (
+                        <div key={t.baseId} className="rounded-xl border border-gray-100 p-2 space-y-1">
+                          {/* 上段：チェック + 名前 + 色picker */}
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => toggleBaseCalendar(t.baseId)}
+                              className={`flex items-center gap-1.5 flex-1 min-w-0 rounded-full border px-2 py-1 text-xs font-medium transition-all text-left ${
+                                checked ? "border-transparent text-white" : "border-gray-300 text-gray-600 bg-white"
+                              }`}
+                              style={checked ? { backgroundColor: t.baseColor } : {}}>
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: t.baseColor }} />
+                              <span className="truncate">{t.baseSummary}</span>
+                              {(t.penId || t.arcId) && <span className="text-[9px] opacity-60 flex-shrink-0">▸</span>}
+                            </button>
+                            <div className="relative flex-shrink-0">
+                              <button
+                                onClick={() => {
+                                  if (colorPickerOpenId !== t.baseId) {
+                                    setColorPickerTab("palette");
+                                    setCpHue(210); setCpLight(75); setCpSat(20);
+                                  }
+                                  setColorPickerOpenId(colorPickerOpenId === t.baseId ? null : t.baseId);
+                                }}
+                                className="w-7 h-7 rounded-full border-2 border-white shadow cursor-pointer flex-shrink-0"
+                                style={{ backgroundColor: t.baseColor }} />
+                              {colorPickerOpenId === t.baseId && (
+                                <div className="absolute right-0 top-9 z-50 bg-white rounded-2xl shadow-xl border border-gray-100 p-3 w-64">
+                                  {/* タブ */}
+                                  <div className="flex rounded-lg bg-gray-100 p-0.5 mb-3">
+                                    {(["palette","spectrum","slider"] as const).map((tab, i) => (
+                                      <button key={tab} onClick={() => setColorPickerTab(tab)}
+                                        className={`flex-1 py-1 rounded-md text-[11px] font-medium transition-all ${
+                                          colorPickerTab === tab ? "bg-white shadow text-gray-800" : "text-gray-500 hover:text-gray-700"
+                                        }`}>
+                                        {["パレット","サークル","ブレンダー"][i]}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {/* ① パレット：テーマ別ムード・コレクション */}
+                                  {colorPickerTab === "palette" && (
+                                    <div className="space-y-2">
+                                      {COLOR_THEMES.map((theme) => (
+                                        <div key={theme.name} className="flex items-center gap-2">
+                                          <span className="text-[10px] text-gray-400 w-14 flex-shrink-0 truncate">{theme.name}</span>
+                                          <div className="flex gap-1.5 flex-1">
+                                            {theme.colors.map((color) => (
+                                              <button key={color}
+                                                onClick={() => { handleColorChange(t.baseId, color); setColorPickerOpenId(null); }}
+                                                className="w-8 h-8 rounded-lg hover:scale-110 transition-transform border-2"
+                                                style={{ backgroundColor: color, borderColor: t.baseColor === color ? "#374151" : "transparent" }} />
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* ② サークル：低彩度オーガニック・サークル */}
+                                  {colorPickerTab === "spectrum" && (
+                                    <div className="flex flex-col items-center gap-2">
+                                      <MutedColorWheel onSelect={(color) => { handleColorChange(t.baseId, color); setColorPickerOpenId(null); }} />
+                                      <p className="text-[10px] text-gray-400">円をタップして色を選択</p>
+                                    </div>
+                                  )}
+
+                                  {/* ③ ブレンダー：3軸ニュアンス・ブレンダー */}
+                                  {colorPickerTab === "slider" && (
+                                    <div className="space-y-3">
+                                      <div className="h-10 rounded-xl border border-gray-100 transition-colors duration-150"
+                                        style={{ backgroundColor: hslToHex(cpHue, cpSat, cpLight) }} />
+                                      <div>
+                                        <div className="flex justify-between text-[10px] text-gray-400 mb-1.5"><span>暖色</span><span>寒色</span></div>
+                                        <SliderTrack value={cpHue} min={0} max={360} onChange={setCpHue}
+                                          gradient={`linear-gradient(to right,${[0,30,60,90,120,150,180,210,240,270,300,330,360].map(h => hslToHex(h,cpSat,cpLight)).join(",")})`} />
+                                      </div>
+                                      <div>
+                                        <div className="flex justify-between text-[10px] text-gray-400 mb-1.5"><span>深い</span><span>淡い</span></div>
+                                        <SliderTrack value={cpLight} min={30} max={85} onChange={setCpLight}
+                                          gradient={`linear-gradient(to right,${hslToHex(cpHue,cpSat,30)},${hslToHex(cpHue,cpSat,85)})`} />
+                                      </div>
+                                      <div>
+                                        <div className="flex justify-between text-[10px] text-gray-400 mb-1.5"><span>くすみ</span><span>鮮やか</span></div>
+                                        <SliderTrack value={cpSat} min={10} max={60} onChange={setCpSat}
+                                          gradient={`linear-gradient(to right,${hslToHex(cpHue,10,cpLight)},${hslToHex(cpHue,60,cpLight)})`} />
+                                      </div>
+                                      <button
+                                        onClick={() => { handleColorChange(t.baseId, hslToHex(cpHue, cpSat, cpLight)); setColorPickerOpenId(null); }}
+                                        className="w-full py-1.5 rounded-lg text-[12px] font-medium text-white shadow-sm"
+                                        style={{ backgroundColor: hslToHex(cpHue, cpSat, cpLight) }}>
+                                        この色を選択
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {/* 下段：月間/日別 + 共有メンバー 1行 */}
+                          <div className="flex items-center flex-wrap gap-1">
+                            {(["month", "day"] as const).map((vk) => {
+                              const on = calViewMode[t.baseId]?.[vk] ?? true;
+                              return (
+                                <button key={vk} onClick={() => toggleCalViewMode(t.baseId, vk)}
+                                  className={`px-2 py-0.5 rounded-lg text-[11px] font-medium border transition-all ${
+                                    on ? "bg-blue-500 text-white border-transparent" : "text-gray-400 border-gray-200 bg-white"
+                                  }`}>
+                                  {vk === "month" ? "月間" : "日別"}
+                                </button>
+                              );
+                            })}
+                            {calendars.find(c => c.id === t.baseId)?.accessRole === "owner" && shareMembers.map((m) => {
+                              const shared = acls.includes(m.email);
+                              const loadKey = `${t.baseId}:${m.key}`;
+                              const loading = sharingLoading[loadKey];
+                              return (
+                                <button key={m.key}
+                                  onClick={() => handleShareToggle(t, m, shared)}
+                                  disabled={loading}
+                                  className={`px-2 py-0.5 rounded-full text-[11px] font-medium border transition-all ${
+                                    shared ? "bg-green-500 text-white border-transparent" : "text-gray-400 border-gray-200 bg-white hover:border-blue-300"
+                                  } ${loading ? "opacity-50" : ""}`}>
+                                  {loading ? "…" : m.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 週始まり・時刻表示 */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-gray-600">カレンダー表示</h3>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">週の始まり</p>
+                  <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+                    <button onClick={() => {
+                      setWeekStartsMonday(false);
+                      fetch("/api/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ week_start_monday: false }) }).catch(() => {});
+                    }} className={`flex-1 py-2 text-sm font-medium transition-colors ${!weekStartsMonday ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+                      日曜
                     </button>
-                  );
-                })}
-                <button onClick={() => { setEditingGroup(null); setShowGroupModal(true); }}
-                  className="rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
-                  + グループ
+                    <button onClick={() => {
+                      setWeekStartsMonday(true);
+                      fetch("/api/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ week_start_monday: true }) }).catch(() => {});
+                    }} className={`flex-1 py-2 text-sm font-medium transition-colors ${weekStartsMonday ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+                      月曜
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">時刻表示（PC・iPad）</p>
+                  <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+                    <button onClick={() => {
+                      setUse24h(true);
+                      fetch("/api/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ use_24h: true }) }).catch(() => {});
+                    }} className={`flex-1 py-2 text-sm font-medium transition-colors ${use24h ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+                      24時間
+                    </button>
+                    <button onClick={() => {
+                      setUse24h(false);
+                      fetch("/api/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ use_24h: false }) }).catch(() => {});
+                    }} className={`flex-1 py-2 text-sm font-medium transition-colors ${!use24h ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+                      午前/午後
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ログアウト */}
+              <div className="pt-4 border-t">
+                <button onClick={() => signOut()}
+                  className="w-full rounded-xl border border-gray-200 py-2 text-sm text-gray-500 hover:bg-gray-50 transition-colors">
+                  ログアウト
                 </button>
               </div>
             </div>

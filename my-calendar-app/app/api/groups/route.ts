@@ -31,11 +31,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const payload = {
-      owner_email: OWNER_EMAIL,
-      name:        body.name,
-      color:       body.color,
-      base_ids:    body.baseIds,
-      sort_order:  body.sortOrder ?? 0,
+      owner_email:      OWNER_EMAIL,
+      name:             body.name,
+      color:            body.color,
+      calendar_configs: body.calendars,
+      sort_order:       body.sortOrder ?? 0,
     };
     const url = `${SUPABASE_URL}/rest/v1/calendar_groups`;
     const res = await fetch(url, {

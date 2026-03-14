@@ -20,11 +20,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       method: "PATCH",
       headers: sbHeaders(),
       body: JSON.stringify({
-        name:       body.name,
-        color:      body.color,
-        base_ids:   body.baseIds,
-        sort_order: body.sortOrder ?? 0,
-        updated_at: new Date().toISOString(),
+        name:             body.name,
+        color:            body.color,
+        calendar_configs: body.calendars,
+        sort_order:       body.sortOrder ?? 0,
+        updated_at:       new Date().toISOString(),
       }),
     });
     const text = await res.text();

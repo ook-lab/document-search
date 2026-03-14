@@ -1,0 +1,11 @@
+flask
+gunicorn
+supabase
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+google-generativeai
+google-auth
+openpyxl
+python-dotenv
+python-dateutil

@@ -1,0 +1,86 @@
+# Supabase Local Development Configuration
+# https://supabase.com/docs/guides/cli/config
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost"
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:8501"
+additional_redirect_urls = ["http://localhost:8501"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+[analytics]
+enabled = false
+
+[functions.google-oauth-start]
+enabled = true
+verify_jwt = false
+import_map = "./functions/google-oauth-start/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/google-oauth-start/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/google-oauth-start/*.html" ]
+
+[functions.google-oauth-callback]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-oauth-callback/index.ts"
+
+[functions.google-calendar-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-calendar-webhook/index.ts"
+
+[functions.google-calendar-watch]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-calendar-watch/index.ts"
+
+[functions.google-calendar-renew-watches]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/google-calendar-renew-watches/index.ts"
+
+[functions.calendar-index-sync]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/calendar-index-sync/index.ts"

@@ -1,0 +1,9 @@
+-- tasks テーブル：追加カラム
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_complete  BOOLEAN DEFAULT false;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS labels        JSONB DEFAULT '[]';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignees     JSONB DEFAULT '[]';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist_total INTEGER DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist_done  INTEGER DEFAULT 0;
+
+-- trello_lists テーブル：リスト並び順
+ALTER TABLE trello_lists ADD COLUMN IF NOT EXISTS list_pos FLOAT DEFAULT 0;

@@ -1,0 +1,68 @@
+# Environment
+.env
+.env.bak
+venv/
+
+# Rakuten Seiyu credentials
+rakuten_seiyu_cookies.json
+debug_step*.png
+debug_step*.html
+
+# Runtime data
+_runtime/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+
+# Generated files
+project_codebase_*.md
+project_full_backup_*.md
+
+# macOS
+.DS_Store
+
+# テスト・デバッグスクリプト（ルートのみ、tests/は除外しない）
+/test_*.py
+/check_*.py
+/debug_*.py
+/apply_*.py
+/collect_codebase2.py
+
+# 一時ファイル・デバッグファイル
+temp/
+nul
+*.backup
+*_debug.html
+venv_old_delete_later/
+builds.json
+
+.local/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
+
+# Snapshots and temporary files
+PROJECT_SNAPSHOT*
+tmpclaude-*
+
+.tmp.driveupload/
+
+# Next.js
+my-calendar-app/.env.local
+my-calendar-app/.next/
+my-calendar-app/node_modules/
+
+# Test fixtures (large binary files)
+tests/fixtures/**/*.pdf
+# OAuth2 tokens & credentials
+services/calendar-register/auth/token.json
+services/calendar-register/auth/credentials.json
+services/doc-review/auth/credentials.json
+services/doc-review/auth/gmail_cleaner_token.json

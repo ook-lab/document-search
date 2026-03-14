@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Document Review{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- ナビゲーション -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h1>Document Management System</h1>
+        </div>
+        <div class="nav-links">
+            <a href="{{ url_for('documents.review_page') }}"
+               class="nav-link {% if request.path.startswith('/documents') %}active{% endif %}">
+                📋 ドキュメントレビュー
+            </a>
+            <a href="{{ url_for('emails.inbox_page') }}"
+               class="nav-link {% if request.path.startswith('/emails') %}active{% endif %}">
+                📬 メール受信トレイ
+            </a>
+            <a href="{{ url_for('gmail_cleaner.index') }}"
+               class="nav-link {% if request.path.startswith('/gmail-cleaner') %}active{% endif %}">
+                🗑️ メール削除
+            </a>
+        </div>
+        <div class="nav-user">
+            <span id="user-email"></span>
+            <button id="logout-btn" class="btn btn-secondary btn-small">ログアウト</button>
+        </div>
+    </nav>
+
+    <!-- ログインモーダル -->
+    <div id="login-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>ログイン</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="email">メールアドレス</label>
+                    <input type="email" id="login-email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">パスワード</label>
+                    <input type="password" id="login-password" name="password" required>
+                </div>
+                <div id="login-error" class="error-message" style="display: none;"></div>
+                <button type="submit" class="btn btn-primary">ログイン</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 削除確認モーダル -->
+    <div id="delete-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>削除確認</h3>
+            <p id="delete-modal-message">本当に削除しますか？</p>
+            <div class="modal-actions">
+                <button id="delete-confirm-btn" class="btn btn-danger">削除</button>
+                <button id="delete-cancel-btn" class="btn btn-secondary">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast-container"></div>
+
+    <!-- JavaScript -->
+    <script>
+        // CSRFトークン
+        window.CSRF_TOKEN = null;
+
+        // APIベースURL
+        window.API_BASE = '/api';
+    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

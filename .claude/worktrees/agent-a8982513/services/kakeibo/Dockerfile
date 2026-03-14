@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 1. 必要なツールをインストール
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. ライブラリ定義をコピー
+COPY services/kakeibo/requirements.txt /app/
+
+# 3. ライブラリをインストール
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 4. ソースコードをコピー
+COPY shared/ /app/shared/
+COPY services/kakeibo/app.py /app/
+COPY services/kakeibo/templates/ /app/templates/
+
+# 5. Pythonパス設定
+ENV PYTHONPATH=/app
+ENV FLASK_APP=app.py
+ENV PORT=8080
+
+# 6. ポート設定
+EXPOSE 8080
+
+# 7. 起動コマンド
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]

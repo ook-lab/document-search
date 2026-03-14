@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}メール削除 - Document Management System{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ─── レイアウト ─── */
+  .gc-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+  /* ─── 認証バナー ─── */
+  .gc-auth-banner {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 13px;
+  }
+  .gc-auth-banner.ok  { background: #1b3a2a; border: 1px solid #4caf7d; color: #4caf7d; }
+  .gc-auth-banner.ng  { background: #3a1b1b; border: 1px solid #e05252; color: #e05252; }
+  .gc-auth-banner a   { color: inherit; font-weight: 600; text-decoration: underline; }
+
+  /* ─── フィルター ─── */
+  .gc-filter {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+    padding: 14px 16px; border-radius: 8px; margin-bottom: 16px;
+    background: var(--surface, #1a1d27); border: 1px solid var(--border, #2e3250);
+  }
+  .gc-filter .field { display: flex; flex-direction: column; gap: 4px; }
+  .gc-filter label  { font-size: 11px; color: var(--text-muted, #8b91b0); }
+  .gc-filter input, .gc-filter select {
+    background: var(--surface2, #22263a); border: 1px solid var(--border, #2e3250);
+    color: var(--text, #e2e4ef); padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  }
+
+  /* ─── ツールバー ─── */
+  .gc-toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .gc-toolbar .count { margin-left: auto; font-size: 12px; color: var(--text-muted, #8b91b0); }
+  .gc-msg { font-size: 12px; padding: 4px 10px; border-radius: 6px; display: none; }
+  .gc-msg.ok  { background: #1b3a2a; color: #4caf7d; border: 1px solid #4caf7d; display: inline-block; }
+  .gc-msg.err { background: #3a1b1b; color: #e05252; border: 1px solid #e05252; display: inline-block; }
+
+  /* ─── テーブル ─── */
+  .gc-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border, #2e3250); }
+  table.gc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.gc-table th {
+    background: var(--surface2, #22263a); color: var(--text-muted, #8b91b0);
+    font-weight: 600; text-align: left; padding: 8px 12px;
+    border-bottom: 1px solid var(--border, #2e3250);
+    font-size: 11px; text-transform: uppercase; white-space: nowrap;
+  }
+  table.gc-table td { padding: 8px 12px; border-bottom: 1px solid var(--border, #2e3250); vertical-align: top; }
+  table.gc-table tr:last-child td { border-bottom: none; }
+  table.gc-table tr:hover td { background: var(--surface2, #22263a); }
+  table.gc-table tr.expired td { background: rgba(224,82,82,0.06); }
+  table.gc-table tr.expired-checked td { background: rgba(224,82,82,0.14); }
+
+  .badge-expired { font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: #3a1b1b; color: #e05252; border: 1px solid #e05252; white-space: nowrap; }
+  .badge-ok      { font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: #1b3a2a; color: #4caf7d; border: 1px solid #4caf7d; white-space: nowrap; }
+  .badge-unknown { font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    background: var(--surface2, #22263a); color: var(--text-muted, #8b91b0); white-space: nowrap; }
+
+  .snippet { font-size: 11px; color: var(--text-muted, #8b91b0); margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .reason  { font-size: 11px; color: #e05252; margin-top: 2px; }
+
+  /* ─── ボタン ─── */
+  .btn-primary   { background: #6c8ef5; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-secondary { background: var(--surface2, #22263a); color: var(--text, #e2e4ef); border: 1px solid var(--border, #2e3250); padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .btn-danger    { background: #c0392b; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-analyze   { background: #e8a020; color: #fff; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  button:hover   { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ─── 削除確認モーダル (gc専用) ─── */
+  #gc-confirm-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  #gc-confirm-modal.show { display: flex; }
+  #gc-confirm-modal .modal-box {
+    background: var(--surface, #1a1d27); border: 1px solid var(--border, #2e3250);
+    border-radius: 12px; padding: 24px; min-width: 360px; max-width: 480px;
+  }
+  #gc-confirm-modal h3 { margin-bottom: 12px; color: #e05252; }
+  #gc-confirm-modal p  { margin-bottom: 20px; font-size: 14px; line-height: 1.6; }
+  #gc-confirm-modal .actions { display: flex; gap: 10px; justify-content: flex-end; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="gc-container">
+
+  <!-- 認証バナー -->
+  {% if authed %}
+  <div class="gc-auth-banner ok">✅ Gmail 認証済み — 削除時に Gmail のゴミ箱へも移動します</div>
+  {% else %}
+  <div class="gc-auth-banner ng">
+    ⚠️ Gmail 未認証 — Supabase のみ削除されます（Gmail は残ります）
+    <a href="{{ url_for('gmail_cleaner.auth_start') }}">Gmail 認証する →</a>
+  </div>
+  {% endif %}
+
+  <!-- フィルター -->
+  <div class="gc-filter">
+    <div class="field">
+      <label>送信日 From</label>
+      <input type="date" id="sentFrom">
+    </div>
+    <div class="field">
+      <label>送信日 To</label>
+      <input type="date" id="sentTo">
+    </div>
+    <div class="field">
+      <label>カテゴリー</label>
+      <select id="category" style="min-width:140px;">
+        <option value="">すべて</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>件名キーワード</label>
+      <input type="text" id="keyword" placeholder="例: セール" style="width:160px;">
+    </div>
+    <div class="field">
+      <label>件数上限</label>
+      <select id="limitSel">
+        <option value="100">100件</option>
+        <option value="200" selected>200件</option>
+        <option value="500">500件</option>
+      </select>
+    </div>
+    <button class="btn-primary" onclick="loadMails()">検索</button>
+  </div>
+
+  <!-- ツールバー -->
+  <div class="gc-toolbar">
+    <button class="btn-secondary" onclick="selectAll()">全選択</button>
+    <button class="btn-secondary" onclick="selectNone()">解除</button>
+    <button class="btn-secondary" onclick="selectExpired()">期限切れのみ選択</button>
+    <button class="btn-analyze"   id="btnAnalyze" onclick="analyzeSelected()" disabled>AI 期限切れ判定</button>
+    <button class="btn-danger"    id="btnDelete"  onclick="confirmDelete()"   disabled>選択削除</button>
+    <span id="gcMsg" class="gc-msg"></span>
+    <span class="count" id="countLabel"></span>
+  </div>
+
+  <!-- テーブル -->
+  <div class="gc-table-wrap">
+    <table class="gc-table">
+      <thead>
+        <tr>
+          <th style="width:36px;"><input type="checkbox" id="chkAll" onchange="toggleAll(this)"></th>
+          <th style="width:130px;">送信日</th>
+          <th style="min-width:160px;">差出人</th>
+          <th style="min-width:260px;">件名 / 冒頭</th>
+          <th style="width:80px;">カテゴリー</th>
+          <th style="width:100px;">AI判定</th>
+        </tr>
+      </thead>
+      <tbody id="mailTbody"></tbody>
+    </table>
+    <div id="mailEmpty" style="display:none; padding:32px; text-align:center; color:var(--text-muted,#8b91b0);">
+      メールがありません
+    </div>
+  </div>
+
+</div>
+
+<!-- 削除確認モーダル -->
+<div id="gc-confirm-modal">
+  <div class="modal-box">
+    <h3>🗑️ 削除確認</h3>
+    <p id="gc-confirm-msg"></p>
+    <div class="actions">
+      <button class="btn-secondary" onclick="closeConfirm()">キャンセル</button>
+      <button class="btn-danger" onclick="executeDelete()">削除する</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ─── 状態 ───
+let allMails     = [];   // { id, message_id, sent_at, from_name, from_email, header_subject, snippet, category }
+let analyzeMap   = {};   // id → { expired, reason }
+let pendingIds   = [];   // 削除確認中の ids
+
+// ─── 初期化 ───
+(function init() {
+  const now = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+  document.getElementById('sentTo').value   = fmt(now);
+  const from = new Date(now); from.setMonth(now.getMonth() - 3);
+  document.getElementById('sentFrom').value = fmt(from);
+
+  fetch('/api/gmail-cleaner/categories')
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) return;
+      const sel = document.getElementById('category');
+      d.categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        sel.appendChild(opt);
+      });
+    });
+})();
+
+// ─── メール読み込み ───
+async function loadMails() {
+  const from     = document.getElementById('sentFrom').value;
+  const to       = document.getElementById('sentTo').value;
+  const category = document.getElementById('category').value;
+  const keyword  = document.getElementById('keyword').value;
+  const limit    = document.getElementById('limitSel').value;
+
+  let url = `/api/gmail-cleaner/mails?limit=${limit}`;
+  if (from)     url += `&sent_from=${from}`;
+  if (to)       url += `&sent_to=${to}`;
+  if (category) url += `&category=${encodeURIComponent(category)}`;
+  if (keyword)  url += `&keyword=${encodeURIComponent(keyword)}`;
+
+  showMsg('読み込み中…', '');
+  try {
+    const res = await fetch(url);
+    const d   = await res.json();
+    if (!d.success) { showMsg('エラー: ' + d.error, 'err'); return; }
+
+    allMails   = d.mails;
+    analyzeMap = {};
+    renderTable();
+    updateToolbar();
+    showMsg('', '');
+  } catch(e) {
+    showMsg('エラー: ' + e, 'err');
+  }
+}
+
+// ─── テーブル描画 ───
+function renderTable() {
+  const tbody = document.getElementById('mailTbody');
+  const empty = document.getElementById('mailEmpty');
+  tbody.innerHTML = '';
+
+  if (!allMails.length) {
+    empty.style.display = 'block';
+    document.getElementById('countLabel').textContent = '';
+    return;
+  }
+  empty.style.display = 'none';
+  document.getElementById('countLabel').textContent = `${allMails.length} 件`;
+
+  allMails.forEach(m => {
+    const result  = analyzeMap[m.id];
+    const expired = result ? result.expired : null;
+    const tr = document.createElement('tr');
+    if (expired === true)  tr.classList.add('expired');
+
+    const dt       = (m.sent_at || '').replace('T', ' ').slice(0, 16);
+    const fromName = m.from_name || m.from_email || '';
+    const subject  = m.header_subject || '(件名なし)';
+    const snippet  = (m.snippet || '').replace(/\r?\n/g, ' ').slice(0, 120);
+    const catText  = m.category || '';
+
+    let badge = '<span class="badge-unknown">未判定</span>';
+    if (expired === true)  badge = `<span class="badge-expired">期限切れ</span>`;
+    if (expired === false) badge = `<span class="badge-ok">有効</span>`;
+
+    const reasonHtml = (expired === true && result.reason)
+      ? `<div class="reason">${result.reason}</div>` : '';
+
+    tr.innerHTML = `
+      <td><input type="checkbox" class="mail-chk" data-id="${m.id}" onchange="onCheck()"></td>
+      <td style="white-space:nowrap;font-size:12px;">${dt}</td>
+      <td style="font-size:12px;">${esc(fromName)}</td>
+      <td>
+        <div style="font-weight:500;">${esc(subject)}</div>
+        <div class="snippet">${esc(snippet)}</div>
+        ${reasonHtml}
+      </td>
+      <td style="font-size:11px;color:var(--text-muted,#8b91b0);">${esc(catText)}</td>
+      <td>${badge}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ─── チェック操作 ───
+function toggleAll(chk) {
+  document.querySelectorAll('.mail-chk').forEach(c => c.checked = chk.checked);
+  updateToolbar();
+}
+function selectAll()     { document.querySelectorAll('.mail-chk').forEach(c => c.checked = true);  updateToolbar(); }
+function selectNone()    { document.querySelectorAll('.mail-chk').forEach(c => c.checked = false); updateToolbar(); }
+function selectExpired() {
+  document.querySelectorAll('.mail-chk').forEach(c => {
+    const id  = c.dataset.id;
+    c.checked = analyzeMap[id]?.expired === true;
+  });
+  updateToolbar();
+}
+function onCheck() { updateToolbar(); }
+
+function getCheckedIds() {
+  return [...document.querySelectorAll('.mail-chk:checked')].map(c => c.dataset.id);
+}
+
+function updateToolbar() {
+  const ids = getCheckedIds();
+  document.getElementById('btnAnalyze').disabled = ids.length === 0;
+  document.getElementById('btnDelete').disabled  = ids.length === 0;
+}
+
+// ─── AI 期限切れ判定 ───
+async function analyzeSelected() {
+  const ids = getCheckedIds();
+  if (!ids.length) return;
+
+  document.getElementById('btnAnalyze').disabled = true;
+  showMsg(`${ids.length} 件を判定中…`, '');
+
+  try {
+    const res = await fetch('/api/gmail-cleaner/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    const d = await res.json();
+    if (!d.success) { showMsg('エラー: ' + d.error, 'err'); return; }
+
+    d.results.forEach(r => { analyzeMap[r.id] = r; });
+    renderTable();
+
+    const expiredCount = d.results.filter(r => r.expired).length;
+    showMsg(`判定完了 — 期限切れ ${expiredCount} 件 / 全 ${d.results.length} 件`, 'ok');
+  } catch(e) {
+    showMsg('エラー: ' + e, 'err');
+  } finally {
+    updateToolbar();
+  }
+}
+
+// ─── 削除確認 ───
+function confirmDelete() {
+  pendingIds = getCheckedIds();
+  if (!pendingIds.length) return;
+  document.getElementById('gc-confirm-msg').textContent =
+    `${pendingIds.length} 件のメールを Supabase と Gmail のゴミ箱から削除します。この操作は取り消せません。`;
+  document.getElementById('gc-confirm-modal').classList.add('show');
+}
+function closeConfirm() {
+  document.getElementById('gc-confirm-modal').classList.remove('show');
+  pendingIds = [];
+}
+
+async function executeDelete() {
+  const ids = [...pendingIds];
+  closeConfirm();
+  document.getElementById('btnDelete').disabled = true;
+  showMsg(`${ids.length} 件を削除中…`, '');
+
+  try {
+    const res = await fetch('/api/gmail-cleaner/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    const d = await res.json();
+    if (!d.success) { showMsg('エラー: ' + d.error, 'err'); return; }
+
+    // テーブルから削除行を除去
+    const deletedSet = new Set(pendingIds);
+    allMails = allMails.filter(m => !deletedSet.has(m.id));
+    ids.forEach(id => delete analyzeMap[id]);
+    renderTable();
+
+    let msg = `${d.deleted} 件削除しました`;
+    if (d.gmail_errors?.length) msg += ` (Gmail エラー: ${d.gmail_errors.join(', ')})`;
+    showMsg(msg, d.gmail_errors?.length ? 'err' : 'ok');
+  } catch(e) {
+    showMsg('エラー: ' + e, 'err');
+  } finally {
+    updateToolbar();
+  }
+}
+
+// ─── ユーティリティ ───
+function showMsg(text, type) {
+  const el = document.getElementById('gcMsg');
+  el.textContent = text;
+  el.className = 'gc-msg' + (type ? ' ' + type : '');
+  el.style.display = text ? 'inline-block' : 'none';
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

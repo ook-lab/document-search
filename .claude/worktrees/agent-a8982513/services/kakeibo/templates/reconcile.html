@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>家計簿 消込 (Reconcile)</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+
+        header { background: #333; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; height: 50px;}
+        header a { color: #ccc; text-decoration: none; margin-left: 20px;}
+
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+
+        .panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #ccc; }
+        .panel:last-child { border-right: none; }
+
+        .panel-header { padding: 10px; background: #f4f4f4; border-bottom: 1px solid #ddd; }
+        .filter-input { width: 100%; padding: 5px; box-sizing: border-box; margin-bottom: 5px; }
+        .sort-buttons { display: flex; gap: 5px; }
+        .sort-btn { padding: 4px 8px; font-size: 11px; cursor: pointer; border: 1px solid #ccc; background: #fff; border-radius: 3px; }
+        .sort-btn:hover { background: #eee; }
+        .sort-btn.active { background: #007bff; color: white; border-color: #007bff; }
+
+        .list-container { flex: 1; overflow-y: auto; padding: 0; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 6px; border-bottom: 1px solid #eee; text-align: left; cursor: pointer; }
+
+        tr:hover { background: #f9f9f9; }
+
+        tr.selected-left { background-color: #ffe0e0 !important; }
+        tr.selected-right { background-color: #e0ffe0 !important; }
+
+        .amount { text-align: right; font-family: monospace; font-weight: bold;}
+        .negative { color: red; }
+
+        #panel-left .panel-header { border-left: 5px solid #ffaaaa; }
+        #panel-right .panel-header { border-left: 5px solid #aaffaa; }
+
+        footer {
+            height: 80px; background: #222; color: white;
+            display: flex; justify-content: center; align-items: center; gap: 40px;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
+        }
+
+        .sum-box { text-align: center; }
+        .sum-label { font-size: 12px; color: #aaa; }
+        .sum-value { font-size: 24px; font-weight: bold; }
+
+        #btn-execute {
+            padding: 10px 30px; font-size: 18px; border: none; border-radius: 4px;
+            background: #555; color: #999; cursor: not-allowed; transition: 0.3s;
+        }
+        #btn-execute.active {
+            background: #4CAF50; color: white; cursor: pointer; transform: scale(1.05);
+        }
+        #match-status { font-weight: bold; color: #ff5555; margin-bottom: 5px; }
+        #match-status.ok { color: #4CAF50; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>家計簿 消込 (Reconcile)</div>
+    <nav>
+        <a href="/">明細一覧</a>
+        <a href="/loans">ローン管理</a>
+        <a href="/receipts">レシート検証</a>
+    </nav>
+</header>
+
+<div class="main-container">
+    <div class="panel" id="panel-left">
+        <div class="panel-header">
+            <h2>左リスト (Left)</h2>
+            <input type="text" class="filter-input" placeholder="検索..." onkeyup="filterList('left', this.value)">
+            <div class="sort-buttons">
+                <button class="sort-btn" onclick="sortList('left', 'date', this)">日付↓</button>
+                <button class="sort-btn" onclick="sortList('left', 'amount_asc', this)">金額↑</button>
+                <button class="sort-btn" onclick="sortList('left', 'amount_desc', this)">金額↓</button>
+                <button class="sort-btn" onclick="sortList('left', 'name', this)">名称</button>
+            </div>
+        </div>
+        <div class="list-container">
+            <table id="table-left"></table>
+        </div>
+    </div>
+
+    <div class="panel" id="panel-right">
+        <div class="panel-header">
+            <h2>右リスト (Right)</h2>
+            <input type="text" class="filter-input" placeholder="検索..." onkeyup="filterList('right', this.value)">
+            <div class="sort-buttons">
+                <button class="sort-btn" onclick="sortList('right', 'date', this)">日付↓</button>
+                <button class="sort-btn" onclick="sortList('right', 'amount_asc', this)">金額↑</button>
+                <button class="sort-btn" onclick="sortList('right', 'amount_desc', this)">金額↓</button>
+                <button class="sort-btn" onclick="sortList('right', 'name', this)">名称</button>
+                <button class="sort-btn" style="background:#28a745;color:white;margin-left:10px;" onclick="showCreateModal()">＋新規作成</button>
+            </div>
+        </div>
+        <div class="list-container">
+            <table id="table-right"></table>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div class="sum-box">
+        <div class="sum-label">左合計</div>
+        <div class="sum-value" id="sum-left">0</div>
+    </div>
+
+    <div style="text-align:center;">
+        <div id="match-status">選択してください</div>
+        <button id="btn-execute" disabled>実行</button>
+    </div>
+
+    <div class="sum-box">
+        <div class="sum-label">右合計</div>
+        <div class="sum-value" id="sum-right">0</div>
+    </div>
+</footer>
+
+<!-- 新規作成モーダル -->
+<div id="create-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:20px; border-radius:8px; min-width:350px;">
+        <h3 style="margin-top:0;">右側に新規明細を作成</h3>
+        <div style="margin-bottom:10px;">
+            <label>名称:</label><br>
+            <input type="text" id="new-content" style="width:100%; padding:5px;">
+        </div>
+        <div style="margin-bottom:10px;">
+            <label>金額:</label><br>
+            <input type="number" id="new-amount" style="width:100%; padding:5px;">
+        </div>
+        <div style="margin-bottom:10px;">
+            <label>日付:</label><br>
+            <input type="date" id="new-date" style="width:100%; padding:5px;">
+        </div>
+        <div style="margin-bottom:15px;">
+            <label>金融機関:</label><br>
+            <input type="text" id="new-institution" value="手動入力" style="width:100%; padding:5px;">
+        </div>
+        <div style="text-align:right;">
+            <button onclick="closeCreateModal()" style="padding:8px 16px; margin-right:10px;">キャンセル</button>
+            <button onclick="createTransaction()" style="padding:8px 16px; background:#28a745; color:white; border:none; border-radius:4px;">作成</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const allData = {{ transactions | tojson }};
+
+    // 各パネルのデータ（ソート用に分離）
+    let panelData = {
+        left: [...allData],
+        right: [...allData]
+    };
+
+    // 選択状態（完全に独立）
+    let selection = { left: new Set(), right: new Set() };
+
+    // 初期描画
+    renderTable('left', panelData.left);
+    renderTable('right', panelData.right);
+
+    // ソート関数
+    function sortList(side, sortType, btn) {
+        // ボタンのアクティブ状態を更新
+        document.querySelectorAll(`#panel-${side} .sort-btn`).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        let data = panelData[side];
+
+        switch(sortType) {
+            case 'date':
+                data.sort((a, b) => b.date.localeCompare(a.date));
+                break;
+            case 'amount_asc':
+                data.sort((a, b) => a.amount - b.amount);
+                break;
+            case 'amount_desc':
+                data.sort((a, b) => b.amount - a.amount);
+                break;
+            case 'name':
+                data.sort((a, b) => (a.content || '').localeCompare(b.content || '', 'ja'));
+                break;
+        }
+
+        renderTable(side, data);
+        // 選択状態を復元
+        restoreSelection(side);
+    }
+
+    // 選択状態の復元
+    function restoreSelection(side) {
+        selection[side].forEach(id => {
+            const checkbox = document.getElementById(`check-${side}-${id}`);
+            if (checkbox) {
+                checkbox.checked = true;
+                document.getElementById(`row-${side}-${id}`).classList.add(`selected-${side}`);
+            }
+        });
+    }
+
+    function renderTable(side, data) {
+        const tbody = document.createElement('tbody');
+        data.forEach(t => {
+            const tr = document.createElement('tr');
+            tr.id = `row-${side}-${t.id}`;
+            tr.dataset.search = (t.content + " " + t.institution + " " + t.amount).toLowerCase();
+
+            // 行クリックでチェック切り替え
+            tr.onclick = (e) => {
+                if (e.target.type !== 'checkbox') {
+                    const cb = document.getElementById(`check-${side}-${t.id}`);
+                    cb.checked = !cb.checked;
+                    toggleSelect(side, t.id);
+                }
+            };
+
+            const amtClass = t.amount < 0 ? 'negative' : '';
+
+            tr.innerHTML = `
+                <td style="width: 30px;">
+                    <input type="checkbox" id="check-${side}-${t.id}"
+                           onchange="toggleSelect('${side}', '${t.id}')">
+                </td>
+                <td>
+                    <div>${t.date}</div>
+                    <div style="font-weight:bold;">${t.content}</div>
+                    <div style="font-size:10px; color:#666;">${t.institution}</div>
+                </td>
+                <td class="amount ${amtClass}">${t.amount.toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const table = document.getElementById(`table-${side}`);
+        table.innerHTML = '';
+        table.appendChild(tbody);
+    }
+
+    function toggleSelect(side, id) {
+        const checkbox = document.getElementById(`check-${side}-${id}`);
+        const isChecked = checkbox.checked;
+        const mySet = selection[side];
+
+        if (isChecked) {
+            mySet.add(id);
+            document.getElementById(`row-${side}-${id}`).classList.add(`selected-${side}`);
+        } else {
+            mySet.delete(id);
+            document.getElementById(`row-${side}-${id}`).classList.remove(`selected-${side}`);
+        }
+
+        updateTotals();
+    }
+
+    // 正負混在チェック
+    function checkMixedSign(side) {
+        const amounts = Array.from(selection[side]).map(id => {
+            return allData.find(d => d.id === id).amount;
+        });
+        const hasPlus = amounts.some(a => a > 0);
+        const hasMinus = amounts.some(a => a < 0);
+        return hasPlus && hasMinus;
+    }
+
+    function updateTotals() {
+        const sumLeft = calculateSum('left');
+        const sumRight = calculateSum('right');
+
+        document.getElementById('sum-left').innerText = sumLeft.toLocaleString();
+        document.getElementById('sum-right').innerText = sumRight.toLocaleString();
+
+        const btn = document.getElementById('btn-execute');
+        const status = document.getElementById('match-status');
+
+        const leftCount = selection.left.size;
+        const rightCount = selection.right.size;
+
+        // リセット
+        btn.disabled = true;
+        btn.classList.remove('active');
+        btn.onclick = null;
+        btn.innerText = "実行";
+        status.className = "";
+
+        // CASE 1: 両方選択 (消込モード)
+        // パターンA: 左=右 → 左だけ除外（右は残す）
+        // パターンB: 左+右=0 → 両方除外（振替）
+        if (leftCount > 0 && rightCount > 0) {
+            const isSameAmount = (sumLeft === sumRight);  // 同額
+            const isTransfer = (sumLeft + sumRight === 0);  // 振替
+
+            if (isSameAmount) {
+                btn.disabled = false;
+                btn.classList.add('active');
+                btn.innerText = "消込（左を除外）";
+                btn.onclick = () => executeReconcile('same_amount');
+                status.innerText = "同額 OK → 左だけ除外";
+                status.className = "ok";
+            } else if (isTransfer) {
+                btn.disabled = false;
+                btn.classList.add('active');
+                btn.innerText = "消込（両方除外）";
+                btn.onclick = () => executeReconcile('transfer');
+                status.innerText = "振替 OK (合計=0) → 両方除外";
+                status.className = "ok";
+            } else {
+                const diff = sumLeft - sumRight;
+                const total = sumLeft + sumRight;
+                status.innerText = `差額: ${diff.toLocaleString()} / 合計: ${total.toLocaleString()}`;
+            }
+        }
+        // CASE 2: 左だけ複数選択 (左合算モード) - 正負混在のみ許可
+        else if (leftCount > 1 && rightCount === 0) {
+            if (checkMixedSign('left')) {
+                btn.disabled = false;
+                btn.classList.add('active');
+                btn.innerText = "左を相殺(合算)";
+                btn.onclick = () => executeMerge('left');
+                status.innerText = `相殺後: ${sumLeft.toLocaleString()}`;
+                status.className = "ok";
+            } else {
+                status.innerText = "正と負の明細を選んでください";
+            }
+        }
+        // CASE 3: 右だけ複数選択 (右合算モード) - 正負混在のみ許可
+        else if (rightCount > 1 && leftCount === 0) {
+            if (checkMixedSign('right')) {
+                btn.disabled = false;
+                btn.classList.add('active');
+                btn.innerText = "右を相殺(合算)";
+                btn.onclick = () => executeMerge('right');
+                status.innerText = `相殺後: ${sumRight.toLocaleString()}`;
+                status.className = "ok";
+            } else {
+                status.innerText = "正と負の明細を選んでください";
+            }
+        }
+        // CASE 4: その他
+        else {
+            status.innerText = "選択してください";
+        }
+    }
+
+    function calculateSum(side) {
+        let sum = 0;
+        selection[side].forEach(id => {
+            const item = allData.find(d => d.id === id);
+            if (item) sum += item.amount;
+        });
+        return sum;
+    }
+
+    // 消込実行
+    async function executeReconcile(mode) {
+        let msg = '';
+        if (mode === 'transfer') {
+            msg = '振替消込：左右両方を除外します。よろしいですか？';
+        } else {
+            msg = '同額消込：左側のみを除外します（右側は残ります）。よろしいですか？';
+        }
+        if (!confirm(msg)) return;
+
+        const payload = {
+            remove_ids: Array.from(selection.left),
+            keep_ids: Array.from(selection.right),
+            mode: mode
+        };
+
+        await postAPI('/api/reconcile_execute', payload);
+    }
+
+    // モーダル表示（左の選択から情報を引き継ぐ）
+    function showCreateModal() {
+        const leftIds = Array.from(selection.left);
+        let suggestedAmount = calculateSum('left');
+        let suggestedContent = '新規明細';
+        let suggestedDate = new Date().toISOString().split('T')[0];
+
+        if (leftIds.length > 0) {
+            // 左で選んだ最初の明細から名称と日付を取得
+            const firstItem = allData.find(d => d.id === leftIds[0]);
+            if (firstItem) {
+                suggestedContent = firstItem.content;
+                suggestedDate = firstItem.date;
+            }
+        }
+
+        document.getElementById('new-content').value = suggestedContent;
+        document.getElementById('new-amount').value = suggestedAmount;
+        document.getElementById('new-date').value = suggestedDate;
+        document.getElementById('create-modal').style.display = 'block';
+    }
+
+    function closeCreateModal() {
+        document.getElementById('create-modal').style.display = 'none';
+    }
+
+    // 新規明細作成
+    async function createTransaction() {
+        const content = document.getElementById('new-content').value;
+        const amount = parseInt(document.getElementById('new-amount').value) || 0;
+        const date = document.getElementById('new-date').value;
+        const institution = document.getElementById('new-institution').value;
+
+        if (!date) {
+            alert('日付を入力してください');
+            return;
+        }
+
+        const payload = { content, amount, date, institution };
+
+        try {
+            const res = await fetch('/api/create_transaction', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+
+            if (json.status === 'success') {
+                alert('作成しました');
+                location.reload();
+            } else {
+                alert('エラー: ' + json.message);
+            }
+        } catch (e) {
+            alert('通信エラー');
+        }
+    }
+
+    // 合算実行
+    async function executeMerge(side) {
+        if (!confirm('選択した明細を合算して1行にします。元の明細は除外されます。')) return;
+        const payload = { ids: Array.from(selection[side]) };
+        await postAPI('/api/merge_execute', payload);
+    }
+
+    async function postAPI(url, data) {
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const json = await res.json();
+            if (json.status === 'success') {
+                alert('処理完了');
+                location.reload();
+            } else {
+                alert('エラー: ' + json.message);
+            }
+        } catch (e) {
+            alert('通信エラー');
+        }
+    }
+
+    function filterList(side, text) {
+        const rows = document.querySelectorAll(`#table-${side} tr`);
+        const lowerText = text.toLowerCase();
+        rows.forEach(tr => {
+            if (tr.dataset.search.includes(lowerText)) {
+                tr.style.display = '';
+            } else {
+                tr.style.display = 'none';
+            }
+        });
+    }
+</script>
+</body>
+</html>

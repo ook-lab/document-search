@@ -15,7 +15,11 @@ export async function GET(req: Request) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await res.json();
-      return Response.json(data, { status: res.ok ? 200 : 500 });
+      if (!res.ok) {
+        console.error("[calendar/list] Google API error:", JSON.stringify(data));
+        return Response.json({ error: "Google API error", detail: data }, { status: 500 });
+      }
+      return Response.json(data);
     }
 
     if (action === "events") {
@@ -52,7 +56,11 @@ export async function POST(req: Request) {
     { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(event) }
   );
   const data = await res.json();
-  return Response.json(data, { status: res.ok ? 200 : 500 });
+  if (!res.ok) {
+    console.error("[calendar/POST] error calendarId:", calendarId, "status:", res.status, "detail:", JSON.stringify(data));
+    return Response.json({ error: data?.error ?? data }, { status: 500 });
+  }
+  return Response.json(data);
 }
 
 // PUT /api/calendar  { calendarId, eventId, event }

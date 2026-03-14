@@ -13,9 +13,13 @@ COPY services/kakeibo/requirements.txt /app/
 # 3. ライブラリをインストール
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. ソースコードをコピー
-COPY shared/ /app/shared/
+# 4. ソースコードをコピー（shared/ 不要 — kakeibo は完全独立）
 COPY services/kakeibo/app.py /app/
+COPY services/kakeibo/config.py /app/
+COPY services/kakeibo/db_client.py /app/
+COPY services/kakeibo/drive_client.py /app/
+COPY services/kakeibo/gemini_client.py /app/
+COPY services/kakeibo/transaction_processor.py /app/
 COPY services/kakeibo/templates/ /app/templates/
 
 # 5. Pythonパス設定

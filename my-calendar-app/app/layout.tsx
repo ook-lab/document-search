@@ -28,6 +28,25 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ja">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js').catch(() => {});
+              // SWからのリロード要求を受け取る
+              navigator.serviceWorker.addEventListener('message', (e) => {
+                if (e.data && e.data.type === 'SW_UPDATED') {
+                  window.location.reload();
+                }
+              });
+              // 新しいSWが制御を取得したら自動リロード
+              navigator.serviceWorker.addEventListener('controllerchange', () => {
+                window.location.reload();
+              });
+            });
+          }
+        `}} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <Providers>{children}</Providers>
       </body>

@@ -1,6 +1,8 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "../_lib/auth-options";
+
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OWNER_EMAIL  = process.env.CALENDAR_OWNER_EMAIL ?? "ookubo.y@workspace-o.com";
 
 function sbHeaders() {
   return {
@@ -13,10 +15,23 @@ function sbHeaders() {
 
 export async function GET(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const email = session?.user?.email;
+    if (!email) return Response.json([], { status: 401 });
+
+    // ユーザーのボードID一覧を取得
+    const boardsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/trello_boards?owner_email=eq.${encodeURIComponent(email)}&select=board_id`,
+      { headers: sbHeaders() }
+    );
+    const boards: { board_id: string }[] = await boardsRes.json();
+    const boardIds = boards.map(b => b.board_id);
+    if (boardIds.length === 0) return Response.json([]);
+
     const { searchParams } = new URL(req.url);
     const groupId = searchParams.get("groupId");
 
-    let url = `${SUPABASE_URL}/rest/v1/tasks?owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&archived=eq.false&order=sort_order,due_date`;
+    let url = `${SUPABASE_URL}/rest/v1/tasks?board_id=in.(${boardIds.map(encodeURIComponent).join(",")})&archived=eq.false&order=sort_order,due_date`;
     if (groupId) url += `&calendar_group_id=eq.${encodeURIComponent(groupId)}`;
 
     const res = await fetch(url, { headers: sbHeaders() });
@@ -34,9 +49,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const email = session?.user?.email;
+    if (!email) return Response.json({ error: "Not authenticated" }, { status: 401 });
+
     const body = await req.json();
     const payload = {
-      owner_email:       OWNER_EMAIL,
+      owner_email:       email,
       card_name:         body.cardName,
       description:       body.description ?? null,
       due_date:          body.dueDate ?? null,

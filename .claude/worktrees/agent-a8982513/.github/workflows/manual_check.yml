@@ -1,0 +1,43 @@
+# .github/workflows/manual_check.yml
+# 初期動作確認用の手動実行ワークフロー
+
+name: 01. Initial AI Connection Check
+
+on:
+  # 手動でのみ実行可能
+  workflow_dispatch:
+
+jobs:
+  check-ai:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12' # 安定版Pythonを使用
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Setup credentials (Secrets to .env)
+        # GitHub Secretsを環境変数として設定
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Secretsから.env形式のファイルを一時的に作成
+          echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" > .env
+          echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
+
+      - name: Run connection script
+        # ローカルで成功したスクリプトを実行
+        run: |
+          python scripts/check_llm_setup.py

@@ -237,6 +237,67 @@ def _get_user_email(creds) -> str | None:
         return None
 
 
+def _resolve_base_calendar(service, cal_id: str) -> tuple[str, str] | None:
+    """
+    cal_id が base/_pen/_arc のいずれであっても、base カレンダーの (id, name) を返す。
+    """
+    try:
+        cal = service.calendars().get(calendarId=cal_id).execute()
+        name = cal.get('summary', '')
+    except Exception:
+        return None
+
+    base_name = name
+    if name.endswith('_pen'):
+        base_name = name[:-4]
+    elif name.endswith('_arc'):
+        base_name = name[:-4]
+
+    if base_name == name:
+        return cal_id, name  # すでに base
+
+    page_token = None
+    while True:
+        result = service.calendarList().list(pageToken=page_token).execute()
+        for c in result.get('items', []):
+            if c.get('summary') == base_name:
+                return c['id'], base_name
+        page_token = result.get('nextPageToken')
+        if not page_token:
+            break
+    return None
+
+
+def _find_or_create_triad_cal(service, base_cal_id: str, base_name: str, suffix: str | None) -> str:
+    """
+    suffix=None → base_cal_id を返す
+    suffix='pen'/'arc' → {base_name}_{suffix} カレンダーを探す/作成して返す
+    """
+    if not suffix:
+        return base_cal_id
+    target_name = f'{base_name}_{suffix}'
+    page_token = None
+    while True:
+        result = service.calendarList().list(pageToken=page_token).execute()
+        for c in result.get('items', []):
+            if c.get('summary') == target_name:
+                return c['id']
+        page_token = result.get('nextPageToken')
+        if not page_token:
+            break
+    new_cal = service.calendars().insert(body={'summary': target_name}).execute()
+    return new_cal['id']
+
+
+def _attendance_to_suffix(attendance: str | None) -> str | None:
+    """attendance 値 → カレンダー suffix (None=base, 'pen', 'arc')"""
+    if attendance == 'tentative':
+        return 'pen'
+    if attendance == 'declined':
+        return 'arc'
+    return None  # 'accepted' or None → base
+
+
 # ─────────────────────────────────────────
 # Gemini パース
 # ─────────────────────────────────────────
@@ -505,14 +566,20 @@ def api_register():
         return jsonify({'error': 'events が空です'}), 400
 
     service = _build_calendar_service(creds)
-    user_email = _get_user_email(creds)
     results = []
+
+    # base カレンダーの名前を取得（_pen/_arc 振り分けに使用）
+    base_info = _resolve_base_calendar(service, calendar_id)
+    base_cal_id  = base_info[0] if base_info else calendar_id
+    base_cal_name = base_info[1] if base_info else ''
 
     for ev in events:
         try:
-            body = _build_event_body(ev, user_email=user_email)
+            body = _build_event_body(ev)
+            suffix = _attendance_to_suffix(ev.get('attendance'))
+            target_cal_id = _find_or_create_triad_cal(service, base_cal_id, base_cal_name, suffix) if base_cal_name else calendar_id
             created = service.events().insert(
-                calendarId=calendar_id,
+                calendarId=target_cal_id,
                 body=body
             ).execute()
             results.append({
@@ -536,7 +603,7 @@ def api_register():
 # イベント body 生成ヘルパー
 # ─────────────────────────────────────────
 
-def _build_event_body(ev: dict, user_email: str | None = None) -> dict:
+def _build_event_body(ev: dict) -> dict:
     """
     パース済みイベント dict → Google Calendar API の event body
     """
@@ -569,9 +636,6 @@ def _build_event_body(ev: dict, user_email: str | None = None) -> dict:
         dt_end = dt_start + timedelta(hours=1)
         body['start'] = {'dateTime': dt_start.isoformat(), 'timeZone': 'Asia/Tokyo'}
         body['end']   = {'dateTime': dt_end.isoformat(),   'timeZone': 'Asia/Tokyo'}
-
-    if attendance and user_email:
-        body['attendees'] = [{'email': user_email, 'responseStatus': attendance, 'self': True}]
 
     return body
 
@@ -658,7 +722,7 @@ def api_events():
 
 @app.route('/api/attendance/<path:calendar_id>/<event_id>', methods=['PATCH'])
 def api_update_attendance(calendar_id, event_id):
-    """イベントの出欠ステータスを更新（attendees.responseStatus）"""
+    """イベントの出欠ステータスを更新（_pen/_arc カレンダー間移動）"""
     creds = _get_valid_credentials()
     if not creds:
         return jsonify({'error': 'unauthorized'}), 401
@@ -668,24 +732,25 @@ def api_update_attendance(calendar_id, event_id):
     if status not in ('accepted', 'declined', 'tentative'):
         return jsonify({'error': 'status は accepted / declined / tentative のいずれか'}), 400
 
-    user_email = _get_user_email(creds)
-    if not user_email:
-        return jsonify({'error': 'メールアドレスの取得に失敗しました'}), 500
-
     service = _build_calendar_service(creds)
     try:
-        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
-        # 自分以外の attendees は保持し、自分のエントリを上書き
-        attendees = [a for a in event.get('attendees', [])
-                     if not a.get('self') and a.get('email') != user_email]
-        attendees.append({'email': user_email, 'responseStatus': status, 'self': True})
-        service.events().patch(
+        base_info = _resolve_base_calendar(service, calendar_id)
+        if not base_info:
+            return jsonify({'error': 'base カレンダーの解決に失敗しました'}), 500
+        base_cal_id, base_cal_name = base_info
+
+        suffix = _attendance_to_suffix(status)
+        dest_cal_id = _find_or_create_triad_cal(service, base_cal_id, base_cal_name, suffix)
+
+        if dest_cal_id == calendar_id:
+            return jsonify({'success': True, 'status': status, 'moved': False})
+
+        service.events().move(
             calendarId=calendar_id,
             eventId=event_id,
-            body={'attendees': attendees},
-            sendUpdates='none',
+            destination=dest_cal_id,
         ).execute()
-        return jsonify({'success': True, 'status': status})
+        return jsonify({'success': True, 'status': status, 'moved': True, 'new_calendar_id': dest_cal_id})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -1,0 +1,44 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: 'my-calendar-app'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest || true'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: 'my-calendar-app'
+    args:
+      - 'build'
+      - '--cache-from'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'my-calendar-app'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
+      - '--region=asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--port=8080'
+      - '--timeout=60'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

@@ -2,17 +2,19 @@ import uuid
 import csv
 import io
 import base64
-import sys
-from pathlib import Path
 from datetime import datetime
 
-# プロジェクトルートをPythonパスに追加（ローカル実行時用）
-project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
 from flask import Flask, render_template, request, jsonify, Response
-from shared.common.database.client import DatabaseClient
+
+from db_client import get_db
+from drive_client import DriveClient
+from config import (
+    INBOX_EASY_FOLDER_ID, INBOX_HARD_FOLDER_ID,
+    ARCHIVE_FOLDER_ID, ERROR_FOLDER_ID,
+    GEMINI_MODEL_EASY, GEMINI_MODEL_HARD,
+    GEMINI_TEMPERATURE, GEMINI_PROMPT,
+    MONEYFORWARD_FOLDER_ID, MONEYFORWARD_PROCESSED_ID,
+)
 
 try:
     import openpyxl
@@ -21,100 +23,31 @@ try:
 except ImportError:
     HAS_OPENPYXL = False
 
-# Google Drive API
-try:
-    from google.oauth2 import service_account
-    from googleapiclient.discovery import build
-    from googleapiclient.http import MediaIoBaseDownload
-    HAS_GOOGLE_DRIVE = True
-except ImportError:
-    HAS_GOOGLE_DRIVE = False
-
-# パイプライン（レシート取り込み用）
-try:
-    from shared.pipeline import UnifiedDocumentPipeline
-    from shared.common.connectors.google_drive import GoogleDriveConnector
-    HAS_PIPELINE = True
-except ImportError:
-    HAS_PIPELINE = False
-    UnifiedDocumentPipeline = None
-    GoogleDriveConnector = None
-
 app = Flask(__name__)
 
-# Google Drive設定
-GOOGLE_DRIVE_CREDENTIALS = None
-_drive_service = None
+# DriveClient シングルトン（初回アクセス時に初期化）
+_drive_client: DriveClient = None
 
-def init_drive_service():
-    """Google Drive APIサービスを初期化（ファイル認証 → ADC フォールバック）"""
-    global _drive_service, GOOGLE_DRIVE_CREDENTIALS
-    if not HAS_GOOGLE_DRIVE:
-        return None
-    if _drive_service:
-        return _drive_service
-
-    SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-
-    # 1. 認証情報ファイルから認証（ローカル開発用）
-    try:
-        from shared.kakeibo.config import GOOGLE_DRIVE_CREDENTIALS as cred_path
-        GOOGLE_DRIVE_CREDENTIALS = cred_path
-        from pathlib import Path
-        if cred_path and Path(cred_path).exists():
-            credentials = service_account.Credentials.from_service_account_file(
-                cred_path,
-                scopes=SCOPES
-            )
-            _drive_service = build("drive", "v3", credentials=credentials)
-            print(f"Google Drive初期化成功（ファイル認証）: {cred_path}")
-            return _drive_service
-    except Exception as e:
-        print(f"ファイル認証失敗: {e}")
-
-    # 2. ADC（Application Default Credentials）で認証（Cloud Run用）
-    try:
-        import google.auth
-        credentials, project = google.auth.default(scopes=SCOPES)
-        _drive_service = build("drive", "v3", credentials=credentials)
-        print("Google Drive初期化成功（ADC認証）")
-        return _drive_service
-    except Exception as e:
-        print(f"ADC認証失敗: {e}")
-
-    print("Google Drive認証に失敗しました")
-    return None
+def get_drive_client() -> DriveClient:
+    global _drive_client
+    if _drive_client is None:
+        _drive_client = DriveClient()
+    return _drive_client
 
 
 def get_receipt_image_base64(drive_file_id: str) -> str:
-    """Google Driveからレシート画像を取得してBase64エンコード"""
-    service = init_drive_service()
-    if not service or not drive_file_id:
+    """Google Drive からレシート画像を取得して Base64 エンコード"""
+    if not drive_file_id:
         return None
-
     try:
-        request = service.files().get_media(
-            fileId=drive_file_id,
-            supportsAllDrives=True
-        )
-        file_bytes = io.BytesIO()
-        downloader = MediaIoBaseDownload(file_bytes, request)
-
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-
-        file_bytes.seek(0)
-        encoded = base64.b64encode(file_bytes.read()).decode('utf-8')
+        data = get_drive_client().get_file_bytes(drive_file_id)
+        if data is None:
+            return None
+        encoded = base64.b64encode(data).decode("utf-8")
         return f"data:image/jpeg;base64,{encoded}"
     except Exception as e:
         print(f"画像取得エラー: {e}")
         return None
-
-
-def get_db():
-    """DB接続を取得"""
-    return DatabaseClient(use_service_role=True).client
 
 
 def check_auto_exclude(content, institution, rules):
@@ -1067,36 +1000,147 @@ def receipt_detail(receipt_id):
     )
 
 
+@app.route('/api/mf_csv/import', methods=['POST'])
+def import_mf_csv():
+    """
+    MoneyForward CSVをGoogle Driveから取り込む
+    - MONEYFORWARD_FOLDER_ID 内のCSVファイルを処理
+    - 重複は Rawdata_BANK_transactions.id ("MF-{mf_id}") で判定
+    - 処理済みCSVは MONEYFORWARD_PROCESSED_ID へ移動
+    """
+    if not MONEYFORWARD_FOLDER_ID:
+        return jsonify({"status": "error", "message": "KAKEIBO_MONEYFORWARD_FOLDER_ID が未設定です"}), 500
+
+    drive = get_drive_client()
+    db = get_db()
+
+    # Drive内のCSVファイル一覧
+    try:
+        all_files = drive.list_files_in_folder(MONEYFORWARD_FOLDER_ID)
+        csv_files = [f for f in all_files if f.get("name", "").endswith(".csv")]
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Drive一覧取得失敗: {e}"}), 500
+
+    if not csv_files:
+        return jsonify({"status": "success", "imported": 0, "skipped": 0, "message": "取込対象CSVなし"})
+
+    total_imported = 0
+    total_skipped = 0
+    total_errors = 0
+
+    for csv_file in csv_files:
+        file_id   = csv_file["id"]
+        file_name = csv_file["name"]
+
+        try:
+            raw_bytes = drive.get_file_bytes(file_id)
+            text = raw_bytes.decode("cp932")
+            reader = csv.DictReader(io.StringIO(text))
+
+            # このCSVに含まれるMF IDを収集してDB一括チェック
+            rows = list(reader)
+            mf_ids = [r.get("ID", "").strip() for r in rows if r.get("ID", "").strip()]
+            db_ids = [f"MF-{mid}" for mid in mf_ids]
+
+            existing_set = set()
+            if db_ids:
+                exist_res = db.table("Rawdata_BANK_transactions") \
+                    .select("id").in_("id", db_ids).execute()
+                existing_set = {r["id"] for r in exist_res.data}
+
+            records_to_insert = []
+            for row in rows:
+                mf_id = row.get("ID", "").strip()
+                if not mf_id:
+                    continue
+
+                rec_id = f"MF-{mf_id}"
+                if rec_id in existing_set:
+                    total_skipped += 1
+                    continue
+
+                # 日付変換: 2026/03/10 → 2026-03-10
+                raw_date = row.get("日付", "").strip()
+                try:
+                    date_str = datetime.strptime(raw_date, "%Y/%m/%d").strftime("%Y-%m-%d")
+                except ValueError:
+                    total_errors += 1
+                    continue
+
+                # 金額（文字列 "-1600" → int）
+                raw_amount = row.get("金額（円）", "0").strip().replace(",", "")
+                try:
+                    amount = int(raw_amount)
+                except ValueError:
+                    amount = 0
+
+                # 中項目とメモを結合
+                category_minor = row.get("中項目", "").strip()
+                memo_raw       = row.get("メモ", "").strip()
+                is_transfer    = row.get("振替", "0").strip() == "1"
+
+                memo_parts = []
+                if category_minor:
+                    memo_parts.append(category_minor)
+                if memo_raw:
+                    memo_parts.append(memo_raw)
+                memo = " / ".join(memo_parts) if memo_parts else None
+
+                records_to_insert.append({
+                    "id":          rec_id,
+                    "date":        date_str,
+                    "content":     row.get("内容", "").strip(),
+                    "amount":      amount,
+                    "institution": row.get("保有金融機関", "").strip() or None,
+                    "memo":        memo,
+                    "is_target":   True,
+                    "is_transfer": is_transfer,
+                })
+
+            # バッチinsert（100件ずつ）
+            for i in range(0, len(records_to_insert), 100):
+                batch = records_to_insert[i:i + 100]
+                db.table("Rawdata_BANK_transactions").insert(batch).execute()
+                total_imported += len(batch)
+
+            # 処理済みフォルダへ移動
+            if MONEYFORWARD_PROCESSED_ID:
+                try:
+                    drive.move_file(file_id, MONEYFORWARD_PROCESSED_ID)
+                except Exception as e:
+                    print(f"[import_mf_csv] 移動失敗 {file_name}: {e}")
+
+        except Exception as e:
+            print(f"[import_mf_csv] CSVファイル処理失敗 {file_name}: {e}")
+            total_errors += 1
+
+    return jsonify({
+        "status":   "success",
+        "imported": total_imported,
+        "skipped":  total_skipped,
+        "errors":   total_errors,
+    })
+
+
 @app.route('/api/receipts/import', methods=['POST'])
 def import_receipts():
     """Google Driveからレシート画像を取り込んで処理"""
     import json
     import tempfile
-    from pathlib import Path
 
-    # 設定読み込み
-    try:
-        from shared.kakeibo.config import (
-            INBOX_EASY_FOLDER_ID, INBOX_HARD_FOLDER_ID,
-            ARCHIVE_FOLDER_ID, ERROR_FOLDER_ID,
-            GEMINI_MODEL_EASY, GEMINI_MODEL_HARD, GEMINI_PROMPT,
-            GEMINI_TEMPERATURE
-        )
-        from shared.common.connectors.google_drive import GoogleDriveConnector
-        from shared.ai.llm_client.llm_client import LLMClient
-        from shared.kakeibo.transaction_processor import TransactionProcessor
-    except ImportError as e:
-        return jsonify({"status": "error", "message": f"必要なモジュールが見つかりません: {e}"}), 500
+    from gemini_client import GeminiClient
+    from transaction_processor import TransactionProcessor
 
     # 処理結果カウンター
+    BATCH_LIMIT = 5  # 1回の取込上限
     processed = 0
     success = 0
     failed = 0
     errors = []
 
     try:
-        drive = GoogleDriveConnector()
-        llm = LLMClient()
+        drive     = get_drive_client()
+        llm       = GeminiClient()
         processor = TransactionProcessor()
 
         # 処理対象のフォルダ
@@ -1121,9 +1165,36 @@ def import_receipts():
                 errors.append(f"フォルダ取得エラー ({folder['name']}): {e}")
                 continue
 
+            # 処理済み drive_file_id を一括取得（ループ前に1回だけ）
+            db = get_db()
+            already_done = set()
+            try:
+                log_res = db.table("99_lg_image_proc_log") \
+                    .select("drive_file_id") \
+                    .eq("status", "success") \
+                    .execute()
+                already_done = {r["drive_file_id"] for r in log_res.data if r.get("drive_file_id")}
+            except Exception as e:
+                print(f"[import_receipts] 処理済みログ取得失敗: {e}")
+
             for file_info in image_files:
+                if processed >= BATCH_LIMIT:
+                    break
+
                 file_id = file_info['id']
                 file_name = file_info['name']
+
+                # ── ダブリチェック ──────────────────────────────
+                if file_id in already_done:
+                    print(f"[import_receipts] スキップ（処理済み）: {file_name}")
+                    # INBOX に残っていれば ARCHIVE へ移動
+                    if ARCHIVE_FOLDER_ID:
+                        try:
+                            drive.move_file(file_id, ARCHIVE_FOLDER_ID)
+                        except Exception:
+                            pass
+                    continue
+
                 processed += 1
 
                 try:

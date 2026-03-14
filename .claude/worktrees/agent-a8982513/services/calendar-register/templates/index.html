@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>カレンダー登録</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Hiragino Sans', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ───── トップバー ───── */
+    .topbar {
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,.06);
+    }
+
+    .topbar h1 { font-size: 15px; font-weight: 600; color: #333; white-space: nowrap; }
+    .topbar .spacer { flex: 1; }
+
+    .cal-select-wrap { display: flex; align-items: center; gap: 8px; }
+
+    .cal-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #4285F4;
+      flex-shrink: 0;
+    }
+
+    select#calendarSelect {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 6px 28px 6px 10px;
+      font-size: 14px;
+      appearance: none;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 8px center / 12px;
+      min-width: 200px;
+      cursor: pointer;
+    }
+
+    select#calendarSelect:disabled { background-color: #f5f5f5; color: #999; }
+
+    .btn-preset {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      color: #555;
+    }
+    .btn-preset:hover { background: #f5f5f5; }
+    .btn-preset.active { background: #e8f0fe; border-color: #4285F4; color: #1a73e8; }
+
+    .auth-btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 500; }
+    .btn-login  { background: #4285F4; color: #fff; }
+    .btn-logout { background: #f0f0f0; color: #555; }
+
+    /* ───── メイン ───── */
+    .main { max-width: 740px; margin: 28px auto; padding: 0 16px; }
+
+    /* ───── プリセットパネル ───── */
+    #presetPanel {
+      display: none;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+
+    .preset-header {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .preset-cal-name { color: #1a73e8; }
+
+    textarea#presetText {
+      width: 100%;
+      min-height: 160px;
+      border: none;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.8;
+      resize: vertical;
+      font-family: 'Consolas', 'Courier New', monospace;
+      color: #333;
+      outline: none;
+    }
+
+    textarea#presetText::placeholder { color: #bbb; }
+
+    .preset-footer {
+      padding: 10px 16px;
+      border-top: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .preset-hint { font-size: 12px; color: #999; flex: 1; }
+
+    /* 検索インデックストグル */
+    .index-toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-top: 1px solid #eee;
+      background: #fafafa;
+    }
+    .index-toggle-label { font-size: 13px; color: #444; flex: 1; }
+    .index-toggle-label small { display: block; font-size: 11px; color: #aaa; margin-top: 1px; }
+    .toggle-switch {
+      position: relative; width: 40px; height: 22px; flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #ccc; border-radius: 22px; transition: .2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; left: 3px; bottom: 3px;
+      background: #fff; border-radius: 50%; transition: .2s;
+    }
+    .toggle-switch input:checked + .toggle-slider { background: #34a853; }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+    #indexToggleStatus { font-size: 12px; color: #888; }
+    .index-person-wrap {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-top: 1px solid #eee; background: #fafafa;
+    }
+    .index-person-label { font-size: 13px; color: #444; flex-shrink: 0; }
+    .index-person-input {
+      flex: 1; border: 1px solid #ddd; border-radius: 4px;
+      padding: 4px 8px; font-size: 13px;
+    }
+    .btn-save-person {
+      padding: 4px 12px; font-size: 12px; border: 1px solid #ccc;
+      border-radius: 4px; background: #fff; cursor: pointer;
+    }
+    .btn-save-person:hover { background: #f0f0f0; }
+    #indexPersonStatus { font-size: 12px; color: #888; }
+
+    /* ───── 出欠タブ ───── */
+    .attendance-card {
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08); overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .attendance-range {
+      padding: 12px 16px; display: flex; align-items: center;
+      gap: 8px; flex-wrap: wrap; border-bottom: 1px solid #eee;
+    }
+    .attendance-range input[type=date] {
+      border: 1px solid #ccc; border-radius: 6px;
+      padding: 5px 8px; font-size: 13px;
+    }
+    .attendance-list { padding: 8px 0; }
+    .attendance-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 16px; border-bottom: 1px solid #f5f5f5; font-size: 13px;
+    }
+    .attendance-item:last-child { border-bottom: none; }
+    .att-date { color: #888; font-size: 12px; white-space: nowrap; flex-shrink: 0; width: 90px; }
+    .att-title { flex: 1; }
+    .att-btns { display: flex; gap: 4px; flex-shrink: 0; }
+    .btn-att {
+      padding: 3px 10px; border-radius: 12px; border: 1px solid #ddd;
+      font-size: 12px; cursor: pointer; background: #fff; color: #555;
+      transition: all .15s;
+    }
+    .btn-att:hover { border-color: #aaa; }
+    .btn-att.active-accepted { background: #e6f4ea; color: #137333; border-color: #34a853; font-weight: 600; }
+    .btn-att.active-declined { background: #fce8e6; color: #c5221f; border-color: #ea4335; font-weight: 600; }
+    .btn-att.active-tentative { background: #fff3e0; color: #e37400; border-color: #fbbc04; font-weight: 600; }
+    .att-status-saving { font-size: 11px; color: #aaa; }
+
+    /* ───── プレビュー編集フィールド ───── */
+    .ev-edit-row {
+      display: flex; align-items: center; gap: 6px; margin-top: 5px; flex-wrap: wrap;
+    }
+    .ev-input {
+      border: 1px solid #e0e0e0; border-radius: 4px;
+      padding: 3px 7px; font-size: 13px; outline: none; background: #fafafa;
+      transition: border-color .15s;
+    }
+    .ev-input:focus { border-color: #4285F4; background: #fff; }
+    .ev-input-title { flex: 1; min-width: 160px; font-weight: 600; font-size: 14px; }
+    .ev-input-date  { width: 128px; }
+    .ev-input-time  { width: 82px; }
+    .ev-input-location { flex: 1; min-width: 120px; font-size: 13px; }
+    .ev-allday-label { font-size: 12px; color: #888; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+
+    /* ───── プレビュー出欠ボタン ───── */
+    .ev-att-row { display: flex; gap: 4px; margin-top: 6px; }
+    .btn-reg-att {
+      padding: 3px 11px; border-radius: 12px; border: 1px solid #ddd;
+      font-size: 12px; cursor: pointer; background: #fff; color: #666;
+      transition: all .12s;
+    }
+    .btn-reg-att:hover { border-color: #aaa; }
+    .btn-reg-att.active-accepted { background: #e6f4ea; color: #137333; border-color: #34a853; font-weight: 600; }
+    .btn-reg-att.active-declined { background: #fce8e6; color: #c5221f; border-color: #ea4335; font-weight: 600; }
+    .btn-reg-att.active-tentative { background: #fff3e0; color: #e37400; border-color: #fbbc04; font-weight: 600; }
+
+    /* ───── タグチップ（プリセットパネル） ───── */
+    .tag-section { padding: 10px 16px; border-top: 1px solid #eee; background: #fafafa; }
+    .tag-section-title { font-size: 12px; color: #666; margin-bottom: 6px; }
+    .tag-chip-area {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      border: 1px solid #ddd; border-radius: 8px; padding: 6px 8px;
+      background: #fff; min-height: 36px; cursor: text;
+    }
+    .tag-chip {
+      display: flex; align-items: center; gap: 3px;
+      background: #e8f0fe; border-radius: 14px;
+      padding: 3px 6px 3px 10px; font-size: 13px; color: #1a73e8;
+    }
+    .tag-chip-remove {
+      cursor: pointer; color: #1a73e8; font-size: 15px; line-height: 1;
+      background: none; border: none; padding: 0 2px; opacity: 0.6;
+    }
+    .tag-chip-remove:hover { opacity: 1; }
+    .tag-chip-input-box { border: none; outline: none; font-size: 13px; min-width: 100px; flex: 1; }
+
+    /* ───── タグチェックボックス（登録・修正タブ） ───── */
+    .tag-check-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 20px; }
+    .tag-check-label { font-size: 12px; color: #666; flex-shrink: 0; }
+    .tag-check-group { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag-check-item { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+    .tag-check-item input[type=checkbox] { accent-color: #1a73e8; cursor: pointer; }
+
+    .btn-save-preset {
+      padding: 6px 16px;
+      border-radius: 6px;
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-save-preset:hover { background: #1557b0; }
+
+    #presetSaveStatus { font-size: 12px; color: #137333; }
+
+    /* ───── メインカード ───── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 20px 12px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .card-header code {
+      background: #f5f5f5;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 12px;
+      color: #c0392b;
+    }
+
+    textarea#eventText {
+      width: 100%;
+      min-height: 260px;
+      border: none;
+      padding: 16px 20px;
+      font-size: 15px;
+      line-height: 1.8;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      color: #222;
+    }
+
+    textarea#eventText::placeholder { color: #bbb; }
+
+    .card-footer {
+      padding: 12px 20px;
+      border-top: 1px solid #f0f0f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-parse {
+      padding: 8px 18px;
+      border-radius: 7px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      color: #444;
+    }
+    .btn-parse:hover { background: #f5f5f5; }
+
+    .btn-register {
+      padding: 8px 22px;
+      border-radius: 7px;
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-register:hover { background: #1557b0; }
+    .btn-register:disabled { background: #aaa; cursor: default; }
+
+    .char-count { margin-left: auto; font-size: 12px; color: #aaa; }
+
+    /* ───── プレビュー ───── */
+    #previewPanel { margin-top: 16px; display: none; }
+    .panel-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 8px; padding: 0 4px; }
+    .event-list { list-style: none; }
+    .event-item {
+      background: #fff;
+      border-radius: 8px;
+      border-left: 4px solid #4285F4;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .event-item.all-day { border-left-color: #0f9d58; }
+    .event-item .ev-title { font-size: 15px; font-weight: 600; color: #222; }
+    .event-item .ev-meta  { font-size: 12px; color: #777; margin-top: 3px; }
+    .event-item .ev-loc   { font-size: 12px; color: #555; margin-top: 2px; }
+
+    /* ───── 登録結果 ───── */
+    #resultPanel { margin-top: 16px; display: none; }
+    .result-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; border-radius: 8px; margin-bottom: 6px;
+      font-size: 14px; background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .result-item.ok  { border-left: 4px solid #0f9d58; }
+    .result-item.err { border-left: 4px solid #d93025; }
+    .result-icon { font-size: 16px; }
+    .result-link { font-size: 12px; color: #1a73e8; text-decoration: none; margin-left: auto; }
+    .result-link:hover { text-decoration: underline; }
+
+    /* ───── ステータスバー ───── */
+    #statusBar {
+      display: none; margin-top: 10px; padding: 8px 14px;
+      border-radius: 7px; font-size: 13px;
+      background: #e8f0fe; color: #1a73e8;
+    }
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #c5d8fb; border-top-color: #1a73e8;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      margin-right: 6px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .unauthed-notice { text-align: center; padding: 40px 20px; color: #888; }
+    .unauthed-notice p { margin-bottom: 16px; font-size: 15px; }
+
+    /* ───── タブ ───── */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      padding: 8px 20px;
+      border-radius: 8px 8px 0 0;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      background: #e8eaed;
+      font-size: 14px;
+      cursor: pointer;
+      color: #555;
+      font-weight: 500;
+    }
+    .tab-btn.active { background: #fff; color: #1a73e8; border-color: #ccc; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ───── 割り振り画面 ───── */
+    .assign-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .assign-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+
+    .assign-card-header {
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #eee;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    .assign-range {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #eee;
+    }
+
+    .assign-range input[type=date] {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+    }
+
+    .btn-fetch {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: none;
+      background: #4285F4;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .btn-fetch:hover { background: #3367d6; }
+
+    .slot-list {
+      max-height: 320px;
+      overflow-y: auto;
+      padding: 8px 0;
+    }
+
+    .slot-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 16px;
+      font-size: 13px;
+      border-bottom: 1px solid #f5f5f5;
+    }
+
+    .slot-check { flex-shrink: 0; cursor: pointer; }
+
+    .slot-date { color: #888; white-space: nowrap; min-width: 80px; }
+    .slot-time { color: #aaa; white-space: nowrap; min-width: 110px; font-size: 12px; }
+    .slot-title { color: #333; flex: 1; }
+
+    textarea#subjectText {
+      width: 100%;
+      min-height: 280px;
+      border: none;
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.8;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      color: #222;
+    }
+
+    textarea#subjectText::placeholder { color: #bbb; }
+
+    .assign-actions {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .btn-assign {
+      padding: 8px 20px;
+      border-radius: 7px;
+      border: none;
+      background: #34a853;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-assign:hover { background: #2d8f47; }
+    .btn-assign:disabled { background: #aaa; cursor: default; }
+
+    .btn-apply {
+      padding: 8px 20px;
+      border-radius: 7px;
+      border: none;
+      background: #1a73e8;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-apply:hover { background: #1557b0; }
+    .btn-apply:disabled { background: #aaa; cursor: default; }
+
+    /* 修正プレビュー */
+    .ar-card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .ar-card-head {
+      background: #f8f9fa;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: #888;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .ar-head-old { text-decoration: line-through; }
+    .ar-card-row {
+      padding: 5px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .ar-card-row:last-child { border-bottom: none; }
+    .ar-label {
+      font-size: 12px;
+      color: #999;
+      white-space: nowrap;
+      min-width: 28px;
+    }
+    .ar-input {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 13px;
+      outline: none;
+      color: #222;
+    }
+    .ar-input:focus { border-color: #4285F4; }
+    .ar-input.time { max-width: 88px; flex: none; }
+  </style>
+</head>
+<body>
+
+<!-- トップバー -->
+<div class="topbar">
+  <h1>📅 カレンダー登録</h1>
+
+  {% if authed %}
+  <div class="cal-select-wrap">
+    <div class="cal-dot" id="calDot"></div>
+    <select id="calendarSelect" disabled>
+      <option>読み込み中...</option>
+    </select>
+  </div>
+  <button class="btn-preset" id="btnPresetToggle" onclick="togglePreset()">⚙ プリセット</button>
+  <div class="spacer"></div>
+  <a href="/auth/logout" class="auth-btn btn-logout">ログアウト</a>
+  {% else %}
+  <div class="spacer"></div>
+  <a href="/auth/login" class="auth-btn btn-login">Google でログイン</a>
+  {% endif %}
+</div>
+
+<div class="main">
+  {% if not authed %}
+  <div class="card">
+    <div class="unauthed-notice">
+      <p>Google アカウントでログインすると<br>カレンダーへの登録が使えます</p>
+      <a href="/auth/login" class="auth-btn btn-login" style="display:inline-block;padding:10px 24px;font-size:15px;">Google でログイン</a>
+    </div>
+  </div>
+
+  {% else %}
+
+  <!-- タブ -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('register')">📝 登録</button>
+    <button class="tab-btn" onclick="switchTab('assign')">✏️ 修正</button>
+    <button class="tab-btn" onclick="switchTab('attendance')">🗓 出欠</button>
+  </div>
+
+  <!-- ==============================
+       タブ1: 登録
+       ============================== -->
+  <div class="tab-content active" id="tab-register">
+
+  <!-- プリセットパネル -->
+  <div id="presetPanel">
+    <div class="preset-header">
+      ⚙ プリセット辞書 —
+      <span class="preset-cal-name" id="presetCalName">カレンダーを選択してください</span>
+    </div>
+    <textarea id="presetText" placeholder="# 時間割&#10;1時間目: 08:45-09:30&#10;2時間目: 09:35-10:20&#10;週テスト: 13:30-17:00&#10;&#10;# 場所略称&#10;体育館: 第一体育館"></textarea>
+    <div class="tag-section">
+      <div class="tag-section-title">タグ（クリックして登録・修正タブで絞り込みに使えます）</div>
+      <div class="tag-chip-area" id="tagChipArea" onclick="document.getElementById('tagInput').focus()">
+        <input class="tag-chip-input-box" id="tagInput" placeholder="タグ名を入力してEnter"
+          onkeydown="handleTagInput(event)">
+      </div>
+    </div>
+    <div class="preset-footer">
+      <span class="preset-hint">カレンダーごとに保存されます。Gemini がこの辞書を参照して時間・場所を解釈します。</span>
+      <span id="presetSaveStatus"></span>
+      <button class="btn-save-preset" onclick="savePreset()">保存</button>
+    </div>
+    <div class="index-toggle-wrap">
+      <div class="index-toggle-label">
+        同期に含める
+        <small>ON にするとカレンダーのイベントが自動同期されます</small>
+      </div>
+      <span id="indexToggleStatus"></span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="index-person-wrap">
+      <span class="index-person-label">担当者名</span>
+      <input type="text" id="indexPerson" class="index-person-input" placeholder="例: 山田太郎">
+      <button class="btn-save-person" onclick="savePersonSetting()">保存</button>
+      <span id="indexPersonStatus"></span>
+    </div>
+  </div>
+
+  <!-- メインカード -->
+  <div class="card">
+    <div class="card-header">
+      予定を1行1件で入力してください。<br>
+      時間あり: <code>1/15 10:00-12:00 授業参観 体育館</code> &nbsp;
+      開始のみ: <code>来週月曜 13:30 歯医者</code> &nbsp;
+      終日: <code>1/20 運動会</code> &nbsp;
+      プリセット使用例: <code>1/15 1時間目 算数</code>
+    </div>
+
+    <textarea id="eventText" placeholder="・1/15(水) 1時間目 算数&#10;・来週月曜 週テスト&#10;・1/20 運動会"></textarea>
+
+    <div id="registerTagWrap" style="display:none; border-top:1px solid #f0f0f0;">
+      <div class="tag-check-wrap">
+        <span class="tag-check-label">タグ付与:</span>
+        <div class="tag-check-group" id="registerTagGroup"></div>
+      </div>
+    </div>
+    <div class="card-footer">
+      <button class="btn-parse" onclick="parseEvents()">🔍 解析プレビュー</button>
+      <button class="btn-register" id="btnRegister" onclick="registerEvents()" disabled>カレンダーに登録</button>
+      <span class="char-count" id="charCount">0 行</span>
+    </div>
+  </div>
+
+  <div id="statusBar"></div>
+
+  <div id="previewPanel">
+    <div class="panel-title">📋 解析結果（Gemini）</div>
+    <ul class="event-list" id="eventList"></ul>
+  </div>
+
+  <div id="resultPanel">
+    <div class="panel-title">✅ 登録結果</div>
+    <div id="resultList"></div>
+  </div>
+
+  </div><!-- /tab-register -->
+
+  <!-- ==============================
+       タブ2: 割り振り
+       ============================== -->
+  <div class="tab-content" id="tab-assign">
+
+    <div class="assign-grid">
+      <!-- 左: 枠リスト -->
+      <div class="assign-card">
+        <div class="assign-card-header">① 枠を取得</div>
+        <div class="assign-range">
+          <input type="date" id="assignFrom">
+          <span style="color:#888;font-size:13px;">〜</span>
+          <input type="date" id="assignTo">
+        </div>
+        <div class="assign-range" style="border-bottom:none;">
+          <input type="text" id="assignQ" placeholder="キーワード（省略可）"
+            style="flex:1;border:1px solid #ccc;border-radius:6px;padding:5px 10px;font-size:13px;outline:none;">
+          <button class="btn-fetch" onclick="fetchSlots()">取得</button>
+        </div>
+        <div id="assignTagRow" style="display:none; padding:6px 12px 8px;">
+          <div class="tag-check-wrap" style="padding:0;">
+            <span class="tag-check-label">タグ絞り込み (AND):</span>
+            <div class="tag-check-group" id="assignTagGroup"></div>
+          </div>
+        </div>
+        <div class="slot-list" id="slotList">
+          <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">期間を選んで「取得」を押してください</div>
+        </div>
+      </div>
+
+      <!-- 右: 科目リスト -->
+      <div class="assign-card">
+        <div class="assign-card-header">② 修正指示を入力</div>
+        <textarea id="subjectText" placeholder="3/10 午前: 国語, 数学&#10;3/10 午後: 英語&#10;3/11: 理科, 社会, 英語&#10;&#10;（自由に書いてOK。Gemini が修正案を作ります）"></textarea>
+      </div>
+    </div>
+
+    <div class="assign-actions">
+      <button class="btn-assign" id="btnAssign" onclick="assignSubjects()" disabled>
+        🤖 Gemini で修正案を生成
+      </button>
+      <button class="btn-apply" id="btnApply" onclick="applyAssignments()" disabled>
+        カレンダーに反映
+      </button>
+      <div id="assignStatus" style="font-size:13px;color:#888;margin-left:8px;"></div>
+    </div>
+
+    <!-- 割り振い結果プレビュー -->
+    <div id="assignPreview" style="display:none;">
+      <div class="panel-title">📋 修正案（編集可）</div>
+      <div id="assignResultList"></div>
+    </div>
+
+  </div><!-- /tab-assign -->
+
+  <!-- ==============================
+       タブ3: 出欠
+       ============================== -->
+  <div class="tab-content" id="tab-attendance">
+    <div class="attendance-card" style="margin-bottom:12px;">
+      <div class="assign-card-header">既存イベントの初期設定</div>
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:#555;flex:1;">
+          DB に取り込み済みで <code>attendees</code> が未設定のイベントに、自分を「出席」参加者として一括登録します。<br>
+          <span style="font-size:11px;color:#aaa;">登録後は出欠タブで欠席に変更すると Google カレンダーから非表示にできます。</span>
+        </span>
+        <button class="btn-fetch" id="btnBackfill" onclick="backfillAttendees()">attendees 一括登録</button>
+        <span id="backfillStatus" style="font-size:12px;color:#888;margin-right:12px;"></span>
+        <button class="btn-fetch" id="btnBackfillPerson" onclick="backfillPerson()" style="background:#34a853;">person 上書き</button>
+        <span id="backfillPersonStatus" style="font-size:12px;color:#888;"></span>
+      </div>
+    </div>
+    <div class="attendance-card" style="margin-bottom:12px;">
+      <div class="assign-card-header">カレンダー振り分け</div>
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:#555;flex:1;">
+          出欠ステータスに応じてイベントを別カレンダーへ移動します。<br>
+          <span style="font-size:11px;color:#aaa;">
+            出席 → そのまま　／　欠席 → <b>カレンダー名_arc</b>　／　未定 → <b>カレンダー名_pen</b>
+            （カレンダーが存在しない場合は自動作成）
+          </span>
+        </span>
+        <button class="btn-fetch" id="btnRedistribute" onclick="redistributeEvents()">振り分け実行</button>
+        <span id="redistributeStatus" style="font-size:12px;color:#888;"></span>
+      </div>
+    </div>
+    <div class="attendance-card">
+      <div class="assign-card-header">期間を選んでイベントを取得</div>
+      <div class="attendance-range">
+        <input type="date" id="attFrom">
+        <span style="color:#888;font-size:13px;">〜</span>
+        <input type="date" id="attTo">
+        <button class="btn-fetch" onclick="fetchAttendanceEvents()">取得</button>
+        <div id="attStatus" style="font-size:12px;color:#888;margin-left:4px;"></div>
+      </div>
+      <div class="attendance-list" id="attList">
+        <div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">期間を選んで「取得」を押してください</div>
+      </div>
+    </div>
+  </div><!-- /tab-attendance -->
+
+  {% endif %}
+</div>
+
+<script>
+let parsedEvents = [];
+let calendars = [];
+let presetOpen = false;
+let calendarTags = [];   // 現在のカレンダーのタグ一覧
+
+{% if authed %}
+// ─── カレンダー一覧ロード ───
+(async () => {
+  const sel = document.getElementById('calendarSelect');
+  const dot = document.getElementById('calDot');
+  try {
+    const res = await fetch('/api/calendars');
+    if (!res.ok) throw new Error(await res.text());
+    calendars = await res.json();
+
+    sel.innerHTML = calendars.map(c =>
+      `<option value="${c.id}" ${c.primary ? 'selected' : ''}>${c.name}</option>`
+    ).join('');
+    sel.disabled = false;
+
+    const primary = calendars.find(c => c.primary) || calendars[0];
+    if (primary) dot.style.background = primary.color;
+
+    sel.addEventListener('change', () => {
+      const cal = calendars.find(c => c.id === sel.value);
+      if (cal) dot.style.background = cal.color;
+      loadPreset(sel.value, cal?.name || sel.value);
+      loadIndexSetting(sel.value);
+    });
+
+    // 初期プリセット読み込み（パネルが開いたときのために）
+    if (primary) loadPreset(primary.id, primary.name);
+
+    // 出欠タブの日付デフォルト（今日〜1ヶ月後）
+    const today = new Date();
+    const nextMonth = new Date(today); nextMonth.setMonth(today.getMonth() + 1);
+    const fmt = d => d.toISOString().slice(0, 10);
+    document.getElementById('attFrom').value = fmt(today);
+    document.getElementById('attTo').value   = fmt(nextMonth);
+  } catch (e) {
+    sel.innerHTML = '<option>読み込み失敗</option>';
+    showStatus('カレンダーの読み込みに失敗しました: ' + e.message, 'error');
+  }
+})();
+{% endif %}
+
+// ─── 行数カウント ───
+document.getElementById('eventText')?.addEventListener('input', function () {
+  const lines = this.value.split('\n').filter(l => l.trim()).length;
+  document.getElementById('charCount').textContent = lines + ' 行';
+});
+
+// ─── プリセットパネル開閉 ───
+function togglePreset() {
+  const panel = document.getElementById('presetPanel');
+  const btn   = document.getElementById('btnPresetToggle');
+  presetOpen = !presetOpen;
+  panel.style.display = presetOpen ? 'block' : 'none';
+  btn.classList.toggle('active', presetOpen);
+
+  if (presetOpen) {
+    const sel = document.getElementById('calendarSelect');
+    const cal = calendars.find(c => c.id === sel?.value);
+    if (cal) {
+      loadPreset(cal.id, cal.name);
+      loadIndexSetting(cal.id);
+    }
+  }
+}
+
+// ─── インデックス設定読み込み ───
+async function loadIndexSetting(calendarId) {
+  try {
+    const res  = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`);
+    const data = await res.json();
+    document.getElementById('indexToggle').checked = !!data.index_enabled;
+    document.getElementById('indexToggleStatus').textContent = '';
+    document.getElementById('indexPerson').value = data.person || '';
+    document.getElementById('indexPersonStatus').textContent = '';
+  } catch {
+    document.getElementById('indexToggle').checked = false;
+    document.getElementById('indexPerson').value = '';
+  }
+}
+
+// ─── インデックス設定保存 ───
+async function saveIndexSetting(enabled) {
+  const sel = document.getElementById('calendarSelect');
+  const calendarId = sel?.value;
+  if (!calendarId) return;
+
+  const status = document.getElementById('indexToggleStatus');
+  status.textContent = '保存中...';
+  status.style.color = '#888';
+
+  try {
+    const person = document.getElementById('indexPerson').value.trim();
+    const res = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index_enabled: enabled, person })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    status.textContent = enabled ? '✓ 同期に追加しました' : '✓ 同期から除外しました';
+    status.style.color = '#137333';
+    setTimeout(() => { status.textContent = ''; }, 2500);
+  } catch (e) {
+    status.textContent = '保存失敗: ' + e.message;
+    status.style.color = '#c5221f';
+    document.getElementById('indexToggle').checked = !enabled;
+  }
+}
+
+// ─── 担当者名保存 ───
+async function savePersonSetting() {
+  const sel = document.getElementById('calendarSelect');
+  const calendarId = sel?.value;
+  if (!calendarId) return;
+
+  const person = document.getElementById('indexPerson').value.trim();
+  const status = document.getElementById('indexPersonStatus');
+  status.textContent = '保存中...';
+  status.style.color = '#888';
+
+  try {
+    const index_enabled = document.getElementById('indexToggle').checked;
+    const res = await fetch(`/api/index-settings/${encodeURIComponent(calendarId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index_enabled, person })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    status.textContent = '✓ 保存しました';
+    status.style.color = '#137333';
+    setTimeout(() => { status.textContent = ''; }, 2500);
+  } catch (e) {
+    status.textContent = '保存失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  }
+}
+
+// ─── プリセット読み込み ───
+async function loadPreset(calendarId, calendarName) {
+  document.getElementById('presetCalName').textContent = calendarName || calendarId;
+  try {
+    const res = await fetch(`/api/presets/${encodeURIComponent(calendarId)}`);
+    const data = await res.json();
+    document.getElementById('presetText').value = data.preset_text || '';
+    document.getElementById('presetSaveStatus').textContent = '';
+    calendarTags = data.tags || [];
+    renderTagChips();
+    renderTagCheckboxes();
+  } catch (e) {
+    // 取得失敗は無視（空欄のまま）
+  }
+}
+
+// ─── プリセット保存 ───
+async function savePreset() {
+  const sel = document.getElementById('calendarSelect');
+  const calendarId = sel?.value;
+  if (!calendarId) return;
+
+  const preset_text = document.getElementById('presetText').value;
+  const status = document.getElementById('presetSaveStatus');
+  status.textContent = '保存中...';
+  status.style.color = '#888';
+
+  try {
+    const res = await fetch(`/api/presets/${encodeURIComponent(calendarId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset_text, tags: calendarTags })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    status.textContent = '✓ 保存しました';
+    status.style.color = '#137333';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  } catch (e) {
+    status.textContent = '保存失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  }
+}
+
+// ─── タグ管理 ───
+function renderTagChips() {
+  const area = document.getElementById('tagChipArea');
+  const input = document.getElementById('tagInput');
+  // チップを再描画（inputは残す）
+  area.querySelectorAll('.tag-chip').forEach(el => el.remove());
+  calendarTags.forEach(tag => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `#${tag}<button class="tag-chip-remove" onclick="removeTag('${tag}')" title="削除">×</button>`;
+    area.insertBefore(chip, input);
+  });
+}
+
+function handleTagInput(e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const val = e.target.value.replace(/^#/, '').trim();
+  if (!val || calendarTags.includes(val)) { e.target.value = ''; return; }
+  calendarTags.push(val);
+  e.target.value = '';
+  renderTagChips();
+  renderTagCheckboxes();
+}
+
+function removeTag(tag) {
+  calendarTags = calendarTags.filter(t => t !== tag);
+  renderTagChips();
+  renderTagCheckboxes();
+}
+
+function renderTagCheckboxes() {
+  // 登録タブ
+  const regGroup = document.getElementById('registerTagGroup');
+  const regWrap  = document.getElementById('registerTagWrap');
+  if (calendarTags.length) {
+    regGroup.innerHTML = calendarTags.map(t =>
+      `<label class="tag-check-item"><input type="checkbox" name="regTag" value="${t}"> #${t}</label>`
+    ).join('');
+    regWrap.style.display = 'block';
+  } else {
+    regWrap.style.display = 'none';
+  }
+
+  // 修正タブ
+  const asnGroup = document.getElementById('assignTagGroup');
+  const asnRow   = document.getElementById('assignTagRow');
+  if (calendarTags.length) {
+    asnGroup.innerHTML = calendarTags.map(t =>
+      `<label class="tag-check-item"><input type="checkbox" name="asnTag" value="${t}"> #${t}</label>`
+    ).join('');
+    asnRow.style.display = 'block';
+  } else {
+    asnRow.style.display = 'none';
+  }
+}
+
+// ─── 解析プレビュー ───
+async function parseEvents() {
+  const text = document.getElementById('eventText').value.trim();
+  if (!text) { alert('テキストを入力してください'); return; }
+
+  const preset_text = document.getElementById('presetText')?.value || '';
+
+  showStatus('<span class="spinner"></span>Gemini で解析中...', 'info');
+  document.getElementById('previewPanel').style.display = 'none';
+  document.getElementById('resultPanel').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, preset_text })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '解析失敗');
+
+    parsedEvents = data.events;
+    renderPreview(parsedEvents);
+    document.getElementById('btnRegister').disabled = parsedEvents.length === 0;
+    hideStatus();
+  } catch (e) {
+    showStatus('解析エラー: ' + e.message, 'error');
+  }
+}
+
+function _esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderPreview(events) {
+  const list = document.getElementById('eventList');
+  list.innerHTML = events.map((ev, i) => {
+    const allDay = !!(ev.all_day || !ev.start_time);
+    return `
+      <li class="event-item ${allDay ? 'all-day' : ''}" data-index="${i}">
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-title" type="text" value="${_esc(ev.title)}" placeholder="タイトル">
+        </div>
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-date" type="date" value="${ev.date || ''}">
+          <input class="ev-input ev-input-time ev-start" type="time" value="${ev.start_time || ''}" ${allDay ? 'disabled' : ''}>
+          <span style="color:#ccc;font-size:12px;">〜</span>
+          <input class="ev-input ev-input-time ev-end" type="time" value="${ev.end_time || ''}" ${allDay ? 'disabled' : ''}>
+          <label class="ev-allday-label">
+            <input type="checkbox" class="ev-input-allday" ${allDay ? 'checked' : ''} onchange="toggleAllDay(this)"> 終日
+          </label>
+        </div>
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-location" type="text" value="${_esc(ev.location || '')}" placeholder="📍 場所（任意）">
+        </div>
+        <div class="ev-edit-row">
+          <input class="ev-input ev-input-description" type="text" value="${_esc(ev.description || '')}" placeholder="📝 内容（任意）" style="flex:1;">
+        </div>
+        <div class="ev-att-row">
+          <button class="btn-reg-att active-accepted" data-att="accepted" onclick="selectEvAtt(this)">○ 出席</button>
+          <button class="btn-reg-att" data-att="declined" onclick="selectEvAtt(this)">✕ 欠席</button>
+          <button class="btn-reg-att" data-att="tentative" onclick="selectEvAtt(this)">△ 未定</button>
+        </div>
+      </li>`;
+  }).join('');
+  document.getElementById('previewPanel').style.display = 'block';
+}
+
+function selectEvAtt(btn) {
+  btn.closest('.ev-att-row').querySelectorAll('.btn-reg-att').forEach(b => {
+    b.className = 'btn-reg-att' + (b === btn ? ` active-${b.dataset.att}` : '');
+  });
+}
+
+function toggleAllDay(cb) {
+  const item = cb.closest('.event-item');
+  item.querySelectorAll('.ev-input-time').forEach(inp => {
+    inp.disabled = cb.checked;
+    if (cb.checked) inp.value = '';
+  });
+  item.classList.toggle('all-day', cb.checked);
+}
+
+// ─── カレンダーに登録 ───
+// ─── 出欠タブ: イベント取得 ───
+async function fetchAttendanceEvents() {
+  const calendarId = document.getElementById('calendarSelect').value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+  const from = document.getElementById('attFrom').value;
+  const to   = document.getElementById('attTo').value;
+  if (!from || !to) { alert('期間を指定してください'); return; }
+
+  const status = document.getElementById('attStatus');
+  status.textContent = '取得中...';
+  const list = document.getElementById('attList');
+  list.innerHTML = '';
+
+  try {
+    const res = await fetch(`/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    if (!data.events.length) {
+      list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">この期間にイベントはありません</div>';
+      status.textContent = '';
+      return;
+    }
+
+    list.innerHTML = data.events.map(ev => {
+      const time = ev.all_day ? '終日' : (ev.start_time ? (ev.end_time ? `${ev.start_time}〜${ev.end_time}` : ev.start_time) : '');
+      const cur = ev.my_status || '';
+      return `
+        <div class="attendance-item" id="att-item-${ev.id}">
+          <div class="att-date">${ev.date}<br><span style="color:#aaa;font-size:11px;">${time}</span></div>
+          <div class="att-title">${ev.title}</div>
+          <div class="att-btns">
+            <button class="btn-att ${cur === 'accepted' ? 'active-accepted' : ''}" onclick="updateAttendance('${calendarId}','${ev.id}','accepted')">○ 出席</button>
+            <button class="btn-att ${cur === 'declined' ? 'active-declined' : ''}" onclick="updateAttendance('${calendarId}','${ev.id}','declined')">✕ 欠席</button>
+            <button class="btn-att ${cur === 'tentative' ? 'active-tentative' : ''}" onclick="updateAttendance('${calendarId}','${ev.id}','tentative')">△ 未定</button>
+          </div>
+          <span class="att-status-saving" id="att-saving-${ev.id}"></span>
+        </div>`;
+    }).join('');
+    status.textContent = `${data.events.length} 件`;
+  } catch (e) {
+    status.textContent = '取得失敗: ' + e.message;
+  }
+}
+
+// ─── 出欠更新 ───
+async function updateAttendance(calendarId, eventId, status) {
+  const saving = document.getElementById(`att-saving-${eventId}`);
+  if (saving) { saving.textContent = '保存中...'; }
+
+  try {
+    const res = await fetch(`/api/attendance/${encodeURIComponent(calendarId)}/${eventId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    // ボタンの active 状態を更新
+    const item = document.getElementById(`att-item-${eventId}`);
+    if (item) {
+      item.querySelectorAll('.btn-att').forEach(b => {
+        b.className = 'btn-att';
+        const s = b.textContent.includes('出席') ? 'accepted' : b.textContent.includes('欠席') ? 'declined' : 'tentative';
+        if (s === status) b.classList.add(`active-${status}`);
+      });
+    }
+    if (saving) { saving.textContent = '✓'; setTimeout(() => { saving.textContent = ''; }, 1500); }
+  } catch (e) {
+    if (saving) { saving.textContent = '失敗'; }
+  }
+}
+
+// ─── 既存イベントへの attendees 一括登録 ───
+async function backfillAttendees() {
+  const btn    = document.getElementById('btnBackfill');
+  const status = document.getElementById('backfillStatus');
+  btn.disabled = true;
+  status.textContent = '処理中...';
+  status.style.color = '#888';
+
+  try {
+    const res  = await fetch('/api/backfill-attendees', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '失敗');
+
+    if (data.errors.length === 0) {
+      status.textContent = `✓ ${data.updated} 件を登録しました`;
+      status.style.color = '#137333';
+    } else {
+      status.textContent = `${data.updated} 件成功、${data.errors.length} 件失敗`;
+      status.style.color = '#e37400';
+    }
+  } catch (e) {
+    status.textContent = '失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── person 上書き ───
+async function backfillPerson() {
+  const btn    = document.getElementById('btnBackfillPerson');
+  const status = document.getElementById('backfillPersonStatus');
+  btn.disabled = true;
+  status.textContent = '処理中...';
+  status.style.color = '#888';
+
+  try {
+    const res  = await fetch('/api/backfill-person', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '失敗');
+    status.textContent = `✓ ${data.updated_calendars} カレンダーを更新しました`;
+    status.style.color = '#137333';
+  } catch (e) {
+    status.textContent = '失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ─── カレンダー振り分け ───
+async function redistributeEvents() {
+  const btn    = document.getElementById('btnRedistribute');
+  const status = document.getElementById('redistributeStatus');
+  btn.disabled = true;
+  status.textContent = '処理中...';
+  status.style.color = '#888';
+
+  try {
+    const res  = await fetch('/api/redistribute-events', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '失敗');
+
+    const msg = `✓ ${data.moved} 件移動、${data.skipped} 件スキップ`;
+    status.textContent = data.errors.length > 0 ? `${msg}、${data.errors.length} 件エラー` : msg;
+    status.style.color = data.errors.length > 0 ? '#e37400' : '#137333';
+  } catch (e) {
+    status.textContent = '失敗: ' + e.message;
+    status.style.color = '#c5221f';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function registerEvents() {
+  const items = document.querySelectorAll('#eventList .event-item');
+  if (!items.length) { alert('まず解析を実行してください'); return; }
+
+  const calendarId = document.getElementById('calendarSelect').value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+
+  const checkedTags = [...document.querySelectorAll('input[name=regTag]:checked')].map(el => el.value);
+
+  // 各行の編集済みデータを収集
+  const eventsToRegister = Array.from(items).map((item, i) => {
+    const allDay     = item.querySelector('.ev-input-allday')?.checked;
+    const startTime  = allDay ? null : (item.querySelector('.ev-start')?.value || null);
+    const endTime    = allDay ? null : (item.querySelector('.ev-end')?.value || null);
+    const attendance = item.querySelector('.btn-reg-att[class*="active"]')?.dataset.att || 'accepted';
+    let description  = item.querySelector('.ev-input-description')?.value || null;
+    if (checkedTags.length) {
+      const tagStr = checkedTags.map(t => `#${t}`).join(' ');
+      description = description ? `${description}\n${tagStr}` : tagStr;
+    }
+    return {
+      title:       item.querySelector('.ev-input-title')?.value || '（無題）',
+      date:        item.querySelector('.ev-input-date')?.value || '',
+      start_time:  startTime || null,
+      end_time:    endTime || null,
+      all_day:     !!allDay,
+      location:    item.querySelector('.ev-input-location')?.value || null,
+      description,
+      attendance,
+    };
+  });
+
+  document.getElementById('btnRegister').disabled = true;
+  document.getElementById('resultPanel').style.display = 'none';
+  showStatus('<span class="spinner"></span>登録中...', 'info');
+
+  try {
+    const res = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendar_id: calendarId, events: eventsToRegister })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '登録失敗');
+
+    renderResults(data.results);
+    const ok  = data.results.filter(r => r.success).length;
+    const err = data.results.filter(r => !r.success).length;
+    hideStatus();
+    if (err === 0) {
+      showStatus(`✅ ${ok} 件を登録しました`, 'success');
+    } else {
+      showStatus(`⚠️ ${ok} 件成功、${err} 件失敗`, 'warn');
+    }
+  } catch (e) {
+    showStatus('登録エラー: ' + e.message, 'error');
+    document.getElementById('btnRegister').disabled = false;
+  }
+}
+
+function renderResults(results) {
+  const list = document.getElementById('resultList');
+  list.innerHTML = results.map(r => {
+    if (r.success) {
+      return `
+        <div class="result-item ok">
+          <span class="result-icon">✅</span>
+          <span>${r.summary || r.title}</span>
+          <a class="result-link" href="${r.html_link}" target="_blank">カレンダーで確認 →</a>
+        </div>`;
+    } else {
+      return `
+        <div class="result-item err">
+          <span class="result-icon">❌</span>
+          <span>${r.title} — ${r.error}</span>
+        </div>`;
+    }
+  }).join('');
+  document.getElementById('resultPanel').style.display = 'block';
+}
+
+// ─── タブ切り替え ───
+const TAB_NAMES = ['register', 'assign', 'attendance'];
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', TAB_NAMES[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(el => {
+    el.classList.toggle('active', el.id === 'tab-' + name);
+  });
+  if (name === 'assign') initAssignDates();
+}
+
+function initAssignDates() {
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0, 10);
+  const from = document.getElementById('assignFrom');
+  const to   = document.getElementById('assignTo');
+  if (!from.value) from.value = fmt(today);
+  if (!to.value) {
+    const end = new Date(today);
+    end.setDate(end.getDate() + 30);
+    to.value = fmt(end);
+  }
+}
+
+// ─── 枠を取得 ───
+let fetchedSlots = [];
+
+async function fetchSlots() {
+  const calendarId = document.getElementById('calendarSelect')?.value;
+  const from = document.getElementById('assignFrom').value;
+  const to   = document.getElementById('assignTo').value;
+  const q    = document.getElementById('assignQ').value.trim();
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+  if (!from || !to) { alert('期間を指定してください'); return; }
+
+  setAssignStatus('<span class="spinner"></span>取得中...');
+
+  const checkedTags = [...document.querySelectorAll('input[name=asnTag]:checked')].map(el => el.value);
+
+  // キーワードかタグがあれば /api/search、どちらもなければ /api/events
+  let url;
+  if (q || checkedTags.length) {
+    const params = new URLSearchParams({ calendar_id: calendarId, from, to });
+    if (q)                  params.set('q', q);
+    if (checkedTags.length) params.set('tags', checkedTags.join(','));
+    url = `/api/search?${params.toString()}`;
+  } else {
+    url = `/api/events?calendar_id=${encodeURIComponent(calendarId)}&from=${from}&to=${to}`;
+  }
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    fetchedSlots = data.events;
+    renderSlotList(fetchedSlots);
+    document.getElementById('btnAssign').disabled = fetchedSlots.length === 0;
+    const labelParts = [];
+    if (q) labelParts.push(`「${q}」`);
+    if (checkedTags.length) labelParts.push(checkedTags.map(t => `#${t}`).join(' '));
+    const label = labelParts.length ? `${labelParts.join(' & ')} で ${fetchedSlots.length} 件` : `${fetchedSlots.length} 件取得しました`;
+    setAssignStatus(label, '#137333');
+  } catch (e) {
+    setAssignStatus('取得失敗: ' + e.message, '#c5221f');
+  }
+}
+
+function renderSlotList(slots) {
+  const list = document.getElementById('slotList');
+  if (!slots.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:#bbb;font-size:13px;">イベントが見つかりません</div>';
+    return;
+  }
+  list.innerHTML = slots.map(s => {
+    const timeStr = s.all_day ? '終日' : `${s.start_time||''}〜${s.end_time||''}`;
+    return `
+      <div class="slot-item">
+        <input type="checkbox" class="slot-check" data-id="${s.id}" checked>
+        <span class="slot-date">${s.date}</span>
+        <span class="slot-time">${timeStr}</span>
+        <span class="slot-title">${s.title}</span>
+      </div>`;
+  }).join('');
+}
+
+// ─── Gemini で割り振い案生成 ───
+let assignmentData = [];
+
+async function assignSubjects() {
+  const subject_text = document.getElementById('subjectText').value.trim();
+  if (!subject_text) { alert('割り振り指示を入力してください'); return; }
+
+  // チェックされた枠だけ使う
+  const checkedIds = new Set(
+    [...document.querySelectorAll('.slot-check:checked')].map(el => el.dataset.id)
+  );
+  const slots = fetchedSlots.filter(s => checkedIds.has(s.id));
+  if (!slots.length) { alert('枠を選択してください'); return; }
+
+  setAssignStatus('<span class="spinner"></span>Gemini で割り振い案を生成中...');
+  document.getElementById('btnApply').disabled = true;
+
+  try {
+    const res = await fetch('/api/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slots, subject_text })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    assignmentData = data.assignments;
+    renderAssignPreview(assignmentData);
+    document.getElementById('btnApply').disabled = false;
+    setAssignStatus('修正案を生成しました。内容を確認・編集してから「カレンダーに反映」を押してください', '#137333');
+  } catch (e) {
+    setAssignStatus('生成失敗: ' + e.message, '#c5221f');
+  }
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderAssignPreview(assignments) {
+  const list = document.getElementById('assignResultList');
+  list.innerHTML = assignments.map((a, i) => {
+    const timeStr = !a.old_start_time ? '終日' : `${a.old_start_time}〜${a.old_end_time||''}`;
+    return `
+      <div class="ar-card">
+        <div class="ar-card-head">
+          <span>${a.date}</span>
+          <span>${timeStr}</span>
+          <span class="ar-head-old">${esc(a.old_title)}</span>
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">件名</span>
+          <input class="ar-input" data-idx="${i}" data-field="summary" value="${esc(a.summary)}">
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">開始</span>
+          <input type="time" class="ar-input time" data-idx="${i}" data-field="start_time" value="${a.start_time||''}">
+          <span class="ar-label" style="margin-left:8px;">終了</span>
+          <input type="time" class="ar-input time" data-idx="${i}" data-field="end_time" value="${a.end_time||''}">
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">場所</span>
+          <input class="ar-input" data-idx="${i}" data-field="location" value="${esc(a.location)}">
+        </div>
+        <div class="ar-card-row">
+          <span class="ar-label">説明</span>
+          <input class="ar-input" data-idx="${i}" data-field="description" value="${esc(a.description)}">
+        </div>
+      </div>`;
+  }).join('');
+  document.getElementById('assignPreview').style.display = 'block';
+
+  document.querySelectorAll('#assignResultList input').forEach(el => {
+    el.addEventListener('input', function () {
+      assignmentData[parseInt(this.dataset.idx)][this.dataset.field] = this.value;
+    });
+  });
+}
+
+// ─── カレンダーに反映 ───
+async function applyAssignments() {
+  const calendarId = document.getElementById('calendarSelect')?.value;
+  if (!calendarId) { alert('カレンダーを選択してください'); return; }
+  if (!assignmentData.length) return;
+
+  document.getElementById('btnApply').disabled = true;
+  setAssignStatus('<span class="spinner"></span>更新中...');
+
+  try {
+    const res = await fetch('/api/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ calendar_id: calendarId, assignments: assignmentData })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const ok  = data.results.filter(r => r.success).length;
+    const err = data.results.filter(r => !r.success).length;
+    if (err === 0) {
+      setAssignStatus(`✅ ${ok} 件を更新しました`, '#137333');
+    } else {
+      setAssignStatus(`⚠️ ${ok} 件成功、${err} 件失敗`, '#b06000');
+    }
+    document.getElementById('btnApply').disabled = false;
+  } catch (e) {
+    setAssignStatus('更新失敗: ' + e.message, '#c5221f');
+    document.getElementById('btnApply').disabled = false;
+  }
+}
+
+
+function setAssignStatus(html, color) {
+  const el = document.getElementById('assignStatus');
+  el.innerHTML = html;
+  el.style.color = color || '#1a73e8';
+}
+
+// ─── ステータスバー ───
+function showStatus(html, type) {
+  const bar = document.getElementById('statusBar');
+  const colors = {
+    info:    { bg: '#e8f0fe', fg: '#1a73e8' },
+    success: { bg: '#e6f4ea', fg: '#137333' },
+    warn:    { bg: '#fef7e0', fg: '#b06000' },
+    error:   { bg: '#fce8e6', fg: '#c5221f' },
+  };
+  const c = colors[type] || colors.info;
+  bar.style.background = c.bg;
+  bar.style.color = c.fg;
+  bar.innerHTML = html;
+  bar.style.display = 'block';
+}
+
+function hideStatus() {
+  document.getElementById('statusBar').style.display = 'none';
+}
+</script>
+</body>
+</html>

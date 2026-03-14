@@ -5,10 +5,13 @@
  *   body: { listId, name }
  */
 
+import { getServerSession } from "next-auth";
+import { authOptions } from "../../_lib/auth-options";
+import { getTrelloToken } from "../../_lib/trello-token";
+
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const TRELLO_KEY   = process.env.TRELLO_API_KEY ?? "";
-const TRELLO_TOKEN = process.env.TRELLO_TOKEN ?? "";
 
 function sbHeaders() {
   return {
@@ -36,13 +39,20 @@ export async function GET(req: Request) {
 // POST: リスト作成
 export async function POST(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const email = session?.user?.email;
+    if (!email) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+    const trelloToken = await getTrelloToken(email);
+    if (!trelloToken) return Response.json({ error: "Trelloに接続していません", needsAuth: true }, { status: 403 });
+
     const { boardId, name } = await req.json();
     if (!boardId || !name) return Response.json({ error: "boardId, name required" }, { status: 400 });
-    if (!TRELLO_KEY || !TRELLO_TOKEN) return Response.json({ error: "Trello credentials missing" }, { status: 500 });
+    if (!TRELLO_KEY) return Response.json({ error: "TRELLO_API_KEY 未設定" }, { status: 500 });
 
     // Trelloにリスト作成
     const trelloRes = await fetch(
-      `https://api.trello.com/1/lists?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}`,
+      `https://api.trello.com/1/lists?key=${TRELLO_KEY}&token=${trelloToken}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,17 +79,24 @@ export async function POST(req: Request) {
 // body: { listId, name? } または { listId, pos? }
 export async function PUT(req: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const email = session?.user?.email;
+    if (!email) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+    const trelloToken = await getTrelloToken(email);
+    if (!trelloToken) return Response.json({ error: "Trelloに接続していません", needsAuth: true }, { status: 403 });
+
     const { listId, name, pos } = await req.json();
     if (!listId || (name === undefined && pos === undefined))
       return Response.json({ error: "listId and name or pos required" }, { status: 400 });
 
     // Trelloに反映
-    if (TRELLO_KEY && TRELLO_TOKEN) {
+    if (TRELLO_KEY) {
       const trelloBody: Record<string, unknown> = {};
       if (name !== undefined) trelloBody.name = name;
       if (pos  !== undefined) trelloBody.pos  = pos;
       await fetch(
-        `https://api.trello.com/1/lists/${listId}?key=${TRELLO_KEY}&token=${TRELLO_TOKEN}`,
+        `https://api.trello.com/1/lists/${listId}?key=${TRELLO_KEY}&token=${trelloToken}`,
         { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(trelloBody) }
       );
     }
