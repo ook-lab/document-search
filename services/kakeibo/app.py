@@ -362,6 +362,8 @@ def loans_page():
 def reconcile_page():
     """消込（突き合わせ）専用画面"""
     db = get_db()
+    
+    show_excluded = request.args.get('show_excluded', 'false') == 'true'
 
     # 除外されていないデータのみ取得
     res = db.table("Rawdata_BANK_transactions").select("*").order("date", desc=True).limit(1000).execute()
@@ -371,15 +373,39 @@ def reconcile_page():
     excluded_ids = set()
     if ids:
         try:
-            manual_res = db.table("Kakeibo_Manual_Edits").select("transaction_id, is_excluded").in_("transaction_id", ids).execute()
-            excluded_ids = {m['transaction_id'] for m in manual_res.data if m.get('is_excluded')}
+            # httpxを使ってPostgRESTを直接叩く（読み取りもキャッシュの影響を避けるため）
+            url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits?transaction_id=in.({','.join(ids)})"
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            with httpx.Client() as client:
+                resp = client.get(url, headers=headers)
+                resp.raise_for_status()
+                manual_data = resp.json()
+            
+            excluded_ids = {m['transaction_id'] for m in manual_data if m.get('is_excluded')}
+            print(f"[RECONCILE] ids={len(ids)}, excluded={len(excluded_ids)}")
         except Exception as e:
             print(f"Manual Edits取得エラー: {e}")
 
-    # 除外済みでないものだけリスト化
-    candidates = [r for r in raw_data if r['id'] not in excluded_ids]
+    # 表示用データ構築
+    candidates = []
+    for r in raw_data:
+        is_ex = r['id'] in excluded_ids
+        if is_ex and not show_excluded:
+            continue
+        
+        candidates.append({
+            **r,
+            'is_excluded': is_ex
+        })
 
-    return render_template('reconcile.html', transactions=candidates)
+    return render_template(
+        'reconcile.html', 
+        transactions=candidates,
+        show_excluded=show_excluded
+    )
 
 
 @app.route('/api/reconcile_execute', methods=['POST'])
@@ -394,10 +420,10 @@ def reconcile_execute():
     keep_ids = data.get('keep_ids', [])      # 右側
     mode = data.get('mode', 'transfer')      # 'transfer' or 'same_amount'
 
+    print(f"[reconcile_execute] START: mode={mode}, remove={len(remove_ids)}, keep={len(keep_ids)}")
+
     if not remove_ids:
         return jsonify({"status": "error", "message": "左側が選択されていません"}), 400
-
-    db = get_db()
 
     updates = []
 
@@ -410,7 +436,7 @@ def reconcile_execute():
             # "owner_id": DEFAULT_OWNER_ID  # 一時無効
         })
 
-    # 振替モードの場合のみ右側も除外
+    # 振替モードの場合のみ、右側も除外する
     if mode == 'transfer':
         for tx_id in keep_ids:
             updates.append({

@@ -56,6 +56,8 @@
         }
         #match-status { font-weight: bold; color: #ff5555; margin-bottom: 5px; }
         #match-status.ok { color: #4CAF50; }
+        tr.excluded { opacity: 0.5; background-color: #f0f0f0 !important; }
+        tr.excluded td:nth-child(2) { text-decoration: line-through; color: #888; }
     </style>
 </head>
 <body>
@@ -63,6 +65,10 @@
 <header>
     <div>家計簿 消込 (Reconcile)</div>
     <nav>
+        <span style="color:white; font-size: 13px; margin-right: 15px;">
+            <input type="checkbox" id="toggle-excluded" {% if show_excluded %}checked{% endif %} onchange="toggleExcluded(this.checked)">
+            <label for="toggle-excluded" style="cursor:pointer">消込済みを表示</label>
+        </span>
         <a href="/">明細一覧</a>
         <a href="/loans">ローン管理</a>
         <a href="/receipts">レシート検証</a>
@@ -209,6 +215,7 @@
             const tr = document.createElement('tr');
             tr.id = `row-${side}-${t.id}`;
             tr.dataset.search = (t.content + " " + t.institution + " " + t.amount).toLowerCase();
+            if (t.is_excluded) tr.classList.add('excluded');
 
             // 行クリックでチェック切り替え
             tr.onclick = (e) => {
@@ -469,6 +476,16 @@
                 tr.style.display = 'none';
             }
         });
+    }
+
+    function toggleExcluded(show) {
+        const url = new URL(location.href);
+        if (show) {
+            url.searchParams.set('show_excluded', 'true');
+        } else {
+            url.searchParams.delete('show_excluded');
+        }
+        location.href = url.toString();
     }
 </script>
 </body>
