@@ -1,6 +1,8 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "../../_lib/auth-options";
+
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OWNER_EMAIL  = process.env.CALENDAR_OWNER_EMAIL ?? "ookubo.y@workspace-o.com";
 
 function sbHeaders() {
   return {
@@ -11,11 +13,18 @@ function sbHeaders() {
   };
 }
 
+async function getEmail(): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  return session?.user?.email ?? null;
+}
+
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const email = await getEmail();
+  if (!email) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
     const body = await req.json();
-    const url = `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${id}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`;
+    const url = `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${id}&owner_email=eq.${encodeURIComponent(email)}`;
     const res = await fetch(url, {
       method: "PATCH",
       headers: sbHeaders(),
@@ -40,10 +49,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const email = await getEmail();
+  if (!email) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const { id } = await params;
     await fetch(
-      `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${id}&owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}`,
+      `${SUPABASE_URL}/rest/v1/calendar_groups?id=eq.${id}&owner_email=eq.${encodeURIComponent(email)}`,
       { method: "DELETE", headers: sbHeaders() }
     );
     return Response.json({ ok: true });

@@ -1,6 +1,8 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "../_lib/auth-options";
+
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const OWNER_EMAIL  = process.env.CALENDAR_OWNER_EMAIL ?? "ookubo.y@workspace-o.com";
 
 function sbHeaders() {
   return {
@@ -10,10 +12,17 @@ function sbHeaders() {
   };
 }
 
+async function getEmail(): Promise<string | null> {
+  const session = await getServerSession(authOptions);
+  return session?.user?.email ?? null;
+}
+
 // GET /api/preferences
 export async function GET() {
+  const email = await getEmail();
+  if (!email) return Response.json({ selected_base_ids: [], selected_group_ids: [], cal_view_mode: {}, group_view_mode: {} });
   try {
-    const url = `${SUPABASE_URL}/rest/v1/user_preferences?owner_email=eq.${encodeURIComponent(OWNER_EMAIL)}&select=selected_base_ids,selected_group_ids,cal_view_mode,group_view_mode,week_start_monday,use_24h`;
+    const url = `${SUPABASE_URL}/rest/v1/user_preferences?email=eq.${encodeURIComponent(email)}&select=selected_base_ids,selected_group_ids,cal_view_mode,group_view_mode,week_start_monday,use_24h`;
     const res = await fetch(url, { headers: sbHeaders() });
     if (!res.ok) return Response.json({ selected_base_ids: [], selected_group_ids: [], cal_view_mode: {}, group_view_mode: {} });
     const rows = await res.json();
@@ -26,11 +35,13 @@ export async function GET() {
 
 // PUT /api/preferences  { selected_base_ids?, selected_group_ids?, cal_view_mode?, group_view_mode? }
 export async function PUT(req: Request) {
+  const email = await getEmail();
+  if (!email) return Response.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = await req.json();
     const payload: Record<string, unknown> = {
-      owner_email: OWNER_EMAIL,
-      updated_at:  new Date().toISOString(),
+      email,
+      updated_at: new Date().toISOString(),
     };
     if ("selected_base_ids"  in body) payload.selected_base_ids  = body.selected_base_ids;
     if ("selected_group_ids" in body) payload.selected_group_ids = body.selected_group_ids;

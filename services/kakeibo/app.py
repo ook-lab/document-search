@@ -6,6 +6,7 @@ from datetime import datetime
 
 from flask import Flask, render_template, request, jsonify, Response
 
+import httpx
 from db_client import get_db
 from drive_client import DriveClient
 from config import (
@@ -14,6 +15,7 @@ from config import (
     GEMINI_MODEL_EASY, GEMINI_MODEL_HARD,
     GEMINI_TEMPERATURE, GEMINI_PROMPT,
     MONEYFORWARD_FOLDER_ID, MONEYFORWARD_PROCESSED_ID,
+    SUPABASE_URL, SUPABASE_KEY, DEFAULT_OWNER_ID
 )
 
 try:
@@ -232,15 +234,26 @@ def update_transaction():
         "category_person": data.get('cat_person') or None,
         "category_context": data.get('cat_context') or None,
         "is_excluded": data.get('is_excluded', False),
-        "note": data.get('note') or None
+        "note": data.get('note') or None,
+        # "owner_id": DEFAULT_OWNER_ID  # スキーマキャッシュ遅延のため一時無効
     }
 
-    db = get_db()
-    # Upsert実行
-    res = db.table("Kakeibo_Manual_Edits").upsert(payload, on_conflict="transaction_id").execute()
-
-    if getattr(res, 'error', None):
-        return jsonify({"status": "error", "message": str(res.error)}), 500
+    # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[update_transaction] Upsert error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success"})
 
@@ -254,13 +267,30 @@ def bulk_exclude():
     if not ids:
         return jsonify({"status": "error", "message": "No IDs provided"}), 400
 
-    db = get_db()
+    updates = []
     for tx_id in ids:
-        payload = {
+        updates.append({
             "transaction_id": tx_id,
-            "is_excluded": True
-        }
-        db.table("Kakeibo_Manual_Edits").upsert(payload, on_conflict="transaction_id").execute()
+            "is_excluded": True,
+            # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+        })
+
+    # httpxを使ってPostgRESTを直接叩く（一括）
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=headers, json=updates)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[bulk_exclude] Upsert error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success", "count": len(ids)})
 
@@ -376,7 +406,8 @@ def reconcile_execute():
         updates.append({
             "transaction_id": tx_id,
             "is_excluded": True,
-            "note": "消込完了（左側）"
+            "note": "消込完了（左側）",
+            # "owner_id": DEFAULT_OWNER_ID  # 一時無効
         })
 
     # 振替モードの場合のみ右側も除外
@@ -385,13 +416,26 @@ def reconcile_execute():
             updates.append({
                 "transaction_id": tx_id,
                 "is_excluded": True,
-                "note": "消込完了（振替・右側）"
+                "note": "消込完了（振替・右側）",
+                # "owner_id": DEFAULT_OWNER_ID  # 一時無効
             })
 
-    res = db.table("Kakeibo_Manual_Edits").upsert(updates, on_conflict="transaction_id").execute()
-
-    if getattr(res, 'error', None):
-        return jsonify({"status": "error", "message": str(res.error)}), 500
+    # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=headers, json=updates)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[reconcile_execute] Upsert error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success", "count": len(updates)})
 
@@ -423,13 +467,26 @@ def create_transaction():
         "category_major": "未分類",
         "memo": "消込用に手動作成",
         "is_target": True,
-        "is_transfer": False
+        "is_transfer": False,
+        # "owner_id": DEFAULT_OWNER_ID  # 一時無効
     }
 
-    res = db.table("Rawdata_BANK_transactions").insert(new_record).execute()
-
-    if getattr(res, 'error', None):
-        return jsonify({"status": "error", "message": str(res.error)}), 500
+    # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
+    url = f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+    }
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=headers, json=new_record)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[create_transaction] Insert error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success", "new_id": new_id, "record": new_record})
 
@@ -450,12 +507,26 @@ def toggle_view_target():
     db = get_db()
     payload = {
         "transaction_id": tx_id,
-        "view_target": new_target
+        "view_target": new_target,
+        # "owner_id": DEFAULT_OWNER_ID  # 一時無効
     }
-    res = db.table("Kakeibo_Manual_Edits").upsert(payload, on_conflict="transaction_id").execute()
 
-    if getattr(res, 'error', None):
-        return jsonify({"status": "error", "message": str(res.error)}), 500
+    # httpxを使ってPostgRESTを直接叩く
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[toggle_view_target] Upsert error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success", "view_target": new_target})
 
@@ -743,13 +814,25 @@ def merge_execute():
         "category_major": "未分類",
         "memo": "UI上で手動合算",
         "is_target": True,
-        "is_transfer": False
+        "is_transfer": False,
+        # "owner_id": DEFAULT_OWNER_ID  # 一時無効
     }
 
-    # 3. 新しい行を追加
-    insert_res = db.table("Rawdata_BANK_transactions").insert(new_record).execute()
-    if getattr(insert_res, 'error', None):
-        return jsonify({"status": "error", "message": str(insert_res.error)}), 500
+    # httpxを使ってPostgRESTを直接叩く（新しい行を追加）
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+    }
+    
+    try:
+        with httpx.Client() as client:
+            resp = client.post(f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions", headers=headers, json=new_record)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[merge_execute] Insert error: {e}")
+        return jsonify({"status": "error", "message": f"新規行作成失敗: {e}"}), 500
 
     # 4. 古い行を除外設定
     updates = []
@@ -757,13 +840,19 @@ def merge_execute():
         updates.append({
             "transaction_id": tid,
             "is_excluded": True,
-            "note": f"合算ID:{new_id} へ統合"
+            "note": f"合算ID:{new_id} へ統合",
+            # "owner_id": DEFAULT_OWNER_ID  # 一時無効
         })
 
-    upsert_res = db.table("Kakeibo_Manual_Edits").upsert(updates, on_conflict="transaction_id").execute()
-
-    if getattr(upsert_res, 'error', None):
-        return jsonify({"status": "error", "message": "除外処理に失敗しました"}), 500
+    # httpxを使ってPostgRESTを直接叩く（一括アップサート）
+    headers["Prefer"] = "return=minimal, resolution=merge-duplicates"
+    try:
+        with httpx.Client() as client:
+            resp = client.post(f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits", headers=headers, json=updates)
+            resp.raise_for_status()
+    except Exception as e:
+        print(f"[merge_execute] Upsert error: {e}")
+        return jsonify({"status": "error", "message": f"除外設定失敗: {e}"}), 500
 
     return jsonify({"status": "success", "new_id": new_id})
 
@@ -1098,9 +1187,19 @@ def import_mf_csv():
                 })
 
             # バッチinsert（100件ずつ）
+            # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延回避のため return=minimal を指定）
+            url = f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions"
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            }
             for i in range(0, len(records_to_insert), 100):
                 batch = records_to_insert[i:i + 100]
-                db.table("Rawdata_BANK_transactions").insert(batch).execute()
+                with httpx.Client() as client:
+                    resp = client.post(url, headers=headers, json=batch)
+                    resp.raise_for_status()
                 total_imported += len(batch)
 
             # 処理済みフォルダへ移動
