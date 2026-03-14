@@ -66,6 +66,13 @@
     <div>家計簿 消込 (Reconcile)</div>
     <nav>
         <span style="color:white; font-size: 13px; margin-right: 15px;">
+            期間: 
+            <input type="date" id="start-date" value="{{ start_date }}" style="padding: 2px 5px; border-radius: 3px; border: none; font-size: 12px;">
+            〜
+            <input type="date" id="end-date" value="{{ end_date }}" style="padding: 2px 5px; border-radius: 3px; border: none; font-size: 12px;">
+            <button onclick="applyDateFilter()" style="padding: 2px 8px; cursor: pointer; border-radius: 3px; border: none; background: #555; color: white; margin-left: 5px;">適用</button>
+        </span>
+        <span style="color:white; font-size: 13px; margin-right: 15px;">
             <input type="checkbox" id="toggle-excluded" {% if show_excluded %}checked{% endif %} onchange="toggleExcluded(this.checked)">
             <label for="toggle-excluded" style="cursor:pointer">消込済みを表示</label>
         </span>
@@ -476,6 +483,17 @@
                 tr.style.display = 'none';
             }
         });
+    }
+
+    function applyDateFilter() {
+        const start = document.getElementById('start-date').value;
+        const end = document.getElementById('end-date').value;
+        const url = new URL(location.href);
+        if (start) url.searchParams.set('start_date', start);
+        else url.searchParams.delete('start_date');
+        if (end) url.searchParams.set('end_date', end);
+        else url.searchParams.delete('end_date');
+        location.href = url.toString();
     }
 
     function toggleExcluded(show) {

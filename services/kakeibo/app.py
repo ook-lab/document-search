@@ -54,9 +54,11 @@ def get_receipt_image_base64(drive_file_id: str) -> str:
 
 def check_auto_exclude(content, institution, rules):
     """自動除外ルールにマッチするかチェック（content + institution の組み合わせ）"""
+    content = content or ""
+    institution = institution or ""
     for rule in rules:
-        content_pattern = rule.get('content_pattern', '')
-        institution_pattern = rule.get('institution_pattern', '')
+        content_pattern = rule.get('content_pattern') or ""
+        institution_pattern = rule.get('institution_pattern') or ""
         if content_pattern in content and institution_pattern in institution:
             return True, rule.get('rule_name', '自動除外')
     return False, None
@@ -108,8 +110,11 @@ def index():
 
     # フィルタパラメータ
     year_month = request.args.get('month', '')  # 例: 2025-12
+    if not year_month:
+        year_month = datetime.now().strftime('%Y-%m')
+        
     show_excluded = request.args.get('show_excluded', 'false') == 'true'
-
+    
     # 自動除外ルールを取得
     rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
     auto_exclude_rules = rules_res.data
@@ -131,6 +136,7 @@ def index():
             end_date = f"{year}-{month + 1:02d}-01"
         query = query.gte("date", start_date).lt("date", end_date)
     else:
+        # このパスは year_month が必ず入るようになったため実質通らないが、安全のために残す
         query = query.limit(500)
 
     res = query.execute()
@@ -364,13 +370,26 @@ def reconcile_page():
     db = get_db()
     
     show_excluded = request.args.get('show_excluded', 'false') == 'true'
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
 
     # 除外されていないデータのみ取得
-    res = db.table("Rawdata_BANK_transactions").select("*").order("date", desc=True).limit(1000).execute()
+    query = db.table("Rawdata_BANK_transactions").select("*").order("date", desc=True)
+    
+    if start_date:
+        query = query.gte("date", start_date)
+    if end_date:
+        query = query.lte("date", end_date)
+        
+    if not start_date and not end_date:
+        query = query.limit(1000)
+        
+    res = query.execute()
     raw_data = res.data
 
     ids = [r['id'] for r in raw_data]
     excluded_ids = set()
+    manual_ids = set()
     if ids:
         try:
             # 1000件のIDを一度にURLフィルタに入れると制限（URL長）に抵触するため、分割して取得
@@ -386,16 +405,32 @@ def reconcile_page():
                     if resp.status_code == 200:
                         manual_data = resp.json()
                         excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('is_excluded')})
+                        manual_ids.update({m['transaction_id'] for m in manual_data})
                     else:
                         print(f"[RECONCILE] Error fetching chunk {i}: {resp.status_code} {resp.text}")
             print(f"[RECONCILE] Total IDs: {len(ids)}, Total Excluded: {len(excluded_ids)}, show_excluded: {show_excluded}")
         except Exception as e:
             print(f"Manual Edits取得エラー: {e}")
 
+    # 自動除外ルールを取得
+    auto_exclude_rules = []
+    try:
+        rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
+        auto_exclude_rules = rules_res.data
+    except Exception as e:
+        print(f"[RECONCILE] Rules fetch error: {e}")
+
     # 表示用データ構築
     candidates = []
     for r in raw_data:
         is_ex = r['id'] in excluded_ids
+        
+        # 自動除外ルールをチェック（手動設定がない場合のみ自動ルールを適用）
+        if r['id'] not in manual_ids:
+            auto_ex, _ = check_auto_exclude(r.get('content', ''), r.get('institution', ''), auto_exclude_rules)
+            if auto_ex:
+                is_ex = True
+
         # 除外済み かつ 「消込済みを表示」がオフの場合はスキップ
         if is_ex and not show_excluded:
             continue
@@ -408,7 +443,9 @@ def reconcile_page():
     return render_template(
         'reconcile.html', 
         transactions=candidates,
-        show_excluded=show_excluded
+        show_excluded=show_excluded,
+        start_date=start_date,
+        end_date=end_date
     )
 
 
@@ -1158,19 +1195,56 @@ def import_mf_csv():
 
             # このCSVに含まれるMF IDを収集してDB一括チェック
             rows = list(reader)
-            mf_ids = [r.get("ID", "").strip() for r in rows if r.get("ID", "").strip()]
-            db_ids = [f"MF-{mid}" for mid in mf_ids]
+            if not rows:
+                print(f"[MF_IMPORT] {file_name} is empty")
+                continue
+            
+            # 1. 1行目からヘッダーを特定
+            header_keys = rows[0].keys()
+            def find_key(candidates):
+                for c in candidates:
+                    for k in header_keys:
+                        if k and k.strip().lower() == c.lower():
+                            return k
+                return None
+            
+            id_key = find_key(['ID', '収支ID', '取引ID'])
+            print(f"[MF_IMPORT] File: {file_name}, ID key detected: {id_key}")
+            
+            # 2. 全行のIDを収集（ID列がない場合は内容のハッシュを一時IDとする）
+            import hashlib
+            def get_row_id(row, k):
+                if k and row.get(k):
+                    return row.get(k).strip()
+                # 安定したIDがない場合は主要項目からハッシュを生成
+                raw_str = f"{row.get('日付')}{row.get('内容')}{row.get('金額（円）')}{row.get('保有金融機関')}"
+                return hashlib.md5(raw_str.encode('utf-8')).hexdigest()
+
+            mf_ids = [get_row_id(r, id_key) for r in rows]
+            db_ids = [f"MF-{mid}" for mid in mf_ids if mid]
 
             existing_set = set()
             if db_ids:
-                exist_res = db.table("Rawdata_BANK_transactions") \
-                    .select("id").in_("id", db_ids).execute()
-                existing_set = {r["id"] for r in exist_res.data}
+                # 取得時もhttpxを使い、大量のIDでも制限にかからないよう100件ずつ小分けにする
+                for i in range(0, len(db_ids), 100):
+                    batch_ids = db_ids[i:i+100]
+                    url = f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions?id=in.({','.join(batch_ids)})&select=id"
+                    headers = {
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_KEY}"
+                    }
+                    with httpx.Client() as client:
+                        resp = client.get(url, headers=headers)
+                        if resp.status_code == 200:
+                            existing_set.update({r["id"] for r in resp.json()})
+                        else:
+                            print(f"[MF_IMPORT] Exist check error: {resp.status_code} {resp.text}")
 
             records_to_insert = []
-            for row in rows:
-                mf_id = row.get("ID", "").strip()
+            for i, row in enumerate(rows):
+                mf_id = mf_ids[i]
                 if not mf_id:
+                    total_skipped += 1
                     continue
 
                 rec_id = f"MF-{mf_id}"
@@ -1193,17 +1267,24 @@ def import_mf_csv():
                 except ValueError:
                     amount = 0
 
-                # 中項目とメモを結合
-                category_minor = row.get("中項目", "").strip()
-                memo_raw       = row.get("メモ", "").strip()
-                is_transfer    = row.get("振替", "0").strip() == "1"
+                # 日付変換: 2026/03/10 → 2026-03-10
+                raw_date = row.get("日付", "").strip()
+                try:
+                    date_str = datetime.strptime(raw_date, "%Y/%m/%d").strftime("%Y-%m-%d")
+                except ValueError:
+                    total_errors += 1
+                    continue
 
-                memo_parts = []
-                if category_minor:
-                    memo_parts.append(category_minor)
-                if memo_raw:
-                    memo_parts.append(memo_raw)
-                memo = " / ".join(memo_parts) if memo_parts else None
+                # 金額（文字列 "-1600" → int）
+                raw_amount = row.get("金額（円）", "0").strip().replace(",", "")
+                try:
+                    amount = int(raw_amount)
+                except ValueError:
+                    amount = 0
+
+                # メモ
+                memo = row.get("メモ", "").strip() or None
+                is_transfer = row.get("振替", "0").strip() == "1"
 
                 records_to_insert.append({
                     "id":          rec_id,

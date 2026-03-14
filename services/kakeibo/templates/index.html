@@ -222,6 +222,7 @@
                     <th style="width: 25px;"><input type="checkbox" id="select-all"></th>
                     <th style="width: 35px;">除外</th>
                     <th style="width: 80px;" class="sortable" data-sort="date" data-type="string">日付</th>
+                    <th style="width: 60px;">ID</th>
                     <th style="width: 180px;" class="sortable" data-sort="content" data-type="string">内容</th>
                     <th style="width: 80px;" class="sortable" data-sort="amount" data-type="number">金額</th>
                     <th style="width: 70px;" class="sortable" data-sort="cat_major" data-type="string">大分類</th>
@@ -256,6 +257,9 @@
                                {% if t.is_excluded %}checked{% endif %}>
                     </td>
                     <td>{{ t.date }}</td>
+                    <td style="color:#888; font-size:9px; font-family:monospace;" title="{{ t.id }}">
+                        {{ (t.id[-8:] if t.id|length > 8 else t.id) }}
+                    </td>
                     <td class="content-cell">
                         <div class="main">{{ t.content[:25] }}{% if t.content|length > 25 %}...{% endif %}</div>
                         <div class="sub">{{ t.institution }}{% if t.is_suggested %} <span style="color:#17a2b8;">[提案]</span>{% endif %}</div>
