@@ -1709,53 +1709,134 @@ function CalendarApp() {
           {loading && <p className="shrink-0 text-center text-sm text-gray-400 py-4">読み込み中...</p>}
           {error && <p className="shrink-0 text-center text-sm text-red-500 py-2">{error}</p>}
 
-          <div className="flex-1 min-h-0 grid grid-cols-7 gap-y-0.5 gap-x-px"
-            style={{ gridTemplateRows: `repeat(${Math.ceil(calendarDays.length / 7)}, 1fr)` }}>
-            {calendarDays.map((day) => {
-              const key = formatDateOnly(day);
-              const dayEvents = eventsByDate[key] ?? [];
-              const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
-              const isSelected = selectedDate === key;
-              const isToday = todayKey === key;
-              const dow = day.getDay();
+          <div className="flex-1 min-h-0 flex flex-col gap-y-0.5">
+            {Array.from({ length: Math.ceil(calendarDays.length / 7) }, (_, wi) => {
+              const week = calendarDays.slice(wi * 7, wi * 7 + 7);
+              const weekStartKey = formatDateOnly(week[0]);
+              const weekEndKey   = formatDateOnly(week[6]);
+
+              // この週にまたがる複数日イベントを抽出
+              type LaneEntry = { ev: CalendarEvent; colStart: number; colEnd: number; isStart: boolean; isEnd: boolean };
+              const mdEvs: CalendarEvent[] = events.filter(ev => {
+                const bid = calIdToBaseId.get(ev.calendarId);
+                if (bid && !canShowInView(bid, "month")) return false;
+                if (!ev.start?.date) return false;
+                const sk = ev.start.date;
+                const rawEnd = ev.end?.date || sk;
+                if (rawEnd <= sk) return false;
+                const ek = (() => { const d = new Date(rawEnd); d.setDate(d.getDate() - 1); return formatDateOnly(d); })();
+                return ek > sk && sk <= weekEndKey && ek >= weekStartKey;
+              }).sort((a, b) => {
+                if (a.start!.date! !== b.start!.date!) return a.start!.date! < b.start!.date! ? -1 : 1;
+                const aEk = (() => { const r = a.end?.date || a.start!.date!; const d = new Date(r); d.setDate(d.getDate()-1); return formatDateOnly(d); })();
+                const bEk = (() => { const r = b.end?.date || b.start!.date!; const d = new Date(r); d.setDate(d.getDate()-1); return formatDateOnly(d); })();
+                return aEk > bEk ? -1 : 1;
+              });
+
+              // レーン割り当て（重なりを避けてグリーディ）
+              const lanes: LaneEntry[][] = [];
+              for (const ev of mdEvs) {
+                const sk = ev.start!.date!;
+                const rawEnd = ev.end?.date || sk;
+                const ek = (() => { const d = new Date(rawEnd); d.setDate(d.getDate()-1); return formatDateOnly(d); })();
+                const cs = week.findIndex(d => formatDateOnly(d) === (sk < weekStartKey ? weekStartKey : sk)) + 1;
+                const ce = week.findIndex(d => formatDateOnly(d) === (ek > weekEndKey   ? weekEndKey   : ek)) + 1;
+                if (cs < 1 || ce < 1) continue;
+                const entry: LaneEntry = { ev, colStart: cs, colEnd: ce, isStart: sk >= weekStartKey, isEnd: ek <= weekEndKey };
+                let placed = false;
+                for (const lane of lanes) {
+                  if (!lane.some(e => e.colStart <= ce && e.colEnd >= cs)) { lane.push(entry); placed = true; break; }
+                }
+                if (!placed) lanes.push([entry]);
+              }
+
+              const mdIds = new Set(mdEvs.map(e => e.id));
+              const DATE_ROW_H = 24; // px
+              const BAR_H      = 15; // px per lane
+              const multiDayH  = lanes.length * BAR_H;
+
               return (
-                <div key={key}
-                  className={["relative rounded-lg py-1 px-0 text-left transition-all cursor-pointer group overflow-hidden",
-                    isCurrentMonth ? "bg-white hover:bg-blue-50" : "bg-gray-50",
-                    isSelected ? "ring-2 ring-blue-500 bg-blue-50" : "",
-                  ].join(" ")}
-                  onClick={() => setSelectedDate(key)}>
-                  <div className="flex items-start justify-between">
-                    <span className={["flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold",
-                      isToday ? "bg-blue-600 text-white"
-                        : isCurrentMonth ? (dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-gray-700")
-                        : "text-gray-300",
-                    ].join(" ")}>{day.getDate()}</span>
-                    {isCurrentMonth && (
-                      <button onClick={(e) => { e.stopPropagation(); openCreate(key); }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center hover:bg-blue-600">+</button>
-                    )}
+                <div key={wi} className="relative flex-1" style={{ minHeight: DATE_ROW_H + multiDayH + 20 }}>
+                  {/* セルグリッド */}
+                  <div className="grid grid-cols-7 gap-x-px h-full">
+                    {week.map((day, colIdx) => {
+                      const key = formatDateOnly(day);
+                      const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
+                      const isSelected = selectedDate === key;
+                      const isToday = todayKey === key;
+                      const dow = day.getDay();
+                      const allEvs = eventsByDate[key] ?? [];
+                      const singleEvs = allEvs.filter(ev => !mdIds.has(ev.id));
+                      const maxSingle = Math.max(0, 3 - lanes.length);
+                      const shownSingle = singleEvs.slice(0, maxSingle);
+                      const hiddenCount = singleEvs.length - shownSingle.length;
+                      return (
+                        <div key={key}
+                          className={["relative text-left transition-all cursor-pointer group overflow-hidden rounded-lg",
+                            isCurrentMonth ? "bg-white hover:bg-blue-50" : "bg-gray-50",
+                            isSelected ? "ring-2 ring-blue-500 bg-blue-50" : "",
+                          ].join(" ")}
+                          style={{ paddingTop: DATE_ROW_H + multiDayH }}
+                          onClick={() => setSelectedDate(key)}>
+                          {/* 日付数字（絶対配置） */}
+                          <div className="absolute top-0.5 left-0 right-0 flex items-center justify-between px-0.5">
+                            <span className={["flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold",
+                              isToday ? "bg-blue-600 text-white"
+                                : isCurrentMonth ? (dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-gray-700")
+                                : "text-gray-300",
+                            ].join(" ")}>{day.getDate()}</span>
+                            {isCurrentMonth && (
+                              <button onClick={(e) => { e.stopPropagation(); openCreate(key); }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center hover:bg-blue-600">+</button>
+                            )}
+                          </div>
+                          {/* 単日イベント */}
+                          <div className="space-y-px pb-0.5">
+                            {shownSingle.map((ev) => (
+                              <div key={ev.id}
+                                onClick={(e) => { e.stopPropagation(); setSelectedDate(key); }}
+                                className="overflow-hidden whitespace-nowrap rounded-sm px-px leading-[13px] text-[10px] md:text-[11px] text-white font-medium cursor-pointer hover:opacity-80 flex items-center gap-px"
+                                style={{ backgroundColor: ev.calendarColor }}>
+                                {ev.statusKey !== "base" && <span className="text-[7px] flex-shrink-0">{STATUS_ICONS[ev.statusKey]}</span>}
+                                {ev.start?.dateTime && (
+                                  <span className="hidden md:inline flex-shrink-0 opacity-90 text-[9px]">
+                                    {use24h
+                                      ? `${String(new Date(ev.start.dateTime).getHours()).padStart(2,"0")}:${String(new Date(ev.start.dateTime).getMinutes()).padStart(2,"0")}`
+                                      : (() => { const d = new Date(ev.start.dateTime); const h = d.getHours(); return `${h < 12 ? "午前" : "午後"}${h % 12 || 12}:${String(d.getMinutes()).padStart(2,"0")}`; })()
+                                    }
+                                  </span>
+                                )}
+                                <span>{ev.summary || "（タイトルなし）"}</span>
+                              </div>
+                            ))}
+                            {hiddenCount > 0 && <div className="text-[9px] text-gray-400 pl-1">+{hiddenCount}</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="space-y-px">
-                    {dayEvents.slice(0, 4).map((ev) => (
-                      <div key={ev.id}
-                        onClick={(e) => { e.stopPropagation(); setSelectedDate(key); }}
-                        className="overflow-hidden whitespace-nowrap rounded-sm px-px leading-[13px] text-[10px] md:text-[11px] text-white font-medium cursor-pointer hover:opacity-80 flex items-center gap-px"
-                        style={{ backgroundColor: ev.calendarColor }}>
-                        {ev.statusKey !== "base" && <span className="text-[7px] flex-shrink-0">{STATUS_ICONS[ev.statusKey]}</span>}
-                        {ev.start?.dateTime && (
-                          <span className="hidden md:inline flex-shrink-0 opacity-90 text-[9px]">
-                            {use24h
-                              ? `${String(new Date(ev.start.dateTime).getHours()).padStart(2,"0")}:${String(new Date(ev.start.dateTime).getMinutes()).padStart(2,"0")}`
-                              : (() => { const d = new Date(ev.start.dateTime); const h = d.getHours(); return `${h < 12 ? "午前" : "午後"}${h % 12 || 12}:${String(d.getMinutes()).padStart(2,"0")}`; })()
-                            }
-                          </span>
-                        )}
-                        <span>{ev.summary || "（タイトルなし）"}</span>
-                      </div>
-                    ))}
-                    {dayEvents.length > 4 && <div className="text-[9px] text-gray-400 pl-1">+{dayEvents.length - 4}</div>}
-                  </div>
+
+                  {/* 複数日イベントバー（週をまたぐ横棒） */}
+                  {lanes.map((lane, laneIdx) =>
+                    lane.map(({ ev, colStart, colEnd, isStart, isEnd }) => {
+                      const top    = DATE_ROW_H + laneIdx * BAR_H + 1;
+                      const left   = `calc(${(colStart - 1) / 7 * 100}% + ${isStart ? 2 : 0}px)`;
+                      const right  = `calc(${(7 - colEnd) / 7 * 100}% + ${isEnd ? 2 : 0}px)`;
+                      const radius = `${isStart ? 4 : 0}px ${isEnd ? 4 : 0}px ${isEnd ? 4 : 0}px ${isStart ? 4 : 0}px`;
+                      return (
+                        <div key={`${ev.id}-${laneIdx}`}
+                          className="absolute cursor-pointer hover:opacity-80 overflow-hidden whitespace-nowrap flex items-center pointer-events-auto"
+                          style={{ top, left, right, height: BAR_H - 2, backgroundColor: ev.calendarColor, borderRadius: radius }}
+                          onClick={(e) => { e.stopPropagation(); setSelectedDate(formatDateOnly(week[colStart - 1])); }}>
+                          {(isStart || colStart === 1) && (
+                            <span className="text-white text-[10px] px-1 truncate font-medium leading-none">
+                              {ev.summary || "（タイトルなし）"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               );
             })}

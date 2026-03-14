@@ -373,19 +373,22 @@ def reconcile_page():
     excluded_ids = set()
     if ids:
         try:
-            # httpxを使ってPostgRESTを直接叩く（読み取りもキャッシュの影響を避けるため）
-            url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits?transaction_id=in.({','.join(ids)})"
-            headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}"
-            }
-            with httpx.Client() as client:
-                resp = client.get(url, headers=headers)
-                resp.raise_for_status()
-                manual_data = resp.json()
-            
-            excluded_ids = {m['transaction_id'] for m in manual_data if m.get('is_excluded')}
-            print(f"[RECONCILE] ids={len(ids)}, excluded={len(excluded_ids)}")
+            # 1000件のIDを一度にURLフィルタに入れると制限（URL長）に抵触するため、分割して取得
+            for i in range(0, len(ids), 100):
+                chunk = ids[i:i+100]
+                url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits?transaction_id=in.({','.join(chunk)})"
+                headers = {
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}"
+                }
+                with httpx.Client() as client:
+                    resp = client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        manual_data = resp.json()
+                        excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('is_excluded')})
+                    else:
+                        print(f"[RECONCILE] Error fetching chunk {i}: {resp.status_code} {resp.text}")
+            print(f"[RECONCILE] Total IDs: {len(ids)}, Total Excluded: {len(excluded_ids)}, show_excluded: {show_excluded}")
         except Exception as e:
             print(f"Manual Edits取得エラー: {e}")
 
@@ -393,6 +396,7 @@ def reconcile_page():
     candidates = []
     for r in raw_data:
         is_ex = r['id'] in excluded_ids
+        # 除外済み かつ 「消込済みを表示」がオフの場合はスキップ
         if is_ex and not show_excluded:
             continue
         
