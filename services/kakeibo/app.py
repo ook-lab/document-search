@@ -1594,7 +1594,8 @@ def import_receipts():
     from transaction_processor import TransactionProcessor
 
     # 処理結果カウンター
-    BATCH_LIMIT = 5  # 1回の取込上限
+    data = request.get_json(silent=True) or {}
+    BATCH_LIMIT = int(data.get('limit', 1))
     processed = 0
     success = 0
     failed = 0
