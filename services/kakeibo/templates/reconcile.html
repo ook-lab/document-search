@@ -91,10 +91,10 @@
             <h2>左リスト (Left)</h2>
             <input type="text" class="filter-input" placeholder="検索..." onkeyup="filterList('left', this.value)">
             <div class="sort-buttons">
-                <button class="sort-btn" onclick="sortList('left', 'date', this)">日付↓</button>
-                <button class="sort-btn" onclick="sortList('left', 'amount_asc', this)">金額↑</button>
-                <button class="sort-btn" onclick="sortList('left', 'amount_desc', this)">金額↓</button>
-                <button class="sort-btn" onclick="sortList('left', 'name', this)">名称</button>
+                <button class="sort-btn" data-sort="date" onclick="sortList('left', 'date', this)">日付↓</button>
+                <button class="sort-btn" data-sort="amount_asc" onclick="sortList('left', 'amount_asc', this)">金額↑</button>
+                <button class="sort-btn" data-sort="amount_desc" onclick="sortList('left', 'amount_desc', this)">金額↓</button>
+                <button class="sort-btn" data-sort="name" onclick="sortList('left', 'name', this)">名称</button>
             </div>
         </div>
         <div class="list-container">
@@ -107,10 +107,10 @@
             <h2>右リスト (Right)</h2>
             <input type="text" class="filter-input" placeholder="検索..." onkeyup="filterList('right', this.value)">
             <div class="sort-buttons">
-                <button class="sort-btn" onclick="sortList('right', 'date', this)">日付↓</button>
-                <button class="sort-btn" onclick="sortList('right', 'amount_asc', this)">金額↑</button>
-                <button class="sort-btn" onclick="sortList('right', 'amount_desc', this)">金額↓</button>
-                <button class="sort-btn" onclick="sortList('right', 'name', this)">名称</button>
+                <button class="sort-btn" data-sort="date" onclick="sortList('right', 'date', this)">日付↓</button>
+                <button class="sort-btn" data-sort="amount_asc" onclick="sortList('right', 'amount_asc', this)">金額↑</button>
+                <button class="sort-btn" data-sort="amount_desc" onclick="sortList('right', 'amount_desc', this)">金額↓</button>
+                <button class="sort-btn" data-sort="name" onclick="sortList('right', 'name', this)">名称</button>
                 <button class="sort-btn" style="background:#28a745;color:white;margin-left:10px;" onclick="showCreateModal()">＋新規作成</button>
             </div>
         </div>
@@ -210,6 +210,7 @@
     // 初期描画
     renderTable('left', panelData.left);
     renderTable('right', panelData.right);
+    restoreUIState();
 
     // ソート関数
     function sortList(side, sortType, btn) {
@@ -235,8 +236,10 @@
         }
 
         renderTable(side, data);
-        // 選択状態を復元
         restoreSelection(side);
+        // ソート後も検索フィルタを維持
+        const filterInput = document.querySelector(`#panel-${side} .filter-input`);
+        if (filterInput && filterInput.value) filterList(side, filterInput.value);
     }
 
     // 選択状態の復元
@@ -381,31 +384,23 @@
                 status.innerText = `差額: ${diff.toLocaleString()} / 合計: ${total.toLocaleString()}`;
             }
         }
-        // CASE 2: 左だけ複数選択 (左合算モード) - 正負混在のみ許可
+        // CASE 2: 左だけ複数選択 (左合算モード)
         else if (leftCount > 1 && rightCount === 0) {
-            if (checkMixedSign('left')) {
-                btn.disabled = false;
-                btn.classList.add('active');
-                btn.innerText = "左を相殺(合算)";
-                btn.onclick = () => executeMerge('left');
-                status.innerText = `相殺後: ${sumLeft.toLocaleString()}`;
-                status.className = "ok";
-            } else {
-                status.innerText = "正と負の明細を選んでください";
-            }
+            btn.disabled = false;
+            btn.classList.add('active');
+            btn.innerText = "左を相殺(合算)";
+            btn.onclick = () => executeMerge('left');
+            status.innerText = `合算後: ${sumLeft.toLocaleString()}`;
+            status.className = "ok";
         }
-        // CASE 3: 右だけ複数選択 (右合算モード) - 正負混在のみ許可
+        // CASE 3: 右だけ複数選択 (右合算モード)
         else if (rightCount > 1 && leftCount === 0) {
-            if (checkMixedSign('right')) {
-                btn.disabled = false;
-                btn.classList.add('active');
-                btn.innerText = "右を相殺(合算)";
-                btn.onclick = () => executeMerge('right');
-                status.innerText = `相殺後: ${sumRight.toLocaleString()}`;
-                status.className = "ok";
-            } else {
-                status.innerText = "正と負の明細を選んでください";
-            }
+            btn.disabled = false;
+            btn.classList.add('active');
+            btn.innerText = "右を相殺(合算)";
+            btn.onclick = () => executeMerge('right');
+            status.innerText = `合算後: ${sumRight.toLocaleString()}`;
+            status.className = "ok";
         }
         // CASE 4: その他
         else {
@@ -491,6 +486,7 @@
 
             if (json.status === 'success') {
                 alert('作成しました');
+                saveUIState();
                 location.reload();
             } else {
                 alert('エラー: ' + json.message);
@@ -522,6 +518,7 @@
             const json = await res.json();
             if (json.status === 'success') {
                 alert('処理完了');
+                saveUIState();
                 location.reload();
             } else {
                 alert('エラー: ' + json.message);
@@ -529,6 +526,40 @@
         } catch (e) {
             alert('通信エラー');
         }
+    }
+
+    const STATE_KEY = 'reconcile_ui_state';
+
+    function saveUIState() {
+        const state = {
+            leftFilter: document.querySelector('#panel-left .filter-input').value,
+            rightFilter: document.querySelector('#panel-right .filter-input').value,
+            leftSort: document.querySelector('#panel-left .sort-btn.active')?.dataset.sort || null,
+            rightSort: document.querySelector('#panel-right .sort-btn.active')?.dataset.sort || null
+        };
+        sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+    }
+
+    function restoreUIState() {
+        const raw = sessionStorage.getItem(STATE_KEY);
+        if (!raw) return;
+        sessionStorage.removeItem(STATE_KEY);
+        const state = JSON.parse(raw);
+
+        ['left', 'right'].forEach(side => {
+            const filterVal = side === 'left' ? state.leftFilter : state.rightFilter;
+            const sortVal   = side === 'left' ? state.leftSort   : state.rightSort;
+
+            if (filterVal) {
+                const input = document.querySelector(`#panel-${side} .filter-input`);
+                input.value = filterVal;
+                filterList(side, filterVal);
+            }
+            if (sortVal) {
+                const btn = document.querySelector(`#panel-${side} .sort-btn[data-sort="${sortVal}"]`);
+                if (btn) sortList(side, sortVal, btn);
+            }
+        });
     }
 
     function filterList(side, text) {
@@ -581,6 +612,7 @@
             }
         }
         alert(`${successCount}件の表示設定を更新しました。`);
+        saveUIState();
         location.reload();
     }
 
@@ -625,6 +657,7 @@
             if (json.status === 'success') {
                 alert('表示先ルールを登録しました。次回の読み込みから自動適用されます。');
                 closeExRuleModal();
+                saveUIState();
                 location.reload();
             } else {
                 alert('登録失敗: ' + json.message);

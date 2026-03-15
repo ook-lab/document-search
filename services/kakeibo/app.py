@@ -431,6 +431,7 @@ def reconcile_page():
                     if resp.status_code == 200:
                         manual_data = resp.json()
                         excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('is_excluded')})
+                        excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('view_target') == 'CASH_ONLY'})
                         manual_ids.update({m['transaction_id'] for m in manual_data})
                     else:
                         print(f"[RECONCILE] Error fetching chunk {i}: {resp.status_code} {resp.text}")
