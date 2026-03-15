@@ -600,6 +600,8 @@ def reconcile_execute():
 
     updates = []
 
+    db = get_db()
+
     # 消込の種類を判定（銀行間振替か、カード支払いか）
     # IDからレコードをロード
     all_target_ids = list(set(remove_ids + keep_ids))
