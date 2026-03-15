@@ -273,8 +273,9 @@ class TransactionProcessor:
         url = f"{SUPABASE_URL}/rest/v1/Rawdata_RECEIPT_items"
         with httpx.Client() as client:
             resp = client.post(url, headers=self.headers, json=data)
-            resp.raise_for_status()
-        return "synthetic-id"  # We don't need the ID for items in the current flow
+            if resp.status_code >= 400:
+                raise Exception(f"Rawdata_RECEIPT_items insert failed ({resp.status_code}): {resp.text}")
+        return "synthetic-id"
 
     def _log_success(self, file_name, drive_file_id, receipt_id, transaction_ids, ocr_result=None, model_name=None) -> str:
         data = {
