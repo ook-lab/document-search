@@ -272,17 +272,19 @@
     function getStatusIcon(t) {
         const note = (t.note || '').replace('|hidden', '');
         const id   = t.id || '';
+        const badges = [];
         if (id.startsWith('MERGE-'))
-            return '<span class="s-badge s-merge-result" title="複数明細を合算したレコード">合算後</span>';
+            badges.push('<span class="s-badge s-merge-result" title="複数明細を合算したレコード">合算後</span>');
         if (note.includes('合算ID:'))
-            return '<span class="s-badge s-merge-src" title="合算のもと（MERGE-に吸収済み）">合算元</span>';
+            badges.push('<span class="s-badge s-merge-src" title="合算のもと（MERGE-に吸収済み）">合算元</span>');
         if (note.includes(':S(右)'))
-            return '<span class="s-badge s-same-right" title="同額消込：右側として残存中">同額右</span>';
+            badges.push('<span class="s-badge s-same-right" title="同額消込：右側として残存中">同額右</span>');
         if (note.includes(':S(左)'))
-            return '<span class="s-badge s-same-left" title="同額消込：左として除外済み">同額左</span>';
-        if (note.includes('消込:'))
-            return '<span class="s-badge s-transfer" title="消込済み（両方除外）">消込済</span>';
-        return '';
+            badges.push('<span class="s-badge s-same-left" title="同額消込：左として除外済み">同額左</span>');
+        if (note.includes(':T(左)') || note.includes(':T(右)') ||
+            (note.includes('消込:') && !note.includes(':S(')))
+            badges.push('<span class="s-badge s-transfer" title="消込済み（両方除外）">消込済</span>');
+        return badges.join(' ');
     }
 
     function renderTable(side, data) {
