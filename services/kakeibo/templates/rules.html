@@ -15,7 +15,7 @@
         .section { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .section h2 { margin-top: 0; font-size: 18px; border-bottom: 2px solid #e9ecef; padding-bottom: 10px; }
         .section p.desc { margin: 0 0 16px; color: #555; font-size: 14px; background: #f8f9fa; border-left: 4px solid #17a2b8; padding: 8px 12px; border-radius: 0 4px 4px 0; }
-        
+
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th { background: #e9ecef; padding: 8px 10px; text-align: left; border: 1px solid #dee2e6; }
         td { padding: 8px 10px; border: 1px solid #dee2e6; vertical-align: middle; }
@@ -88,7 +88,10 @@
                         <td>{{ r.content_pattern or '（指定なし）' }}</td>
                         <td>{{ r.institution_pattern or '（指定なし）' }}</td>
                         <td style="font-size:12px; color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
-                        <td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-secondary" style="margin-right:4px;"
+                                    data-rule='{{ r | tojson }}'
+                                    onclick="editTargetRule(JSON.parse(this.dataset.rule))">編集</button>
                             <button class="btn btn-delete" onclick="deleteRule('target', '{{ r.id }}')">削除</button>
                         </td>
                     </tr>
@@ -98,13 +101,14 @@
                 </tbody>
             </table>
 
-            <!-- 新規ルール追加フォーム -->
+            <!-- 表示先ルール 追加・編集フォーム -->
             <div class="form-collapse" id="target-form-collapse">
                 <div class="form-header" onclick="toggleForm('target-form-body')">
-                    <span>＋ 新しい表示先ルールを追加</span>
+                    <span id="target-form-title">＋ 新しい表示先ルールを追加</span>
                     <span id="target-form-arrow">▼</span>
                 </div>
                 <div class="form-body" id="target-form-body">
+                    <input type="hidden" id="tr-id">
                     <div class="form-grid">
                         <div class="form-group">
                             <label>ルール名</label>
@@ -127,8 +131,8 @@
                         </div>
                     </div>
                     <div class="action-row">
-                        <button class="btn btn-secondary" onclick="toggleForm('target-form-body')">キャンセル</button>
-                        <button class="btn btn-add" onclick="addTargetRule()">ルールを登録</button>
+                        <button class="btn btn-secondary" onclick="resetTargetForm()">キャンセル</button>
+                        <button class="btn btn-add" onclick="saveTargetRule()">保存</button>
                     </div>
                 </div>
             </div>
@@ -169,7 +173,9 @@
                         <td>{{ r.category_context or '' }}</td>
                         <td style="font-size:12px; color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
                         <td style="white-space:nowrap;">
-                            <button class="btn btn-secondary" style="margin-right:4px;" onclick="editCategoryRule({{ r | tojson }})">編集</button>
+                            <button class="btn btn-secondary" style="margin-right:4px;"
+                                    data-rule='{{ r | tojson }}'
+                                    onclick="editCategoryRule(JSON.parse(this.dataset.rule))">編集</button>
                             <button class="btn btn-delete" onclick="deleteRule('category', '{{ r.id }}')">削除</button>
                         </td>
                     </tr>
@@ -179,7 +185,7 @@
                 </tbody>
             </table>
 
-            <!-- 分類ルール追加・編集フォーム -->
+            <!-- 分類ルール 追加・編集フォーム -->
             <div class="form-collapse" id="cat-form-collapse">
                 <div class="form-header" onclick="toggleForm('cat-form-body')">
                     <span id="cat-form-title">＋ 新しい分類ルールを追加</span>
@@ -235,32 +241,61 @@
             body.classList.toggle('open');
         }
 
-        async function addTargetRule() {
-            const name = document.getElementById('tr-name').value.trim();
-            const action = document.getElementById('tr-action').value;
-            const content = document.getElementById('tr-content').value.trim();
+        // ===== 表示先ルール =====
+        function editTargetRule(r) {
+            document.getElementById('tr-id').value          = r.id || '';
+            document.getElementById('tr-name').value        = r.rule_name || '';
+            document.getElementById('tr-content').value     = r.content_pattern || '';
+            document.getElementById('tr-institution').value = r.institution_pattern || '';
+            document.getElementById('tr-action').value      = r.note || 'CASH_ONLY';
+            document.getElementById('target-form-title').textContent = '✏️ 表示先ルールを編集';
+            const body = document.getElementById('target-form-body');
+            if (!body.classList.contains('open')) body.classList.add('open');
+            body.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function resetTargetForm() {
+            document.getElementById('tr-id').value = '';
+            document.getElementById('tr-name').value = '';
+            document.getElementById('tr-content').value = '';
+            document.getElementById('tr-institution').value = '';
+            document.getElementById('tr-action').value = 'CASH_ONLY';
+            document.getElementById('target-form-title').textContent = '＋ 新しい表示先ルールを追加';
+            document.getElementById('target-form-body').classList.remove('open');
+        }
+
+        async function saveTargetRule() {
+            const id          = document.getElementById('tr-id').value.trim();
+            const name        = document.getElementById('tr-name').value.trim();
+            const action      = document.getElementById('tr-action').value;
+            const content     = document.getElementById('tr-content').value.trim();
             const institution = document.getElementById('tr-institution').value.trim();
 
             if (!name) { alert('ルール名を入力してください'); return; }
             if (!content && !institution) { alert('内容パターンまたは金融機関パターンを入力してください'); return; }
 
+            const payload = { rule_name: name, action, content_pattern: content, institution_pattern: institution };
+            const url = id ? '/api/update_target_rule' : '/api/add_target_rule';
+            if (id) payload.id = id;
+
             try {
-                const res = await fetch('/api/add_target_rule', {
+                const res = await fetch(url, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ rule_name: name, action: action, content_pattern: content, institution_pattern: institution })
+                    body: JSON.stringify(payload)
                 });
                 const json = await res.json();
                 if (json.status === 'success') {
                     location.reload();
                 } else {
-                    alert('登録失敗: ' + json.message);
+                    alert('保存失敗: ' + json.message);
                 }
             } catch (e) {
                 alert('通信エラー: ' + e);
             }
         }
 
+        // ===== 分類ルール =====
         function editCategoryRule(r) {
             document.getElementById('cr-pattern').value   = r.content_pattern || '';
             document.getElementById('cr-major').value     = r.category_major || '';

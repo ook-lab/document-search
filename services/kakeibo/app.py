@@ -703,11 +703,34 @@ def add_target_rule():
 
     db = get_db()
     res = db.table("Kakeibo_Auto_Exclude_Rules").insert(payload).execute()
-    
+
     if getattr(res, 'error', None):
         return jsonify({"status": "error", "message": str(res.error)}), 500
 
     return jsonify({"status": "success"})
+
+
+@app.route('/api/update_target_rule', methods=['POST'])
+def update_target_rule():
+    """表示先ルールの更新（IDで特定）"""
+    data = request.json
+    rule_id = data.get('id')
+    if not rule_id:
+        return jsonify({"status": "error", "message": "id required"}), 400
+
+    payload = {
+        "rule_name": data.get('rule_name', ''),
+        "content_pattern": data.get('content_pattern', ''),
+        "institution_pattern": data.get('institution_pattern', ''),
+        "note": data.get('action', 'CASH_ONLY'),
+    }
+
+    try:
+        db = get_db()
+        db.table("Kakeibo_Auto_Exclude_Rules").update(payload).eq("id", rule_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/rules_settings')
