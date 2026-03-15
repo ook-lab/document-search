@@ -149,9 +149,16 @@
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    messageSpan.textContent = `✅ ${data.processed}件のレシートを取り込みました（成功: ${data.success}件、失敗: ${data.failed}件）`;
-                    statusDiv.style.background = '#d4edda';
-                    setTimeout(() => location.reload(), 2000);
+                    let msg = `✅ ${data.processed}件のレシートを取り込みました（成功: ${data.success}件、失敗: ${data.failed}件）`;
+                    if (data.errors && data.errors.length > 0) {
+                        msg += '\n' + data.errors.join('\n');
+                        statusDiv.style.background = '#fff3cd';
+                    } else {
+                        statusDiv.style.background = '#d4edda';
+                    }
+                    messageSpan.style.whiteSpace = 'pre-wrap';
+                    messageSpan.textContent = msg;
+                    setTimeout(() => location.reload(), 5000);
                 } else {
                     messageSpan.textContent = `❌ エラー: ${data.message}`;
                     statusDiv.style.background = '#f8d7da';
