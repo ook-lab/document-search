@@ -52,6 +52,20 @@ def get_receipt_image_base64(drive_file_id: str) -> str:
         return None
 
 
+def is_liquid_account(institution):
+    """銀行やウォレットなどの『残高』系アカウントか判定（現金計算用）"""
+    if not institution: return False
+    # 銀行、金庫、信託、ゆうちょ、PayPay銀行、楽天銀行、住信SBI...
+    keywords = ["銀行", "金庫", "信託", "組合", "セブン", "ゆうちょ", "ｲｵﾝ", "PayPay", "住信", "楽天", "三菱", "三井", "みずほ", "りそな", "ソニー", "SBI"]
+    return any(k in institution for k in keywords) and not "カード" in institution
+
+def is_usage_source(institution):
+    """クレジットカードやレシートなどの『使途』系アカウントか判定（明細一覧用）"""
+    if not institution: return True # レシートなどはこっち
+    if "カード" in institution or "Amazon" in institution or "Card" in institution:
+        return True
+    return False
+
 def check_auto_exclude(content, institution, rules):
     """自動除外ルールにマッチするかチェック（content + institution の組み合わせ）"""
     content = content or ""
@@ -171,7 +185,18 @@ def index():
         if auto_excluded and not m:
             is_excluded = True
 
-        # 除外データを表示しない場合はスキップ
+        # 分類ルールから自動提案（手動設定がない場合のみ）
+        has_manual_category = m.get("category_major") or m.get("category_mid")
+        suggested = None
+        if not has_manual_category:
+            suggested = match_category_rule(t.get('content', ''), category_rules)
+
+        # 表示対象の判定：明細一覧は「使途」を重視する
+        # 原則：クレジットカード、電子マネー、レシートを表示。
+        # 銀行などの口座（Liquid）からの「直接引き落とし（家賃や税金）」も表示する。
+        # 銀行などの口座からの「カード引き落とし」や「口座間移動」は「消込」によって「除外」されることで非表示になる。
+
+        # 除外データを表示しない場合はスキップ（上記以外）
         if is_excluded and not show_excluded:
             continue
 
@@ -181,12 +206,6 @@ def index():
             # ローン管理に表示するのでスキップ（view_target='list'で強制表示の場合は除く）
             if view_target != 'list':
                 continue
-
-        # 分類ルールから自動提案（手動設定がない場合のみ）
-        has_manual_category = m.get("category_major") or m.get("category_mid")
-        suggested = None
-        if not has_manual_category:
-            suggested = match_category_rule(t.get('content', ''), category_rules)
 
         display_data.append({
             **t,
@@ -230,18 +249,31 @@ def update_transaction():
     if not tx_id:
         return jsonify({"status": "error", "message": "ID is required"}), 400
 
+    # partial update support
+    # Existing fields: category_major, category_mid, category_small, category_shop,
+    # category_belonging, category_person, category_context, is_excluded, note, view_target
+    keys = ['cat_major', 'cat_mid', 'cat_small', 'cat_shop', 'cat_belonging', 
+            'cat_person', 'cat_context', 'is_excluded', 'note', 'view_target']
+    
+    # Supabase upsert doesn't inherently support partial without a read, unless we use patch.
+    # But Kakeibo_Manual_Edits upserts based on transaction_id. 
+    # To do a true partial update via REST, we could read first:
+    db = get_db()
+    existing_res = db.table("Kakeibo_Manual_Edits").select("*").eq("transaction_id", tx_id).execute()
+    existing = existing_res.data[0] if existing_res.data else {}
+
     payload = {
         "transaction_id": tx_id,
-        "category_major": data.get('cat_major') or None,
-        "category_mid": data.get('cat_mid') or None,
-        "category_small": data.get('cat_small') or None,
-        "category_shop": data.get('cat_shop') or None,
-        "category_belonging": data.get('cat_belonging') or None,
-        "category_person": data.get('cat_person') or None,
-        "category_context": data.get('cat_context') or None,
-        "is_excluded": data.get('is_excluded', False),
-        "note": data.get('note') or None,
-        # "owner_id": DEFAULT_OWNER_ID  # スキーマキャッシュ遅延のため一時無効
+        "category_major": data.get('cat_major') if 'cat_major' in data else existing.get('category_major'),
+        "category_mid": data.get('cat_mid') if 'cat_mid' in data else existing.get('category_mid'),
+        "category_small": data.get('cat_small') if 'cat_small' in data else existing.get('category_small'),
+        "category_shop": data.get('cat_shop') if 'cat_shop' in data else existing.get('category_shop'),
+        "category_belonging": data.get('cat_belonging') if 'cat_belonging' in data else existing.get('category_belonging'),
+        "category_person": data.get('cat_person') if 'cat_person' in data else existing.get('category_person'),
+        "category_context": data.get('cat_context') if 'cat_context' in data else existing.get('category_context'),
+        "is_excluded": data.get('is_excluded') if 'is_excluded' in data else existing.get('is_excluded', False),
+        "note": data.get('note') if 'note' in data else existing.get('note'),
+        "view_target": data.get('view_target') if 'view_target' in data else existing.get('view_target')
     }
 
     # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
@@ -448,6 +480,100 @@ def reconcile_page():
         end_date=end_date
     )
 
+@app.route('/cash_calc')
+def cash_calc():
+    """現金計算ページ：非除外取引のみを集計"""
+    db = get_db()
+    year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
+    
+    # 当月の取引をすべて取得
+    start_date = f"{year_month}-01"
+    year, month = map(int, year_month.split('-'))
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    
+    tx_res = db.table("Rawdata_BANK_transactions")\
+        .select("*")\
+        .gte("date", start_date)\
+        .lt("date", end_date)\
+        .order("date", desc=True)\
+        .execute()
+    transactions = tx_res.data
+    
+    ids = [t['id'] for t in transactions]
+    manual_map = {}
+    if ids:
+        m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
+        manual_map = {m['transaction_id']: m for m in m_res.data}
+    
+    # カテゴリ集計・計算
+    income_list = []
+    expense_list = []
+    category_summary = {} # {category: amount}
+    
+    for t in transactions:
+        m = manual_map.get(t['id'], {})
+        institution = t.get('institution')
+        
+        # 【現金計算の核】
+        # 1. 銀行口座（Liquid）のみを対象とする
+        if not is_liquid_account(institution):
+            continue
+            
+        # 2. 除外設定の扱い
+        if m.get('is_excluded'):
+            # 「銀行間振替」として消し込んだものは除外（合計が0になるため）
+            if m.get('view_target') == 'INTERNAL_TRANSFER':
+                continue
+            # 「カード支払い」や「ATM現金引出」として消し込んだものは表示（銀行からの出金をカウントしたいため）
+            elif m.get('view_target') in ['CARD_PAYMENT', 'CASH_WITHDRAWAL', 'CASH_CALC_ONLY']:
+                # この場合は表示し続ける
+                pass
+            else:
+                # その他、手動で除外したものは非表示
+                continue
+            
+        amount = t['amount']
+        category = m.get('category_major') or "未分類"
+        
+        # 資金移動（カード払い等）の場合はカテゴリを調整
+        if m.get('view_target') == 'CARD_PAYMENT':
+            category = "カード引落"
+        elif m.get('view_target') == 'CASH_WITHDRAWAL':
+            category = "現金引出"
+        
+        # 集計データ構築
+        display_item = {
+            **t,
+            "category": category,
+            "note": m.get('note', '')
+        }
+        
+        if amount > 0:
+            income_list.append(display_item)
+        else:
+            expense_list.append(display_item)
+            category_summary[category] = category_summary.get(category, 0) + amount
+            
+    total_income = sum(t['amount'] for t in income_list)
+    total_expense = sum(t['amount'] for t in expense_list)
+    net_cash_flow = total_income + total_expense
+    
+    # カテゴリ順にソート（支出が多い順）
+    sorted_categories = sorted(category_summary.items(), key=lambda x: x[1])
+
+    return render_template(
+        'cash_calc.html',
+        current_month=year_month,
+        income_list=income_list,
+        expense_list=expense_list,
+        total_income=total_income,
+        total_expense=total_expense,
+        net_cash_flow=net_cash_flow,
+        category_summary=sorted_categories
+    )
 
 @app.route('/api/reconcile_execute', methods=['POST'])
 def reconcile_execute():
@@ -468,13 +594,41 @@ def reconcile_execute():
 
     updates = []
 
+    # 消込の種類を判定（銀行間振替か、カード支払いか）
+    # IDからレコードをロード
+    all_target_ids = list(set(remove_ids + keep_ids))
+    res = db.table("Rawdata_BANK_transactions").select("id, institution").in_("id", all_target_ids).execute()
+    records = {r['id']: r for r in res.data}
+
+    def has_liquid(ids):
+        return any(is_liquid_account(records.get(tid, {}).get('institution')) for tid in ids)
+
+    def is_cash(ids):
+        return any("現金" in records.get(tid, {}).get('institution', '') for tid in ids)
+
+    is_left_liquid = has_liquid(remove_ids)
+    is_right_liquid = has_liquid(keep_ids)
+    is_left_cash = is_cash(remove_ids)
+    is_right_cash = is_cash(keep_ids)
+
+    reconcile_type = "UNKNOWN"
+    # 銀行 -> 銀行 は内部振替（現金残高は減らない）
+    if is_left_liquid and is_right_liquid:
+        reconcile_type = "INTERNAL_TRANSFER"
+    # 銀行 -> 現金（ATM引出）は、現金計算上は支出とする（レシートで追うため現金自体は口座外管理）
+    elif (is_left_liquid and is_right_cash) or (is_right_liquid and is_left_cash):
+        reconcile_type = "CASH_WITHDRAWAL"
+    # 銀行 -> カード等
+    elif is_left_liquid or is_right_liquid:
+        reconcile_type = "CARD_PAYMENT"
+
     # 左側は常に除外
     for tx_id in remove_ids:
         updates.append({
             "transaction_id": tx_id,
             "is_excluded": True,
-            "note": "消込完了（左側）",
-            # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+            "note": f"消込:{reconcile_type}(左)",
+            "view_target": reconcile_type # 追加情報をここに忍ばせる
         })
 
     # 振替モードの場合のみ、右側も除外する
@@ -483,8 +637,8 @@ def reconcile_execute():
             updates.append({
                 "transaction_id": tx_id,
                 "is_excluded": True,
-                "note": "消込完了（振替・右側）",
-                # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+                "note": f"消込:{reconcile_type}(右)",
+                "view_target": reconcile_type
             })
 
     # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
@@ -505,6 +659,26 @@ def reconcile_execute():
         return jsonify({"status": "error", "message": str(e)}), 500
 
     return jsonify({"status": "success", "count": len(updates)})
+
+
+@app.route('/api/add_auto_exclude_rule', methods=['POST'])
+def add_auto_exclude_rule():
+    """自動除外ルール（明細非表示・現金計算表示）を追加"""
+    data = request.json
+    payload = {
+        "rule_name": data.get('rule_name', 'UIからの登録'),
+        "content_pattern": data.get('content_pattern', ''),
+        "institution_pattern": data.get('institution_pattern', ''),
+        "is_active": True
+    }
+
+    db = get_db()
+    res = db.table("Kakeibo_Auto_Exclude_Rules").insert(payload).execute()
+    
+    if getattr(res, 'error', None):
+        return jsonify({"status": "error", "message": str(res.error)}), 500
+
+    return jsonify({"status": "success"})
 
 
 @app.route('/api/create_transaction', methods=['POST'])

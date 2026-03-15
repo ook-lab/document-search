@@ -177,6 +177,9 @@
                 <a href="/reconcile" style="padding: 8px 16px; background: #17a2b8; color: white; text-decoration: none; border-radius: 4px;">消込ツール</a>
             </div>
             <div>
+                <a href="/cash_calc" style="padding: 8px 16px; background: #4F46E5; color: white; text-decoration: none; border-radius: 4px;">現金計算</a>
+            </div>
+            <div>
                 <a href="/loans" style="padding: 8px 16px; background: #6f42c1; color: white; text-decoration: none; border-radius: 4px;">ローン管理</a>
             </div>
             <div>
@@ -277,8 +280,10 @@
                     <td><input type="text" class="cat-input edit-note" value="{{ t.note }}" placeholder="メモ"></td>
                     <td class="action-cell">
                         <button class="btn-save" onclick="saveRow(this)">保存</button>
-                        <button class="btn-rule" onclick="openRuleModal(this)" title="ルール登録">R</button>
-                        <button class="btn-toggle" onclick="toggleViewTarget(this, 'loan')">→L</button>
+                        <button class="btn-rule" onclick="openRuleModal(this)" title="分類ルール登録">R</button>
+                        <button class="btn-rule" style="background:#dc3545;" onclick="openExRuleModal(this)" title="自動除外ルール(現金表示)登録">EX</button>
+                        <button class="btn-toggle" onclick="setVisibility(this, 'both')" title="明細と現金の両方に表示">両</button>
+                        <button class="btn-toggle" onclick="setVisibility(this, 'cash')" title="明細非表示・現金表示(Card/引出)">現</button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -329,6 +334,26 @@
                 <button onclick="saveRule()" style="background: #fd7e14;">ルール登録</button>
             </div>
         </div>
+    <!-- 自動除外ルール（現金表示）登録モーダル -->
+    <div class="modal" id="ex-rule-modal">
+        <div class="modal-content">
+            <h3>自動除外ルール登録（明細非表示・現金のみ表示）</h3>
+            <label>ルール名</label>
+            <input type="text" id="ex-rule-name" placeholder="例: クレジットカード引き落とし">
+            
+            <label>内容パターン</label>
+            <input type="text" id="ex-rule-content">
+            
+            <label>金融機関パターン</label>
+            <input type="text" id="ex-rule-institution">
+            
+            <p style="font-size: 12px; color: #666;">この条件に合致する明細は、明細一覧から隠され、現金計算ページでのみ集計されます。</p>
+            
+            <div class="modal-buttons">
+                <button onclick="closeExRuleModal()" style="background: #6c757d;">キャンセル</button>
+                <button onclick="saveExRule()" style="background: #dc3545;">ルール登録</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -372,6 +397,44 @@
             const input = document.getElementById('month-filter');
             input.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             applyFilter();
+        }
+
+        // === 表示制御 ===
+        async function setVisibility(btn, mode) {
+            const tr = btn.closest('tr');
+            const id = tr.dataset.id;
+            
+            // "both": is_excluded = false, view_target = null
+            // "cash": is_excluded = true, view_target = 'CASH_CALC_ONLY'
+            
+            const isExcluded = (mode === 'cash');
+            const viewTarget = (mode === 'cash') ? 'CASH_CALC_ONLY' : null;
+
+            const data = {
+                id: id,
+                is_excluded: isExcluded,
+                view_target: viewTarget
+            };
+
+            btn.disabled = true;
+            try {
+                const response = await fetch('/api/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    tr.style.backgroundColor = '#d4edda';
+                    setTimeout(() => location.reload(), 300);
+                } else {
+                    alert("更新失敗: " + result.message);
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert("通信エラー");
+                btn.disabled = false;
+            }
         }
 
         // フィルタ適用
