@@ -278,20 +278,14 @@ class TransactionProcessor:
 
     def _log_success(self, file_name, drive_file_id, receipt_id, transaction_ids, ocr_result=None, model_name=None) -> str:
         data = {
-            "file_name":       file_name,
-            "drive_file_id":   drive_file_id,
-            "receipt_id":      receipt_id,
-            "status":          "success",
-            "transaction_ids": transaction_ids,
-            # "owner_id":        DEFAULT_OWNER_ID,  # Stale schema cache
+            "file_name":     file_name,
+            "drive_file_id": drive_file_id,
+            "receipt_id":    receipt_id,
+            "status":        "success",
         }
-        if model_name:  data["ocr_model"]  = model_name
-        if ocr_result:  data["ocr_result"] = ocr_result
-        url = f"{SUPABASE_URL}/rest/v1/99_lg_image_proc_log"
-        with httpx.Client() as client:
-            resp = client.post(url, headers=self.headers, json=data)
-            resp.raise_for_status()
-        return "synthetic-log-id"
+        if model_name: data["ocr_model"] = model_name
+        res = self.db.table("99_lg_image_proc_log").insert(data).execute()
+        return res.data[0]["id"] if res.data else "unknown"
 
     def _log_error(self, file_name, drive_file_id, error_info, model_name=None, receipt_id=None):
         data = {
