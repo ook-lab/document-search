@@ -770,6 +770,31 @@ def create_transaction():
     return jsonify({"status": "success", "new_id": new_id, "record": new_record})
 
 
+@app.route('/api/delete_transaction', methods=['POST'])
+def delete_transaction():
+    """手動作成レコード（MERGE-/MANUAL-）の削除API"""
+    data = request.json
+    tx_id = data.get('id', '')
+
+    if not tx_id.startswith('MERGE-') and not tx_id.startswith('MANUAL-'):
+        return jsonify({"status": "error", "message": "手動作成レコード以外は削除できません"}), 400
+
+    url = f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions?id=eq.{tx_id}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Prefer": "return=minimal"
+    }
+    try:
+        with httpx.Client() as client:
+            resp = client.delete(url, headers=headers)
+            resp.raise_for_status()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    return jsonify({"status": "success"})
+
+
 @app.route('/api/toggle_view_target', methods=['POST'])
 def toggle_view_target():
     """
@@ -1111,33 +1136,42 @@ def merge_execute():
         "Prefer": "return=minimal"
     }
     
-    try:
-        with httpx.Client() as client:
+    with httpx.Client() as client:
+        # 3. 新規レコード作成
+        try:
             resp = client.post(f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions", headers=headers, json=new_record)
             resp.raise_for_status()
-    except Exception as e:
-        print(f"[merge_execute] Insert error: {e}")
-        return jsonify({"status": "error", "message": f"新規行作成失敗: {e}"}), 500
+        except Exception as e:
+            print(f"[merge_execute] Insert error: {e}")
+            return jsonify({"status": "error", "message": f"新規行作成失敗: {e}"}), 500
 
-    # 4. 古い行を除外設定
-    updates = []
-    for tid in target_ids:
-        updates.append({
-            "transaction_id": tid,
-            "is_excluded": True,
-            "note": f"合算ID:{new_id} へ統合",
-            # "owner_id": DEFAULT_OWNER_ID  # 一時無効
-        })
+        # 4. 古い行を除外設定
+        updates = []
+        for tid in target_ids:
+            updates.append({
+                "transaction_id": tid,
+                "is_excluded": True,
+                "note": f"合算ID:{new_id} へ統合",
+                # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+            })
 
-    # httpxを使ってPostgRESTを直接叩く（一括アップサート）
-    headers["Prefer"] = "return=minimal, resolution=merge-duplicates"
-    try:
-        with httpx.Client() as client:
+        headers["Prefer"] = "return=minimal, resolution=merge-duplicates"
+        try:
             resp = client.post(f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits", headers=headers, json=updates)
             resp.raise_for_status()
-    except Exception as e:
-        print(f"[merge_execute] Upsert error: {e}")
-        return jsonify({"status": "error", "message": f"除外設定失敗: {e}"}), 500
+        except Exception as e:
+            print(f"[merge_execute] Upsert error: {e}, rolling back new record {new_id}")
+            # ロールバック: 作成した合算レコードを削除
+            try:
+                rb_headers = {k: v for k, v in headers.items()}
+                rb_headers["Prefer"] = "return=minimal"
+                client.delete(
+                    f"{SUPABASE_URL}/rest/v1/Rawdata_BANK_transactions?id=eq.{new_id}",
+                    headers=rb_headers
+                )
+            except Exception as rb_e:
+                print(f"[merge_execute] Rollback failed: {rb_e}")
+            return jsonify({"status": "error", "message": f"除外設定失敗（ロールバック済み）: {e}"}), 500
 
     return jsonify({"status": "success", "new_id": new_id})
 

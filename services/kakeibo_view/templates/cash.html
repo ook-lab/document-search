@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% set active = 'cash' %}
+{% block content %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+  <div class="month-nav">
+    <a href="/cash?month={{ prev_month }}">◀ 前月</a>
+    <span style="font-size:20px; font-weight:bold;">{{ year_month }}</span>
+    <a href="/cash?month={{ next_month }}">次月 ▶</a>
+  </div>
+  <form method="get" action="/cash" style="display:flex; gap:8px; align-items:center;">
+    <input type="month" name="month" value="{{ year_month }}" style="padding:4px 8px; border:1px solid #ccc; border-radius:4px;">
+    <button type="submit" style="padding:4px 12px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer;">移動</button>
+  </form>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-label">収入</div>
+    <div class="kpi-value income">{{ "{:,}".format(total_income) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">支出</div>
+    <div class="kpi-value expense">{{ "{:,}".format(total_expense) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">収支</div>
+    <div class="kpi-value {% if net >= 0 %}net-pos{% else %}net-neg{% endif %}">{{ "{:,}".format(net) }}</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>カテゴリ別支出</h2>
+    <table>
+      <thead><tr><th>カテゴリ</th><th class="amt">金額</th></tr></thead>
+      <tbody>
+        {% for cat, amt in cat_summary %}
+        <tr>
+          <td>{{ cat }}</td>
+          <td class="amt neg">{{ "{:,}".format(amt) }}</td>
+        </tr>
+        {% endfor %}
+        <tr style="font-weight:bold; background:#fafafa;">
+          <td>合計</td><td class="amt neg">{{ "{:,}".format(total_expense) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>収入明細</h2>
+    <table>
+      <thead><tr><th>日付</th><th>内容</th><th>金融機関</th><th class="amt">金額</th></tr></thead>
+      <tbody>
+        {% for t in income_list %}
+        <tr>
+          <td>{{ t.date }}</td><td>{{ t.content }}</td>
+          <td style="font-size:11px; color:#888;">{{ t.institution }}</td>
+          <td class="amt pos">{{ "{:,}".format(t.amount) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" style="color:#999; text-align:center;">なし</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>支出明細</h2>
+  <table>
+    <thead><tr><th>日付</th><th>内容</th><th>カテゴリ</th><th>金融機関</th><th class="amt">金額</th></tr></thead>
+    <tbody>
+      {% for t in expense_list %}
+      <tr>
+        <td>{{ t.date }}</td><td>{{ t.content }}</td><td>{{ t.category }}</td>
+        <td style="font-size:11px; color:#888;">{{ t.institution }}</td>
+        <td class="amt neg">{{ "{:,}".format(t.amount) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="color:#999; text-align:center;">なし</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

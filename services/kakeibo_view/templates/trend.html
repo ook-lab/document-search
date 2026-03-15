@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+{% set active = 'trend' %}
+
+<div class="card" style="margin-bottom:15px;">
+  <form method="get" action="/trend" class="filter-row" id="trendForm">
+    <label>期間</label>
+    <input type="month" name="from" value="{{ from_ym }}">
+    <label>〜</label>
+    <input type="month" name="to" value="{{ to_ym }}">
+    <label>カテゴリ</label>
+    <select name="cats" multiple size="5" style="min-width:160px;">
+      {% for cat in all_cats %}
+      <option value="{{ cat }}" {% if cat in selected_cats %}selected{% endif %}>{{ cat }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">表示</button>
+    <span style="font-size:11px; color:#999;">（Ctrl+クリックで複数選択）</span>
+  </form>
+</div>
+
+<div class="card">
+  <h2>カテゴリ別 月次推移</h2>
+  <canvas id="trendChart" height="120"></canvas>
+</div>
+
+<div class="card">
+  <h2>月別明細</h2>
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>月</th>
+          {% for cat in selected_cats %}<th class="amt">{{ cat }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in range(month_list|length) %}
+        <tr>
+          <td><a href="/summary?month={{ month_list[i] }}">{{ month_list[i] }}</a></td>
+          {% for ds in chart_datasets %}
+          <td class="amt neg">{% if ds.data[i] %}{{ "{:,}".format(ds.data[i]) }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const datasets = {{ chart_datasets | tojson }};
+const labels   = {{ chart_labels | tojson }};
+
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: { labels, datasets },
+  options: {
+    plugins: { legend: { position: 'bottom' } },
+    scales: { y: { ticks: { callback: v => v.toLocaleString() } } }
+  }
+});
+</script>
+{% endblock %}

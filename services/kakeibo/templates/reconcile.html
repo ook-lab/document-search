@@ -135,6 +135,7 @@
             <button id="btn-vis-list" style="background:#6c757d; color:white; border:none; padding:8px 16px; border-radius:4px; display:none;" onclick="updateVisibility('list')">明細のみ(デフォルト)</button>
         </div>
         <button id="btn-ex-rule" style="background:#6f42c1; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; display:none;" onclick="openExRuleModalFromReconcile()">表示先ルールを追加</button>
+        <button id="btn-delete" style="background:#dc3545; color:white; border:none; padding:4px 8px; border-radius:4px; font-size:11px; display:none;" onclick="deleteManualRecord()">手動レコードを削除</button>
     </div>
 
     <div class="sum-box">
@@ -342,10 +343,12 @@
         const btnBoth = document.getElementById('btn-vis-both');
         const btnList = document.getElementById('btn-vis-list');
         const btnExRule = document.getElementById('btn-ex-rule');
+        const btnDelete = document.getElementById('btn-delete');
         btnCash.style.display = 'none';
         btnBoth.style.display = 'none';
         btnList.style.display = 'none';
         btnExRule.style.display = 'none';
+        btnDelete.style.display = 'none';
 
         // 表示制御ボタンの表示条件: 左右どちらか片方だけ選択されている
         if ((leftCount > 0 && rightCount === 0) || (rightCount > 0 && leftCount === 0)) {
@@ -354,6 +357,11 @@
             btnList.style.display = 'inline-block';
             if (leftCount === 1 || rightCount === 1) {
                 btnExRule.style.display = 'inline-block';
+            }
+            // MERGE-/MANUAL- レコードが1件だけ選択されている場合に削除ボタンを表示
+            const singleId = leftCount === 1 ? Array.from(selection.left)[0] : (rightCount === 1 ? Array.from(selection.right)[0] : null);
+            if (singleId && (singleId.startsWith('MERGE-') || singleId.startsWith('MANUAL-'))) {
+                btnDelete.style.display = 'inline-block';
             }
         }
 
@@ -582,6 +590,7 @@
         else url.searchParams.delete('start_date');
         if (endDate) url.searchParams.set('end_date', endDate);
         else url.searchParams.delete('end_date');
+        saveUIState();
         location.href = url.toString();
     }
 
@@ -667,6 +676,27 @@
         }
     }
 
+    async function deleteManualRecord() {
+        const singleId = selection.left.size === 1 ? Array.from(selection.left)[0] : Array.from(selection.right)[0];
+        if (!confirm(`「${singleId}」を削除します。よろしいですか？`)) return;
+        try {
+            const res = await fetch('/api/delete_transaction', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: singleId })
+            });
+            const json = await res.json();
+            if (json.status === 'success') {
+                saveUIState();
+                location.reload();
+            } else {
+                alert('エラー: ' + json.message);
+            }
+        } catch (e) {
+            alert('通信エラー');
+        }
+    }
+
     function toggleExcluded(show) {
         const url = new URL(location.href);
         if (show) {
@@ -674,6 +704,7 @@
         } else {
             url.searchParams.delete('show_excluded');
         }
+        saveUIState();
         location.href = url.toString();
     }
 </script>

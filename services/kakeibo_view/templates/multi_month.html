@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+{% set active = 'multi_month' %}
+
+<div class="card" style="margin-bottom:15px;">
+  <form method="get" action="/multi_month" class="filter-row">
+    <label>開始</label>
+    <input type="month" name="from" value="{{ from_ym }}">
+    <label>〜</label>
+    <input type="month" name="to" value="{{ to_ym }}">
+    <button type="submit">表示</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>積み上げ棒グラフ（月別カテゴリ支出）</h2>
+  <canvas id="stackChart" height="120"></canvas>
+</div>
+
+<div class="card">
+  <h2>月×カテゴリ サマリー</h2>
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>月</th>
+          <th class="amt">収入</th>
+          {% for cat in cats %}<th class="amt">{{ cat }}</th>{% endfor %}
+          <th class="amt">支出合計</th>
+          <th class="amt">収支</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ym in month_list %}
+        {% set row_expense = namespace(total=0) %}
+        <tr>
+          <td><a href="/summary?month={{ ym }}">{{ ym }}</a></td>
+          <td class="amt pos">{{ "{:,}".format(income_by_month.get(ym, 0)) }}</td>
+          {% for cat in cats %}
+            {% set amt = data[ym][cat] if ym in data and cat in data[ym] else 0 %}
+            {% set row_expense.total = row_expense.total + amt %}
+            <td class="amt {% if amt < 0 %}neg{% endif %}">
+              {% if amt != 0 %}{{ "{:,}".format(amt) }}{% endif %}
+            </td>
+          {% endfor %}
+          <td class="amt neg" style="font-weight:bold;">{{ "{:,}".format(row_expense.total) }}</td>
+          <td class="amt {% if income_by_month.get(ym,0) + row_expense.total >= 0 %}pos{% else %}neg{% endif %}" style="font-weight:bold;">
+            {{ "{:,}".format(income_by_month.get(ym, 0) + row_expense.total) }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="font-weight:bold; background:#ecf0f1;">
+          <td>合計</td>
+          <td class="amt pos">{{ "{:,}".format(income_by_month.values()|sum) }}</td>
+          {% for cat in cats %}
+            {% set col_total = namespace(v=0) %}
+            {% for ym in month_list %}
+              {% set col_total.v = col_total.v + (data[ym][cat] if ym in data and cat in data[ym] else 0) %}
+            {% endfor %}
+            <td class="amt neg">{{ "{:,}".format(col_total.v) }}</td>
+          {% endfor %}
+          <td class="amt neg">—</td>
+          <td class="amt">—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+<script>
+const datasets = {{ chart_datasets | tojson }};
+const labels   = {{ chart_labels | tojson }};
+
+new Chart(document.getElementById('stackChart'), {
+  type: 'bar',
+  data: { labels, datasets },
+  options: {
+    plugins: { legend: { position: 'bottom' } },
+    scales: {
+      x: { stacked: true },
+      y: { stacked: true, ticks: { callback: v => v.toLocaleString() } }
+    }
+  }
+});
+</script>
+{% endblock %}

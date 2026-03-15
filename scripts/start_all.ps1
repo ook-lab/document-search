@@ -25,7 +25,8 @@ $services = @(
     @{ Name = "doc-review";         Path = "services/doc-review/app.py";                    Port = 5002 },
     @{ Name = "calendar-register";  Path = "services/calendar-register/app.py";             Port = 5003 },
     @{ Name = "data-ingestion";     Path = "services/data-ingestion/app.py";               Port = 5004 },
-    @{ Name = "doc-processor";      Path = "services/doc-processor/app.py";                 Port = 8080 }
+    @{ Name = "doc-processor";      Path = "services/doc-processor/app.py";                 Port = 8080 },
+    @{ Name = "kakeibo-view";       Path = "services/kakeibo_view/app.py";                  Port = 5005 }
 )
 
 # netsuper-search は Streamlit アプリ
@@ -71,6 +72,7 @@ Write-Host "  - Calendar Register:  http://localhost:5003" -ForegroundColor Gray
 Write-Host "  - Data Ingestion UI:  http://localhost:5004" -ForegroundColor Gray
 Write-Host "  - Doc Processor:      http://localhost:8080" -ForegroundColor Gray
 Write-Host "  - Netsuper Search:    http://localhost:8501" -ForegroundColor Gray
+Write-Host "  - Kakeibo View:       http://localhost:5005" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Press any key to exit this launcher (services will continue running)..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
