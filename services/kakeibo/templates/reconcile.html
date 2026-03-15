@@ -502,8 +502,13 @@
 
     // 合算実行
     async function executeMerge(side) {
-        if (!confirm('選択した明細を合算して1行にします。元の明細は除外されます。')) return;
-        const payload = { ids: Array.from(selection[side]) };
+        const ids = Array.from(selection[side]);
+        // 金額の絶対値が最大のアイテムの商品名をデフォルトに
+        const selectedItems = allData.filter(t => ids.includes(t.id));
+        const mainItem = selectedItems.reduce((a, b) => Math.abs(a.amount) >= Math.abs(b.amount) ? a : b);
+        const contentName = prompt('合算後の商品名:', mainItem.content);
+        if (contentName === null) return; // キャンセル
+        const payload = { ids, content: contentName };
         await postAPI('/api/merge_execute', payload);
     }
 

@@ -1056,6 +1056,7 @@ def merge_execute():
     """
     data = request.json
     target_ids = data.get('ids', [])
+    content_override = data.get('content')  # 商品名を引き継ぐ場合に指定
 
     if len(target_ids) < 2:
         return jsonify({"status": "error", "message": "合算するには2つ以上の明細を選択してください"}), 400
@@ -1072,9 +1073,14 @@ def merge_execute():
     # 2. 新しい「合算行」のデータを作成
     total_amount = sum(r['amount'] for r in rows)
     base_date = min(r['date'] for r in rows)
-    combined_content = " + ".join([r['content'] for r in rows])
-    if len(combined_content) > 50:
-        combined_content = combined_content[:50] + "..."
+
+    if content_override:
+        new_content = content_override
+    else:
+        combined_content = " + ".join([r['content'] for r in rows])
+        if len(combined_content) > 50:
+            combined_content = combined_content[:50] + "..."
+        new_content = f"【合算】{combined_content}"
 
     institutions = list(set(r['institution'] for r in rows if r.get('institution')))
     new_institution = institutions[0] if len(institutions) == 1 else "合算データ"
@@ -1084,7 +1090,7 @@ def merge_execute():
     new_record = {
         "id": new_id,
         "date": base_date,
-        "content": f"【合算】{combined_content}",
+        "content": new_content,
         "amount": total_amount,
         "institution": new_institution,
         "category_major": "未分類",
