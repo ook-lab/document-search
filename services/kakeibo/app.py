@@ -451,10 +451,10 @@ def reconcile_page():
     for r in raw_data:
         is_ex = r['id'] in excluded_ids
         
-        # 自動除外ルールをチェック（手動設定がない場合のみ自動ルールを適用）
+        # 自動ルールをチェック（手動設定がない場合のみ自動ルールを適用）
         if r['id'] not in manual_ids:
-            auto_ex, _ = check_auto_exclude(r.get('content', ''), r.get('institution', ''), auto_exclude_rules)
-            if auto_ex:
+            auto_action, _ = check_auto_target(r.get('content', ''), r.get('institution', ''), auto_exclude_rules)
+            if auto_action == 'CASH_ONLY':
                 is_ex = True
 
         # 除外済み かつ 「消込済みを表示」がオフの場合はスキップ
@@ -501,6 +501,14 @@ def cash_calc():
     if ids:
         m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
         manual_map = {m['transaction_id']: m for m in m_res.data}
+
+    # 表示先ルールを取得
+    auto_exclude_rules = []
+    try:
+        rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
+        auto_exclude_rules = rules_res.data
+    except Exception as e:
+        print(f"[CASH_CALC] Rules fetch error: {e}")
     
     # カテゴリ集計・計算
     income_list = []
@@ -854,9 +862,9 @@ def export_data():
         is_excluded = m.get("is_excluded", False)
         view_target = m.get("view_target")
 
-        # 自動除外チェック
-        auto_excluded, _ = check_auto_exclude(t.get('content', ''), t.get('institution', ''), auto_exclude_rules)
-        if auto_excluded and not m:
+        # 自動ルールチェック
+        auto_action, _ = check_auto_target(t.get('content', ''), t.get('institution', ''), auto_exclude_rules)
+        if auto_action == 'CASH_ONLY' and not m:
             is_excluded = True
 
         if is_excluded and not show_excluded:
