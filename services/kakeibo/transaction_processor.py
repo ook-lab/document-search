@@ -282,6 +282,7 @@ class TransactionProcessor:
             "drive_file_id": drive_file_id,
             "receipt_id":    receipt_id,
             "status":        "success",
+            "owner_id":      DEFAULT_OWNER_ID,
         }
         if model_name: data["ocr_model"] = model_name
         res = self.db.table("99_lg_image_proc_log").insert(data).execute()
@@ -293,7 +294,7 @@ class TransactionProcessor:
             "drive_file_id": drive_file_id,
             "status":        "failed",
             "error_message": error_info.get("message", error_info.get("error")),
-            # "owner_id":      DEFAULT_OWNER_ID,  # Stale schema cache
+            "owner_id":      DEFAULT_OWNER_ID,
         }
         if model_name:  data["ocr_model"]  = model_name
         if receipt_id:  data["receipt_id"] = receipt_id
@@ -373,7 +374,7 @@ class TransactionProcessor:
             "calculated_matches_actual":  matches,
             "tax_8_diff":                 calc_8  - act_8,
             "tax_10_diff":                calc_10 - act_10,
-            # "owner_id":                   DEFAULT_OWNER_ID,  # Stale schema cache
+            "owner_id":                   DEFAULT_OWNER_ID,
         }
         url = f"{SUPABASE_URL}/rest/v1/60_ag_receipt_summary"
         with httpx.Client() as client:
