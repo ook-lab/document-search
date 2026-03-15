@@ -250,7 +250,7 @@ class TransactionProcessor:
             "quantity":      quantity,
             "marks_text":    marks_text,
             "discount_text": discount_text,
-            # "owner_id":      DEFAULT_OWNER_ID,  # Stale schema cache
+            "owner_id":      DEFAULT_OWNER_ID,
         }
         if normalized:
             base_price     = normalized.get("base_price")
