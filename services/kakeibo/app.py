@@ -52,30 +52,19 @@ def get_receipt_image_base64(drive_file_id: str) -> str:
         return None
 
 
-def is_liquid_account(institution):
-    """銀行やウォレットなどの『残高』系アカウントか判定（現金計算用）"""
-    if not institution: return False
-    # 銀行、金庫、信託、ゆうちょ、PayPay銀行、楽天銀行、住信SBI...
-    keywords = ["銀行", "金庫", "信託", "組合", "セブン", "ゆうちょ", "ｲｵﾝ", "PayPay", "住信", "楽天", "三菱", "三井", "みずほ", "りそな", "ソニー", "SBI"]
-    return any(k in institution for k in keywords) and not "カード" in institution
-
-def is_usage_source(institution):
-    """クレジットカードやレシートなどの『使途』系アカウントか判定（明細一覧用）"""
-    if not institution: return True # レシートなどはこっち
-    if "カード" in institution or "Amazon" in institution or "Card" in institution:
-        return True
-    return False
-
-def check_auto_exclude(content, institution, rules):
-    """自動除外ルールにマッチするかチェック（content + institution の組み合わせ）"""
+def check_auto_target(content, institution, rules):
+    """ルールシートにマッチするかチェックし、アクション（CASH_ONLY/BOTH）を返す"""
     content = content or ""
     institution = institution or ""
     for rule in rules:
         content_pattern = rule.get('content_pattern') or ""
         institution_pattern = rule.get('institution_pattern') or ""
         if content_pattern in content and institution_pattern in institution:
-            return True, rule.get('rule_name', '自動除外')
-    return False, None
+            action = rule.get('note')
+            if action not in ['BOTH', 'CASH_ONLY']:
+                action = 'CASH_ONLY'  # 下位互換
+            return action, rule.get('rule_name', '自動ルール')
+    return None, None
 
 
 def match_category_rule(content, rules):
@@ -176,14 +165,19 @@ def index():
         is_excluded = m.get("is_excluded", False)
         view_target = m.get("view_target")  # 'loan', 'list', or None
 
-        # 自動除外ルールをチェック（手動で除外設定されていない場合のみ）
-        auto_excluded, auto_rule = check_auto_exclude(
+        # 自動表示先ルールをチェック（手動で設定されていない場合のみ）
+        auto_action, auto_rule = check_auto_target(
             t.get('content', ''),
             t.get('institution', ''),
             auto_exclude_rules
         )
-        if auto_excluded and not m:
-            is_excluded = True
+        
+        if not m:
+            if auto_action == 'CASH_ONLY':
+                is_excluded = True
+        else:
+            if view_target == 'CASH_ONLY':
+                is_excluded = True
 
         # 分類ルールから自動提案（手動設定がない場合のみ）
         has_manual_category = m.get("category_major") or m.get("category_mid")
@@ -217,7 +211,7 @@ def index():
             "cat_person": m.get("category_person", "") or (suggested.get('cat_person', '') if suggested else ''),
             "cat_context": m.get("category_context", "") or (suggested.get('cat_context', '') if suggested else ''),
             "is_excluded": is_excluded,
-            "is_auto_excluded": auto_excluded and not m,
+            "is_auto_excluded": (auto_action == 'CASH_ONLY' and not m),
             "auto_exclude_rule": auto_rule,
             "is_suggested": suggested is not None and not has_manual_category,
             "suggested_rule": suggested.get('rule_pattern') if suggested else None,
@@ -517,32 +511,36 @@ def cash_calc():
         m = manual_map.get(t['id'], {})
         institution = t.get('institution')
         
-        # 【現金計算の核】
-        # 1. 銀行口座（Liquid）のみを対象とする
-        if not is_liquid_account(institution):
+        # 【現金計算の集計ルール】
+        # ルールの指定、または手動での指定が無い場合は、現金計算に出ないのが基本。
+        
+        is_cash_target = False
+        
+        # 1. 自動ルールによる判定
+        auto_action, _ = check_auto_target(t.get('content', ''), t.get('institution', ''), auto_exclude_rules)
+        if auto_action in ['CASH_ONLY', 'BOTH']:
+            is_cash_target = True
+
+        # 2. 手動設定による上書き
+        if m:
+            vt = m.get('view_target')
+            # BANK_OUTFLOW: 消込ツールで口座出金として登録された（カード引落・ATM引出）
+            # BOTH: 手動で「両方表示」指定
+            # CASH_ONLY: 手動で「現金のみ表示」指定
+            if vt in ['BANK_OUTFLOW', 'BOTH', 'CASH_ONLY']:
+                is_cash_target = True
+            elif vt in ['INTERNAL_TRANSFER', 'LIST_ONLY']:
+                is_cash_target = False
+
+        if not is_cash_target:
             continue
-            
-        # 2. 除外設定の扱い
-        if m.get('is_excluded'):
-            # 「銀行間振替」として消し込んだものは除外（合計が0になるため）
-            if m.get('view_target') == 'INTERNAL_TRANSFER':
-                continue
-            # 「カード支払い」や「ATM現金引出」として消し込んだものは表示（銀行からの出金をカウントしたいため）
-            elif m.get('view_target') in ['CARD_PAYMENT', 'CASH_WITHDRAWAL', 'CASH_CALC_ONLY']:
-                # この場合は表示し続ける
-                pass
-            else:
-                # その他、手動で除外したものは非表示
-                continue
             
         amount = t['amount']
         category = m.get('category_major') or "未分類"
         
-        # 資金移動（カード払い等）の場合はカテゴリを調整
-        if m.get('view_target') == 'CARD_PAYMENT':
-            category = "カード引落"
-        elif m.get('view_target') == 'CASH_WITHDRAWAL':
-            category = "現金引出"
+        # 消込ツールで登録された場合はカテゴリ名を自動調整
+        if m.get('view_target') == 'BANK_OUTFLOW':
+            category = "銀行出金（消込済）"
         
         # 集計データ構築
         display_item = {
@@ -600,38 +598,30 @@ def reconcile_execute():
     res = db.table("Rawdata_BANK_transactions").select("id, institution").in_("id", all_target_ids).execute()
     records = {r['id']: r for r in res.data}
 
-    def has_liquid(ids):
-        return any(is_liquid_account(records.get(tid, {}).get('institution')) for tid in ids)
+    def is_bank(ids):
+        keywords = ["銀行", "金庫", "信託", "組合", "ゆうちょ"]
+        return any(any(k in records.get(tid, {}).get('institution', '') for k in keywords) for tid in ids)
 
-    def is_cash(ids):
-        return any("現金" in records.get(tid, {}).get('institution', '') for tid in ids)
+    is_left_bank = is_bank(remove_ids)
+    is_right_bank = is_bank(keep_ids)
 
-    is_left_liquid = has_liquid(remove_ids)
-    is_right_liquid = has_liquid(keep_ids)
-    is_left_cash = is_cash(remove_ids)
-    is_right_cash = is_cash(keep_ids)
-
+    # 消込タイプの判定
+    # - 銀行 ↔ 銀行 → INTERNAL_TRANSFER（プラマイ相殺、現金計算には乗らない）
+    # - 銀行 ↔ その他（カード・現金等）→ BANK_OUTFLOW（口座からの出金として現金計算に残す）
     reconcile_type = "UNKNOWN"
-    # 銀行 -> 銀行 は内部振替（現金残高は減らない）
-    if is_left_liquid and is_right_liquid:
+    if is_left_bank and is_right_bank:
         reconcile_type = "INTERNAL_TRANSFER"
-    # 銀行 -> 現金（ATM引出）は、現金計算上は支出とする（レシートで追うため現金自体は口座外管理）
-    elif (is_left_liquid and is_right_cash) or (is_right_liquid and is_left_cash):
-        reconcile_type = "CASH_WITHDRAWAL"
-    # 銀行 -> カード等
-    elif is_left_liquid or is_right_liquid:
-        reconcile_type = "CARD_PAYMENT"
+    elif is_left_bank or is_right_bank:
+        reconcile_type = "BANK_OUTFLOW"  # カード引落・ATM出金、両方とも「口座からの出金」
 
-    # 左側は常に除外
     for tx_id in remove_ids:
         updates.append({
             "transaction_id": tx_id,
             "is_excluded": True,
             "note": f"消込:{reconcile_type}(左)",
-            "view_target": reconcile_type # 追加情報をここに忍ばせる
+            "view_target": reconcile_type
         })
 
-    # 振替モードの場合のみ、右側も除外する
     if mode == 'transfer':
         for tx_id in keep_ids:
             updates.append({
@@ -661,14 +651,15 @@ def reconcile_execute():
     return jsonify({"status": "success", "count": len(updates)})
 
 
-@app.route('/api/add_auto_exclude_rule', methods=['POST'])
-def add_auto_exclude_rule():
-    """自動除外ルール（明細非表示・現金計算表示）を追加"""
+@app.route('/api/add_target_rule', methods=['POST'])
+def add_target_rule():
+    """ルールシートにルール（現金のみ・両方に表示）を追加"""
     data = request.json
     payload = {
         "rule_name": data.get('rule_name', 'UIからの登録'),
         "content_pattern": data.get('content_pattern', ''),
         "institution_pattern": data.get('institution_pattern', ''),
+        "note": data.get('action', 'CASH_ONLY'), # CASH_ONLY or BOTH
         "is_active": True
     }
 
@@ -679,6 +670,42 @@ def add_auto_exclude_rule():
         return jsonify({"status": "error", "message": str(res.error)}), 500
 
     return jsonify({"status": "success"})
+
+
+@app.route('/rules_settings')
+def rules_settings():
+    """ルール一覧と管理画面"""
+    db = get_db()
+    # 表示先ルール（Kakeibo_Auto_Exclude_Rules）
+    auto_rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
+    auto_rules = auto_rules_res.data
+    
+    # 分類ルール（Kakeibo_Category_Rules）
+    cat_rules_res = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
+    category_rules = cat_rules_res.data
+
+    return render_template(
+        'rules.html',
+        auto_rules=auto_rules,
+        category_rules=category_rules
+    )
+
+
+@app.route('/api/delete_rule', methods=['POST'])
+def delete_rule():
+    """ルールの論理削除（is_active = False）"""
+    data = request.json
+    rule_type = data.get('type')
+    rule_id = data.get('id')
+    
+    table_name = "Kakeibo_Auto_Exclude_Rules" if rule_type == 'target' else "Kakeibo_Category_Rules"
+    
+    try:
+        db = get_db()
+        db.table(table_name).update({"is_active": False}).eq("id", rule_id).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/api/create_transaction', methods=['POST'])
