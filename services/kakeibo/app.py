@@ -396,6 +396,7 @@ def reconcile_page():
     db = get_db()
     
     show_excluded = request.args.get('show_excluded', 'false') == 'true'
+    show_hidden   = request.args.get('show_hidden',   'false') == 'true'
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
 
@@ -416,6 +417,8 @@ def reconcile_page():
     ids = [r['id'] for r in raw_data]
     excluded_ids = set()
     manual_ids = set()
+    note_map = {}    # transaction_id → clean note
+    hidden_ids = set()
     if ids:
         try:
             # 1000件のIDを一度にURLフィルタに入れると制限（URL長）に抵触するため、分割して取得
@@ -433,9 +436,14 @@ def reconcile_page():
                         excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('is_excluded')})
                         excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('view_target') == 'CASH_ONLY'})
                         manual_ids.update({m['transaction_id'] for m in manual_data})
+                        for m in manual_data:
+                            raw_note = m.get('note', '') or ''
+                            if '|hidden' in raw_note:
+                                hidden_ids.add(m['transaction_id'])
+                            note_map[m['transaction_id']] = raw_note.replace('|hidden', '')
                     else:
                         print(f"[RECONCILE] Error fetching chunk {i}: {resp.status_code} {resp.text}")
-            print(f"[RECONCILE] Total IDs: {len(ids)}, Total Excluded: {len(excluded_ids)}, show_excluded: {show_excluded}")
+            print(f"[RECONCILE] Total IDs: {len(ids)}, Excluded: {len(excluded_ids)}, Hidden: {len(hidden_ids)}, show_excluded: {show_excluded}")
         except Exception as e:
             print(f"Manual Edits取得エラー: {e}")
 
@@ -458,19 +466,29 @@ def reconcile_page():
             if auto_action == 'CASH_ONLY':
                 is_ex = True
 
+        raw_note = note_map.get(r['id'], '')
+        is_hidden = r['id'] in hidden_ids
+
         # 除外済み かつ 「消込済みを表示」がオフの場合はスキップ
         if is_ex and not show_excluded:
             continue
-        
+
+        # 非表示 かつ 「非表示を表示」がオフの場合はスキップ
+        if is_hidden and not show_hidden:
+            continue
+
         candidates.append({
             **r,
-            'is_excluded': is_ex
+            'is_excluded': is_ex,
+            'note': raw_note,
+            'is_hidden': is_hidden,
         })
 
     return render_template(
-        'reconcile.html', 
+        'reconcile.html',
         transactions=candidates,
         show_excluded=show_excluded,
+        show_hidden=show_hidden,
         start_date=start_date,
         end_date=end_date
     )
@@ -625,11 +643,13 @@ def reconcile_execute():
     elif is_left_bank or is_right_bank:
         reconcile_type = "BANK_OUTFLOW"  # カード引落・ATM出金、両方とも「口座からの出金」
 
+    mode_tag = "T" if mode == 'transfer' else "S"
+
     for tx_id in remove_ids:
         updates.append({
             "transaction_id": tx_id,
             "is_excluded": True,
-            "note": f"消込:{reconcile_type}(左)",
+            "note": f"消込:{reconcile_type}:{mode_tag}(左)",
             "view_target": reconcile_type
         })
 
@@ -638,7 +658,7 @@ def reconcile_execute():
             updates.append({
                 "transaction_id": tx_id,
                 "is_excluded": True,
-                "note": f"消込:{reconcile_type}(右)",
+                "note": f"消込:{reconcile_type}:T(右)",
                 "view_target": reconcile_type
             })
 
@@ -650,11 +670,18 @@ def reconcile_execute():
         "Content-Type": "application/json",
         "Prefer": "return=minimal, resolution=merge-duplicates"
     }
-    
+
     try:
         with httpx.Client() as client:
             resp = client.post(url, headers=headers, json=updates)
             resp.raise_for_status()
+
+            # same_amount の右側（残存）に識別マークを付与（is_excluded は変えない）
+            if mode == 'same_amount' and keep_ids:
+                keep_marks = [{"transaction_id": tid, "note": f"消込:{reconcile_type}:S(右)"} for tid in keep_ids]
+                resp2 = client.post(url, headers=headers, json=keep_marks)
+                resp2.raise_for_status()
+
     except Exception as e:
         print(f"[reconcile_execute] Upsert error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -788,6 +815,40 @@ def delete_transaction():
     try:
         with httpx.Client() as client:
             resp = client.delete(url, headers=headers)
+            resp.raise_for_status()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/reconcile_hide', methods=['POST'])
+def reconcile_hide():
+    """消込ツール上の非表示切り替え（note に |hidden を付加/除去）。金額計算に影響しない。"""
+    data = request.json
+    tx_id = data.get('id')
+    hide = data.get('hide', True)
+
+    if not tx_id:
+        return jsonify({"status": "error", "message": "id required"}), 400
+
+    db = get_db()
+    res = db.table("Kakeibo_Manual_Edits").select("note").eq("transaction_id", tx_id).execute()
+    existing_note = (res.data[0].get('note', '') or '') if res.data else ''
+
+    clean_note = existing_note.replace('|hidden', '')
+    new_note = clean_note + '|hidden' if hide else clean_note
+
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    try:
+        with httpx.Client() as client:
+            resp = client.post(url, headers=headers, json=[{"transaction_id": tx_id, "note": new_note}])
             resp.raise_for_status()
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
