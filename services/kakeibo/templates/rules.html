@@ -138,7 +138,7 @@
         <div class="section">
             <h2>分類ルール（カテゴリの自動付与）</h2>
             <p class="desc">
-                内容パターンに一致した明細に、カテゴリが自動的に付与されます。
+                内容パターンに一致した明細に、カテゴリが自動的に付与されます。同じパターンで登録すると上書き更新されます。
             </p>
 
             <table>
@@ -168,7 +168,8 @@
                         <td>{{ r.category_person or '' }}</td>
                         <td>{{ r.category_context or '' }}</td>
                         <td style="font-size:12px; color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
-                        <td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-secondary" style="margin-right:4px;" onclick="editCategoryRule({{ r | tojson }})">編集</button>
                             <button class="btn btn-delete" onclick="deleteRule('category', '{{ r.id }}')">削除</button>
                         </td>
                     </tr>
@@ -177,6 +178,54 @@
                     {% endfor %}
                 </tbody>
             </table>
+
+            <!-- 分類ルール追加・編集フォーム -->
+            <div class="form-collapse" id="cat-form-collapse">
+                <div class="form-header" onclick="toggleForm('cat-form-body')">
+                    <span id="cat-form-title">＋ 新しい分類ルールを追加</span>
+                    <span id="cat-form-arrow">▼</span>
+                </div>
+                <div class="form-body" id="cat-form-body">
+                    <div class="form-grid">
+                        <div class="form-group form-full">
+                            <label>内容パターン（部分一致）<span style="color:#dc3545;">*</span></label>
+                            <input type="text" id="cr-pattern" placeholder="例: アマゾン">
+                        </div>
+                        <div class="form-group">
+                            <label>大分類</label>
+                            <input type="text" id="cr-major" placeholder="例: 買い物">
+                        </div>
+                        <div class="form-group">
+                            <label>中分類</label>
+                            <input type="text" id="cr-mid" placeholder="例: 日用品">
+                        </div>
+                        <div class="form-group">
+                            <label>小分類</label>
+                            <input type="text" id="cr-small" placeholder="例: 消耗品">
+                        </div>
+                        <div class="form-group">
+                            <label>店</label>
+                            <input type="text" id="cr-shop" placeholder="例: Amazon">
+                        </div>
+                        <div class="form-group">
+                            <label>所属</label>
+                            <input type="text" id="cr-belonging" placeholder="例: 家庭">
+                        </div>
+                        <div class="form-group">
+                            <label>人</label>
+                            <input type="text" id="cr-person" placeholder="例: 共通">
+                        </div>
+                        <div class="form-group form-full">
+                            <label>文脈</label>
+                            <input type="text" id="cr-context" placeholder="例: 定期購入">
+                        </div>
+                    </div>
+                    <div class="action-row">
+                        <button class="btn btn-secondary" onclick="resetCatForm()">キャンセル</button>
+                        <button class="btn btn-add" onclick="saveCategoryRule()">保存</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -200,6 +249,60 @@
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ rule_name: name, action: action, content_pattern: content, institution_pattern: institution })
+                });
+                const json = await res.json();
+                if (json.status === 'success') {
+                    location.reload();
+                } else {
+                    alert('登録失敗: ' + json.message);
+                }
+            } catch (e) {
+                alert('通信エラー: ' + e);
+            }
+        }
+
+        function editCategoryRule(r) {
+            document.getElementById('cr-pattern').value   = r.content_pattern || '';
+            document.getElementById('cr-major').value     = r.category_major || '';
+            document.getElementById('cr-mid').value       = r.category_mid || '';
+            document.getElementById('cr-small').value     = r.category_small || '';
+            document.getElementById('cr-shop').value      = r.category_shop || '';
+            document.getElementById('cr-belonging').value = r.category_belonging || '';
+            document.getElementById('cr-person').value    = r.category_person || '';
+            document.getElementById('cr-context').value   = r.category_context || '';
+            document.getElementById('cat-form-title').textContent = '✏️ 分類ルールを編集';
+            const body = document.getElementById('cat-form-body');
+            if (!body.classList.contains('open')) body.classList.add('open');
+            body.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function resetCatForm() {
+            ['cr-pattern','cr-major','cr-mid','cr-small','cr-shop','cr-belonging','cr-person','cr-context']
+                .forEach(id => document.getElementById(id).value = '');
+            document.getElementById('cat-form-title').textContent = '＋ 新しい分類ルールを追加';
+            document.getElementById('cat-form-body').classList.remove('open');
+        }
+
+        async function saveCategoryRule() {
+            const pattern = document.getElementById('cr-pattern').value.trim();
+            if (!pattern) { alert('内容パターンを入力してください'); return; }
+
+            const payload = {
+                pattern,
+                cat_major:     document.getElementById('cr-major').value.trim(),
+                cat_mid:       document.getElementById('cr-mid').value.trim(),
+                cat_small:     document.getElementById('cr-small').value.trim(),
+                cat_shop:      document.getElementById('cr-shop').value.trim(),
+                cat_belonging: document.getElementById('cr-belonging').value.trim(),
+                cat_person:    document.getElementById('cr-person').value.trim(),
+                cat_context:   document.getElementById('cr-context').value.trim(),
+            };
+
+            try {
+                const res = await fetch('/api/register_rule', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
                 });
                 const json = await res.json();
                 if (json.status === 'success') {
