@@ -1349,42 +1349,41 @@ def receipt_detail(receipt_id):
     linked_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").execute()
     linked_tx_ids = {l['transaction_id'] for l in linked_res.data if l.get('transaction_id')}
 
-    try:
-        # 日付フィルタが指定されている場合はその日付のみ取得
-        if filter_date:
-            cand_res = db.table("Rawdata_BANK_transactions").select("*") \
-                .eq("date", filter_date).execute()
-            candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
-            # レシート金額に近い順でソート
-            if receipt and receipt.get("total_amount_check"):
-                receipt_total = abs(receipt.get("total_amount_check", 0))
-                candidates = sorted(candidates, key=lambda x: abs(abs(x.get('amount', 0)) - receipt_total))
-        elif receipt and receipt.get("transaction_date"):
-            tx_date = receipt["transaction_date"]
-            receipt_date_str = tx_date[:10] if len(str(tx_date)) > 10 else str(tx_date)
-            # レシート日付の前後60日間の取引を候補として取得
-            base_date = datetime.strptime(receipt_date_str, "%Y-%m-%d")
-            start_date = (base_date - timedelta(days=60)).strftime("%Y-%m-%d")
-            end_date = (base_date + timedelta(days=60)).strftime("%Y-%m-%d")
+    # 日付フィルタが指定されている場合はその日付のみ取得
+    if filter_date:
+        cand_res = db.table("Rawdata_BANK_transactions").select("*") \
+            .eq("date", filter_date).execute()
+        candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
+        # レシート金額に近い順でソート
+        if receipt and receipt.get("total_amount_check"):
+            receipt_total = abs(receipt.get("total_amount_check", 0))
+            candidates = sorted(candidates, key=lambda x: abs(abs(x.get('amount', 0)) - receipt_total))
+    elif receipt and receipt.get("transaction_date"):
+        tx_date = receipt["transaction_date"]
+        receipt_date_str = tx_date[:10] if len(str(tx_date)) > 10 else str(tx_date)
+        # レシート日付の前後60日間の取引を候補として取得
+        base_date = datetime.strptime(receipt_date_str, "%Y-%m-%d")
+        start_date = (base_date - timedelta(days=60)).strftime("%Y-%m-%d")
+        end_date = (base_date + timedelta(days=60)).strftime("%Y-%m-%d")
 
-            cand_res = db.table("Rawdata_BANK_transactions").select("*") \
-                .gte("date", start_date).lte("date", end_date) \
-                .order("date", desc=True).limit(500).execute()
-            candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
+        cand_res = db.table("Rawdata_BANK_transactions").select("*") \
+            .gte("date", start_date).lte("date", end_date) \
+            .order("date", desc=True).limit(500).execute()
+        candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
 
-            # 日付同日を優先し、同日内は金額近い順でソート
-            def sort_key(x):
-                x_date = str(x.get('date', ''))[:10]
-                is_same_day = 0 if x_date == receipt_date_str else 1
-                receipt_total = abs(receipt.get("total_amount_check", 0)) if receipt else 0
-                amount_diff = abs(abs(x.get('amount', 0)) - receipt_total)
-                return (is_same_day, amount_diff)
-            candidates = sorted(candidates, key=sort_key)[:100]
-        else:
-            # 日付がない場合は最新100件
-            cand_res = db.table("Rawdata_BANK_transactions").select("*") \
-                .order("date", desc=True).limit(100).execute()
-            candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
+        # 日付同日を優先し、同日内は金額近い順でソート
+        def sort_key(x):
+            x_date = str(x.get('date', ''))[:10]
+            is_same_day = 0 if x_date == receipt_date_str else 1
+            receipt_total = abs(receipt.get("total_amount_check", 0)) if receipt else 0
+            amount_diff = abs(abs(x.get('amount', 0)) - receipt_total)
+            return (is_same_day, amount_diff)
+        candidates = sorted(candidates, key=sort_key)[:100]
+    else:
+        # 日付がない場合は最新100件
+        cand_res = db.table("Rawdata_BANK_transactions").select("*") \
+            .order("date", desc=True).limit(100).execute()
+        candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
 
     # 商品名ルールを取得
     pn_rules_res = db.table("Kakeibo_Product_Name_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
