@@ -328,16 +328,32 @@ class TransactionProcessor:
         total_10 = sum((i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items_10)
         needs_review = False
 
+        tax_type = (tax_summary or {}).get("tax_type", "内税")
+        is_exclusive = (tax_type == "外税")  # 外税=税抜価格表示、内税=税込価格表示
+
         if tax_summary:
-            r8  = (tax_summary.get("tax_8_subtotal", 0) or 0) + (tax_summary.get("tax_8_amount", 0) or 0)
-            r10 = (tax_summary.get("tax_10_subtotal", 0) or 0) + (tax_summary.get("tax_10_amount", 0) or 0)
+            sub8  = (tax_summary.get("tax_8_subtotal",  0) or 0)
+            tax8  = (tax_summary.get("tax_8_amount",    0) or 0)
+            sub10 = (tax_summary.get("tax_10_subtotal", 0) or 0)
+            tax10 = (tax_summary.get("tax_10_amount",   0) or 0)
+            # 外税: レシート記載の合計は税抜小計+税額、内税: 税込小計+税額で税込合計
+            r8  = sub8  + tax8  if not is_exclusive else sub8
+            r10 = sub10 + tax10 if not is_exclusive else sub10
             if abs(total_8  - r8)  > 5: needs_review = True
             if abs(total_10 - r10) > 5: needs_review = True
-            if r8  > 0: total_8  = r8
-            if r10 > 0: total_10 = r10
+            # 外税の場合は税額を直接使用（レシート記載値が正確）
+            if is_exclusive:
+                if tax8  > 0: return self._distribute_from_known_tax(normalized_items, items_8,  tax8,  items_10, tax10,  needs_review)
+            else:
+                if r8  > 0: total_8  = r8
+                if r10 > 0: total_10 = r10
 
-        tax_8_total  = round(total_8  * 8  / 108) if total_8  > 0 else 0
-        tax_10_total = round(total_10 * 10 / 110) if total_10 > 0 else 0
+        if is_exclusive:
+            tax_8_total  = round(total_8  * 8  / 100) if total_8  > 0 else 0
+            tax_10_total = round(total_10 * 10 / 100) if total_10 > 0 else 0
+        else:
+            tax_8_total  = round(total_8  * 8  / 108) if total_8  > 0 else 0
+            tax_10_total = round(total_10 * 10 / 110) if total_10 > 0 else 0
 
         self._distribute_tax(items_8,  tax_8_total)
         self._distribute_tax(items_10, tax_10_total)
@@ -347,6 +363,15 @@ class TransactionProcessor:
                 item["needs_review"] = True
 
         return normalized_items
+
+    def _distribute_from_known_tax(self, all_items, items_8, tax8, items_10, tax10, needs_review):
+        """外税でレシートに税額が明記されている場合、その値を直接按分する"""
+        self._distribute_tax(items_8,  int(tax8))
+        self._distribute_tax(items_10, int(tax10))
+        if needs_review:
+            for item in all_items:
+                item["needs_review"] = True
+        return all_items
 
     def _distribute_tax(self, items: List[Dict], total_tax: int):
         if not items or total_tax == 0:

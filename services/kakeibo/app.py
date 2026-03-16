@@ -1792,13 +1792,19 @@ def import_receipts():
                                 if "line_text" not in item and "product_name" in item:
                                     item["line_text"] = item["product_name"]
 
-                        # amounts から合計金額を取得
+                        # amounts から tax_summary と合計金額を組み立て
                         if "amounts" in ocr_result:
                             amounts = ocr_result["amounts"]
-                            ocr_result["subtotal_amount"] = amounts.get("subtotal")
-                            ocr_result["tax_8_amount"] = amounts.get("tax_8_amount")
-                            ocr_result["tax_10_amount"] = amounts.get("tax_10_amount")
+                            ocr_result["subtotal_amount"]    = amounts.get("subtotal")
                             ocr_result["total_amount_check"] = amounts.get("total")
+                            ocr_result["tax_summary"] = {
+                                "tax_8_subtotal":  amounts.get("tax_8_base"),
+                                "tax_8_amount":    amounts.get("tax_8_amount"),
+                                "tax_10_subtotal": amounts.get("tax_10_base"),
+                                "tax_10_amount":   amounts.get("tax_10_amount"),
+                                "total_amount":    amounts.get("total"),
+                                "tax_type":        amounts.get("tax_type", "内税"),
+                            }
 
                         # TransactionProcessor で処理
                         result = processor.process(
