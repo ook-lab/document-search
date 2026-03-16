@@ -294,7 +294,7 @@ class TransactionProcessor:
             "owner_id":      DEFAULT_OWNER_ID,
         }
         if model_name: data["ocr_model"] = model_name
-        res = self.db.table("99_lg_image_proc_log").insert(data).execute()
+        res = self.db.table("99_lg_image_proc_log").upsert(data, on_conflict="file_name").execute()
         return res.data[0]["id"] if res.data else "unknown"
 
     def _log_error(self, file_name, drive_file_id, error_info, model_name=None, receipt_id=None):
