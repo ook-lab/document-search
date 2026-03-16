@@ -1465,10 +1465,13 @@ def receipt_detail(receipt_id):
     calc_tax_10 = sum(i.get("tax_amount") or 0 for i in display_items if i.get("tax_rate") == 10)
 
     # レシートから読み取った値（OCR値）
-    ocr_total = receipt.get("total_amount_check") if receipt else None
-    ocr_subtotal = receipt.get("subtotal_amount") if receipt else None
-    ocr_tax_8 = receipt.get("tax_8_amount") if receipt else None
-    ocr_tax_10 = receipt.get("tax_10_amount") if receipt else None
+    ocr_total        = receipt.get("total_amount_check") if receipt else None
+    ocr_subtotal     = receipt.get("subtotal_amount")    if receipt else None
+    ocr_tax_8        = receipt.get("tax_8_amount")       if receipt else None
+    ocr_tax_10       = receipt.get("tax_10_amount")      if receipt else None
+    ocr_tax_8_base   = receipt.get("tax_8_subtotal")     if receipt else None
+    ocr_tax_10_base  = receipt.get("tax_10_subtotal")    if receipt else None
+    tax_type         = receipt.get("tax_type", "内税")   if receipt else "内税"
 
     return render_template(
         'receipt_detail.html',
@@ -1488,7 +1491,10 @@ def receipt_detail(receipt_id):
         ocr_total=ocr_total,
         ocr_subtotal=ocr_subtotal,
         ocr_tax_8=ocr_tax_8,
-        ocr_tax_10=ocr_tax_10
+        ocr_tax_10=ocr_tax_10,
+        ocr_tax_8_base=ocr_tax_8_base,
+        ocr_tax_10_base=ocr_tax_10_base,
+        tax_type=tax_type,
     )
 
 

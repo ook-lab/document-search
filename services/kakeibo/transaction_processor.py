@@ -220,14 +220,18 @@ class TransactionProcessor:
             item.get("total_amount") or item.get("amount") or item.get("displayed_amount") or 0
             for item in ocr_result.get("items", [])
         )
-        tax_s = ocr_result.get("tax_summary", {})
+        tax_s = ocr_result.get("tax_summary", {}) or {}
+        def _ti(v): return int(v) if v not in (None, "", "null") else None
         data = {
             "shop_name":          ocr_result["shop_name"],
             "transaction_date":   ocr_result["transaction_date"],
-            "total_amount_check": ocr_result.get("total") or total_amount or 0,
+            "total_amount_check": ocr_result.get("total_amount_check") or total_amount or 0,
             "subtotal_amount":    subtotal_amount,
-            "tax_8_amount":       int(tax_s.get("tax_8_amount") or 0) if tax_s else 0,
-            "tax_10_amount":      int(tax_s.get("tax_10_amount") or 0) if tax_s else 0,
+            "tax_8_amount":       _ti(tax_s.get("tax_8_amount")),
+            "tax_10_amount":      _ti(tax_s.get("tax_10_amount")),
+            "tax_8_subtotal":     _ti(tax_s.get("tax_8_subtotal")),
+            "tax_10_subtotal":    _ti(tax_s.get("tax_10_subtotal")),
+            "tax_type":           tax_s.get("tax_type", "内税"),
         }
         self.db.table("Rawdata_RECEIPT_shops").update(data).eq("id", receipt_id).execute()
 
@@ -245,13 +249,18 @@ class TransactionProcessor:
             if s8 or s10:
                 subtotal_amount = s8 + s10
 
+        def _ti(v): return int(v) if v not in (None, "", "null") else None
+
         data = {
             "transaction_date":    ocr_result["transaction_date"],
             "shop_name":           ocr_result["shop_name"],
-            "total_amount_check":  ocr_result.get("total") or total_amount or 0,
+            "total_amount_check":  ocr_result.get("total_amount_check") or total_amount or 0,
             "subtotal_amount":     subtotal_amount,
-            "tax_8_amount":        int(tax_summary.get("tax_8_amount") or 0) if tax_summary else 0,
-            "tax_10_amount":       int(tax_summary.get("tax_10_amount") or 0) if tax_summary else 0,
+            "tax_8_amount":        _ti((tax_summary or {}).get("tax_8_amount")),
+            "tax_10_amount":       _ti((tax_summary or {}).get("tax_10_amount")),
+            "tax_8_subtotal":      _ti((tax_summary or {}).get("tax_8_subtotal")),
+            "tax_10_subtotal":     _ti((tax_summary or {}).get("tax_10_subtotal")),
+            "tax_type":            (tax_summary or {}).get("tax_type", "内税"),
             "image_path":          f"99_Archive/{trans_date.strftime('%Y-%m')}/{file_name}",
             "drive_file_id":       drive_file_id,
             "source_folder":       source_folder,

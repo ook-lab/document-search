@@ -236,9 +236,17 @@
                         <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; text-align: right;">レシート記載</div>
                         <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; text-align: right;">明細合算</div>
 
+                        <div>{{ tax_type }}8%対象額</div>
+                        <div style="text-align: right;">{% if ocr_tax_8_base is not none %}¥{{ '{:,}'.format(ocr_tax_8_base) }}{% else %}-{% endif %}</div>
+                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_total - calc_tax) if calc_tax_8 > 0 else 0 }}</div>
+
                         <div>8%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_8 is not none %}¥{{ '{:,}'.format(ocr_tax_8) }}{% else %}-{% endif %}</div>
                         <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax_8) }}</div>
+
+                        <div>{{ tax_type }}10%対象額</div>
+                        <div style="text-align: right;">{% if ocr_tax_10_base is not none %}¥{{ '{:,}'.format(ocr_tax_10_base) }}{% else %}-{% endif %}</div>
+                        <div style="text-align: right;">¥{{ '{:,}'.format(0) }}</div>
 
                         <div>10%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_10 is not none %}¥{{ '{:,}'.format(ocr_tax_10) }}{% else %}-{% endif %}</div>
