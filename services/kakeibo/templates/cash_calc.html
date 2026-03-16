@@ -2,383 +2,124 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>現金計算 - 家計簿</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --primary: #4F46E5;
-            --primary-light: #EEF2FF;
-            --success: #10B981;
-            --danger: #EF4444;
-            --warning: #F59E0B;
-            --bg: #F9FAFB;
-            --card-bg: #FFFFFF;
-            --text-main: #111827;
-            --text-sub: #6B7280;
-            --border: #E5E7EB;
-        }
+        body { margin: 0; padding: 0; font-family: sans-serif; background: #f5f5f5; }
 
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background-color: var(--bg);
-            color: var(--text-main);
-            margin: 0;
-            padding: 0;
-            line-height: 1.5;
-        }
+        header { background: #333; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; height: 50px; }
+        header a { color: #ccc; text-decoration: none; margin-left: 20px; }
 
-        header {
-            background: #ffffff;
-            border-bottom: 1px solid var(--border);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }
+        .toolbar { background: white; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .toolbar label { font-size: 13px; color: #555; }
+        .toolbar input[type="month"] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        .toolbar button { padding: 5px 14px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .toolbar button:hover { background: #333; }
 
-        .header-title {
-            font-family: 'Outfit', sans-serif;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
+        .summary { display: flex; gap: 16px; padding: 16px 20px; background: white; border-bottom: 1px solid #ddd; flex-wrap: wrap; }
+        .summary-card { flex: 1; min-width: 160px; background: #f8f8f8; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 16px; }
+        .summary-card .label { font-size: 11px; color: #888; font-weight: bold; text-transform: uppercase; margin-bottom: 4px; }
+        .summary-card .value { font-size: 20px; font-weight: bold; font-family: monospace; }
+        .value.income { color: #1a7a1a; }
+        .value.expense { color: #c00; }
+        .value.net.pos { color: #1a7a1a; }
+        .value.net.neg { color: #c00; }
 
-        nav a {
-            text-decoration: none;
-            color: var(--text-sub);
-            font-weight: 500;
-            font-size: 0.9rem;
-            margin-left: 1.5rem;
-            transition: color 0.2s;
-        }
-        nav a:hover { color: var(--primary); }
-        nav a.active { color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 4px; }
+        .content { padding: 20px; }
 
-        .container {
-            max-width: 1200px;
-            margin: 2rem auto;
-            padding: 0 1rem;
-        }
+        .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
 
-        .month-selector {
-            background: white;
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-            border: 1px solid var(--border);
-        }
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: 8px; overflow: hidden; }
+        th { background: #f0f0f0; padding: 8px 12px; text-align: left; font-size: 12px; color: #555; border-bottom: 2px solid #ddd; white-space: nowrap; }
+        td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #fafafa; }
 
-        .month-selector input[type="month"] {
-            border: 1px solid var(--border);
-            padding: 0.5rem;
-            border-radius: 6px;
-            font-family: inherit;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        .btn-primary:hover { opacity: 0.9; }
-
-        .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .summary-card {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 16px;
-            border: 1px solid var(--border);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        }
-
-        .summary-card h3 {
-            margin: 0;
-            font-size: 0.875rem;
-            color: var(--text-sub);
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.025em;
-        }
-
-        .summary-card .value {
-            margin-top: 0.5rem;
-            font-size: 2rem;
-            font-weight: 700;
-            font-family: 'Outfit', sans-serif;
-        }
-
-        .value.success { color: var(--success); }
-        .value.danger { color: var(--danger); }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 2rem;
-        }
-
-        @media (max-width: 900px) {
-            .main-content { grid-template-columns: 1fr; }
-        }
-
-        .content-card {
-            background: white;
-            border-radius: 16px;
-            border: 1px solid var(--border);
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            margin-bottom: 2rem;
-        }
-
-        .card-header {
-            padding: 1.25rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-            background: #F9FAFB;
-        }
-
-        .card-header h2 {
-            margin: 0;
-            font-size: 1.125rem;
-            font-weight: 600;
-        }
-
-        .table-responsive {
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.875rem;
-        }
-
-        th {
-            background: #F9FAFB;
-            padding: 0.75rem 1.5rem;
-            text-align: left;
-            font-weight: 600;
-            color: var(--text-sub);
-            border-bottom: 1px solid var(--border);
-        }
-
-        td {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .amount-col {
-            text-align: right;
-            font-family: monospace;
-            font-weight: 600;
-        }
-
-        .category-badge {
-            background: var(--primary-light);
-            color: var(--primary);
-            padding: 0.25rem 0.5rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .category-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .category-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .progress-bar-bg {
-            background: #E5E7EB;
-            height: 6px;
-            border-radius: 4px;
-            margin-top: 0.5rem;
-            overflow: hidden;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: var(--primary);
-            border-radius: 4px;
-        }
+        .col-date { white-space: nowrap; color: #555; font-size: 12px; }
+        .col-content { font-weight: bold; }
+        .col-inst { font-size: 11px; color: #888; }
+        .col-cat { font-size: 11px; background: #eef; color: #336; padding: 2px 6px; border-radius: 10px; display: inline-block; }
+        .col-amount { font-family: monospace; font-weight: bold; text-align: right; white-space: nowrap; }
+        .col-amount.income { color: #1a7a1a; }
+        .col-amount.expense { color: #c00; }
+        .col-note { font-size: 11px; color: #999; }
     </style>
 </head>
 <body>
 
 <header>
-    <div class="header-title">
-        <span>💰</span> 現金計算
-    </div>
+    <div>現金計算</div>
     <nav>
         <a href="/">明細一覧</a>
         <a href="/reconcile">消込ツール</a>
-        <a href="/cash_calc" class="active">現金計算</a>
+        <a href="/reconcile_history">消込履歴</a>
+        <a href="/cash_calc">現金計算</a>
         <a href="/loans">ローン管理</a>
+        <a href="/receipts">レシート検証</a>
         <a href="/rules_settings" style="background:#fd7e14;">ルール管理</a>
     </nav>
 </header>
 
-<div class="container">
-    <div class="month-selector">
-        <label>表示月:</label>
-        <input type="month" id="month-input" value="{{ current_month }}">
-        <button class="btn-primary" onclick="applyMonth()">適用</button>
+<div class="toolbar">
+    <label>月:</label>
+    <input type="month" id="month-input" value="{{ current_month }}">
+    <button onclick="applyMonth()">絞り込み</button>
+    <span style="font-size:13px; color:#888;">{{ transactions|length }} 件</span>
+</div>
+
+<div class="summary">
+    <div class="summary-card">
+        <div class="label">収入合計</div>
+        <div class="value income">+{{ "{:,.0f}".format(total_income) }}</div>
     </div>
-
-    <div class="summary-grid">
-        <div class="summary-card">
-            <h3>収入合計</h3>
-            <div class="value success">¥ {{ "{:,.0f}".format(total_income) }}</div>
-        </div>
-        <div class="summary-card">
-            <h3>支出合計</h3>
-            <div class="value danger">¥ {{ "{:,.0f}".format(total_expense) }}</div>
-        </div>
-        <div class="summary-card">
-            <h3>収支残高</h3>
-            <div class="value {% if net_cash_flow >= 0 %}success{% else %}danger{% endif %}">
-                ¥ {{ "{:,.0f}".format(net_cash_flow) }}
-            </div>
-        </div>
+    <div class="summary-card">
+        <div class="label">支出合計</div>
+        <div class="value expense">{{ "{:,.0f}".format(total_expense) }}</div>
     </div>
-
-    <div class="main-content">
-        <div class="left-col">
-            <div class="content-card">
-                <div class="card-header">
-                    <h2>支出内訳</h2>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>日付</th>
-                                <th>内容 / 分類</th>
-                                <th class="amount-col">金額</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for t in expense_list %}
-                            <tr>
-                                <td>{{ t.date }}</td>
-                                <td>
-                                    <strong>{{ t.content }}</strong><br>
-                                    <span class="category-badge">{{ t.category }}</span>
-                                    {% if t.institution %}<small style="color:#888;">({{ t.institution }})</small>{% endif %}
-                                </td>
-                                <td class="amount-col danger">{{ "{:,.0f}".format(t.amount) }}</td>
-                            </tr>
-                            {% endfor %}
-                            {% if not expense_list %}
-                            <tr><td colspan="3" style="text-align:center; color:#999;">データがありません</td></tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="content-card">
-                <div class="card-header">
-                    <h2>収入内訳</h2>
-                </div>
-                <div class="table-responsive">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>日付</th>
-                                <th>内容 / 分類</th>
-                                <th class="amount-col">金額</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for t in income_list %}
-                            <tr>
-                                <td>{{ t.date }}</td>
-                                <td>
-                                    <strong>{{ t.content }}</strong><br>
-                                    <span class="category-badge">{{ t.category }}</span>
-                                </td>
-                                <td class="amount-col success">+{{ "{:,.0f}".format(t.amount) }}</td>
-                            </tr>
-                            {% endfor %}
-                            {% if not income_list %}
-                            <tr><td colspan="3" style="text-align:center; color:#999;">データがありません</td></tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <div class="right-col">
-            <div class="content-card">
-                <div class="card-header">
-                    <h2>大分類別支出</h2>
-                </div>
-                <div class="category-list">
-                    {% for cat, amount in category_summary %}
-                    {% set pct = (amount / total_expense * 100) if total_expense != 0 else 0 %}
-                    <div class="category-item">
-                        <div style="flex:1;">
-                            <div style="display:flex; justify-content:space-between; font-weight:600;">
-                                <span>{{ cat }}</span>
-                                <span>{{ "{:,.0f}".format(amount) }}</span>
-                            </div>
-                            <div class="progress-bar-bg">
-                                <div class="progress-bar" style="width: {{ pct }}%;"></div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                    {% if not category_summary %}
-                    <div style="padding:2rem; text-align:center; color:#999;">データがありません</div>
-                    {% endif %}
-                </div>
-            </div>
-            
-            <div style="padding: 1rem; background: #EEF2FF; border-radius: 12px; border: 1px solid #C7D2FE; font-size: 0.875rem; color: #3730A3;">
-                <strong>💡 現金計算の仕組み</strong><br>
-                「消込ツール」で除外設定（資金移動や振替としてチェック）された取引は、このページでの集計から自動的に除かれます。
-            </div>
+    <div class="summary-card">
+        <div class="label">収支残高</div>
+        <div class="value net {% if net_cash_flow >= 0 %}pos{% else %}neg{% endif %}">
+            {{ "{:+,.0f}".format(net_cash_flow) }}
         </div>
     </div>
+</div>
+
+<div class="content">
+    {% if not transactions %}
+    <div class="empty">現金計算対象のデータがありません</div>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>日付</th>
+                <th>内容</th>
+                <th>金融機関</th>
+                <th>カテゴリ</th>
+                <th style="text-align:right;">金額</th>
+                <th>メモ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in transactions %}
+            <tr>
+                <td class="col-date">{{ t.date }}</td>
+                <td class="col-content">{{ t.content }}</td>
+                <td class="col-inst">{{ t.institution or '' }}</td>
+                <td><span class="col-cat">{{ t.category }}</span></td>
+                <td class="col-amount {% if t.amount > 0 %}income{% else %}expense{% endif %}">
+                    {{ '{:+,}'.format(t.amount) }}
+                </td>
+                <td class="col-note">{{ t.note or '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
 </div>
 
 <script>
     function applyMonth() {
         const month = document.getElementById('month-input').value;
-        if (month) {
-            window.location.href = `/cash_calc?month=${month}`;
-        }
+        if (month) location.href = '/cash_calc?month=' + month;
     }
 </script>
 

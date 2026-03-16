@@ -384,6 +384,97 @@ def loans_page():
     )
 
 
+@app.route('/reconcile_history')
+def reconcile_history():
+    """消込済み一覧・解除ページ"""
+    import re
+    db = get_db()
+    month_filter = request.args.get('month', datetime.now().strftime('%Y-%m'))
+
+    # 消込済み Manual Edits を全取得
+    me_res = db.table("Kakeibo_Manual_Edits").select("*").like("note", "消込:%").execute()
+    me_data = me_res.data
+
+    if not me_data:
+        return render_template('reconcile_history.html', groups=[], month=month_filter)
+
+    # 対応するトランザクションを取得
+    tx_ids = [m['transaction_id'] for m in me_data]
+    tx_res = db.table("Rawdata_BANK_transactions") \
+        .select("id, date, content, amount, institution") \
+        .in_("id", tx_ids).execute()
+    tx_map = {t['id']: t for t in tx_res.data}
+
+    # グループ化
+    groups = {}
+    for m in me_data:
+        note = m.get('note', '')
+        tx = tx_map.get(m['transaction_id'])
+        if not tx:
+            continue
+
+        # 月フィルタ（トランザクション日付）
+        tx_date = str(tx.get('date', ''))[:7]
+        if month_filter and tx_date != month_filter:
+            continue
+
+        # グループキー抽出
+        gm = re.search(r':G(\d+)$', note)
+        if gm:
+            group_key = gm.group(1)
+            is_legacy = False
+        else:
+            # レガシー: updated_at の分単位でグループ化
+            group_key = f"L_{(m.get('updated_at') or '')[:16]}"
+            is_legacy = True
+
+        if group_key not in groups:
+            type_match = re.match(r'消込:([^:]+):', note)
+            mode = 'transfer' if ':T(' in note else 'same_amount'
+            groups[group_key] = {
+                'group_id': group_key,
+                'is_legacy': is_legacy,
+                'reconciled_at': m.get('updated_at', ''),
+                'mode': mode,
+                'reconcile_type': type_match.group(1) if type_match else '',
+                'left': [],
+                'right': [],
+            }
+
+        entry = {
+            'transaction_id': m['transaction_id'],
+            'is_excluded': m.get('is_excluded', False),
+            'tx': tx,
+        }
+        if '(左)' in note:
+            groups[group_key]['left'].append(entry)
+        elif '(右)' in note:
+            groups[group_key]['right'].append(entry)
+
+    sorted_groups = sorted(groups.values(), key=lambda g: g['reconciled_at'], reverse=True)
+
+    return render_template('reconcile_history.html', groups=sorted_groups, month=month_filter)
+
+
+@app.route('/api/reconcile_undo', methods=['POST'])
+def reconcile_undo():
+    """消込を解除する"""
+    data = request.json
+    tx_ids = data.get('tx_ids', [])
+    if not tx_ids:
+        return jsonify({"status": "error", "message": "tx_ids が空です"}), 400
+
+    db = get_db()
+    for tx_id in tx_ids:
+        db.table("Kakeibo_Manual_Edits").update({
+            "is_excluded": False,
+            "note": "",
+            "view_target": None
+        }).eq("transaction_id", tx_id).execute()
+
+    return jsonify({"status": "success", "count": len(tx_ids)})
+
+
 @app.route('/reconcile')
 def reconcile_page():
     """消込（突き合わせ）専用画面"""
@@ -513,20 +604,13 @@ def cash_calc():
     rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
     auto_exclude_rules = rules_res.data
     
-    # カテゴリ集計・計算
-    income_list = []
-    expense_list = []
-    category_summary = {} # {category: amount}
-    
+    all_list = []
+
     for t in transactions:
         m = manual_map.get(t['id'], {})
-        institution = t.get('institution')
-        
-        # 【現金計算の集計ルール】
-        # ルールの指定、または手動での指定が無い場合は、現金計算に出ないのが基本。
-        
+
         is_cash_target = False
-        
+
         # 1. 自動ルールによる判定
         auto_action, _ = check_auto_target(t.get('content', ''), t.get('institution', ''), auto_exclude_rules)
         if auto_action in ['CASH_ONLY', 'BOTH']:
@@ -535,9 +619,6 @@ def cash_calc():
         # 2. 手動設定による上書き
         if m:
             vt = m.get('view_target')
-            # BANK_OUTFLOW: 消込ツールで口座出金として登録された（カード引落・ATM引出）
-            # BOTH: 手動で「両方表示」指定
-            # CASH_ONLY: 手動で「現金のみ表示」指定
             if vt in ['BANK_OUTFLOW', 'BOTH', 'CASH_ONLY']:
                 is_cash_target = True
             elif vt in ['INTERNAL_TRANSFER', 'LIST_ONLY']:
@@ -545,43 +626,29 @@ def cash_calc():
 
         if not is_cash_target:
             continue
-            
-        amount = t['amount']
+
         category = m.get('category_major') or "未分類"
-        
-        # 消込ツールで登録された場合はカテゴリ名を自動調整
         if m.get('view_target') == 'BANK_OUTFLOW':
             category = "銀行出金（消込済）"
-        
-        # 集計データ構築
-        display_item = {
+
+        all_list.append({
             **t,
             "category": category,
             "note": m.get('note', '')
-        }
-        
-        if amount > 0:
-            income_list.append(display_item)
-        else:
-            expense_list.append(display_item)
-            category_summary[category] = category_summary.get(category, 0) + amount
-            
-    total_income = sum(t['amount'] for t in income_list)
-    total_expense = sum(t['amount'] for t in expense_list)
+        })
+
+    all_list.sort(key=lambda x: x['date'])
+    total_income = sum(t['amount'] for t in all_list if t['amount'] > 0)
+    total_expense = sum(t['amount'] for t in all_list if t['amount'] <= 0)
     net_cash_flow = total_income + total_expense
-    
-    # カテゴリ順にソート（支出が多い順）
-    sorted_categories = sorted(category_summary.items(), key=lambda x: x[1])
 
     return render_template(
         'cash_calc.html',
         current_month=year_month,
-        income_list=income_list,
-        expense_list=expense_list,
+        transactions=all_list,
         total_income=total_income,
         total_expense=total_expense,
         net_cash_flow=net_cash_flow,
-        category_summary=sorted_categories
     )
 
 @app.route('/api/reconcile_execute', methods=['POST'])
@@ -628,12 +695,13 @@ def reconcile_execute():
         reconcile_type = "BANK_OUTFLOW"  # カード引落・ATM出金、両方とも「口座からの出金」
 
     mode_tag = "T" if mode == 'transfer' else "S"
+    group_id = str(int(datetime.now().timestamp()))
 
     for tx_id in remove_ids:
         updates.append({
             "transaction_id": tx_id,
             "is_excluded": True,
-            "note": f"消込:{reconcile_type}:{mode_tag}(左)",
+            "note": f"消込:{reconcile_type}:{mode_tag}(左):G{group_id}",
             "view_target": reconcile_type
         })
 
@@ -642,7 +710,7 @@ def reconcile_execute():
             updates.append({
                 "transaction_id": tx_id,
                 "is_excluded": True,
-                "note": f"消込:{reconcile_type}:T(右)",
+                "note": f"消込:{reconcile_type}:T(右):G{group_id}",
                 "view_target": reconcile_type
             })
 
@@ -663,7 +731,7 @@ def reconcile_execute():
 
             # same_amount の右側（残存）に識別マークを付与（is_excluded は False のまま）
             if mode == 'same_amount' and keep_ids:
-                keep_marks = [{"transaction_id": tid, "note": f"消込:{reconcile_type}:S(右)", "is_excluded": False} for tid in keep_ids]
+                keep_marks = [{"transaction_id": tid, "note": f"消込:{reconcile_type}:S(右):G{group_id}", "is_excluded": False} for tid in keep_ids]
                 resp2 = client.post(url, headers=headers, json=keep_marks)
                 if resp2.status_code >= 400:
                     raise Exception(f"右側upsert失敗 ({resp2.status_code}): {resp2.text}")

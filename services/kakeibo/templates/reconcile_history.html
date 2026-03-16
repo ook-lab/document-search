@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>消込済み一覧</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; background: #f5f5f5; }
+
+        header { background: #333; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; height: 50px; }
+        header a { color: #ccc; text-decoration: none; margin-left: 20px; }
+
+        .toolbar { background: white; padding: 12px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 16px; }
+        .toolbar label { font-size: 13px; color: #555; }
+        .toolbar input[type="month"] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        .toolbar button { padding: 5px 14px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .toolbar button:hover { background: #333; }
+
+        .content { padding: 20px; max-width: 1000px; margin: 0 auto; }
+
+        .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
+
+        .group-card {
+            background: white; border-radius: 8px; margin-bottom: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1); overflow: hidden;
+        }
+        .group-header {
+            padding: 10px 16px; background: #f8f8f8; border-bottom: 1px solid #eee;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .group-meta { font-size: 12px; color: #888; }
+        .group-meta strong { color: #333; font-size: 13px; }
+        .badge-mode {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 11px; font-weight: bold; margin-left: 8px;
+        }
+        .badge-transfer { background: #d4edda; color: #155724; }
+        .badge-same     { background: #ffe0e0; color: #c00; }
+        .badge-legacy   { background: #f0e68c; color: #856404; font-size: 10px; }
+
+        .sides { display: flex; }
+        .side { flex: 1; padding: 12px 16px; }
+        .side + .side { border-left: 1px solid #eee; }
+        .side-label { font-size: 11px; font-weight: bold; color: #888; margin-bottom: 8px; text-transform: uppercase; }
+
+        .tx-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; border-bottom: 1px dotted #f0f0f0; font-size: 13px; }
+        .tx-row:last-child { border-bottom: none; }
+        .tx-info { flex: 1; }
+        .tx-date { font-size: 11px; color: #aaa; margin-right: 6px; }
+        .tx-content { font-weight: bold; }
+        .tx-inst { font-size: 11px; color: #999; margin-left: 4px; }
+        .tx-amount { font-family: monospace; font-weight: bold; white-space: nowrap; margin-left: 12px; }
+        .tx-amount.neg { color: #c00; }
+        .tx-excluded { text-decoration: line-through; opacity: 0.6; }
+
+        .group-footer { padding: 8px 16px; display: flex; justify-content: flex-end; }
+        .btn-undo {
+            padding: 6px 18px; background: #dc3545; color: white;
+            border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
+        }
+        .btn-undo:hover { background: #b02a37; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>消込済み一覧</div>
+    <nav>
+        <a href="/">明細一覧</a>
+        <a href="/reconcile">消込ツール</a>
+        <a href="/reconcile_history">消込履歴</a>
+        <a href="/cash_calc">現金計算</a>
+        <a href="/loans">ローン管理</a>
+        <a href="/receipts">レシート検証</a>
+        <a href="/rules_settings" style="background:#fd7e14;">ルール管理</a>
+    </nav>
+</header>
+
+<div class="toolbar">
+    <label>月:</label>
+    <input type="month" id="month-input" value="{{ month }}">
+    <button onclick="applyFilter()">絞り込み</button>
+    <span style="font-size:13px; color:#888;">{{ groups|length }} 件</span>
+</div>
+
+<div class="content">
+    {% if not groups %}
+    <div class="empty">消込済みのデータがありません</div>
+    {% else %}
+    {% for g in groups %}
+    <div class="group-card">
+        <div class="group-header">
+            <div class="group-meta">
+                <strong>{{ g.reconciled_at[:16].replace('T', ' ') if g.reconciled_at else '日時不明' }}</strong>
+                <span class="badge-mode {% if g.mode == 'transfer' %}badge-transfer{% else %}badge-same{% endif %}">
+                    {% if g.mode == 'transfer' %}振替（両方除外）{% else %}同額（左除外）{% endif %}
+                </span>
+                {% if g.is_legacy %}<span class="badge-mode badge-legacy">レガシー</span>{% endif %}
+                {% if g.reconcile_type %}<span style="font-size:11px; color:#aaa; margin-left:8px;">{{ g.reconcile_type }}</span>{% endif %}
+            </div>
+        </div>
+
+        <div class="sides">
+            <div class="side">
+                <div class="side-label">左（除外）</div>
+                {% for e in g.left %}
+                <div class="tx-row">
+                    <div class="tx-info tx-excluded">
+                        <span class="tx-date">{{ e.tx.date }}</span>
+                        <span class="tx-content">{{ e.tx.content }}</span>
+                        <span class="tx-inst">{{ e.tx.institution or '' }}</span>
+                    </div>
+                    <div class="tx-amount {% if e.tx.amount < 0 %}neg{% endif %}">
+                        {{ '{:,}'.format(e.tx.amount) }}
+                    </div>
+                </div>
+                {% else %}
+                <div style="color:#ccc; font-size:12px;">なし</div>
+                {% endfor %}
+            </div>
+
+            <div class="side">
+                <div class="side-label">右（{% if g.mode == 'transfer' %}除外{% else %}残存{% endif %}）</div>
+                {% for e in g.right %}
+                <div class="tx-row">
+                    <div class="tx-info {% if g.mode == 'transfer' %}tx-excluded{% endif %}">
+                        <span class="tx-date">{{ e.tx.date }}</span>
+                        <span class="tx-content">{{ e.tx.content }}</span>
+                        <span class="tx-inst">{{ e.tx.institution or '' }}</span>
+                    </div>
+                    <div class="tx-amount {% if e.tx.amount < 0 %}neg{% endif %}">
+                        {{ '{:,}'.format(e.tx.amount) }}
+                    </div>
+                </div>
+                {% else %}
+                <div style="color:#ccc; font-size:12px;">なし</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="group-footer">
+            <button class="btn-undo" onclick="undoGroup({{ (g.left + g.right) | map(attribute='transaction_id') | list | tojson }})">
+                消込を解除
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+
+<script>
+    function applyFilter() {
+        const month = document.getElementById('month-input').value;
+        location.href = '/reconcile_history?month=' + month;
+    }
+
+    async function undoGroup(txIds) {
+        if (!confirm(`この消込を解除します（${txIds.length}件）。よろしいですか？`)) return;
+        const res = await fetch('/api/reconcile_undo', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ tx_ids: txIds })
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+            alert(`${json.count}件の消込を解除しました`);
+            location.reload();
+        } else {
+            alert('エラー: ' + json.message);
+        }
+    }
+</script>
+</body>
+</html>

@@ -93,6 +93,7 @@
         </span>
         <a href="/">明細一覧</a>
         <a href="/reconcile" class="active">消込ツール</a>
+        <a href="/reconcile_history">消込履歴</a>
         <a href="/cash_calc">現金計算</a>
         <a href="/loans">ローン管理</a>
         <a href="/receipts">レシート検証</a>
@@ -422,6 +423,13 @@
         // パターンA: 左=右 → 左だけ除外（右は残す）
         // パターンB: 左+右=0 → 両方除外（振替）
         if (leftCount > 0 && rightCount > 0) {
+            // 左右に同一IDが含まれている場合は実行不可
+            const overlap = [...selection.left].filter(id => selection.right.has(id));
+            if (overlap.length > 0) {
+                status.innerText = "左右に同じ明細が選択されています";
+                return;
+            }
+
             const isSameAmount = (sumLeft === sumRight);  // 同額
             const isTransfer = (sumLeft + sumRight === 0);  // 振替
 

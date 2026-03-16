@@ -26,6 +26,7 @@ COPY services/kakeibo/templates/ /app/templates/
 ENV PYTHONPATH=/app
 ENV FLASK_APP=app.py
 ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
 
 # 6. ポート設定
 EXPOSE 8080
