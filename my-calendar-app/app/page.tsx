@@ -873,7 +873,13 @@ function CalendarApp() {
   const [trelloLists, setTrelloLists]     = useState<TrelloList[]>([]);
   const [activeBoardId, setActiveBoardId] = useState<string | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [activeTab, setActiveTab]         = useState<"calendar" | "tasks">("calendar");
+  const [activeTab, setActiveTab]         = useState<"calendar" | "tasks">(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get("tab") === "tasks") return "tasks";
+    }
+    return "calendar";
+  });
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragOverListId, setDragOverListId] = useState<string | null>(null);
   const [boardOrder, setBoardOrder]         = useState<string[]>([]);

@@ -22,7 +22,7 @@ export default function TrelloCallback() {
       .then((res) => {
         if (res.ok) {
           setStatus("success");
-          setTimeout(() => router.push("/"), 1500);
+          setTimeout(() => router.push("/?tab=tasks"), 1500);
         } else {
           setStatus("error");
         }
