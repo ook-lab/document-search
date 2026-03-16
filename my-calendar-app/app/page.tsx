@@ -602,9 +602,21 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
   const boardLists = lists
     .filter((l) => l.boardId === board.boardId)
     .sort((a, b) => a.listPos - b.listPos);
+  // 期日ヘルパー
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dueBadge = (dueDate: string, dueComplete?: boolean) => {
+    const d = new Date(dueDate); d.setHours(0,0,0,0);
+    const diff = Math.floor((d.getTime() - today.getTime()) / 86400000);
+    const label = `${d.getMonth()+1}/${d.getDate()}`;
+    if (dueComplete) return { cls: "bg-green-100 text-green-700", label: `✓ ${label}` };
+    if (diff < 0)    return { cls: "bg-red-100 text-red-600",   label: `⚠ ${label}` };
+    if (diff === 0)  return { cls: "bg-yellow-100 text-yellow-700", label: `! ${label}` };
+    return { cls: "bg-gray-100 text-gray-500", label: `🗓 ${label}` };
+  };
+
   return (
     <div
-      className="flex h-full"
+      className="flex h-full bg-slate-200"
       style={{ scrollSnapType: 'x mandatory', overflowX: 'scroll', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
     >
       {boardLists.map((list) => {
@@ -614,12 +626,7 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
         return (
           <div key={list.listId}
             style={{ scrollSnapAlign: 'start', width: '100vw', maxWidth: '480px', flexShrink: 0 }}
-            className={`rounded-none shadow-sm border-x p-4 transition-colors overflow-y-auto h-full ${
-              isListDragOver  ? "ring-2 ring-indigo-400 bg-indigo-50 border-indigo-300"
-              : isTaskDragOver ? "bg-indigo-50 border-indigo-300"
-              : draggingListId === list.listId ? "opacity-40 bg-white"
-              : "bg-white"
-            }`}
+            className="p-3 h-full flex flex-col"
             onDragOver={(e) => {
               e.preventDefault();
               if (draggingListId) setListDragOverId(list.listId);
@@ -637,107 +644,129 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
               const tId = e.dataTransfer.getData("taskId");
               if (lId && lId !== list.listId) {
                 onListReorder(lId, list.listId);
-                setDraggingListId(null);
-                setListDragOverId(null);
+                setDraggingListId(null); setListDragOverId(null);
               } else if (tId) {
                 onDrop(tId, list);
               }
-            }}>
-            <div className="flex items-center gap-2 mb-3">
-              {/* リスト並び替えドラッグハンドル */}
-              <span
-                className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing text-base flex-shrink-0 select-none"
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("listId", list.listId);
-                  e.stopPropagation();
-                  setDraggingListId(list.listId);
-                }}
-                onDragEnd={() => { setDraggingListId(null); setListDragOverId(null); }}
-                title="ドラッグして並び替え"
-              >⠿</span>
-              {editingListId === list.listId ? (
-                <input
-                  className="flex-1 text-sm font-bold border-b-2 border-indigo-400 focus:outline-none bg-transparent py-0.5"
-                  value={editingListName}
-                  onChange={e => setEditingListName(e.target.value)}
-                  onBlur={() => commitListRename(list.listId)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") { e.preventDefault(); commitListRename(list.listId); }
-                    if (e.key === "Escape") setEditingListId(null);
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <h4
-                  className="text-sm font-bold text-gray-700 truncate flex-1 cursor-pointer hover:text-indigo-600"
-                  onClick={() => { setEditingListId(list.listId); setEditingListName(list.listName); }}
-                  title="クリックして名前を変更"
-                >
-                  {list.listName}
-                </h4>
-              )}
-              <span className="text-xs text-gray-400 flex-shrink-0">{cardTasks.length}</span>
-            </div>
-            <div className="space-y-2 min-h-[40px]">
-              {cardTasks.map((task) => (
-                <div key={task.id} draggable
-                  onDragStart={(e) => { e.dataTransfer.setData("taskId", task.id); onDragStart(task.id); }}
-                  onDragEnd={onDragEnd}
-                  onClick={() => onTaskClick(task.id)}
-                  className={`rounded-xl border border-gray-100 bg-white p-3 group cursor-pointer transition-opacity ${draggingTaskId === task.id ? "opacity-40" : "opacity-100"}`}>
-                  <div className="flex items-start gap-1">
-                    <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs ml-1 flex-shrink-0">✕</button>
-                  </div>
-                  {task.description && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{task.description}</p>}
-                  {task.labels && task.labels.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {task.labels.map((lb) => (
-                        <span key={lb.id} className="text-[9px] rounded px-1.5 py-0.5 text-white font-medium"
-                          style={{ backgroundColor: lb.color || "#aaa" }}>
-                          {lb.name || lb.color}
-                        </span>
-                      ))}
+            }}
+          >
+            {/* リスト本体 */}
+            <div className={`rounded-2xl flex flex-col h-full transition-all ${
+              isListDragOver ? "ring-2 ring-indigo-400 brightness-95"
+              : draggingListId === list.listId ? "opacity-40" : ""
+            }`} style={{ backgroundColor: '#ebecf0' }}>
+
+              {/* リストヘッダー */}
+              <div className="flex items-center gap-2 px-3 pt-3 pb-2 flex-shrink-0">
+                <span
+                  className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing text-base flex-shrink-0 select-none"
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("listId", list.listId); e.stopPropagation(); setDraggingListId(list.listId); }}
+                  onDragEnd={() => { setDraggingListId(null); setListDragOverId(null); }}
+                >⠿</span>
+                {editingListId === list.listId ? (
+                  <input
+                    className="flex-1 text-sm font-bold border-b-2 border-indigo-400 focus:outline-none bg-transparent py-0.5"
+                    value={editingListName}
+                    onChange={e => setEditingListName(e.target.value)}
+                    onBlur={() => commitListRename(list.listId)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { e.preventDefault(); commitListRename(list.listId); }
+                      if (e.key === "Escape") setEditingListId(null);
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <h4
+                    className="flex-1 text-sm font-bold text-gray-700 cursor-pointer hover:text-indigo-600 truncate"
+                    onClick={() => { setEditingListId(list.listId); setEditingListName(list.listName); }}
+                  >{list.listName}</h4>
+                )}
+                <span className="text-[11px] font-bold text-gray-500 bg-gray-300 rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">{cardTasks.length}</span>
+              </div>
+
+              {/* カード一覧 */}
+              <div className="flex-1 overflow-y-auto px-2 pb-1 space-y-2 min-h-[60px]">
+                {cardTasks.map((task) => (
+                  <div key={task.id} draggable
+                    onDragStart={(e) => { e.dataTransfer.setData("taskId", task.id); onDragStart(task.id); }}
+                    onDragEnd={onDragEnd}
+                    onClick={() => onTaskClick(task.id)}
+                    className={`bg-white rounded-xl shadow-sm group cursor-pointer transition-shadow hover:shadow-md ${draggingTaskId === task.id ? "opacity-40" : ""}`}
+                  >
+                    {/* ラベル */}
+                    {task.labels && task.labels.length > 0 && (
+                      <div className="flex flex-wrap gap-1 px-3 pt-2.5">
+                        {task.labels.map((lb) => (
+                          <span key={lb.id}
+                            className="text-[10px] font-semibold text-white rounded-full px-2.5 py-0.5 leading-none"
+                            style={{ backgroundColor: lb.color || "#aaa" }}>
+                            {lb.name || ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* カード本文 */}
+                    <div className="px-3 pt-2 pb-2.5">
+                      <div className="flex items-start gap-1">
+                        <p className="flex-1 text-sm font-medium text-gray-800 leading-snug">{task.cardName}</p>
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 text-xs flex-shrink-0 ml-1">✕</button>
+                      </div>
+                      {task.description && (
+                        <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-snug">{task.description}</p>
+                      )}
+                      {/* フッター */}
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {task.dueDate && (() => { const b = dueBadge(task.dueDate, task.dueComplete); return (
+                          <span className={`text-[10px] rounded-md px-1.5 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
+                        ); })()}
+                        {task.checklistTotal != null && task.checklistTotal > 0 && (
+                          <span className={`text-[10px] rounded-md px-1.5 py-0.5 font-medium ${task.checklistDone === task.checklistTotal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                            ☑ {task.checklistDone}/{task.checklistTotal}
+                          </span>
+                        )}
+                        {/* メンバーアバター */}
+                        {task.membersData && task.membersData.length > 0 && (
+                          <div className="flex ml-auto">
+                            {task.membersData.map((m) => (
+                              <div key={m.id}
+                                className="w-6 h-6 rounded-full bg-indigo-400 text-white text-[9px] font-bold flex items-center justify-center -ml-1 first:ml-0 border-2 border-white flex-shrink-0"
+                                title={m.name}>
+                                {m.name.charAt(0).toUpperCase()}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    {task.dueDate && (
-                      <span className={`text-[10px] ${task.dueComplete ? "line-through text-gray-300" : "text-gray-500"}`}>
-                        📅 {task.dueDate}{task.dueComplete ? " ✓" : ""}
-                      </span>
-                    )}
-                    {task.assignees && task.assignees.length > 0 && (
-                      <span className="text-[10px] bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">
-                        👤 {task.assignees.join(", ")}
-                      </span>
-                    )}
-                    {task.checklistTotal != null && task.checklistTotal > 0 && (
-                      <span className={`text-[10px] rounded px-1.5 py-0.5 ${task.checklistDone === task.checklistTotal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                        ☑ {task.checklistDone}/{task.checklistTotal}
-                      </span>
-                    )}
                   </div>
-                </div>
-              ))}
-              {cardTasks.length === 0 && (
-                <p className={`text-xs text-center py-4 ${isTaskDragOver ? "text-indigo-300" : "text-gray-300"}`}>
-                  {isTaskDragOver ? "ここにドロップ" : "なし"}
-                </p>
-              )}
+                ))}
+                {cardTasks.length === 0 && (
+                  <div className={`text-xs text-center py-6 rounded-xl border-2 border-dashed transition-colors ${isTaskDragOver ? "border-indigo-300 text-indigo-400 bg-white/60" : "border-gray-300 text-gray-300"}`}>
+                    {isTaskDragOver ? "ここにドロップ" : "カードなし"}
+                  </div>
+                )}
+              </div>
+
+              {/* カード追加ボタン */}
+              <div className="px-2 pb-2 flex-shrink-0">
+                <button className="w-full text-left text-sm text-gray-500 hover:text-gray-700 hover:bg-black/5 rounded-xl px-3 py-2 transition-colors">
+                  + カードを追加
+                </button>
+              </div>
             </div>
           </div>
         );
       })}
 
       {/* + リストを追加 */}
-      <div style={{ scrollSnapAlign: 'start', width: '100vw', maxWidth: '480px', flexShrink: 0 }} className="p-4">
+      <div style={{ scrollSnapAlign: 'start', width: '100vw', maxWidth: '480px', flexShrink: 0 }} className="p-3 flex-shrink-0">
         {showNewList ? (
-          <div className="rounded-2xl shadow-sm border p-4 bg-white flex flex-col gap-2">
+          <div className="rounded-2xl p-4 flex flex-col gap-2" style={{ backgroundColor: '#ebecf0' }}>
             <input
-              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              placeholder="リスト名"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              placeholder="リスト名を入力"
               value={newListName}
               onChange={e => setNewListName(e.target.value)}
               onKeyDown={e => {
@@ -747,25 +776,20 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
               autoFocus
             />
             <div className="flex gap-2">
-              <button
-                onClick={commitListCreate}
-                className="flex-1 py-1 bg-indigo-600 text-white text-xs rounded hover:bg-indigo-700"
-              >
+              <button onClick={commitListCreate}
+                className="flex-1 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors">
                 追加
               </button>
-              <button
-                onClick={() => { setShowNewList(false); setNewListName(""); }}
-                className="px-2 py-1 text-gray-400 hover:text-gray-600 text-xs"
-              >
+              <button onClick={() => { setShowNewList(false); setNewListName(""); }}
+                className="px-3 py-1.5 text-gray-500 hover:text-gray-700 text-sm rounded-lg hover:bg-black/5 transition-colors">
                 キャンセル
               </button>
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setShowNewList(true)}
-            className="w-full rounded-2xl border border-dashed border-gray-300 p-4 text-sm text-gray-400 hover:border-indigo-400 hover:text-indigo-500 transition-colors text-left"
-          >
+          <button onClick={() => setShowNewList(true)}
+            className="w-full rounded-2xl p-4 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-black/5 transition-colors text-left"
+            style={{ backgroundColor: '#ebecf0' }}>
             + リストを追加
           </button>
         )}
