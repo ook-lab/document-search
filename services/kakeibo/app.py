@@ -402,16 +402,18 @@ def reconcile_page():
 
     # 除外されていないデータのみ取得
     query = db.table("Rawdata_BANK_transactions").select("*").order("date", desc=True)
-    
+
     if start_date:
         query = query.gte("date", start_date)
     if end_date:
         query = query.lte("date", end_date)
-        
+
     if not start_date and not end_date:
         query = query.limit(1000)
-        
+
+    print(f"[RECONCILE] date filter: start={start_date!r} end={end_date!r}")
     res = query.execute()
+    print(f"[RECONCILE] fetched {len(res.data)} rows")
     raw_data = res.data
 
     ids = [r['id'] for r in raw_data]
@@ -662,25 +664,27 @@ def reconcile_execute():
                 "view_target": reconcile_type
             })
 
-    # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
-    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    # httpxを使ってPostgRESTを直接叩く（on_conflict でupsert）
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits?on_conflict=transaction_id"
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
-        "Prefer": "return=minimal, resolution=merge-duplicates"
+        "Prefer": "return=minimal,resolution=merge-duplicates"
     }
 
     try:
         with httpx.Client() as client:
             resp = client.post(url, headers=headers, json=updates)
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                raise Exception(f"左側upsert失敗 ({resp.status_code}): {resp.text}")
 
-            # same_amount の右側（残存）に識別マークを付与（is_excluded は変えない）
+            # same_amount の右側（残存）に識別マークを付与（is_excluded は False のまま）
             if mode == 'same_amount' and keep_ids:
-                keep_marks = [{"transaction_id": tid, "note": f"消込:{reconcile_type}:S(右)"} for tid in keep_ids]
+                keep_marks = [{"transaction_id": tid, "note": f"消込:{reconcile_type}:S(右)", "is_excluded": False} for tid in keep_ids]
                 resp2 = client.post(url, headers=headers, json=keep_marks)
-                resp2.raise_for_status()
+                if resp2.status_code >= 400:
+                    raise Exception(f"右側upsert失敗 ({resp2.status_code}): {resp2.text}")
 
     except Exception as e:
         print(f"[reconcile_execute] Upsert error: {e}")
