@@ -252,18 +252,26 @@ class TransactionProcessor:
             "discount_text": discount_text,
             "owner_id":      DEFAULT_OWNER_ID,
         }
+        def _to_int(v):
+            if v is None or v == "" or v == "null": return None
+            try: return int(float(v))
+            except (ValueError, TypeError): return None
+
+        data["unit_price"] = _to_int(data["unit_price"])
+        data["quantity"]   = _to_int(data["quantity"])
+
         if normalized:
             base_price     = normalized.get("base_price")
             std_unit_price = (base_price // quantity) if (base_price and quantity and quantity > 0) else None
             data.update({
                 "official_name":  normalized.get("official_name"),
                 "general_name":   normalized.get("general_name"),
-                "category_id":    normalized.get("category_id"),
+                "category_id":    normalized.get("category_id") or None,
                 "situation_id":   situation_id,
-                "tax_rate":       normalized["tax_rate"],
-                "std_amount":     total_amount,
-                "std_unit_price": std_unit_price,
-                "tax_amount":     tax_amount,
+                "tax_rate":       _to_int(normalized["tax_rate"]),
+                "std_amount":     _to_int(total_amount),
+                "std_unit_price": _to_int(std_unit_price),
+                "tax_amount":     _to_int(tax_amount),
                 "needs_review":   needs_review,
             })
         # url = f"{SUPABASE_URL}/rest/v1/Rawdata_RECEIPT_items"
