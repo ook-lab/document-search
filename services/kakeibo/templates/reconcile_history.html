@@ -90,7 +90,7 @@
     <div class="group-card">
         <div class="group-header">
             <div class="group-meta">
-                <strong>{{ g.reconciled_at[:16].replace('T', ' ') if g.reconciled_at else '日時不明' }}</strong>
+                <strong>{{ g.reconciled_at if g.reconciled_at else '日時不明' }}</strong>
                 <span class="badge-mode {% if g.mode == 'transfer' %}badge-transfer{% else %}badge-same{% endif %}">
                     {% if g.mode == 'transfer' %}振替（両方除外）{% else %}同額（左除外）{% endif %}
                 </span>

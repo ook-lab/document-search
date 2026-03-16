@@ -425,17 +425,23 @@ def reconcile_history():
             group_key = gm.group(1)
             is_legacy = False
         else:
-            # レガシー: updated_at の分単位でグループ化
-            group_key = f"L_{(m.get('updated_at') or '')[:16]}"
+            # レガシー: created_at の分単位でグループ化（updated_at は hide 操作で変わるため使わない）
+            group_key = f"L_{(m.get('created_at') or '')[:16]}"
             is_legacy = True
 
         if group_key not in groups:
-            type_match = re.match(r'消込:([^:]+):', note)
-            mode = 'transfer' if ':T(' in note else 'same_amount'
+            type_match = re.match(r'消込:([^:]+):', note_core)
+            mode = 'transfer' if ':T(' in note_core else 'same_amount'
+            # 表示時刻: 新方式はグループID（Unixタイムスタンプ）から復元、レガシーは created_at
+            if not is_legacy:
+                from datetime import timezone
+                reconciled_at = datetime.fromtimestamp(int(group_key), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M')
+            else:
+                reconciled_at = (m.get('created_at') or '')[:16].replace('T', ' ')
             groups[group_key] = {
                 'group_id': group_key,
                 'is_legacy': is_legacy,
-                'reconciled_at': m.get('updated_at', ''),
+                'reconciled_at': reconciled_at,
                 'mode': mode,
                 'reconcile_type': type_match.group(1) if type_match else '',
                 'left': [],
