@@ -51,19 +51,15 @@ class DriveClient:
             "and trashed=false "
             "and mimeType != 'application/vnd.google-apps.folder'"
         )
-        try:
-            result = self.service.files().list(
-                q=query,
-                spaces="drive",
-                fields="files(id, name, mimeType, size)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                corpora="allDrives",
-            ).execute()
-            return result.get("files", [])
-        except Exception as e:
-            print(f"[DriveClient] list_files_in_folder error: {e}")
-            return []
+        result = self.service.files().list(
+            q=query,
+            spaces="drive",
+            fields="files(id, name, mimeType, size)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            corpora="allDrives",
+        ).execute()
+        return result.get("files", [])
 
     # ── ダウンロード ─────────────────────────────────────────
 
@@ -89,40 +85,31 @@ class DriveClient:
 
     # ── 移動 ─────────────────────────────────────────────────
 
-    def move_file(self, file_id: str, new_folder_id: str) -> bool:
+    def move_file(self, file_id: str, new_folder_id: str) -> None:
         """ファイルを別フォルダに移動"""
-        try:
-            file_meta = self.service.files().get(
-                fileId=file_id, fields="parents", supportsAllDrives=True
-            ).execute()
-            prev_parents = ",".join(file_meta.get("parents", []))
-            self.service.files().update(
-                fileId=file_id,
-                addParents=new_folder_id,
-                removeParents=prev_parents,
-                fields="id, parents",
-                supportsAllDrives=True,
-            ).execute()
-            return True
-        except Exception as e:
-            print(f"[DriveClient] move_file error ({file_id}): {e}")
-            return False
+        file_meta = self.service.files().get(
+            fileId=file_id, fields="parents", supportsAllDrives=True
+        ).execute()
+        prev_parents = ",".join(file_meta.get("parents", []))
+        self.service.files().update(
+            fileId=file_id,
+            addParents=new_folder_id,
+            removeParents=prev_parents,
+            fields="id, parents",
+            supportsAllDrives=True,
+        ).execute()
 
     # ── 画像取得（プレビュー用）───────────────────────────────
 
-    def get_file_bytes(self, file_id: str) -> Optional[bytes]:
+    def get_file_bytes(self, file_id: str) -> bytes:
         """ファイルをバイト列で取得（レシート画像プレビュー用）"""
-        try:
-            request = self.service.files().get_media(
-                fileId=file_id, supportsAllDrives=True
-            )
-            buf = io.BytesIO()
-            downloader = MediaIoBaseDownload(buf, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-            buf.seek(0)
-            return buf.read()
-        except Exception as e:
-            print(f"[DriveClient] get_file_bytes error ({file_id}): {e}")
-            return None
+        request = self.service.files().get_media(
+            fileId=file_id, supportsAllDrives=True
+        )
+        buf = io.BytesIO()
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        buf.seek(0)
+        return buf.read()

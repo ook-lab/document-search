@@ -495,20 +495,15 @@ class TransactionProcessor:
 
     def _extract_general_name_with_ai(self, product_name: str) -> Optional[Dict]:
         prompt = f"Product: {product_name}\nExtract general name and keywords in JSON format: {{\"general_name\": \"...\", \"keywords\": [...]}}"
-        try:
-            response = self.gemini.call_model(prompt=prompt, model_name="gemini-2.5-flash", max_output_tokens=256)
-            if not response.get("success"):
-                return None
-            content = response["content"].strip()
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-                content = content.strip()
-            import json
-            result = json.loads(content)
-            if "general_name" in result and isinstance(result.get("keywords"), list):
-                return result
-        except Exception as e:
-            print(f"[TransactionProcessor] AI general_name error: {e}")
+        response = self.gemini.call_model(prompt=prompt, model_name="gemini-2.5-flash", max_output_tokens=256)
+        content = response["content"].strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+            content = content.strip()
+        import json
+        result = json.loads(content)
+        if "general_name" in result and isinstance(result.get("keywords"), list):
+            return result
         return None

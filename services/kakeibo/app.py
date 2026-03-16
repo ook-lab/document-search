@@ -41,15 +41,9 @@ def get_receipt_image_base64(drive_file_id: str) -> str:
     """Google Drive からレシート画像を取得して Base64 エンコード"""
     if not drive_file_id:
         return None
-    try:
-        data = get_drive_client().get_file_bytes(drive_file_id)
-        if data is None:
-            return None
-        encoded = base64.b64encode(data).decode("utf-8")
-        return f"data:image/jpeg;base64,{encoded}"
-    except Exception as e:
-        print(f"画像取得エラー: {e}")
-        return None
+    data = get_drive_client().get_file_bytes(drive_file_id)
+    encoded = base64.b64encode(data).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded}"
 
 
 def check_auto_target(content, institution, rules):
@@ -422,40 +416,32 @@ def reconcile_page():
     note_map = {}    # transaction_id → clean note
     hidden_ids = set()
     if ids:
-        try:
-            # 1000件のIDを一度にURLフィルタに入れると制限（URL長）に抵触するため、分割して取得
-            for i in range(0, len(ids), 100):
-                chunk = ids[i:i+100]
-                url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits?transaction_id=in.({','.join(chunk)})"
-                headers = {
-                    "apikey": SUPABASE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_KEY}"
-                }
-                with httpx.Client() as client:
-                    resp = client.get(url, headers=headers)
-                    if resp.status_code == 200:
-                        manual_data = resp.json()
-                        excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('is_excluded')})
-                        excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('view_target') == 'CASH_ONLY'})
-                        manual_ids.update({m['transaction_id'] for m in manual_data})
-                        for m in manual_data:
-                            raw_note = m.get('note', '') or ''
-                            if '|hidden' in raw_note:
-                                hidden_ids.add(m['transaction_id'])
-                            note_map[m['transaction_id']] = raw_note.replace('|hidden', '')
-                    else:
-                        print(f"[RECONCILE] Error fetching chunk {i}: {resp.status_code} {resp.text}")
-            print(f"[RECONCILE] Total IDs: {len(ids)}, Excluded: {len(excluded_ids)}, Hidden: {len(hidden_ids)}, show_excluded: {show_excluded}")
-        except Exception as e:
-            print(f"Manual Edits取得エラー: {e}")
-
+        # 1000件のIDを一度にURLフィルタに入れると制限（URL長）に抵触するため、分割して取得
+        for i in range(0, len(ids), 100):
+            chunk = ids[i:i+100]
+            url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits?transaction_id=in.({','.join(chunk)})"
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            with httpx.Client() as client:
+                resp = client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    manual_data = resp.json()
+                    excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('is_excluded')})
+                    excluded_ids.update({m['transaction_id'] for m in manual_data if m.get('view_target') == 'CASH_ONLY'})
+                    manual_ids.update({m['transaction_id'] for m in manual_data})
+                    for m in manual_data:
+                        raw_note = m.get('note', '') or ''
+                        if '|hidden' in raw_note:
+                            hidden_ids.add(m['transaction_id'])
+                        note_map[m['transaction_id']] = raw_note.replace('|hidden', '')
+                else:
+                    raise RuntimeError(f"Manual Edits fetch error chunk {i}: {resp.status_code} {resp.text}")
+        print(f"[RECONCILE] Total IDs: {len(ids)}, Excluded: {len(excluded_ids)}, Hidden: {len(hidden_ids)}, show_excluded: {show_excluded}")
     # 自動除外ルールを取得
-    auto_exclude_rules = []
-    try:
-        rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
-        auto_exclude_rules = rules_res.data
-    except Exception as e:
-        print(f"[RECONCILE] Rules fetch error: {e}")
+    rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
+    auto_exclude_rules = rules_res.data
 
     # 表示用データ構築
     candidates = []
@@ -524,12 +510,8 @@ def cash_calc():
         manual_map = {m['transaction_id']: m for m in m_res.data}
 
     # 表示先ルールを取得
-    auto_exclude_rules = []
-    try:
-        rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
-        auto_exclude_rules = rules_res.data
-    except Exception as e:
-        print(f"[CASH_CALC] Rules fetch error: {e}")
+    rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
+    auto_exclude_rules = rules_res.data
     
     # カテゴリ集計・計算
     income_list = []
@@ -1291,12 +1273,8 @@ def receipts_page():
     if logs.data:
         receipt_ids = [log.get('receipt_id') for log in logs.data if log.get('receipt_id')]
         if receipt_ids:
-            try:
-                links_res = db.table("Kakeibo_Receipt_Links").select("receipt_id").in_("receipt_id", receipt_ids).execute()
-                linked_receipts = {link['receipt_id'] for link in links_res.data}
-            except Exception:
-                # テーブルが存在しない場合は空
-                pass
+            links_res = db.table("Kakeibo_Receipt_Links").select("receipt_id").in_("receipt_id", receipt_ids).execute()
+            linked_receipts = {link['receipt_id'] for link in links_res.data}
 
     # 表示用データ構築
     display_data = []
@@ -1352,20 +1330,15 @@ def receipt_detail(receipt_id):
 
     # 紐付け済み銀行取引を取得
     linked_transaction = None
-    try:
-        link_res = db.table("Kakeibo_Receipt_Links").select("*").eq("receipt_id", receipt_id).execute()
-        if link_res.data:
-            link_data = link_res.data[0]
-            # 紐付けられた銀行取引を取得
-            tx_res = db.table("Rawdata_BANK_transactions").select("*").eq("id", link_data['transaction_id']).execute()
-            if tx_res.data:
-                linked_transaction = {
-                    **link_data,
-                    "Rawdata_BANK_transactions": tx_res.data[0]
-                }
-    except Exception:
-        # テーブルが存在しない場合
-        pass
+    link_res = db.table("Kakeibo_Receipt_Links").select("*").eq("receipt_id", receipt_id).execute()
+    if link_res.data:
+        link_data = link_res.data[0]
+        tx_res = db.table("Rawdata_BANK_transactions").select("*").eq("id", link_data['transaction_id']).execute()
+        if tx_res.data:
+            linked_transaction = {
+                **link_data,
+                "Rawdata_BANK_transactions": tx_res.data[0]
+            }
 
     # 紐付け候補となる取引を取得（日付同日優先）
     candidates = []
@@ -1373,12 +1346,8 @@ def receipt_detail(receipt_id):
     from datetime import timedelta
 
     # 既にレシート紐付け済みの取引IDを取得（これらは候補から除外）
-    linked_tx_ids = set()
-    try:
-        linked_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").execute()
-        linked_tx_ids = {l['transaction_id'] for l in linked_res.data if l.get('transaction_id')}
-    except Exception:
-        pass
+    linked_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").execute()
+    linked_tx_ids = {l['transaction_id'] for l in linked_res.data if l.get('transaction_id')}
 
     try:
         # 日付フィルタが指定されている場合はその日付のみ取得
@@ -1417,23 +1386,9 @@ def receipt_detail(receipt_id):
                 .order("date", desc=True).limit(100).execute()
             candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
 
-    except Exception as e:
-        print(f"候補取得エラー: {e}")
-        # フォールバック
-        try:
-            cand_res = db.table("Rawdata_BANK_transactions").select("*") \
-                .order("date", desc=True).limit(100).execute()
-            candidates = [c for c in cand_res.data if c['id'] not in linked_tx_ids]
-        except:
-            candidates = []
-
     # 商品名ルールを取得
-    product_name_rules = []
-    try:
-        pn_rules_res = db.table("Kakeibo_Product_Name_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
-        product_name_rules = pn_rules_res.data
-    except Exception:
-        pass
+    pn_rules_res = db.table("Kakeibo_Product_Name_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
+    product_name_rules = pn_rules_res.data
 
     shop_name = receipt.get("shop_name", "") if receipt else ""
 
@@ -1607,26 +1562,12 @@ def import_mf_csv():
                     continue
 
                 # 金額（文字列 "-1600" → int）
-                raw_amount = row.get("金額（円）", "0").strip().replace(",", "")
+                raw_amount = row.get("金額（円）", "").strip().replace(",", "")
                 try:
                     amount = int(raw_amount)
-                except ValueError:
-                    amount = 0
-
-                # 日付変換: 2026/03/10 → 2026-03-10
-                raw_date = row.get("日付", "").strip()
-                try:
-                    date_str = datetime.strptime(raw_date, "%Y/%m/%d").strftime("%Y-%m-%d")
                 except ValueError:
                     total_errors += 1
                     continue
-
-                # 金額（文字列 "-1600" → int）
-                raw_amount = row.get("金額（円）", "0").strip().replace(",", "")
-                try:
-                    amount = int(raw_amount)
-                except ValueError:
-                    amount = 0
 
                 # メモ
                 memo = row.get("メモ", "").strip() or None
@@ -1661,10 +1602,7 @@ def import_mf_csv():
 
             # 処理済みフォルダへ移動
             if MONEYFORWARD_PROCESSED_ID:
-                try:
-                    drive.move_file(file_id, MONEYFORWARD_PROCESSED_ID)
-                except Exception as e:
-                    print(f"[import_mf_csv] 移動失敗 {file_name}: {e}")
+                drive.move_file(file_id, MONEYFORWARD_PROCESSED_ID)
 
         except Exception as e:
             print(f"[import_mf_csv] CSVファイル処理失敗 {file_name}: {e}")
@@ -1724,15 +1662,11 @@ def import_receipts():
 
             # 処理済み drive_file_id を一括取得（ループ前に1回だけ）
             db = get_db()
-            already_done = set()
-            try:
-                log_res = db.table("99_lg_image_proc_log") \
-                    .select("drive_file_id") \
-                    .eq("status", "success") \
-                    .execute()
-                already_done = {r["drive_file_id"] for r in log_res.data if r.get("drive_file_id")}
-            except Exception as e:
-                print(f"[import_receipts] 処理済みログ取得失敗: {e}")
+            log_res = db.table("99_lg_image_proc_log") \
+                .select("drive_file_id") \
+                .eq("status", "success") \
+                .execute()
+            already_done = {r["drive_file_id"] for r in log_res.data if r.get("drive_file_id")}
 
             for file_info in image_files:
                 if processed >= BATCH_LIMIT:
@@ -1746,10 +1680,7 @@ def import_receipts():
                     print(f"[import_receipts] スキップ（処理済み）: {file_name}")
                     # INBOX に残っていれば ARCHIVE へ移動
                     if ARCHIVE_FOLDER_ID:
-                        try:
-                            drive.move_file(file_id, ARCHIVE_FOLDER_ID)
-                        except Exception:
-                            pass
+                        drive.move_file(file_id, ARCHIVE_FOLDER_ID)
                     continue
 
                 processed += 1
@@ -1830,10 +1761,7 @@ def import_receipts():
 
                         # 成功時はアーカイブに移動
                         if ARCHIVE_FOLDER_ID:
-                            try:
-                                drive.move_file(file_id, ARCHIVE_FOLDER_ID)
-                            except Exception:
-                                pass  # 移動失敗は無視
+                            drive.move_file(file_id, ARCHIVE_FOLDER_ID)
 
                         success += 1
 
@@ -1844,10 +1772,7 @@ def import_receipts():
 
                     # エラー時はエラーフォルダに移動
                     if ERROR_FOLDER_ID:
-                        try:
-                            drive.move_file(file_id, ERROR_FOLDER_ID)
-                        except Exception:
-                            pass
+                        drive.move_file(file_id, ERROR_FOLDER_ID)
 
         return jsonify({
             "status": "success",
@@ -1883,25 +1808,19 @@ def link_receipt_to_transaction():
     db = get_db()
 
     # 既存の紐付けがあれば、その取引の除外を解除
-    try:
-        old_link = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
-        if old_link.data:
-            old_tx_id = old_link.data[0]['transaction_id']
-            db.table("Kakeibo_Manual_Edits").upsert({
-                "transaction_id": old_tx_id,
-                "is_excluded": False,
-                "has_receipt": False,
-                "receipt_id": None,
-                "note": "レシート紐付け解除"
-            }, on_conflict="transaction_id").execute()
-    except Exception:
-        pass
+    old_link = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
+    if old_link.data:
+        old_tx_id = old_link.data[0]['transaction_id']
+        db.table("Kakeibo_Manual_Edits").upsert({
+            "transaction_id": old_tx_id,
+            "is_excluded": False,
+            "has_receipt": False,
+            "receipt_id": None,
+            "note": "レシート紐付け解除"
+        }, on_conflict="transaction_id").execute()
 
     # 既存の紐付けを削除
-    try:
-        db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
-    except Exception:
-        pass
+    db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
 
     # 新規紐付け
     payload = {
@@ -1923,42 +1842,34 @@ def link_receipt_to_transaction():
     }, on_conflict="transaction_id").execute()
 
     # レシート明細を明細一覧に追加
-    try:
-        # レシート情報を取得
-        receipt = db.table("Rawdata_RECEIPT_shops").select("shop_name, transaction_date").eq("id", receipt_id).execute()
-        if receipt.data:
-            shop_name = receipt.data[0].get("shop_name", "")
-            tx_date = receipt.data[0].get("transaction_date")
+    receipt_shop = db.table("Rawdata_RECEIPT_shops").select("shop_name, transaction_date").eq("id", receipt_id).execute()
+    if receipt_shop.data:
+        shop_name = receipt_shop.data[0].get("shop_name", "")
+        tx_date = receipt_shop.data[0].get("transaction_date")
 
-            # 明細を取得
-            items = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt_id).eq("line_type", "ITEM").execute()
+        items = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt_id).eq("line_type", "ITEM").execute()
 
-            for item in items.data:
-                # 商品名: official_nameがあればそれ、なければproduct_name
-                product_name = item.get("official_name") or item.get("product_name", "")
-                amount = item.get("tax_included_amount") or 0
+        for item in items.data:
+            product_name = item.get("official_name") or item.get("product_name", "")
+            amount = item.get("tax_included_amount") or 0
 
-                new_id = f"RECEIPT-{receipt_id}-{item['id']}"
+            new_id = f"RECEIPT-{receipt_id}-{item['id']}"
 
-                # 既存チェック（重複防止）
-                existing = db.table("Rawdata_BANK_transactions").select("id").eq("id", new_id).execute()
-                if existing.data:
-                    continue
+            existing = db.table("Rawdata_BANK_transactions").select("id").eq("id", new_id).execute()
+            if existing.data:
+                continue
 
-                new_record = {
-                    "id": new_id,
-                    "date": tx_date,
-                    "content": product_name,
-                    "amount": amount,
-                    "institution": shop_name,
-                    "category_major": "未分類",
-                    "memo": f"レシート明細（{receipt_id}）",
-                    "is_target": True,
-                    "is_transfer": False
-                }
-                db.table("Rawdata_BANK_transactions").insert(new_record).execute()
-    except Exception as e:
-        print(f"レシート明細の追加に失敗: {e}")
+            db.table("Rawdata_BANK_transactions").insert({
+                "id": new_id,
+                "date": tx_date,
+                "content": product_name,
+                "amount": amount,
+                "institution": shop_name,
+                "category_major": "未分類",
+                "memo": f"レシート明細（{receipt_id}）",
+                "is_target": True,
+                "is_transfer": False
+            }).execute()
 
     return jsonify({"status": "success"})
 
@@ -1975,31 +1886,22 @@ def unlink_receipt():
     db = get_db()
 
     # 紐付けられていた取引の除外を解除
-    try:
-        link_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
-        if link_res.data:
-            tx_id = link_res.data[0]['transaction_id']
-            db.table("Kakeibo_Manual_Edits").upsert({
-                "transaction_id": tx_id,
-                "is_excluded": False,
-                "has_receipt": False,
-                "receipt_id": None,
-                "note": "レシート紐付け解除"
-            }, on_conflict="transaction_id").execute()
-    except Exception:
-        pass
+    link_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
+    if link_res.data:
+        tx_id = link_res.data[0]['transaction_id']
+        db.table("Kakeibo_Manual_Edits").upsert({
+            "transaction_id": tx_id,
+            "is_excluded": False,
+            "has_receipt": False,
+            "receipt_id": None,
+            "note": "レシート紐付け解除"
+        }, on_conflict="transaction_id").execute()
 
     # 紐付けを削除
-    try:
-        db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
-    except Exception:
-        pass
+    db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
 
     # レシート明細から追加された取引を削除
-    try:
-        db.table("Rawdata_BANK_transactions").delete().like("id", f"RECEIPT-{receipt_id}-%").execute()
-    except Exception:
-        pass
+    db.table("Rawdata_BANK_transactions").delete().like("id", f"RECEIPT-{receipt_id}-%").execute()
 
     return jsonify({"status": "success"})
 
@@ -2065,23 +1967,17 @@ def verify_receipt():
         else:
             # 取得名と商品名が異なる場合、ルールを登録
             if ocr_name and official_name != ocr_name:
-                try:
-                    # 同じルールが既に存在するかチェック
-                    existing = db.table("Kakeibo_Product_Name_Rules").select("id, use_count").eq("ocr_name", ocr_name).eq("product_name", official_name).execute()
-                    if existing.data:
-                        # 使用回数を増やす
-                        db.table("Kakeibo_Product_Name_Rules").update({
-                            "use_count": (existing.data[0].get("use_count") or 0) + 1
-                        }).eq("id", existing.data[0]["id"]).execute()
-                    else:
-                        # 新規ルールを登録
-                        db.table("Kakeibo_Product_Name_Rules").insert({
-                            "ocr_name": ocr_name,
-                            "product_name": official_name,
-                            "shop_name": shop_name
-                        }).execute()
-                except Exception:
-                    pass  # ルール登録失敗は無視
+                existing = db.table("Kakeibo_Product_Name_Rules").select("id, use_count").eq("ocr_name", ocr_name).eq("product_name", official_name).execute()
+                if existing.data:
+                    db.table("Kakeibo_Product_Name_Rules").update({
+                        "use_count": (existing.data[0].get("use_count") or 0) + 1
+                    }).eq("id", existing.data[0]["id"]).execute()
+                else:
+                    db.table("Kakeibo_Product_Name_Rules").insert({
+                        "ocr_name": ocr_name,
+                        "product_name": official_name,
+                        "shop_name": shop_name
+                    }).execute()
 
     # レシートを確認済みに
     res = db.table("Rawdata_RECEIPT_shops").update({"is_verified": True}).eq("id", receipt_id).execute()
@@ -2278,20 +2174,17 @@ def delete_receipt():
     db = get_db()
 
     # 紐付けを解除（取引の除外も解除）
-    try:
-        link_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
-        if link_res.data:
-            tx_id = link_res.data[0]['transaction_id']
-            db.table("Kakeibo_Manual_Edits").upsert({
-                "transaction_id": tx_id,
-                "is_excluded": False,
-                "has_receipt": False,
-                "receipt_id": None,
-                "note": "レシート削除により紐付け解除"
-            }, on_conflict="transaction_id").execute()
-        db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
-    except Exception:
-        pass
+    link_res = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
+    if link_res.data:
+        tx_id = link_res.data[0]['transaction_id']
+        db.table("Kakeibo_Manual_Edits").upsert({
+            "transaction_id": tx_id,
+            "is_excluded": False,
+            "has_receipt": False,
+            "receipt_id": None,
+            "note": "レシート削除により紐付け解除"
+        }, on_conflict="transaction_id").execute()
+    db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
 
     # 明細を削除（CASCADE設定があれば自動削除されるが念のため）
     db.table("Rawdata_RECEIPT_items").delete().eq("receipt_id", receipt_id).execute()
@@ -2300,10 +2193,7 @@ def delete_receipt():
     res = db.table("Rawdata_RECEIPT_shops").delete().eq("id", receipt_id).execute()
 
     # 処理ログも更新
-    try:
-        db.table("99_lg_image_proc_log").update({"status": "deleted", "receipt_id": None}).eq("receipt_id", receipt_id).execute()
-    except Exception:
-        pass
+    db.table("99_lg_image_proc_log").update({"status": "deleted", "receipt_id": None}).eq("receipt_id", receipt_id).execute()
 
     if getattr(res, 'error', None):
         return jsonify({"status": "error", "message": str(res.error)}), 500

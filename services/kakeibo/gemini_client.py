@@ -61,15 +61,12 @@ class GeminiClient:
         テキストプロンプトを送信して結果を返す。
         戻り値: {"success": bool, "content": str}
         """
-        try:
-            gen_model = genai.GenerativeModel(model_name)
-            response = gen_model.generate_content(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    max_output_tokens=max_output_tokens,
-                    temperature=0.1,
-                ),
-            )
-            return {"success": True, "content": response.text}
-        except Exception as e:
-            return {"success": False, "content": "", "error": str(e)}
+        gen_model = genai.GenerativeModel(model_name)
+        response = gen_model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=max_output_tokens,
+                temperature=0.1,
+            ),
+        )
+        return {"success": True, "content": response.text}
