@@ -418,8 +418,9 @@ def reconcile_history():
         if month_filter and tx_date != month_filter:
             continue
 
-        # グループキー抽出
-        gm = re.search(r':G(\d+)$', note)
+        # グループキー抽出（|hidden サフィックスを除去してからマッチ）
+        note_core = note.replace('|hidden', '')
+        gm = re.search(r':G(\d+)$', note_core)
         if gm:
             group_key = gm.group(1)
             is_legacy = False
