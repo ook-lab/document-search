@@ -212,6 +212,7 @@
 </div>
 
 <script>
+    const STATE_KEY = 'reconcile_ui_state';
     const allData = {{ transactions | tojson }};
 
     // 各パネルのデータ（ソート用に分離）
@@ -587,8 +588,6 @@
             alert('通信エラー');
         }
     }
-
-    const STATE_KEY = 'reconcile_ui_state';
 
     function saveUIState() {
         const state = {
