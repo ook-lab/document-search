@@ -240,28 +240,28 @@ def update_transaction():
     # partial update support
     # Existing fields: category_major, category_mid, category_small, category_shop,
     # category_belonging, category_person, category_context, is_excluded, note, view_target
-    keys = ['cat_major', 'cat_mid', 'cat_small', 'cat_shop', 'cat_belonging', 
-            'cat_person', 'cat_context', 'is_excluded', 'note', 'view_target']
-    
-    # Supabase upsert doesn't inherently support partial without a read, unless we use patch.
-    # But Kakeibo_Manual_Edits upserts based on transaction_id. 
-    # To do a true partial update via REST, we could read first:
+    keys = ['cat_major', 'cat_mid', 'cat_small', 'cat_shop', 'cat_belonging',
+            'cat_person', 'cat_context', 'is_excluded', 'note', 'view_target',
+            'cash_cat_major', 'cash_cat_mid']
+
     db = get_db()
     existing_res = db.table("Kakeibo_Manual_Edits").select("*").eq("transaction_id", tx_id).execute()
     existing = existing_res.data[0] if existing_res.data else {}
 
     payload = {
         "transaction_id": tx_id,
-        "category_major": data.get('cat_major') if 'cat_major' in data else existing.get('category_major'),
-        "category_mid": data.get('cat_mid') if 'cat_mid' in data else existing.get('category_mid'),
-        "category_small": data.get('cat_small') if 'cat_small' in data else existing.get('category_small'),
-        "category_shop": data.get('cat_shop') if 'cat_shop' in data else existing.get('category_shop'),
-        "category_belonging": data.get('cat_belonging') if 'cat_belonging' in data else existing.get('category_belonging'),
-        "category_person": data.get('cat_person') if 'cat_person' in data else existing.get('category_person'),
-        "category_context": data.get('cat_context') if 'cat_context' in data else existing.get('category_context'),
-        "is_excluded": data.get('is_excluded') if 'is_excluded' in data else existing.get('is_excluded', False),
-        "note": data.get('note') if 'note' in data else existing.get('note'),
-        "view_target": data.get('view_target') if 'view_target' in data else existing.get('view_target')
+        "category_major":    data.get('cat_major')       if 'cat_major'       in data else existing.get('category_major'),
+        "category_mid":      data.get('cat_mid')         if 'cat_mid'         in data else existing.get('category_mid'),
+        "category_small":    data.get('cat_small')       if 'cat_small'       in data else existing.get('category_small'),
+        "category_shop":     data.get('cat_shop')        if 'cat_shop'        in data else existing.get('category_shop'),
+        "category_belonging":data.get('cat_belonging')   if 'cat_belonging'   in data else existing.get('category_belonging'),
+        "category_person":   data.get('cat_person')      if 'cat_person'      in data else existing.get('category_person'),
+        "category_context":  data.get('cat_context')     if 'cat_context'     in data else existing.get('category_context'),
+        "is_excluded":       data.get('is_excluded')     if 'is_excluded'     in data else existing.get('is_excluded', False),
+        "note":              data.get('note')            if 'note'            in data else existing.get('note'),
+        "view_target":       data.get('view_target')     if 'view_target'     in data else existing.get('view_target'),
+        "cash_cat_major":    data.get('cash_cat_major')  if 'cash_cat_major'  in data else existing.get('cash_cat_major'),
+        "cash_cat_mid":      data.get('cash_cat_mid')    if 'cash_cat_mid'    in data else existing.get('cash_cat_mid'),
     }
 
     # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
@@ -646,7 +646,9 @@ def cash_calc():
         all_list.append({
             **t,
             "category": category,
-            "note": m.get('note', '')
+            "note": m.get('note', ''),
+            "cash_cat_major": m.get('cash_cat_major', '') or '',
+            "cash_cat_mid":   m.get('cash_cat_mid',   '') or '',
         })
 
     all_list.sort(key=lambda x: x['date'])

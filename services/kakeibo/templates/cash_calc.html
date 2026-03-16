@@ -25,23 +25,29 @@
         .value.net.neg { color: #c00; }
 
         .content { padding: 20px; }
-
         .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
 
         table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: 8px; overflow: hidden; }
-        th { background: #f0f0f0; padding: 8px 12px; text-align: left; font-size: 12px; color: #555; border-bottom: 2px solid #ddd; white-space: nowrap; }
-        td { padding: 8px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        th { background: #f0f0f0; padding: 8px 10px; text-align: left; font-size: 12px; color: #555; border-bottom: 2px solid #ddd; white-space: nowrap; }
+        td { padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: #fafafa; }
 
         .col-date { white-space: nowrap; color: #555; font-size: 12px; }
         .col-content { font-weight: bold; }
         .col-inst { font-size: 11px; color: #888; }
-        .col-cat { font-size: 11px; background: #eef; color: #336; padding: 2px 6px; border-radius: 10px; display: inline-block; }
         .col-amount { font-family: monospace; font-weight: bold; text-align: right; white-space: nowrap; }
         .col-amount.income { color: #1a7a1a; }
         .col-amount.expense { color: #c00; }
         .col-note { font-size: 11px; color: #999; }
+
+        .cat-select { padding: 3px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; width: 90px; background: white; }
+        .cat-input  { padding: 3px 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; width: 80px; }
+        .cat-select:focus, .cat-input:focus { outline: none; border-color: #888; }
+
+        .btn-save { padding: 3px 10px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+        .btn-save:hover { background: #1e7e34; }
+        .btn-save.saved { background: #aaa; cursor: default; }
     </style>
 </head>
 <body>
@@ -93,22 +99,37 @@
                 <th>日付</th>
                 <th>内容</th>
                 <th>金融機関</th>
-                <th>カテゴリ</th>
                 <th style="text-align:right;">金額</th>
+                <th>大分類</th>
+                <th>中分類</th>
                 <th>メモ</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
             {% for t in transactions %}
-            <tr>
+            <tr data-id="{{ t.id }}">
                 <td class="col-date">{{ t.date }}</td>
                 <td class="col-content">{{ t.content }}</td>
                 <td class="col-inst">{{ t.institution or '' }}</td>
-                <td><span class="col-cat">{{ t.category }}</span></td>
                 <td class="col-amount {% if t.amount > 0 %}income{% else %}expense{% endif %}">
                     {{ '{:+,}'.format(t.amount) }}
                 </td>
+                <td>
+                    <select class="cat-select cash-cat-major">
+                        <option value="">—</option>
+                        {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
+                        <option value="{{ opt }}" {% if t.cash_cat_major == opt %}selected{% endif %}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <input type="text" class="cat-input cash-cat-mid" value="{{ t.cash_cat_mid }}" placeholder="中分類">
+                </td>
                 <td class="col-note">{{ t.note or '' }}</td>
+                <td>
+                    <button class="btn-save" onclick="saveRow(this)">保存</button>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -121,6 +142,42 @@
         const month = document.getElementById('month-input').value;
         if (month) location.href = '/cash_calc?month=' + month;
     }
+
+    async function saveRow(btn) {
+        const tr = btn.closest('tr');
+        const id = tr.dataset.id;
+        const cash_cat_major = tr.querySelector('.cash-cat-major').value;
+        const cash_cat_mid   = tr.querySelector('.cash-cat-mid').value;
+
+        const res = await fetch('/api/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id, cash_cat_major, cash_cat_mid })
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+            btn.textContent = '保存済';
+            btn.classList.add('saved');
+            btn.disabled = true;
+            setTimeout(() => {
+                btn.textContent = '保存';
+                btn.classList.remove('saved');
+                btn.disabled = false;
+            }, 1500);
+        } else {
+            alert('保存失敗: ' + json.message);
+        }
+    }
+
+    // 変更したら保存ボタンをアクティブに戻す
+    document.querySelectorAll('.cash-cat-major, .cash-cat-mid').forEach(el => {
+        el.addEventListener('change', () => {
+            const btn = el.closest('tr').querySelector('.btn-save');
+            btn.textContent = '保存';
+            btn.classList.remove('saved');
+            btn.disabled = false;
+        });
+    });
 </script>
 
 </body>
