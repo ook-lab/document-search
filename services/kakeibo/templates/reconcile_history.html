@@ -138,7 +138,9 @@
         </div>
 
         <div class="group-footer">
-            <button class="btn-undo" onclick="undoGroup({{ (g.left + g.right) | map(attribute='transaction_id') | list | tojson }})">
+            <button class="btn-undo"
+                    data-ids='{{ (g.left + g.right) | map(attribute="transaction_id") | list | tojson }}'
+                    onclick="undoGroup(JSON.parse(this.dataset.ids))">
                 消込を解除
             </button>
         </div>
