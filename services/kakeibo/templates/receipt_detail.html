@@ -169,7 +169,13 @@
 
                 <!-- 明細一覧 -->
                 <div class="panel">
-                    <div class="panel-header">明細一覧 ({{ items|length }}件)</div>
+                    <div class="panel-header">
+                        明細一覧 ({{ items|length }}件)
+                        <span style="margin-left: 0.75rem; font-size: 0.8rem; padding: 2px 8px; border-radius: 10px; font-weight: normal;
+                            {% if tax_type == '外税' %}background: #fde8d8; color: #c0392b;{% else %}background: #dff0d8; color: #2c6e2f;{% endif %}">
+                            {{ tax_type }}
+                        </span>
+                    </div>
                     <div class="panel-body" style="padding: 0; overflow-x: auto;">
                         <table class="items-table">
                             <thead>
@@ -179,6 +185,7 @@
                                     <th style="width: 50px;">数量</th>
                                     <th style="width: 60px;">税率</th>
                                     <th style="width: 80px;">税額</th>
+                                    <th style="width: 80px;">印字価</th>
                                     <th style="width: 90px;">税込価</th>
                                     <th style="width: 70px;"></th>
                                 </tr>
@@ -201,6 +208,7 @@
                                         </select>
                                     </td>
                                     <td><input type="number" class="item-input" data-field="tax_amount" value="{{ item.tax_amount or 0 }}" style="width: 70px;"></td>
+                                    <td><input type="number" class="item-input" data-field="displayed_amount" value="{{ item.displayed_amount or 0 }}" style="width: 70px;"></td>
                                     <td><input type="number" class="item-input" data-field="tax_included_amount" value="{{ item.tax_included or 0 }}" style="width: 80px;"></td>
                                     <td style="white-space: nowrap;">
                                         {% if (item.tax_included or 0) < 0 and not loop.first %}
@@ -225,7 +233,8 @@
                                 <option value="10">10%</option>
                                 <option value="8">8%</option>
                             </select>
-                            <input type="number" id="new_tax_included_amount" placeholder="税込価" style="width: 90px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="number" id="new_displayed_amount" placeholder="印字価" style="width: 80px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="number" id="new_tax_included_amount" placeholder="税込価" style="width: 80px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
                             <button class="btn btn-success" onclick="addItem()">追加</button>
                         </div>
                     </div>
@@ -564,7 +573,8 @@
                 return;
             }
 
-            const taxIncludedAmount = parseInt(document.getElementById('new_tax_included_amount').value) || 0;
+            const displayedAmount  = parseInt(document.getElementById('new_displayed_amount').value) || 0;
+            const taxIncludedAmount = parseInt(document.getElementById('new_tax_included_amount').value) || displayedAmount;
             const taxRate = parseInt(document.getElementById('new_tax_rate').value) || 10;
             const taxAmount = Math.floor(taxIncludedAmount * taxRate / (100 + taxRate));
 
@@ -574,8 +584,8 @@
                 official_name: productName || null,    // 商品名（手入力）
                 quantity: parseInt(document.getElementById('new_quantity').value) || 1,
                 tax_rate: taxRate,
+                displayed_amount: displayedAmount,
                 tax_included_amount: taxIncludedAmount,
-                displayed_amount: taxIncludedAmount,
                 tax_amount: taxAmount
             };
 
