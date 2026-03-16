@@ -603,14 +603,18 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
     .filter((l) => l.boardId === board.boardId)
     .sort((a, b) => a.listPos - b.listPos);
   return (
-    <div className="flex gap-4 pb-2">
+    <div
+      className="flex h-full"
+      style={{ scrollSnapType: 'x mandatory', overflowX: 'scroll', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+    >
       {boardLists.map((list) => {
         const cardTasks = tasks.filter((t) => t.trelloListId === list.listId);
         const isTaskDragOver = dragOverListId === list.listId && !draggingListId;
         const isListDragOver = listDragOverId === list.listId && draggingListId && draggingListId !== list.listId;
         return (
           <div key={list.listId}
-            className={`rounded-2xl shadow-sm border p-4 min-w-[220px] w-[220px] flex-shrink-0 transition-colors ${
+            style={{ scrollSnapAlign: 'start', width: '100vw', maxWidth: '480px', flexShrink: 0 }}
+            className={`rounded-none shadow-sm border-x p-4 transition-colors overflow-y-auto h-full ${
               isListDragOver  ? "ring-2 ring-indigo-400 bg-indigo-50 border-indigo-300"
               : isTaskDragOver ? "bg-indigo-50 border-indigo-300"
               : draggingListId === list.listId ? "opacity-40 bg-white"
@@ -728,7 +732,7 @@ function BoardView({ board, lists, tasks, draggingTaskId, dragOverListId, onDrag
       })}
 
       {/* + リストを追加 */}
-      <div className="min-w-[220px] w-[220px] flex-shrink-0">
+      <div style={{ scrollSnapAlign: 'start', width: '100vw', maxWidth: '480px', flexShrink: 0 }} className="p-4">
         {showNewList ? (
           <div className="rounded-2xl shadow-sm border p-4 bg-white flex flex-col gap-2">
             <input
@@ -882,6 +886,7 @@ function CalendarApp() {
   const [showSettings, setShowSettings]   = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [trelloConnected, setTrelloConnected] = useState<boolean | null>(null);
+  const calSwipeTouchStartX = useRef<number | null>(null);
   // カレンダーごとの表示先設定 { [baseId]: { month: boolean, day: boolean } }
   const [calViewMode, setCalViewMode] = useState<Record<string, { month: boolean; day: boolean }>>({});
   // グループごとの表示先設定
@@ -1565,19 +1570,26 @@ function CalendarApp() {
   // ── メイン ───────────────────────────────────────────
   return (
     <div className="h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
-      <header className="bg-white border-b px-3 py-2 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-  <h1 className="text-sm font-bold text-gray-800 whitespace-nowrap">📅 Family Calendar</h1>
-  <div className="flex items-center gap-1.5">
-    <div className="flex rounded-xl border border-gray-200 overflow-hidden">
-      <button onClick={() => setActiveTab("calendar")}
-        className={`px-3 py-1.5 text-base transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-        📅
-      </button>
-      <button onClick={() => setActiveTab("tasks")}
-        className={`px-3 py-1.5 text-base transition-colors relative ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-        📋{tasks.length > 0 && <span className="ml-0.5 text-[10px] font-bold">{tasks.length}</span>}
-      </button>
+      <header className="bg-white border-b px-3 py-2 flex items-center justify-between sticky top-0 z-10 shadow-sm relative">
+  {/* 左：切替ボタン */}
+  <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+    <button onClick={() => setActiveTab("calendar")}
+      className={`px-3 py-1.5 text-base transition-colors ${activeTab === "calendar" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+      📅
+    </button>
+    <button onClick={() => setActiveTab("tasks")}
+      className={`px-3 py-1.5 text-base transition-colors relative ${activeTab === "tasks" ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+      📋{tasks.length > 0 && <span className="ml-0.5 text-[10px] font-bold">{tasks.length}</span>}
+    </button>
+  </div>
+  {/* 中央：年月（カレンダータブのみ） */}
+  {activeTab === "calendar" && (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <span className="text-base font-bold text-gray-800">{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月</span>
     </div>
+  )}
+  {/* 右：アバター＋設定 */}
+  <div className="flex items-center gap-1.5">
     {session?.user?.image && (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={session.user.image} alt="avatar" className="w-6 h-6 rounded-full border border-gray-200 flex-shrink-0" />
@@ -1645,7 +1657,7 @@ function CalendarApp() {
           </div>
 
           {/* 選択中ボードのリスト・カード */}
-          <div className="flex-1 overflow-x-auto p-4">
+          <div className="flex-1 overflow-x-auto" style={{ overflowY: 'hidden' }}>
             <BoardView
               board={trelloBoards.find(b => b.boardId === activeBoardId) ?? null}
               lists={trelloLists}
@@ -1687,14 +1699,18 @@ function CalendarApp() {
       {activeTab === "calendar" && (<>
       {/* Body: モバイルはy-scroll、デスクトップはoverflow-hidden横並び */}
       <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden flex flex-col md:flex-row md:gap-4 md:p-4">
-        <section className="shrink-0 md:shrink md:flex-1 min-h-[calc(100dvh-2.75rem)] md:min-h-0 flex flex-col bg-white md:overflow-hidden">
-          <div className="shrink-0 flex items-center justify-between mb-1 px-2 pt-1">
-            <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
-              className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 transition-colors">‹ 前月</button>
-            <h2 className="text-base font-bold text-gray-800">{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月</h2>
-            <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
-              className="rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-gray-50 transition-colors">次月 ›</button>
-          </div>
+        <section
+          className="shrink-0 md:shrink md:flex-1 min-h-[calc(100dvh-2.75rem)] md:min-h-0 flex flex-col bg-white md:overflow-hidden"
+          onTouchStart={(e) => { calSwipeTouchStartX.current = e.touches[0].clientX; }}
+          onTouchEnd={(e) => {
+            if (calSwipeTouchStartX.current === null) return;
+            const dx = e.changedTouches[0].clientX - calSwipeTouchStartX.current;
+            calSwipeTouchStartX.current = null;
+            if (Math.abs(dx) < 50) return;
+            if (dx < 0) setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+            else        setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+          }}
+        >
 
           <div className="shrink-0 grid grid-cols-7 mb-0.5">
             {(weekStartsMonday ? WEEKDAYS_MON : WEEKDAYS).map((w, i) => {
