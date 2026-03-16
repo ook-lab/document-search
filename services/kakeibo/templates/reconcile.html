@@ -450,7 +450,12 @@
             } else {
                 const diff = sumLeft - sumRight;
                 const total = sumLeft + sumRight;
-                status.innerText = `差額: ${diff.toLocaleString()} / 合計: ${total.toLocaleString()}`;
+                status.innerText = `金額不一致 差額: ${diff.toLocaleString()} / 合計: ${total.toLocaleString()}`;
+                btn.disabled = false;
+                btn.classList.add('active');
+                btn.style.background = '#e67e00';
+                btn.innerText = "金額不一致で消込";
+                btn.onclick = () => executeReconcile('transfer', { mismatch: true, diff, total });
             }
         }
         // CASE 2: 左だけ複数選択 (左合算モード)
@@ -487,7 +492,7 @@
     }
 
     // 消込実行
-    async function executeReconcile(mode) {
+    async function executeReconcile(mode, opts = {}) {
         let msg = '';
         if (mode === 'transfer') {
             msg = '振替消込：左右両方を除外します。よろしいですか？';
@@ -495,6 +500,11 @@
             msg = '同額消込：左側のみを除外します（右側は残ります）。よろしいですか？';
         }
         if (!confirm(msg)) return;
+
+        if (opts.mismatch) {
+            const confirmMsg = `⚠️ 金額が一致していません。\n差額: ${opts.diff.toLocaleString()} / 合計: ${opts.total.toLocaleString()}\n\nこのまま消込しますか？`;
+            if (!confirm(confirmMsg)) return;
+        }
 
         const payload = {
             remove_ids: Array.from(selection.left),

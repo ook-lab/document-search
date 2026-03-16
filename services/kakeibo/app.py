@@ -464,13 +464,25 @@ def reconcile_undo():
     if not tx_ids:
         return jsonify({"status": "error", "message": "tx_ids が空です"}), 400
 
-    db = get_db()
-    for tx_id in tx_ids:
-        db.table("Kakeibo_Manual_Edits").update({
-            "is_excluded": False,
-            "note": "",
-            "view_target": None
-        }).eq("transaction_id", tx_id).execute()
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal"
+    }
+    payload = {"is_excluded": False, "note": "", "view_target": None}
+
+    with httpx.Client() as client:
+        for tx_id in tx_ids:
+            resp = client.patch(
+                url,
+                headers=headers,
+                params={"transaction_id": f"eq.{tx_id}"},
+                json=payload
+            )
+            if resp.status_code >= 400:
+                raise RuntimeError(f"reconcile_undo失敗 tx_id={tx_id} ({resp.status_code}): {resp.text}")
 
     return jsonify({"status": "success", "count": len(tx_ids)})
 
