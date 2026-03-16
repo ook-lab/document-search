@@ -201,7 +201,7 @@
                                         </select>
                                     </td>
                                     <td><input type="number" class="item-input" data-field="tax_amount" value="{{ item.tax_amount or 0 }}" style="width: 70px;"></td>
-                                    <td><input type="number" class="item-input" data-field="std_amount" value="{{ item.tax_included or 0 }}" style="width: 80px;"></td>
+                                    <td><input type="number" class="item-input" data-field="tax_included_amount" value="{{ item.tax_included or 0 }}" style="width: 80px;"></td>
                                     <td style="white-space: nowrap;">
                                         {% if (item.tax_included or 0) < 0 and not loop.first %}
                                         <button class="btn btn-warning" style="padding: 0.2rem 0.4rem; font-size: 0.7rem; background: #f39c12;" onclick="mergeWithAbove('{{ item.id }}')" title="上の行と合算">↑</button>
@@ -225,7 +225,7 @@
                                 <option value="10">10%</option>
                                 <option value="8">8%</option>
                             </select>
-                            <input type="number" id="new_std_amount" placeholder="税込価" style="width: 90px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="number" id="new_tax_included_amount" placeholder="税込価" style="width: 90px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
                             <button class="btn btn-success" onclick="addItem()">追加</button>
                         </div>
                     </div>
@@ -499,7 +499,7 @@
                     let value = input.value;
 
                     // 数値フィールドは変換
-                    if (['quantity', 'tax_rate', 'base_price', 'tax_amount', 'std_amount'].includes(field)) {
+                    if (['quantity', 'tax_rate', 'displayed_amount', 'base_price', 'tax_included_amount', 'tax_amount'].includes(field)) {
                         value = parseInt(value) || 0;
                     }
                     data[field] = value;
@@ -564,9 +564,9 @@
                 return;
             }
 
-            const stdAmount = parseInt(document.getElementById('new_std_amount').value) || 0;
+            const taxIncludedAmount = parseInt(document.getElementById('new_tax_included_amount').value) || 0;
             const taxRate = parseInt(document.getElementById('new_tax_rate').value) || 10;
-            const taxAmount = Math.floor(stdAmount * taxRate / (100 + taxRate));
+            const taxAmount = Math.floor(taxIncludedAmount * taxRate / (100 + taxRate));
 
             const data = {
                 receipt_id: receiptId,
@@ -574,7 +574,8 @@
                 official_name: productName || null,    // 商品名（手入力）
                 quantity: parseInt(document.getElementById('new_quantity').value) || 1,
                 tax_rate: taxRate,
-                std_amount: stdAmount,
+                tax_included_amount: taxIncludedAmount,
+                displayed_amount: taxIncludedAmount,
                 tax_amount: taxAmount
             };
 

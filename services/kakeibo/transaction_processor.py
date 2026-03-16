@@ -91,6 +91,7 @@ class TransactionProcessor:
                 normalized_items, ocr_result.get("tax_summary")
             )
 
+            tax_type = (ocr_result.get("tax_summary") or {}).get("tax_type", "内税")
             transaction_ids = []
             for line_num, item_data in enumerate(items_with_tax, start=1):
                 item       = item_data["raw_item"]
@@ -111,6 +112,7 @@ class TransactionProcessor:
                     total_amount=item.get("total_amount", item.get("amount", 0)),
                     tax_amount=normalized["tax_amount"],
                     needs_review=item_data.get("needs_review", False),
+                    tax_type=tax_type,
                 )
                 transaction_ids.append(trans_id)
 
@@ -277,6 +279,7 @@ class TransactionProcessor:
         product_name, item_name, unit_price, quantity,
         marks_text=None, discount_text=None, normalized=None,
         situation_id=None, total_amount=None, tax_amount=None, needs_review=False,
+        tax_type="内税",
     ) -> str:
         data = {
             "receipt_id":    receipt_id,
@@ -301,18 +304,30 @@ class TransactionProcessor:
         data["quantity"]   = _to_int(data["quantity"])
 
         if normalized:
-            base_price     = normalized.get("base_price")
-            std_unit_price = (base_price // quantity) if (base_price and quantity and quantity > 0) else None
+            printed   = _to_int(total_amount)
+            tax_amt   = _to_int(tax_amount) or 0
+            qty       = _to_int(quantity) or 1
+            if tax_type == "外税":
+                displayed_amount    = printed
+                base_price          = printed
+                tax_included_amount = (printed + tax_amt) if printed is not None else None
+            else:  # 内税
+                displayed_amount    = printed
+                base_price          = (printed - tax_amt) if printed is not None else None
+                tax_included_amount = printed
+            std_unit_price = (base_price // qty) if (base_price is not None and qty > 0) else None
             data.update({
-                "official_name":  normalized.get("official_name"),
-                "general_name":   normalized.get("general_name"),
-                "category_id":    normalized.get("category_id") or None,
-                "situation_id":   situation_id,
-                "tax_rate":       _to_int(normalized["tax_rate"]),
-                "std_amount":     _to_int(total_amount),
-                "std_unit_price": _to_int(std_unit_price),
-                "tax_amount":     _to_int(tax_amount),
-                "needs_review":   needs_review,
+                "official_name":      normalized.get("official_name"),
+                "general_name":       normalized.get("general_name"),
+                "category_id":        normalized.get("category_id") or None,
+                "situation_id":       situation_id,
+                "tax_rate":           _to_int(normalized["tax_rate"]),
+                "displayed_amount":   displayed_amount,
+                "base_price":         base_price,
+                "tax_included_amount": tax_included_amount,
+                "std_unit_price":     _to_int(std_unit_price),
+                "tax_amount":         _to_int(tax_amount),
+                "needs_review":       needs_review,
             })
         # url = f"{SUPABASE_URL}/rest/v1/Rawdata_RECEIPT_items"
         # with httpx.Client() as client:

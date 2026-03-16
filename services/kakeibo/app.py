@@ -1437,9 +1437,9 @@ def receipt_detail(receipt_id):
     display_items = []
     for item in items:
         # 税込価を計算
-        tax_included = item.get("std_amount") or item.get("tax_included_amount") or 0
+        tax_included = item.get("tax_included_amount") or 0
         tax_amount = item.get("tax_amount") or 0
-        base_price = tax_included - tax_amount if tax_included and tax_amount else item.get("base_price") or 0
+        base_price = item.get("base_price") or (tax_included - tax_amount if tax_included and tax_amount else 0)
 
         # 商品名を提案（official_nameが空の場合）
         ocr_name = item.get("product_name", "")
@@ -1932,7 +1932,7 @@ def link_receipt_to_transaction():
             for item in items.data:
                 # 商品名: official_nameがあればそれ、なければproduct_name
                 product_name = item.get("official_name") or item.get("product_name", "")
-                amount = item.get("std_amount") or 0
+                amount = item.get("tax_included_amount") or 0
 
                 new_id = f"RECEIPT-{receipt_id}-{item['id']}"
 
@@ -2013,8 +2013,9 @@ def update_receipt_item():
 
     # 更新データを構築
     update_data = {}
-    fields = ['product_name', 'quantity', 'tax_rate', 'base_price', 'tax_amount', 'std_amount',
-              'std_unit_price', 'minor_category', 'person', 'purpose', 'official_name']
+    fields = ['product_name', 'quantity', 'tax_rate', 'displayed_amount', 'base_price',
+              'tax_included_amount', 'tax_amount', 'std_unit_price', 'minor_category',
+              'person', 'purpose', 'official_name']
     for field in fields:
         if field in data:
             update_data[field] = data[field]
@@ -2141,7 +2142,8 @@ def add_receipt_item():
         "product_name": product_name,
         "official_name": data.get('official_name'),  # 商品名（手入力）
         "quantity": data.get('quantity', 1),
-        "std_amount": data.get('std_amount', 0),
+        "tax_included_amount": data.get('tax_included_amount', 0),
+        "displayed_amount": data.get('displayed_amount', 0),
         "tax_amount": data.get('tax_amount', 0),
         "tax_rate": data.get('tax_rate', 10),
         "person": data.get('person'),
@@ -2334,13 +2336,15 @@ def merge_receipt_item():
     above_item = above_res.data[0]
 
     # 金額を合算（上の行に割引を加算）
-    new_std_amount = (above_item.get("std_amount") or 0) + (current_item.get("std_amount") or 0)
-    new_tax_amount = (above_item.get("tax_amount") or 0) + (current_item.get("tax_amount") or 0)
+    new_tax_included = (above_item.get("tax_included_amount") or 0) + (current_item.get("tax_included_amount") or 0)
+    new_displayed    = (above_item.get("displayed_amount") or 0) + (current_item.get("displayed_amount") or 0)
+    new_tax_amount   = (above_item.get("tax_amount") or 0) + (current_item.get("tax_amount") or 0)
 
     # 上の行を更新
     db.table("Rawdata_RECEIPT_items").update({
-        "std_amount": new_std_amount,
-        "tax_amount": new_tax_amount
+        "tax_included_amount": new_tax_included,
+        "displayed_amount":    new_displayed,
+        "tax_amount":          new_tax_amount
     }).eq("id", above_item["id"]).execute()
 
     # 割引行を削除
@@ -2408,7 +2412,7 @@ def mark_receipt_as_cash():
     # 明細を明細一覧に追加
     for item in items.data:
         product_name = item.get("official_name") or item.get("product_name", "")
-        amount = item.get("std_amount") or 0
+        amount = item.get("tax_included_amount") or 0
 
         new_id = f"CASH-{receipt_id}-{item['id']}"
 
