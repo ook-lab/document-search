@@ -42,6 +42,7 @@ class TransactionProcessor:
         drive_file_id: str,
         model_name: str = "gemini-2.5-flash",
         source_folder: str = "INBOX",
+        existing_receipt_id: str = None,
     ) -> Dict:
         try:
             if "error" in ocr_result:
@@ -50,7 +51,12 @@ class TransactionProcessor:
 
             trans_date = datetime.strptime(ocr_result["transaction_date"], "%Y-%m-%d").date()
 
-            receipt_id   = self._insert_receipt(ocr_result, file_name, drive_file_id, model_name, source_folder)
+            if existing_receipt_id:
+                receipt_id = existing_receipt_id
+                self._update_receipt(ocr_result, existing_receipt_id)
+                self.db.table("Rawdata_RECEIPT_items").delete().eq("receipt_id", existing_receipt_id).execute()
+            else:
+                receipt_id = self._insert_receipt(ocr_result, file_name, drive_file_id, model_name, source_folder)
             situation_id = self._determine_situation(trans_date)
 
             normalized_items = []
@@ -202,6 +208,29 @@ class TransactionProcessor:
 
     # ── DB 登録 ───────────────────────────────────────────────
 
+    def _update_receipt(self, ocr_result, receipt_id):
+        tax_summary = ocr_result.get("tax_summary", {})
+        subtotal_amount = None
+        if tax_summary:
+            s8  = (tax_summary.get("tax_8_subtotal", 0) or 0)
+            s10 = (tax_summary.get("tax_10_subtotal", 0) or 0)
+            if s8 or s10:
+                subtotal_amount = s8 + s10
+        total_amount = sum(
+            item.get("total_amount") or item.get("amount") or item.get("displayed_amount") or 0
+            for item in ocr_result.get("items", [])
+        )
+        tax_s = ocr_result.get("tax_summary", {})
+        data = {
+            "shop_name":          ocr_result["shop_name"],
+            "transaction_date":   ocr_result["transaction_date"],
+            "total_amount_check": ocr_result.get("total") or total_amount or 0,
+            "subtotal_amount":    subtotal_amount,
+            "tax_8_amount":       int(tax_s.get("tax_8_amount") or 0) if tax_s else 0,
+            "tax_10_amount":      int(tax_s.get("tax_10_amount") or 0) if tax_s else 0,
+        }
+        self.db.table("Rawdata_RECEIPT_shops").update(data).eq("id", receipt_id).execute()
+
     def _insert_receipt(self, ocr_result, file_name, drive_file_id, model_name, source_folder) -> str:
         trans_date   = datetime.strptime(ocr_result["transaction_date"], "%Y-%m-%d").date()
         total_amount = sum(
@@ -221,6 +250,8 @@ class TransactionProcessor:
             "shop_name":           ocr_result["shop_name"],
             "total_amount_check":  ocr_result.get("total") or total_amount or 0,
             "subtotal_amount":     subtotal_amount,
+            "tax_8_amount":        int(tax_summary.get("tax_8_amount") or 0) if tax_summary else 0,
+            "tax_10_amount":       int(tax_summary.get("tax_10_amount") or 0) if tax_summary else 0,
             "image_path":          f"99_Archive/{trans_date.strftime('%Y-%m')}/{file_name}",
             "drive_file_id":       drive_file_id,
             "source_folder":       source_folder,

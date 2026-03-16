@@ -2168,6 +2168,92 @@ def delete_receipt_item():
     return jsonify({"status": "success"})
 
 
+@app.route('/api/receipt/reprocess', methods=['POST'])
+def reprocess_receipt():
+    """レシートをOCR再実行して明細を上書き"""
+    import json, tempfile, base64
+    from gemini_client import GeminiClient
+    from transaction_processor import TransactionProcessor
+
+    data = request.get_json(silent=True) or {}
+    log_id = data.get('log_id')
+    receipt_id = data.get('receipt_id')
+
+    db = get_db()
+    log_res = db.table("99_lg_image_proc_log").select("*").eq("id", log_id).single().execute()
+    if not log_res.data:
+        return jsonify({"status": "error", "message": "ログが見つかりません"}), 404
+    log = log_res.data
+
+    drive = get_drive_client()
+    llm = GeminiClient()
+    processor = TransactionProcessor()
+
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            local_path = drive.download_file(log["drive_file_id"], log["file_name"], temp_dir)
+            if not local_path:
+                return jsonify({"status": "error", "message": "Driveからダウンロードできませんでした"}), 500
+
+            with open(local_path, 'rb') as f:
+                image_base64 = base64.b64encode(f.read()).decode('utf-8')
+
+            ocr_response = llm.generate_with_images(
+                prompt=GEMINI_PROMPT,
+                image_data=image_base64,
+                model=log.get("ocr_model") or GEMINI_MODEL_EASY,
+                temperature=GEMINI_TEMPERATURE
+            )
+
+            json_start = ocr_response.find('{')
+            json_end = ocr_response.rfind('}') + 1
+            if json_start == -1 or json_end == 0:
+                return jsonify({"status": "error", "message": "OCR結果のJSON解析失敗"}), 500
+
+            ocr_result = json.loads(ocr_response[json_start:json_end])
+            if "error" in ocr_result:
+                return jsonify({"status": "error", "message": f"OCRエラー: {ocr_result.get('message', ocr_result['error'])}"}), 500
+
+            if "transaction_info" in ocr_result and "date" in ocr_result["transaction_info"]:
+                ocr_result["transaction_date"] = ocr_result["transaction_info"]["date"]
+            if "shop_info" in ocr_result and "name" in ocr_result["shop_info"]:
+                ocr_result["shop_name"] = ocr_result["shop_info"]["name"]
+            if "items" in ocr_result:
+                for item in ocr_result["items"]:
+                    if "line_type" not in item:
+                        item["line_type"] = "ITEM"
+                    if "line_text" not in item and "product_name" in item:
+                        item["line_text"] = item["product_name"]
+            if "amounts" in ocr_result:
+                amounts = ocr_result["amounts"]
+                ocr_result["total_amount_check"] = amounts.get("total")
+                ocr_result["tax_summary"] = {
+                    "tax_8_subtotal":  amounts.get("tax_8_base"),
+                    "tax_8_amount":    amounts.get("tax_8_amount"),
+                    "tax_10_subtotal": amounts.get("tax_10_base"),
+                    "tax_10_amount":   amounts.get("tax_10_amount"),
+                    "total_amount":    amounts.get("total"),
+                    "tax_type":        amounts.get("tax_type", "内税"),
+                }
+
+            result = processor.process(
+                ocr_result=ocr_result,
+                file_name=log["file_name"],
+                drive_file_id=log["drive_file_id"],
+                model_name=log.get("ocr_model") or GEMINI_MODEL_EASY,
+                source_folder=log.get("source_folder", "INBOX"),
+                existing_receipt_id=receipt_id,
+            )
+
+            if "error" in result:
+                return jsonify({"status": "error", "message": result.get("message")}), 500
+
+            return jsonify({"status": "success"})
+
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/receipt/delete', methods=['POST'])
 def delete_receipt():
     """レシート全体を削除（紐付けも解除）"""

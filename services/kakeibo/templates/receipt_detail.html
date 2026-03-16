@@ -129,6 +129,7 @@
                             <dd style="color: #e74c3c;">{{ log.error_message }}</dd>
                             {% endif %}
                         </dl>
+                        <button class="btn btn-primary" onclick="reprocessReceipt('{{ log.id }}')">🔄 再読み込み</button>
                     </div>
                 </div>
             </div>
@@ -657,6 +658,28 @@
                 if (result.status === 'success') {
                     showToast(`ルール登録: ${ocrName} → ${productName}`);
                     btn.style.background = '#27ae60';
+                } else {
+                    showToast(result.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 再読み込み（OCR再実行）
+        async function reprocessReceipt(logId) {
+            if (!confirm('最新のプロンプトでOCRを再実行します。現在の明細は上書きされます。よいですか？')) return;
+            showToast('OCR再実行中...', 'success');
+            try {
+                const res = await fetch('/api/receipt/reprocess', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ log_id: logId, receipt_id: receiptId })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    showToast('再読み込み完了');
+                    setTimeout(() => location.reload(), 1000);
                 } else {
                     showToast(result.message || 'エラーが発生しました', 'error');
                 }
