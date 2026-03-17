@@ -18,51 +18,58 @@
 </div>
 
 <div class="card">
-  <h2>月×カテゴリ サマリー</h2>
+  <h2>カテゴリ × 月 サマリー</h2>
   <div style="overflow-x:auto;">
     <table>
       <thead>
         <tr>
-          <th>月</th>
-          <th class="amt">収入</th>
-          {% for cat in cats %}<th class="amt">{{ cat }}</th>{% endfor %}
-          <th class="amt">支出合計</th>
-          <th class="amt">収支</th>
+          <th>カテゴリ</th>
+          {% for ym in month_list %}<th class="amt">{{ ym }}</th>{% endfor %}
+          <th class="amt" style="font-weight:bold;">合計</th>
         </tr>
       </thead>
       <tbody>
-        {% for ym in month_list %}
-        {% set row_expense = namespace(total=0) %}
+        {# 収入行 #}
+        <tr style="background:#f0fff4;">
+          <td style="font-weight:bold; color:#1a7a1a;">収入</td>
+          {% for ym in month_list %}
+            {% set v = income_by_month.get(ym, 0) %}
+            <td class="amt pos">{% if v %}{{ "{:,}".format(v) }}{% endif %}</td>
+          {% endfor %}
+          <td class="amt pos" style="font-weight:bold;">{{ "{:,}".format(income_by_month.values()|sum) }}</td>
+        </tr>
+
+        {# 支出カテゴリ行 #}
+        {% for cat in cats %}
         <tr>
-          <td><a href="/summary?month={{ ym }}">{{ ym }}</a></td>
-          <td class="amt pos">{{ "{:,}".format(income_by_month.get(ym, 0)) }}</td>
-          {% for cat in cats %}
-            {% set amt = data[ym][cat] if ym in data and cat in data[ym] else 0 %}
-            {% set row_expense.total = row_expense.total + amt %}
+          <td>{{ cat }}</td>
+          {% for ym in month_list %}
+            {% set amt = data[cat][ym] if cat in data and ym in data[cat] else 0 %}
             <td class="amt {% if amt < 0 %}neg{% endif %}">
-              {% if amt != 0 %}{{ "{:,}".format(amt) }}{% endif %}
+              {% if amt %}{{ "{:,}".format(amt) }}{% endif %}
             </td>
           {% endfor %}
-          <td class="amt neg" style="font-weight:bold;">{{ "{:,}".format(row_expense.total) }}</td>
-          <td class="amt {% if income_by_month.get(ym,0) + row_expense.total >= 0 %}pos{% else %}neg{% endif %}" style="font-weight:bold;">
-            {{ "{:,}".format(income_by_month.get(ym, 0) + row_expense.total) }}
-          </td>
+          <td class="amt neg" style="font-weight:bold;">{{ "{:,}".format(cat_totals[cat]) }}</td>
         </tr>
         {% endfor %}
       </tbody>
       <tfoot>
         <tr style="font-weight:bold; background:#ecf0f1;">
-          <td>合計</td>
-          <td class="amt pos">{{ "{:,}".format(income_by_month.values()|sum) }}</td>
-          {% for cat in cats %}
-            {% set col_total = namespace(v=0) %}
-            {% for ym in month_list %}
-              {% set col_total.v = col_total.v + (data[ym][cat] if ym in data and cat in data[ym] else 0) %}
-            {% endfor %}
-            <td class="amt neg">{{ "{:,}".format(col_total.v) }}</td>
+          <td>支出合計</td>
+          {% for ym in month_list %}
+            {% set v = month_expense_total.get(ym, 0) %}
+            <td class="amt neg">{{ "{:,}".format(v) }}</td>
           {% endfor %}
-          <td class="amt neg">—</td>
-          <td class="amt">—</td>
+          <td class="amt neg">{{ "{:,}".format(month_expense_total.values()|sum) }}</td>
+        </tr>
+        <tr style="font-weight:bold; background:#dff0d8;">
+          <td>収支</td>
+          {% for ym in month_list %}
+            {% set net = income_by_month.get(ym, 0) + month_expense_total.get(ym, 0) %}
+            <td class="amt {% if net >= 0 %}pos{% else %}neg{% endif %}">{{ "{:,}".format(net) }}</td>
+          {% endfor %}
+          {% set total_net = income_by_month.values()|sum + month_expense_total.values()|sum %}
+          <td class="amt {% if total_net >= 0 %}pos{% else %}neg{% endif %}">{{ "{:,}".format(total_net) }}</td>
         </tr>
       </tfoot>
     </table>

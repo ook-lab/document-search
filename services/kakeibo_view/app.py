@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
@@ -53,7 +53,7 @@ def _get_manual_map(db, ids):
 
 
 def _match_category_rule(content, rules):
-    """Kakeibo_Category_Rules の自動マッチ（kakeibo app.py と同ロジック）"""
+    """Kakeibo_Category_Rules の自動マッチ"""
     for rule in rules:
         pattern = rule.get('content_pattern', '')
         if pattern and pattern in content:
@@ -67,12 +67,58 @@ def _match_category_rule(content, rules):
     return None
 
 
+def _match_card_loan_rule(content, institution, amount, rules):
+    """Kakeibo_Card_Loan_Rules の自動マッチ（kakeibo app.py と同ロジック）"""
+    content     = content or ""
+    institution = institution or ""
+    for rule in rules:
+        if not rule.get('is_active'):
+            continue
+        cp   = rule.get('content_pattern', '')
+        ip   = rule.get('institution_pattern', '')
+        sign = rule.get('amount_sign', 'any')
+        if cp and cp not in content:
+            continue
+        if ip and ip not in institution:
+            continue
+        if sign == '+' and amount <= 0:
+            continue
+        if sign == '-' and amount >= 0:
+            continue
+        return rule
+    return None
+
+
+def _match_cash_category_rule(content, institution, amount, rules):
+    """Kakeibo_Cash_Category_Rules の自動マッチ"""
+    content     = content or ""
+    institution = institution or ""
+    for rule in rules:
+        if not rule.get('is_active'):
+            continue
+        cp   = rule.get('content_pattern', '')
+        ip   = rule.get('institution_pattern', '')
+        sign = rule.get('amount_sign', 'any')
+        if cp and cp not in content:
+            continue
+        if ip and ip not in institution:
+            continue
+        if sign == '+' and amount <= 0:
+            continue
+        if sign == '-' and amount >= 0:
+            continue
+        return rule
+    return None
+
+
 def _get_rules(db):
-    """自動除外ルール・カテゴリルールを一括取得"""
+    """全ルールを一括取得"""
     auto_rules = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute().data
     cat_rules  = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True)\
                    .order("priority", desc=True).order("use_count", desc=True).execute().data
-    return auto_rules, cat_rules
+    card_loan_rules  = db.table("Kakeibo_Card_Loan_Rules").select("*").eq("is_active", True).execute().data
+    cash_cat_rules   = db.table("Kakeibo_Cash_Category_Rules").select("*").eq("is_active", True).execute().data
+    return auto_rules, cat_rules, card_loan_rules, cash_cat_rules
 
 
 def _check_auto_target(content, institution, auto_rules):
@@ -89,10 +135,10 @@ def _check_auto_target(content, institution, auto_rules):
 # データ取得：明細一覧ベース（支出分析用）
 # ──────────────────────────────────────────────
 
-def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules):
+def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules, card_loan_rules):
     """
     明細一覧に表示されるトランザクションを返す。
-    カテゴリは Manual_Edits → Category_Rules 自動マッチの優先順で解決。
+    kakeibo/app.py の index() と同じ除外ロジックを適用。
     """
     res = db.table("Rawdata_BANK_transactions") \
         .select("*") \
@@ -107,23 +153,33 @@ def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules):
 
     result = []
     for t in transactions:
-        m = manual_map.get(t['id'], {})
-
-        # 除外判定（明細一覧と同じロジック）
-        is_excluded = m.get('is_excluded', False)
+        m           = manual_map.get(t['id'], {})
+        content     = t.get('content', '')
+        institution = t.get('institution', '')
+        amount      = t['amount']
         view_target = m.get('view_target')
 
+        # 消し込み済み（is_excluded=True）は除外
+        is_excluded = m.get('is_excluded', False)
+
         if not m:
-            # 手動設定なし → 自動ルールチェック
-            auto_action = _check_auto_target(t.get('content', ''), t.get('institution', ''), auto_rules)
+            auto_action = _check_auto_target(content, institution, auto_rules)
             if auto_action == 'CASH_ONLY':
                 is_excluded = True
         else:
             if view_target == 'CASH_ONLY':
                 is_excluded = True
 
-        # ローン管理行も除外
+        if is_excluded:
+            continue
+
+        # ローン管理行は除外
         if view_target == 'loan':
+            continue
+
+        # カードローンルールにマッチする取引は明細一覧から除外
+        matched_card_rule = _match_card_loan_rule(content, institution, amount, card_loan_rules)
+        if matched_card_rule and view_target != 'list':
             continue
 
         # カテゴリ解決：Manual_Edits → Category_Rules 自動マッチ
@@ -133,15 +189,12 @@ def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules):
         cat_person = m.get('category_person') or ''
 
         if not cat_major:
-            suggested = _match_category_rule(t.get('content', ''), cat_rules)
+            suggested = _match_category_rule(content, cat_rules)
             if suggested:
                 cat_major  = suggested['cat_major']
                 cat_mid    = suggested['cat_mid']
                 cat_small  = suggested['cat_small']
                 cat_person = suggested['cat_person']
-
-        if is_excluded:
-            continue
 
         result.append({
             **t,
@@ -158,8 +211,12 @@ def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules):
 # データ取得：現金計算ベース（入出金サマリー用）
 # ──────────────────────────────────────────────
 
-def get_cash_transactions(db, start_date, end_date, auto_rules, cat_rules):
-    """現金計算対象のトランザクションを返す（kakeibo cash_calc と同ロジック）"""
+def get_cash_transactions(db, start_date, end_date, auto_rules, card_loan_rules, cash_cat_rules):
+    """
+    現金計算対象のトランザクションを返す。
+    kakeibo/app.py の cash_calc() と同じロジックを適用。
+    分類は cash_cat_major / cash_cat_mid を使用。
+    """
     res = db.table("Rawdata_BANK_transactions") \
         .select("*") \
         .gte("date", start_date) \
@@ -173,34 +230,68 @@ def get_cash_transactions(db, start_date, end_date, auto_rules, cat_rules):
 
     result = []
     for t in transactions:
-        m = manual_map.get(t['id'], {})
+        m           = manual_map.get(t['id'], {})
+        content     = t.get('content', '')
+        institution = t.get('institution', '')
+        amount      = t['amount']
 
+        # 消し込み済みは現金計算対象外
+        if m.get('is_excluded'):
+            continue
+
+        # カードローンルール（最優先）
+        card_rule = _match_card_loan_rule(content, institution, amount, card_loan_rules)
+        if card_rule:
+            if card_rule.get('exclude'):
+                continue  # 計算対象外
+            cash_cat_major = m.get('cash_cat_major') or card_rule.get('cash_cat_major') or ''
+            cash_cat_mid   = m.get('cash_cat_mid') or ''
+            result.append({
+                **t,
+                'category':      cash_cat_major or '未分類',
+                'cash_cat_major': cash_cat_major,
+                'cash_cat_mid':   cash_cat_mid,
+                'is_loan_tx':    True,
+            })
+            continue
+
+        # 通常の表示先判定
         is_cash_target = False
-        auto_action = _check_auto_target(t.get('content', ''), t.get('institution', ''), auto_rules)
+        view_target    = m.get('view_target')
+
+        auto_action = _check_auto_target(content, institution, auto_rules)
         if auto_action in ['CASH_ONLY', 'BOTH']:
             is_cash_target = True
 
         if m:
-            vt = m.get('view_target')
-            if vt in ['BANK_OUTFLOW', 'BOTH', 'CASH_ONLY']:
+            if view_target in ['BANK_OUTFLOW', 'BOTH', 'CASH_ONLY']:
                 is_cash_target = True
-            elif vt in ['INTERNAL_TRANSFER', 'LIST_ONLY']:
+            elif view_target in ['INTERNAL_TRANSFER', 'LIST_ONLY']:
                 is_cash_target = False
 
         if not is_cash_target:
             continue
 
-        vt = m.get('view_target')
-        if vt == 'BANK_OUTFLOW':
-            category = '銀行出金（消込済）'
-        else:
-            cat_major = m.get('category_major') or ''
-            if not cat_major:
-                suggested = _match_category_rule(t.get('content', ''), cat_rules)
-                cat_major = suggested['cat_major'] if suggested else ''
-            category = cat_major or '未分類'
+        # 現金分類: cash_cat_major → Kakeibo_Cash_Category_Rules → 未分類
+        cash_cat_major = m.get('cash_cat_major') or ''
+        cash_cat_mid   = m.get('cash_cat_mid') or ''
+        if not cash_cat_major:
+            cr = _match_cash_category_rule(content, institution, amount, cash_cat_rules)
+            if cr:
+                cash_cat_major = cr.get('cash_cat_major') or ''
+                cash_cat_mid   = cr.get('cash_cat_mid') or ''
 
-        result.append({**t, 'category': category})
+        category = cash_cat_major or (
+            '銀行出金（消込済）' if view_target == 'BANK_OUTFLOW' else '未分類'
+        )
+
+        result.append({
+            **t,
+            'category':      category,
+            'cash_cat_major': cash_cat_major,
+            'cash_cat_mid':   cash_cat_mid,
+            'is_loan_tx':    False,
+        })
 
     return result
 
@@ -219,10 +310,10 @@ def expense_summary():
     """支出サマリー：明細一覧ベース。何に・誰が・いくら使ったか"""
     year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     db = get_db()
-    auto_rules, cat_rules = _get_rules(db)
+    auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
 
     start, end = month_range(year_month)
-    txs = get_list_transactions(db, start, end, auto_rules, cat_rules)
+    txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
 
     expenses = [t for t in txs if t['amount'] < 0]
 
@@ -236,9 +327,7 @@ def expense_summary():
         hierarchy[maj][mid][sml] += t['amount']
         major_total[maj] += t['amount']
 
-    # 大分類を金額順（支出多い順）にソート
     cat_sorted = sorted(major_total.items(), key=lambda x: x[1])
-    # テンプレートに渡す構造: [(大分類, 合計, [(中分類, 合計, [(小分類, 合計)])])]
     hierarchy_list = []
     for maj, maj_amt in cat_sorted:
         mid_list = []
@@ -248,8 +337,7 @@ def expense_summary():
             mid_list.append((mid, mid_total, sml_list))
         hierarchy_list.append((maj, maj_amt, mid_list))
 
-    # 人物別集計: {人物: {大分類: {中分類: amount}}}
-    person_cat = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    person_cat   = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     person_total = defaultdict(int)
     for t in expenses:
         p   = t['cat_person']
@@ -259,7 +347,6 @@ def expense_summary():
         person_total[p] += t['amount']
     person_sorted = sorted(person_total.items(), key=lambda x: x[1])
 
-    # テンプレート用: [(人物, 合計, [(大分類, 合計, [(中分類, 合計)])])]
     person_hierarchy = []
     for p, p_amt in person_sorted:
         cat_list = []
@@ -295,10 +382,10 @@ def cash_summary():
     """入出金サマリー：現金計算ベース。実際の現金の動き"""
     year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     db = get_db()
-    auto_rules, cat_rules = _get_rules(db)
+    auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
 
     start, end = month_range(year_month)
-    txs = get_cash_transactions(db, start, end, auto_rules, cat_rules)
+    txs = get_cash_transactions(db, start, end, auto_rules, card_loan_rules, cash_cat_rules)
 
     income  = [t for t in txs if t['amount'] > 0]
     expense = [t for t in txs if t['amount'] < 0]
@@ -332,15 +419,16 @@ def multi_month():
     to_ym   = request.args.get('to',   default_to)
 
     db = get_db()
-    auto_rules, cat_rules = _get_rules(db)
+    auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
 
     month_list = months_between(from_ym, to_ym)
     ty, tm = map(int, to_ym.split('-'))
     start = f"{from_ym}-01"
     end   = f"{ty + 1}-01-01" if tm == 12 else f"{ty}-{tm + 1:02d}-01"
 
-    txs = get_list_transactions(db, start, end, auto_rules, cat_rules)
+    txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
 
+    # data[cat][ym] = amount
     data        = defaultdict(lambda: defaultdict(int))
     income_by_m = defaultdict(int)
     all_cats    = set()
@@ -348,19 +436,27 @@ def multi_month():
     for t in txs:
         ym = t['date'][:7]
         if t['amount'] < 0:
-            data[ym][t['category']] += t['amount']
+            data[t['category']][ym] += t['amount']
             all_cats.add(t['category'])
         else:
             income_by_m[ym] += t['amount']
 
-    cats = sorted(all_cats)
+    # カテゴリを合計金額順（支出多い順）にソート
+    cats = sorted(all_cats, key=lambda c: sum(data[c].values()))
+
+    # カテゴリ別合計
+    cat_totals = {c: sum(data[c].values()) for c in cats}
+
+    # 月別支出合計・収支
+    month_expense_total = {ym: sum(data[c].get(ym, 0) for c in cats) for ym in month_list}
+
     colors = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF',
               '#FF9F40','#C9CBCF','#EA526F','#7BC8A4','#F67019']
 
     chart_datasets = [
         {
             'label': cat,
-            'data': [abs(data[m].get(cat, 0)) for m in month_list],
+            'data': [abs(data[cat].get(m, 0)) for m in month_list],
             'backgroundColor': colors[i % len(colors)],
         }
         for i, cat in enumerate(cats)
@@ -372,7 +468,9 @@ def multi_month():
         month_list=month_list,
         cats=cats,
         data=data,
+        cat_totals=cat_totals,
         income_by_month=income_by_m,
+        month_expense_total=month_expense_total,
         chart_labels=month_list,
         chart_datasets=chart_datasets,
     )
@@ -380,27 +478,35 @@ def multi_month():
 
 @app.route('/trend')
 def trend():
-    """カテゴリ推移（支出ベース）"""
+    """カテゴリ推移（支出ベース）。大分類/中分類/小分類を選択可能"""
     today = datetime.now()
-    from_ym = request.args.get('from', f"{today.year}-01")
-    to_ym   = request.args.get('to',   today.strftime('%Y-%m'))
+    from_ym    = request.args.get('from', f"{today.year}-01")
+    to_ym      = request.args.get('to',   today.strftime('%Y-%m'))
+    cat_level  = request.args.get('cat_level', 'major')   # major / mid / small
     selected_cats = request.args.getlist('cats')
 
     db = get_db()
-    auto_rules, cat_rules = _get_rules(db)
+    auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
 
     ty, tm = map(int, to_ym.split('-'))
     start = f"{from_ym}-01"
     end   = f"{ty + 1}-01-01" if tm == 12 else f"{ty}-{tm + 1:02d}-01"
 
-    txs = get_list_transactions(db, start, end, auto_rules, cat_rules)
+    txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
     month_list = months_between(from_ym, to_ym)
 
-    all_cats = sorted({t['category'] for t in txs if t['amount'] < 0})
+    def _cat_key(t):
+        if cat_level == 'mid':
+            return t['cat_mid'] or '（未設定）'
+        elif cat_level == 'small':
+            return t['cat_small'] or '（未設定）'
+        return t['category']
+
+    all_cats = sorted({_cat_key(t) for t in txs if t['amount'] < 0})
     data = defaultdict(lambda: defaultdict(int))
     for t in txs:
         if t['amount'] < 0:
-            data[t['date'][:7]][t['category']] += t['amount']
+            data[t['date'][:7]][_cat_key(t)] += t['amount']
 
     show_cats = selected_cats if selected_cats else all_cats[:6]
     colors = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40',
@@ -417,15 +523,53 @@ def trend():
         for i, cat in enumerate(show_cats)
     ]
 
+    # 全カテゴリ・全月データを JS に渡す（セット集計・占有率計算用）
+    all_data_js = {ym: {cat: abs(data[ym].get(cat, 0)) for cat in all_cats} for ym in month_list}
+
+    # 登録済みセットカテゴリーを取得（同じ cat_level のもの）
+    sets_res = db.table("Kakeibo_Trend_Category_Sets").select("*") \
+                 .eq("cat_level", cat_level).order("created_at").execute()
+    cat_sets = sets_res.data
+
     return render_template('trend.html',
         from_ym=from_ym,
         to_ym=to_ym,
+        cat_level=cat_level,
         all_cats=all_cats,
         selected_cats=show_cats,
         month_list=month_list,
+        all_data_js=all_data_js,
+        cat_sets=cat_sets,
         chart_labels=month_list,
         chart_datasets=chart_datasets,
     )
+
+
+@app.route('/api/trend_set/add', methods=['POST'])
+def add_trend_set():
+    data      = request.json
+    set_name  = (data.get('set_name') or '').strip()
+    cat_level = data.get('cat_level', 'major')
+    categories = data.get('categories', [])
+    if not set_name or not categories:
+        return jsonify({'status': 'error', 'message': 'set_name と categories は必須'}), 400
+    db = get_db()
+    res = db.table("Kakeibo_Trend_Category_Sets").insert({
+        'set_name':   set_name,
+        'cat_level':  cat_level,
+        'categories': categories,
+    }).execute()
+    return jsonify({'status': 'success', 'id': res.data[0]['id'] if res.data else None})
+
+
+@app.route('/api/trend_set/delete', methods=['POST'])
+def delete_trend_set():
+    set_id = request.json.get('id')
+    if not set_id:
+        return jsonify({'status': 'error', 'message': 'id は必須'}), 400
+    db = get_db()
+    db.table("Kakeibo_Trend_Category_Sets").delete().eq("id", set_id).execute()
+    return jsonify({'status': 'success'})
 
 
 @app.route('/person')
@@ -433,10 +577,10 @@ def person():
     """人物別集計（支出ベース）"""
     year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     db = get_db()
-    auto_rules, cat_rules = _get_rules(db)
+    auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
 
     start, end = month_range(year_month)
-    txs = get_list_transactions(db, start, end, auto_rules, cat_rules)
+    txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
 
     person_cat   = defaultdict(lambda: defaultdict(int))
     person_total = defaultdict(int)
