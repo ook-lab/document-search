@@ -164,6 +164,10 @@ def index():
     cat_rules_res = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
     category_rules = cat_rules_res.data
 
+    # カードローンルールを取得（明細一覧・消込から除外するため）
+    card_loan_rules_res = db.table("Kakeibo_Card_Loan_Rules").select("*").eq("is_active", True).execute()
+    index_card_loan_rules = card_loan_rules_res.data
+
     # RawDataを取得
     query = db.table("Rawdata_BANK_transactions").select("*").order("date", desc=True)
 
@@ -232,9 +236,10 @@ def index():
         if is_excluded and not show_excluded:
             continue
 
-        # カードローン判定：view_target='loan' または (view_target=NoneかつカードローンID)
+        # カードローン判定：view_target='loan' または (view_target=NoneかつカードローンID) またはカードローンルールにマッチ
         is_card_loan = t['id'] in card_loan_ids
-        if view_target == 'loan' or (view_target is None and is_card_loan):
+        matched_card_rule = match_card_loan_rule(t.get('content', ''), t.get('institution', ''), t['amount'], index_card_loan_rules)
+        if view_target == 'loan' or (view_target is None and is_card_loan) or (view_target != 'list' and matched_card_rule):
             # ローン管理に表示するのでスキップ（view_target='list'で強制表示の場合は除く）
             if view_target != 'list':
                 continue
@@ -609,11 +614,19 @@ def reconcile_page():
     rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
     auto_exclude_rules = rules_res.data
 
+    # カードローンルールを取得
+    cl_rules_res = db.table("Kakeibo_Card_Loan_Rules").select("*").eq("is_active", True).execute()
+    reconcile_card_loan_rules = cl_rules_res.data
+
     # 表示用データ構築
     candidates = []
     for r in raw_data:
         is_ex = r['id'] in excluded_ids
-        
+
+        # カードローンルールにマッチする取引は消込ツールから除外
+        if match_card_loan_rule(r.get('content', ''), r.get('institution', ''), r['amount'], reconcile_card_loan_rules):
+            continue
+
         # 自動ルールをチェック（手動設定がない場合のみ自動ルールを適用）
         if r['id'] not in manual_ids:
             auto_action, _ = check_auto_target(r.get('content', ''), r.get('institution', ''), auto_exclude_rules)
@@ -700,10 +713,11 @@ def cash_calc():
             cash_cat_mid   = m.get('cash_cat_mid', '') or ''
             all_list.append({
                 **t,
-                "category":      card_rule.get('cash_cat_major') or "未分類",
-                "note":          m.get('note', ''),
+                "category":       card_rule.get('cash_cat_major') or "未分類",
+                "note":           m.get('note', ''),
                 "cash_cat_major": cash_cat_major,
                 "cash_cat_mid":   cash_cat_mid,
+                "is_loan_tx":     True,   # 収支集計から除外
             })
             continue
 
@@ -741,15 +755,17 @@ def cash_calc():
 
         all_list.append({
             **t,
-            "category":      category,
-            "note":          m.get('note', ''),
+            "category":       category,
+            "note":           m.get('note', ''),
             "cash_cat_major": cash_cat_major,
             "cash_cat_mid":   cash_cat_mid,
+            "is_loan_tx":     False,
         })
 
     all_list.sort(key=lambda x: x['date'])
-    total_income = sum(t['amount'] for t in all_list if t['amount'] > 0)
-    total_expense = sum(t['amount'] for t in all_list if t['amount'] <= 0)
+    # カードローンルールにマッチした取引は収支集計から除外（リストには表示する）
+    total_income  = sum(t['amount'] for t in all_list if t['amount'] > 0  and not t.get('is_loan_tx'))
+    total_expense = sum(t['amount'] for t in all_list if t['amount'] <= 0 and not t.get('is_loan_tx'))
     net_cash_flow = total_income + total_expense
 
     # ローン増減: 返済合計(絶対値) - 借入合計(絶対値)

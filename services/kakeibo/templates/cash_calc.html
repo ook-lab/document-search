@@ -34,6 +34,8 @@
         td { padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: #fafafa; }
+        tr.loan-tx td { opacity: 0.55; }
+        tr.loan-tx .col-amount { text-decoration: line-through; }
 
         .col-date { white-space: nowrap; color: #555; font-size: 12px; }
         .col-content { font-weight: bold; }
@@ -116,7 +118,7 @@
         </thead>
         <tbody>
             {% for t in transactions %}
-            <tr data-id="{{ t.id }}">
+            <tr data-id="{{ t.id }}" {% if t.is_loan_tx %}class="loan-tx" title="カードローン（収支集計対象外）"{% endif %}>
                 <td class="col-date">{{ t.date }}</td>
                 <td class="col-content">{{ t.content }}</td>
                 <td class="col-inst">{{ t.institution or '' }}</td>
