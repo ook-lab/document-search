@@ -2185,7 +2185,8 @@ def link_receipt_to_transaction():
 
         for item in items.data:
             product_name = item.get("official_name") or item.get("product_name", "")
-            amount = item.get("tax_included_amount") or 0
+            # レシートの金額はプラス表記だが、明細一覧では支出なのでマイナスにする
+            amount = -(item.get("tax_included_amount") or 0)
 
             new_id = f"RECEIPT-{receipt_id}-{item['id']}"
 

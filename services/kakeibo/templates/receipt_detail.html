@@ -335,7 +335,7 @@
                         <div class="candidates-list" id="candidatesList">
                             {% for c in candidates %}
                             <div class="candidate-item {% if linked_transaction and linked_transaction.transaction_id == c.id %}selected{% endif %} {% if receipt and receipt.transaction_date and c.date == receipt.transaction_date[:10] %}same-day{% endif %}"
-                                 data-tx-id="{{ c.id }}" data-date="{{ c.date }}" onclick="selectCandidate(this, '{{ c.id }}')">
+                                 data-tx-id="{{ c.id }}" data-date="{{ c.date }}" data-amount="{{ c.amount or 0 }}" onclick="selectCandidate(this, '{{ c.id }}', {{ c.amount or 0 }})">
                                 <div class="date">{{ c.date }}{% if receipt and receipt.transaction_date and c.date == receipt.transaction_date[:10] %} <span style="color: #27ae60; font-weight: bold;">●同日</span>{% endif %}</div>
                                 <div class="content">{{ c.content }}</div>
                                 <div style="display: flex; justify-content: space-between;">
@@ -370,7 +370,9 @@
 
     <script>
         const receiptId = "{{ receipt.id if receipt else '' }}";
+        const receiptTotal = {{ (receipt.total_amount_check or 0) | int if receipt else 0 }};
         let selectedTxId = null;
+        let selectedTxAmount = null;
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
@@ -379,10 +381,11 @@
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
-        function selectCandidate(el, txId) {
+        function selectCandidate(el, txId, txAmount) {
             document.querySelectorAll('.candidate-item').forEach(item => item.classList.remove('selected'));
             el.classList.add('selected');
             selectedTxId = txId;
+            selectedTxAmount = txAmount;
             const linkBtn = document.getElementById('linkBtn');
             if (linkBtn) linkBtn.disabled = false;
         }
@@ -432,6 +435,20 @@
 
         async function linkSelected() {
             if (!selectedTxId || !receiptId) return;
+
+            // 金額不一致チェック: レシート合計 vs 取引金額（絶対値で比較）
+            if (receiptTotal > 0 && selectedTxAmount !== null) {
+                const txAbs = Math.abs(selectedTxAmount);
+                if (receiptTotal !== txAbs) {
+                    const ok = confirm(
+                        `⚠️ 金額が一致していません。\n` +
+                        `レシート合計: ¥${receiptTotal.toLocaleString()}\n` +
+                        `取引金額: ¥${txAbs.toLocaleString()}\n\n` +
+                        `このまま紐付けしますか？`
+                    );
+                    if (!ok) return;
+                }
+            }
 
             try {
                 const res = await fetch('/api/receipt/link', {
