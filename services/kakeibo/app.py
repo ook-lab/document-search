@@ -288,6 +288,129 @@ def index():
     )
 
 
+@app.route('/categorize')
+def categorize():
+    """仕分けページ：期間・口座・キーワード等でフィルタしながら未分類を確定"""
+    db = get_db()
+
+    # フィルタパラメータ
+    now = datetime.now()
+    from_date   = request.args.get('from_date', now.strftime('%Y-%m') + '-01')
+    to_date     = request.args.get('to_date',   now.strftime('%Y-%m-%d'))
+    institution = request.args.get('institution', '')
+    keyword     = request.args.get('keyword', '')
+    show_all    = request.args.get('show_all', 'false') == 'true'
+
+    # ルール取得
+    rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
+    auto_exclude_rules = rules_res.data
+
+    cat_rules_res = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
+    category_rules = cat_rules_res.data
+
+    card_loan_rules_res = db.table("Kakeibo_Card_Loan_Rules").select("*").eq("is_active", True).execute()
+    index_card_loan_rules = card_loan_rules_res.data
+
+    # トランザクション取得（期間指定）
+    query = (db.table("Rawdata_BANK_transactions")
+               .select("*")
+               .gte("date", from_date)
+               .lte("date", to_date)
+               .order("date", desc=False))
+    res = query.execute()
+    transactions = res.data
+    ids = [t['id'] for t in transactions]
+
+    # Manual Edits 取得
+    manual_map = {}
+    if ids:
+        m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
+        manual_map = {m['transaction_id']: m for m in m_res.data}
+
+    # カードローンID 取得
+    card_loan_ids = set()
+    if ids:
+        loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids).execute()
+        card_loan_ids = {e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan'}
+
+    # 口座一覧（フィルタ用）
+    all_institutions = sorted(set(t.get('institution', '') for t in transactions if t.get('institution')))
+
+    # 表示用データ構築（除外・カードローン除く全件）
+    all_display = []
+    for t in transactions:
+        m = manual_map.get(t['id'], {})
+        is_excluded = m.get("is_excluded", False)
+        view_target = m.get("view_target")
+
+        auto_action, auto_rule = check_auto_target(
+            t.get('content', ''), t.get('institution', ''), auto_exclude_rules
+        )
+        if not m:
+            if auto_action == 'CASH_ONLY':
+                is_excluded = True
+        else:
+            if view_target == 'CASH_ONLY':
+                is_excluded = True
+
+        if is_excluded:
+            continue
+
+        is_card_loan = t['id'] in card_loan_ids
+        matched_card_rule = match_card_loan_rule(t.get('content', ''), t.get('institution', ''), t['amount'], index_card_loan_rules)
+        if view_target == 'loan' or (view_target is None and is_card_loan) or (view_target != 'list' and matched_card_rule):
+            if view_target != 'list':
+                continue
+
+        has_manual_category = bool(m.get("category_major"))
+        suggested = None
+        if not has_manual_category:
+            suggested = match_category_rule(t.get('content', ''), category_rules)
+
+        # 口座・キーワードフィルタ
+        if institution and t.get('institution', '') != institution:
+            continue
+        if keyword and keyword.lower() not in (t.get('content', '') or '').lower():
+            continue
+
+        all_display.append({
+            **t,
+            "cat_major":     m.get("category_major", "")    or (suggested.get('cat_major', '')    if suggested else ''),
+            "cat_mid":       m.get("category_mid", "")      or (suggested.get('cat_mid', '')      if suggested else ''),
+            "cat_small":     m.get("category_small", "")    or (suggested.get('cat_small', '')    if suggested else ''),
+            "cat_shop":      m.get("category_shop", "")     or (suggested.get('cat_shop', '')     if suggested else ''),
+            "cat_belonging": m.get("category_belonging", "") or (suggested.get('cat_belonging', '') if suggested else ''),
+            "cat_person":    m.get("category_person", "")   or (suggested.get('cat_person', '')   if suggested else ''),
+            "cat_context":   m.get("category_context", "")  or (suggested.get('cat_context', '')  if suggested else ''),
+            "is_suggested":  suggested is not None and not has_manual_category,
+            "suggested_rule": suggested.get('rule_pattern') if suggested else None,
+            "note":          m.get("note", ""),
+            "view_target":   view_target,
+            "auto_rule":     auto_rule,
+            "is_decided":    has_manual_category,
+            "is_receipt":    t['id'].startswith('RECEIPT-'),
+        })
+
+    undecided_count = sum(1 for t in all_display if not t['is_decided'])
+    total_count     = len(all_display)
+
+    # show_all=False のとき未決定のみ表示
+    display_data = all_display if show_all else [t for t in all_display if not t['is_decided']]
+
+    return render_template(
+        'categorize.html',
+        transactions=display_data,
+        from_date=from_date,
+        to_date=to_date,
+        institution=institution,
+        keyword=keyword,
+        show_all=show_all,
+        all_institutions=all_institutions,
+        undecided_count=undecided_count,
+        total_count=total_count,
+    )
+
+
 @app.route('/api/update', methods=['POST'])
 def update_transaction():
     """修正API：分類や除外フラグを更新"""

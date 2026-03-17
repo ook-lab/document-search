@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>仕分け - 家計簿</title>
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; background: #f5f5f5; font-size: 13px; }
+
+        header { background: #333; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        header a { color: #ccc; text-decoration: none; margin-left: 16px; font-size: 13px; }
+        header a:hover { color: white; }
+
+        .toolbar { background: white; padding: 10px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .toolbar label { font-size: 12px; color: #555; }
+        .toolbar input[type="date"], .toolbar input[type="text"], .toolbar select {
+            padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
+        }
+        .toolbar input[type="text"] { width: 160px; }
+        .toolbar button { padding: 5px 14px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .toolbar button:hover { background: #333; }
+        .toolbar .sep { border-left: 1px solid #ddd; height: 24px; margin: 0 4px; }
+
+        .progress-bar-wrap { background: white; padding: 8px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 12px; }
+        .progress-label { font-size: 13px; font-weight: bold; }
+        .progress-label .done { color: #27ae60; }
+        .progress-label .remain { color: #e74c3c; font-size: 16px; }
+        .bar-outer { flex: 1; max-width: 400px; height: 10px; background: #eee; border-radius: 5px; overflow: hidden; }
+        .bar-inner { height: 100%; background: #27ae60; border-radius: 5px; transition: width 0.3s; }
+
+        .content { padding: 12px 20px; }
+
+        table { width: 100%; border-collapse: collapse; background: white; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); border-radius: 6px; overflow: hidden; }
+        th { background: #f0f0f0; padding: 7px 8px; text-align: left; font-size: 11px; color: #555; border-bottom: 2px solid #ddd; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+        td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #fafafa; }
+        tr.decided td { background: #f0fff4; opacity: 0.6; }
+
+        .col-date  { white-space: nowrap; color: #666; font-size: 11px; width: 80px; }
+        .col-inst  { font-size: 11px; color: #888; width: 100px; }
+        .col-content { min-width: 140px; }
+        .col-content .main { font-weight: bold; }
+        .col-content .sub  { font-size: 10px; color: #999; }
+        .col-amount { font-family: monospace; font-weight: bold; text-align: right; white-space: nowrap; width: 90px; }
+        .col-amount.positive { color: #1a7a1a; }
+        .col-amount.negative { color: #c00; }
+        .col-note { width: 90px; }
+
+        .cat-input { padding: 3px 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; width: 85px; }
+        .cat-input-wide { padding: 3px 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; width: 100px; }
+        .cat-input:focus, .cat-input-wide:focus { outline: none; border-color: #888; }
+
+        .suggested .cat-input { border-color: #17a2b8; background: #f0fdff; }
+
+        .btn-confirm { padding: 3px 10px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; font-weight: bold; }
+        .btn-confirm:hover { background: #1e8449; }
+        .btn-confirm.saved { background: #95a5a6; cursor: default; }
+        .btn-rule { padding: 3px 6px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
+        .btn-ex-rule { padding: 3px 6px; background: #6f42c1; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
+
+        .btn-vis { padding: 2px 6px; font-size: 10px; color: white; border: none; border-radius: 3px; cursor: pointer; margin: 1px; }
+
+        .badge { display:inline-block; padding:0 5px; border-radius:3px; font-size:10px; font-weight:bold; vertical-align:middle; margin-left:2px; }
+        .badge-suggest { background:#d1ecf1; color:#0c5460; }
+        .badge-receipt { background:#fde8ff; color:#6a0dad; }
+        .badge-rule { background:#fff3cd; color:#856404; font-size:9px; }
+
+        .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
+        .complete-msg { text-align: center; padding: 40px; background: #d4edda; border-radius: 8px; color: #155724; font-size: 18px; font-weight: bold; margin: 20px 0; }
+
+        /* モーダル */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal.open { display: flex; }
+        .modal-content { background: white; border-radius: 8px; padding: 20px; width: 480px; max-width: 95vw; max-height: 80vh; overflow-y: auto; }
+        .modal-content h3 { margin: 0 0 16px; font-size: 16px; }
+        .modal-content label { display: block; font-size: 12px; color: #555; margin-top: 10px; margin-bottom: 2px; }
+        .modal-content input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
+        .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+        .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+        .modal-buttons button { padding: 7px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; color: white; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div style="font-weight:bold;">仕分け</div>
+    <nav>
+        <a href="/">明細一覧</a>
+        <a href="/reconcile">消込ツール</a>
+        <a href="/cash_calc">現金計算</a>
+        <a href="/loans">ローン管理</a>
+        <a href="/receipts">レシート検証</a>
+        <a href="/rules_settings" style="background:#fd7e14; padding:3px 8px; border-radius:3px;">ルール管理</a>
+    </nav>
+</header>
+
+<!-- フィルタ -->
+<div class="toolbar">
+    <form method="get" action="/categorize" id="filterForm" style="display:contents;">
+        <label>期間</label>
+        <input type="date" name="from_date" value="{{ from_date }}">
+        <label>〜</label>
+        <input type="date" name="to_date"   value="{{ to_date }}">
+        <div class="sep"></div>
+        <label>口座</label>
+        <select name="institution">
+            <option value="">すべて</option>
+            {% for inst in all_institutions %}
+            <option value="{{ inst }}" {% if inst == institution %}selected{% endif %}>{{ inst }}</option>
+            {% endfor %}
+        </select>
+        <div class="sep"></div>
+        <label>キーワード</label>
+        <input type="text" name="keyword" value="{{ keyword }}" placeholder="内容を検索">
+        <div class="sep"></div>
+        <label style="display:flex; align-items:center; gap:4px; cursor:pointer;">
+            <input type="checkbox" name="show_all" value="true" {% if show_all %}checked{% endif %} onchange="this.form.submit()">
+            確定済みも表示
+        </label>
+        <button type="submit">絞り込み</button>
+    </form>
+</div>
+
+<!-- 進捗バー -->
+<div class="progress-bar-wrap">
+    {% set done_count = total_count - undecided_count %}
+    {% set pct = (done_count / total_count * 100) | int if total_count > 0 else 0 %}
+    <div class="progress-label">
+        <span class="remain">未決定 {{ undecided_count }}件</span>
+        <span style="color:#888; font-size:12px; margin-left:8px;">/ 全 {{ total_count }}件（確定済 {{ done_count }}件）</span>
+    </div>
+    <div class="bar-outer">
+        <div class="bar-inner" id="progressBar" style="width: {{ pct }}%;"></div>
+    </div>
+    <span style="font-size:12px; color:#888;">{{ pct }}%</span>
+</div>
+
+<div class="content">
+{% if transactions | length == 0 %}
+    {% if undecided_count == 0 and total_count > 0 %}
+    <div class="complete-msg">この期間の仕分けはすべて完了しています！</div>
+    {% else %}
+    <div class="empty">対象のデータがありません</div>
+    {% endif %}
+{% else %}
+<table id="mainTable">
+    <thead>
+        <tr>
+            <th>日付</th>
+            <th>内容</th>
+            <th>口座</th>
+            <th style="text-align:right;">金額</th>
+            <th>大分類</th>
+            <th>中分類</th>
+            <th>小分類</th>
+            <th>店</th>
+            <th>所属</th>
+            <th>人</th>
+            <th>メモ</th>
+            <th>表示先</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for t in transactions %}
+    <tr data-id="{{ t.id }}" data-content="{{ t.content }}" data-institution="{{ t.institution or '' }}"
+        class="{% if t.is_decided %}decided{% endif %} {% if t.is_suggested %}suggested{% endif %}"
+        id="row-{{ t.id }}">
+        <td class="col-date">{{ t.date }}</td>
+        <td class="col-content">
+            <div class="main">
+                {{ t.content[:30] }}{% if t.content | length > 30 %}...{% endif %}
+                {% if t.is_receipt %}<span class="badge badge-receipt">レ</span>{% endif %}
+                {% if t.is_suggested %}<span class="badge badge-suggest">提案</span>{% endif %}
+                {% if t.auto_rule %}<span class="badge badge-rule" title="{{ t.auto_rule }}">自動</span>{% endif %}
+            </div>
+            {% if t.suggested_rule %}
+            <div class="sub">ルール: {{ t.suggested_rule }}</div>
+            {% endif %}
+        </td>
+        <td class="col-inst">{{ t.institution or '' }}</td>
+        <td class="col-amount {% if t.amount > 0 %}positive{% else %}negative{% endif %}">
+            {{ "{:,.0f}".format(t.amount) }}
+        </td>
+        <td><input type="text" class="cat-input edit-cat-major"    value="{{ t.cat_major }}"     placeholder="大分類"></td>
+        <td><input type="text" class="cat-input edit-cat-mid"      value="{{ t.cat_mid }}"       placeholder="中分類"></td>
+        <td><input type="text" class="cat-input edit-cat-small"    value="{{ t.cat_small }}"     placeholder="小分類"></td>
+        <td><input type="text" class="cat-input-wide edit-cat-shop" value="{{ t.cat_shop }}"     placeholder="店"></td>
+        <td><input type="text" class="cat-input edit-cat-belonging" value="{{ t.cat_belonging }}" placeholder="所属"></td>
+        <td><input type="text" class="cat-input edit-cat-person"   value="{{ t.cat_person }}"   placeholder="人"></td>
+        <td class="col-note"><input type="text" class="cat-input-wide edit-note" value="{{ t.note }}" placeholder="メモ"></td>
+        <td style="white-space:nowrap;">
+            <button class="btn-vis" style="background:#28a745;" onclick="setVis(this,'BOTH')" title="明細・現金の両方">両</button>
+            <button class="btn-vis" style="background:#17a2b8;" onclick="setVis(this,'CASH_ONLY')" title="現金のみ">現</button>
+            <button class="btn-vis" style="background:#6c757d;" onclick="setVis(this,'LIST_ONLY')" title="明細のみ">明</button>
+        </td>
+        <td style="white-space:nowrap;">
+            <button class="btn-confirm" onclick="confirmRow(this)">確定</button>
+            <button class="btn-rule" onclick="openRuleModal(this)" title="分類ルール登録">R</button>
+            <button class="btn-ex-rule" onclick="openExRuleModal(this)" title="表示先ルール登録">現R</button>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+</div>
+
+<!-- 分類ルール登録モーダル -->
+<div class="modal" id="rule-modal">
+    <div class="modal-content">
+        <h3>分類ルールの登録</h3>
+        <label>パターン（内容に含まれる文字列）</label>
+        <input type="text" id="rule-pattern" placeholder="例: マクドナルド">
+        <label>優先度（高いほど優先）</label>
+        <input type="number" id="rule-priority" value="10" min="1" max="100">
+        <div class="modal-grid">
+            <div><label>大分類</label><input type="text" id="rule-cat-major"></div>
+            <div><label>中分類</label><input type="text" id="rule-cat-mid"></div>
+            <div><label>小分類</label><input type="text" id="rule-cat-small"></div>
+            <div><label>店</label><input type="text" id="rule-cat-shop"></div>
+            <div><label>所属</label><input type="text" id="rule-cat-belonging"></div>
+            <div><label>人</label><input type="text" id="rule-cat-person"></div>
+            <div style="grid-column:span 2;"><label>文脈</label><input type="text" id="rule-cat-context"></div>
+        </div>
+        <div class="modal-buttons">
+            <button onclick="closeRuleModal()" style="background:#6c757d;">キャンセル</button>
+            <button onclick="saveRule()" style="background:#fd7e14;">ルール登録</button>
+        </div>
+    </div>
+</div>
+
+<!-- 表示先ルール登録モーダル -->
+<div class="modal" id="ex-rule-modal">
+    <div class="modal-content">
+        <h3>表示先ルールの登録</h3>
+        <label>ルール名</label>
+        <input type="text" id="ex-rule-name" placeholder="例: クレジットカード引き落とし">
+        <label>表示先のアクション</label>
+        <select id="ex-rule-action" style="width:100%; border:1px solid #ccc; border-radius:4px; padding:8px; margin-bottom:10px;">
+            <option value="CASH_ONLY">現金のみに表示（明細一覧からは隠す）</option>
+            <option value="BOTH">明細・現金の両方に表示</option>
+        </select>
+        <label>内容パターン</label>
+        <input type="text" id="ex-rule-content">
+        <label>金融機関パターン</label>
+        <input type="text" id="ex-rule-institution">
+        <div class="modal-buttons">
+            <button onclick="closeExRuleModal()" style="background:#6c757d;">キャンセル</button>
+            <button onclick="saveExRule()" style="background:#6f42c1;">ルール登録</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentRuleRow = null;
+let remainCount = {{ undecided_count }};
+const totalCount = {{ total_count }};
+
+// ── 確定 ─────────────────────────────────────────
+async function confirmRow(btn) {
+    const tr = btn.closest('tr');
+    const id = tr.dataset.id;
+    const payload = buildPayload(tr, id);
+
+    // 大分類が空なら警告
+    if (!payload.cat_major) {
+        if (!confirm('大分類が未入力です。このまま確定しますか？')) return;
+        payload.cat_major = '確認済';
+    }
+
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+
+    try {
+        const res = await fetch('/api/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+            if (!tr.classList.contains('decided')) {
+                remainCount = Math.max(0, remainCount - 1);
+                updateProgress();
+            }
+            // show_all のとき: 確定済みスタイルに変更して残す
+            // show_all でないとき: 行を消す
+            const showAll = new URLSearchParams(location.search).get('show_all') === 'true';
+            if (showAll) {
+                tr.classList.add('decided');
+                btn.textContent = '確定済';
+                btn.classList.add('saved');
+            } else {
+                tr.style.transition = 'opacity .3s';
+                tr.style.opacity = '0';
+                setTimeout(() => tr.remove(), 300);
+            }
+        } else {
+            btn.disabled = false;
+            btn.textContent = '確定';
+            alert('エラー: ' + json.message);
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '確定';
+        alert('通信エラー');
+    }
+}
+
+function buildPayload(tr, id) {
+    return {
+        id,
+        cat_major:     tr.querySelector('.edit-cat-major')?.value    || '',
+        cat_mid:       tr.querySelector('.edit-cat-mid')?.value      || '',
+        cat_small:     tr.querySelector('.edit-cat-small')?.value    || '',
+        cat_shop:      tr.querySelector('.edit-cat-shop')?.value     || '',
+        cat_belonging: tr.querySelector('.edit-cat-belonging')?.value || '',
+        cat_person:    tr.querySelector('.edit-cat-person')?.value   || '',
+        note:          tr.querySelector('.edit-note')?.value         || '',
+    };
+}
+
+// ── 進捗更新 ─────────────────────────────────────
+function updateProgress() {
+    const done = totalCount - remainCount;
+    const pct  = totalCount > 0 ? Math.round(done / totalCount * 100) : 0;
+    document.getElementById('progressBar').style.width = pct + '%';
+
+    // ラベル更新
+    const label = document.querySelector('.progress-label');
+    label.innerHTML = `<span class="remain">未決定 ${remainCount}件</span>`
+        + `<span style="color:#888; font-size:12px; margin-left:8px;">/ 全 ${totalCount}件（確定済 ${done}件）</span>`;
+
+    if (remainCount === 0) {
+        const tbody = document.querySelector('#mainTable tbody');
+        if (tbody && tbody.children.length === 0) {
+            document.querySelector('.content').innerHTML =
+                '<div class="complete-msg">この期間の仕分けはすべて完了しました！</div>';
+        }
+    }
+}
+
+// ── 表示先設定 ────────────────────────────────────
+async function setVis(btn, action) {
+    const tr  = btn.closest('tr');
+    const id  = tr.dataset.id;
+    const res = await fetch('/api/update', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id, view_target: action })
+    });
+    const json = await res.json();
+    if (json.status === 'success') {
+        btn.style.outline = '2px solid #fff';
+        setTimeout(() => btn.style.outline = '', 1000);
+    } else {
+        alert('エラー: ' + json.message);
+    }
+}
+
+// ── 分類ルール登録 ────────────────────────────────
+function openRuleModal(btn) {
+    currentRuleRow = btn.closest('tr');
+    const content = currentRuleRow.dataset.content || '';
+    document.getElementById('rule-pattern').value      = content.substring(0, 20);
+    document.getElementById('rule-cat-major').value    = currentRuleRow.querySelector('.edit-cat-major')?.value    || '';
+    document.getElementById('rule-cat-mid').value      = currentRuleRow.querySelector('.edit-cat-mid')?.value      || '';
+    document.getElementById('rule-cat-small').value    = currentRuleRow.querySelector('.edit-cat-small')?.value    || '';
+    document.getElementById('rule-cat-shop').value     = currentRuleRow.querySelector('.edit-cat-shop')?.value     || '';
+    document.getElementById('rule-cat-belonging').value= currentRuleRow.querySelector('.edit-cat-belonging')?.value|| '';
+    document.getElementById('rule-cat-person').value   = currentRuleRow.querySelector('.edit-cat-person')?.value   || '';
+    document.getElementById('rule-cat-context').value  = '';
+    document.getElementById('rule-modal').classList.add('open');
+}
+
+function closeRuleModal() {
+    document.getElementById('rule-modal').classList.remove('open');
+    currentRuleRow = null;
+}
+
+async function saveRule() {
+    const pattern = document.getElementById('rule-pattern').value.trim();
+    if (!pattern) { alert('パターンを入力してください'); return; }
+
+    const payload = {
+        rule_name:            pattern,
+        content_pattern:      pattern,
+        priority:             parseInt(document.getElementById('rule-priority').value) || 10,
+        category_major:       document.getElementById('rule-cat-major').value,
+        category_mid:         document.getElementById('rule-cat-mid').value,
+        category_small:       document.getElementById('rule-cat-small').value,
+        category_shop:        document.getElementById('rule-cat-shop').value,
+        category_belonging:   document.getElementById('rule-cat-belonging').value,
+        category_person:      document.getElementById('rule-cat-person').value,
+        category_context:     document.getElementById('rule-cat-context').value,
+    };
+
+    const res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const json = await res.json();
+    if (json.status === 'success') {
+        alert('ルールを登録しました');
+        closeRuleModal();
+    } else {
+        alert('エラー: ' + (json.message || ''));
+    }
+}
+
+// ── 表示先ルール登録 ──────────────────────────────
+function openExRuleModal(btn) {
+    currentRuleRow = btn.closest('tr');
+    document.getElementById('ex-rule-name').value        = currentRuleRow.dataset.content?.substring(0, 20) || '';
+    document.getElementById('ex-rule-content').value     = currentRuleRow.dataset.content?.substring(0, 20) || '';
+    document.getElementById('ex-rule-institution').value = currentRuleRow.dataset.institution || '';
+    document.getElementById('ex-rule-modal').classList.add('open');
+}
+
+function closeExRuleModal() {
+    document.getElementById('ex-rule-modal').classList.remove('open');
+    currentRuleRow = null;
+}
+
+async function saveExRule() {
+    const name = document.getElementById('ex-rule-name').value.trim();
+    if (!name) { alert('ルール名を入力してください'); return; }
+    const payload = {
+        rule_name:            name,
+        note:                 document.getElementById('ex-rule-action').value,
+        content_pattern:      document.getElementById('ex-rule-content').value,
+        institution_pattern:  document.getElementById('ex-rule-institution').value,
+    };
+    const res  = await fetch('/api/add_target_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const json = await res.json();
+    if (json.status === 'success') {
+        alert('表示先ルールを登録しました');
+        closeExRuleModal();
+    } else {
+        alert('エラー: ' + (json.message || ''));
+    }
+}
+
+// モーダル外クリックで閉じる
+document.querySelectorAll('.modal').forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) { m.classList.remove('open'); currentRuleRow = null; } });
+});
+</script>
+</body>
+</html>
