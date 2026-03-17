@@ -271,6 +271,7 @@ def index():
             "view_target": view_target,
             "is_card_loan": is_card_loan,
             "shows_in_cash": shows_in_cash,
+            "is_receipt": t['id'].startswith('RECEIPT-'),
         })
 
     # 集計
