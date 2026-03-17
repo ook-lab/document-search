@@ -792,7 +792,7 @@ def cash_calc():
                 cash_cat_mid   = cash_rule.get('cash_cat_mid',   '') or ''
 
         # 明細一覧にも表示されるか: view_target='BOTH' or (手動設定なし and auto='BOTH')
-        shows_in_list = (view_target == 'BOTH') or (not m and auto_action == 'BOTH')
+        shows_in_list = (m.get('view_target') == 'BOTH') or (not m and auto_action == 'BOTH')
 
         all_list.append({
             **t,
