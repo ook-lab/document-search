@@ -9,22 +9,32 @@ from typing import Dict, Optional
 import google.generativeai as genai
 
 
+_log_db = None
+
+def _get_log_db():
+    global _log_db
+    if _log_db is None:
+        from supabase import create_client
+        url = os.environ["SUPABASE_URL"]
+        key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"]
+        _log_db = create_client(url, key)
+    return _log_db
+
 def _log(app: str, stage: str, model: str, response) -> None:
     """レスポンスのトークン使用量を ai_usage_logs に記録（失敗しても無視）"""
     try:
-        from shared.common.ai_cost_logger import log_ai_usage
         u = getattr(response, 'usage_metadata', None)
         if not u:
             return
-        log_ai_usage(
-            app=app,
-            stage=stage,
-            model=model,
-            prompt_token_count=getattr(u, 'prompt_token_count', 0) or 0,
-            candidates_token_count=getattr(u, 'candidates_token_count', 0) or 0,
-            thoughts_token_count=getattr(u, 'thoughts_token_count', 0) or 0,
-            total_token_count=getattr(u, 'total_token_count', 0) or 0,
-        )
+        _get_log_db().table('ai_usage_logs').insert({
+            'app': app,
+            'stage': stage,
+            'model': model,
+            'prompt_token_count': getattr(u, 'prompt_token_count', 0) or 0,
+            'candidates_token_count': getattr(u, 'candidates_token_count', 0) or 0,
+            'thoughts_token_count': getattr(u, 'thoughts_token_count', 0) or 0,
+            'total_token_count': getattr(u, 'total_token_count', 0) or 0,
+        }).execute()
     except Exception:
         pass
 

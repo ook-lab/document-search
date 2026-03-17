@@ -31,7 +31,7 @@ steps:
       - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
-      - '--timeout=120'
+      - '--timeout=3600'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},SUPABASE_KEY=${_SUPABASE_KEY},DEFAULT_OWNER_ID=${_DEFAULT_OWNER_ID}'
 
