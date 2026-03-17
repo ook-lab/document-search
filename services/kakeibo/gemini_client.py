@@ -9,6 +9,26 @@ from typing import Dict, Optional
 import google.generativeai as genai
 
 
+def _log(app: str, stage: str, model: str, response) -> None:
+    """レスポンスのトークン使用量を ai_usage_logs に記録（失敗しても無視）"""
+    try:
+        from shared.common.ai_cost_logger import log_ai_usage
+        u = getattr(response, 'usage_metadata', None)
+        if not u:
+            return
+        log_ai_usage(
+            app=app,
+            stage=stage,
+            model=model,
+            prompt_token_count=getattr(u, 'prompt_token_count', 0) or 0,
+            candidates_token_count=getattr(u, 'candidates_token_count', 0) or 0,
+            thoughts_token_count=getattr(u, 'thoughts_token_count', 0) or 0,
+            total_token_count=getattr(u, 'total_token_count', 0) or 0,
+        )
+    except Exception:
+        pass
+
+
 class GeminiClient:
     """Gemini API クライアント（Kakeibo専用）"""
 
@@ -46,6 +66,7 @@ class GeminiClient:
             ],
             generation_config=genai.GenerationConfig(temperature=temperature),
         )
+        _log('kakeibo', 'receipt-ocr', model, response)
         return response.text
 
     # ── テキスト生成（商品名一般化など）──────────────────────
@@ -69,4 +90,5 @@ class GeminiClient:
                 temperature=0.1,
             ),
         )
+        _log('kakeibo', 'text-gen', model_name, response)
         return {"success": True, "content": response.text}

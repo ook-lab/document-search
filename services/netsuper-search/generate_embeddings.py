@@ -94,6 +94,19 @@ class ProductEmbeddingGenerator:
             model=self.model,
             input=text
         )
+        try:
+            from shared.common.ai_cost_logger import log_ai_usage
+            if hasattr(response, 'usage') and response.usage:
+                prompt_tokens = getattr(response.usage, 'prompt_tokens', 0) or 0
+                log_ai_usage(
+                    app='netsuper-search',
+                    stage='product-embedding',
+                    model=self.model,
+                    prompt_token_count=prompt_tokens,
+                    total_token_count=prompt_tokens,
+                )
+        except Exception:
+            pass
         return response.data[0].embedding
 
     def update_product_embedding(self, product_id: str, embedding: List[float]):

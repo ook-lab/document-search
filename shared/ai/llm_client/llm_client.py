@@ -564,7 +564,8 @@ class LLMClient:
         model: str = "gemini-2.0-flash-exp",
         temperature: float = 0.0,
         max_tokens: int = 65536,
-        response_format: Optional[str] = None
+        response_format: Optional[str] = None,
+        log_context: Optional[Dict] = None
     ) -> str:
         """
         画像ファイルを使ってGemini Vision APIを呼び出し
@@ -717,6 +718,24 @@ class LLMClient:
                     "model": model
                 }
                 logger.info(f"[Gemini Vision] トークン使用量: prompt={self.last_usage['prompt_tokens']}, completion={self.last_usage['completion_tokens']}, thinking={self.last_usage['thinking_tokens']}, total={self.last_usage['total_tokens']}")
+
+            # コスト記録
+            if log_context and self.last_usage:
+                try:
+                    from shared.common.ai_cost_logger import log_ai_usage
+                    log_ai_usage(
+                        app=log_context.get('app', 'unknown'),
+                        stage=log_context.get('stage', 'vision'),
+                        model=model,
+                        prompt_token_count=self.last_usage['prompt_tokens'],
+                        candidates_token_count=self.last_usage['completion_tokens'],
+                        thoughts_token_count=self.last_usage['thinking_tokens'],
+                        total_token_count=self.last_usage['total_tokens'],
+                        session_id=log_context.get('session_id'),
+                        workspace_id=log_context.get('workspace_id'),
+                    )
+                except Exception as _log_err:
+                    logger.warning(f"[Gemini Vision] cost log failed: {_log_err}")
 
             return text_content
 

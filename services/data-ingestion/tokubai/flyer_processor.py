@@ -165,7 +165,8 @@ class FlyerProcessor:
                 prompt=prompt,
                 image_path=image_path,
                 model="gemini-2.0-flash-exp",  # Gemini 2.5 Pro Vision
-                response_format="json"
+                response_format="json",
+                log_context={'app': 'tokubai', 'stage': 'flyer-extract'}
             )
 
             # JSONパース

@@ -153,7 +153,10 @@ class ReportGenerator:
             f"need: schedule homework submission items_to_bring notices exam"
         )
         try:
-            embedding = self.llm.generate_embedding(query)
+            embedding = self.llm.generate_embedding(
+                query,
+                log_context={'app': 'daily-report', 'stage': 'vector-search-embedding'}
+            )
             result = self.db.client.rpc(
                 "unified_search_v2",
                 {
