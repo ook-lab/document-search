@@ -244,6 +244,15 @@ def index():
             if view_target != 'list':
                 continue
 
+        # 現金計算にも表示されるか判定
+        shows_in_cash = False
+        if auto_action in ('CASH_ONLY', 'BOTH'):
+            shows_in_cash = True
+        if view_target in ('BANK_OUTFLOW', 'BOTH', 'CASH_ONLY'):
+            shows_in_cash = True
+        if view_target in ('INTERNAL_TRANSFER', 'LIST_ONLY'):
+            shows_in_cash = False
+
         display_data.append({
             **t,
             "cat_major": m.get("category_major", "") or (suggested.get('cat_major', '') if suggested else ''),
@@ -260,7 +269,8 @@ def index():
             "suggested_rule": suggested.get('rule_pattern') if suggested else None,
             "note": m.get("note", ""),
             "view_target": view_target,
-            "is_card_loan": is_card_loan
+            "is_card_loan": is_card_loan,
+            "shows_in_cash": shows_in_cash,
         })
 
     # 集計
@@ -743,7 +753,8 @@ def cash_calc():
                 "note":           m.get('note', ''),
                 "cash_cat_major": cash_cat_major,
                 "cash_cat_mid":   cash_cat_mid,
-                "is_loan_tx":     True,   # 収支集計から除外
+                "is_loan_tx":     True,
+                "shows_in_list":  False,  # カードローンは明細一覧に出ない
             })
             continue
 
@@ -779,6 +790,9 @@ def cash_calc():
                 cash_cat_major = cash_rule.get('cash_cat_major', '') or ''
                 cash_cat_mid   = cash_rule.get('cash_cat_mid',   '') or ''
 
+        # 明細一覧にも表示されるか: view_target='BOTH' or (手動設定なし and auto='BOTH')
+        shows_in_list = (view_target == 'BOTH') or (not m and auto_action == 'BOTH')
+
         all_list.append({
             **t,
             "category":       category,
@@ -786,6 +800,7 @@ def cash_calc():
             "cash_cat_major": cash_cat_major,
             "cash_cat_mid":   cash_cat_mid,
             "is_loan_tx":     False,
+            "shows_in_list":  shows_in_list,
         })
 
     all_list.sort(key=lambda x: x['date'])

@@ -137,7 +137,12 @@
                 {% for t in cash_txs %}
                 <tr data-id="{{ t.id }}">
                     <td class="col-date">{{ t.date }}</td>
-                    <td class="col-content">{{ t.content }}</td>
+                    <td class="col-content">
+                        {{ t.content }}
+                        {% if t.shows_in_list %}
+                        <span style="display:inline-block; padding:0 4px; background:#d4edda; color:#155724; border-radius:3px; font-size:9px; font-weight:bold; vertical-align:middle; margin-left:3px;">明</span>
+                        {% endif %}
+                    </td>
                     <td class="col-inst">{{ t.institution or '' }}</td>
                     <td class="col-amount {% if t.amount > 0 %}income{% else %}expense{% endif %}">
                         {{ '{:+,}'.format(t.amount) }}
