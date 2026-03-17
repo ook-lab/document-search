@@ -22,13 +22,19 @@
         tr:hover { background: #f8f9fa; }
 
         .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
-        .badge-both { background: #d4edda; color: #155724; }
-        .badge-cash { background: #d1ecf1; color: #0c5460; }
+        .badge-both  { background: #d4edda; color: #155724; }
+        .badge-cash  { background: #d1ecf1; color: #0c5460; }
+        .badge-borrow { background: #f8d7da; color: #721c24; }
+        .badge-repay { background: #d4edda; color: #155724; }
+        .badge-exclude { background: #e2e3e5; color: #383d41; }
+        .badge-plus  { background: #cce5ff; color: #004085; }
+        .badge-minus { background: #f8d7da; color: #721c24; }
+        .badge-any   { background: #fff3cd; color: #856404; }
         .badge-unknown { background: #f3f4f6; color: #555; }
 
         .btn { border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
-        .btn-delete { background: #dc3545; color: white; }
-        .btn-add { background: #28a745; color: white; }
+        .btn-delete    { background: #dc3545; color: white; }
+        .btn-add       { background: #28a745; color: white; }
         .btn-secondary { background: #6c757d; color: white; }
 
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
@@ -45,329 +51,467 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📋 ルール管理シート</h1>
-        <div class="nav">
-            <a href="/">◀ 明細一覧</a>
-            <a href="/reconcile" style="background:#17a2b8;">消込ツール</a>
-            <a href="/cash_calc" style="background:#4F46E5;">現金計算</a>
-        </div>
+<div class="container">
+    <h1>📋 ルール管理シート</h1>
+    <div class="nav">
+        <a href="/">◀ 明細一覧</a>
+        <a href="/reconcile" style="background:#17a2b8;">消込ツール</a>
+        <a href="/cash_calc" style="background:#4F46E5;">現金計算</a>
+        <a href="/loans" style="background:#6f42c1;">ローン管理</a>
+    </div>
 
-        <!-- ===== 表示先ルール ===== -->
-        <div class="section">
-            <h2>表示先ルール（明細一覧 / 現金計算への振り分け）</h2>
-            <p class="desc">
-                <strong>デフォルト: 明細一覧にのみ表示。現金計算には何も表示されません。</strong><br>
-                このルールに一致した明細は、「現金のみ表示」または「明細・現金の両方に表示」されます。
-            </p>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>ルール名</th>
-                        <th>アクション</th>
-                        <th>内容パターン</th>
-                        <th>金融機関パターン</th>
-                        <th>登録日</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in auto_rules %}
-                    <tr>
-                        <td>{{ r.rule_name }}</td>
-                        <td>
-                            {% if r.note == 'BOTH' %}
-                                <span class="badge badge-both">明細・現金 両方</span>
-                            {% elif r.note == 'CASH_ONLY' %}
-                                <span class="badge badge-cash">現金のみ表示</span>
-                            {% else %}
-                                <span class="badge badge-unknown">現金のみ扱い</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ r.content_pattern or '（指定なし）' }}</td>
-                        <td>{{ r.institution_pattern or '（指定なし）' }}</td>
-                        <td style="font-size:12px; color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
-                        <td style="white-space:nowrap;">
-                            <button class="btn btn-secondary" style="margin-right:4px;"
-                                    data-rule='{{ r | tojson }}'
-                                    onclick="editTargetRule(JSON.parse(this.dataset.rule))">編集</button>
-                            <button class="btn btn-delete" onclick="deleteRule('target', '{{ r.id }}')">削除</button>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="6" style="text-align:center; color:#888;">登録済みのルールはありません</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-
-            <!-- 表示先ルール 追加・編集フォーム -->
-            <div class="form-collapse" id="target-form-collapse">
-                <div class="form-header" onclick="toggleForm('target-form-body')">
-                    <span id="target-form-title">＋ 新しい表示先ルールを追加</span>
-                    <span id="target-form-arrow">▼</span>
-                </div>
-                <div class="form-body" id="target-form-body">
-                    <input type="hidden" id="tr-id">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>ルール名</label>
-                            <input type="text" id="tr-name" placeholder="例: 楽天カード引き落とし">
-                        </div>
-                        <div class="form-group">
-                            <label>アクション</label>
-                            <select id="tr-action">
-                                <option value="CASH_ONLY">現金のみ表示（明細一覧には出ない）</option>
-                                <option value="BOTH">明細・現金 両方に表示</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>内容パターン（部分一致）</label>
-                            <input type="text" id="tr-content" placeholder="例: 楽天カード">
-                        </div>
-                        <div class="form-group">
-                            <label>金融機関パターン（部分一致）</label>
-                            <input type="text" id="tr-institution" placeholder="例: 楽天銀行（空欄は全て対象）">
-                        </div>
-                    </div>
-                    <div class="action-row">
-                        <button class="btn btn-secondary" onclick="resetTargetForm()">キャンセル</button>
-                        <button class="btn btn-add" onclick="saveTargetRule()">保存</button>
-                    </div>
-                </div>
+    <!-- ===== 1. 分類ルール ===== -->
+    <div class="section">
+        <h2>① 分類ルール（明細一覧カテゴリの自動付与）</h2>
+        <p class="desc">内容パターンに一致した明細に、明細一覧用のカテゴリが自動的に付与されます。</p>
+        <table>
+            <thead><tr>
+                <th>内容パターン</th><th>大分類</th><th>中分類</th><th>小分類</th>
+                <th>店</th><th>所属</th><th>人</th><th>文脈</th><th>登録日</th><th>操作</th>
+            </tr></thead>
+            <tbody>
+            {% for r in category_rules %}
+            <tr>
+                <td><strong>{{ r.content_pattern }}</strong></td>
+                <td>{{ r.category_major or '' }}</td><td>{{ r.category_mid or '' }}</td>
+                <td>{{ r.category_small or '' }}</td><td>{{ r.category_shop or '' }}</td>
+                <td>{{ r.category_belonging or '' }}</td><td>{{ r.category_person or '' }}</td>
+                <td>{{ r.category_context or '' }}</td>
+                <td style="font-size:12px;color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-secondary" style="margin-right:4px;"
+                            data-rule='{{ r | tojson }}'
+                            onclick="editCategoryRule(JSON.parse(this.dataset.rule))">編集</button>
+                    <button class="btn btn-delete" onclick="deleteRule('category','{{ r.id }}')">削除</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" style="text-align:center;color:#888;">登録済みのルールはありません</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="form-collapse" id="cat-form-collapse">
+            <div class="form-header" onclick="toggleForm('cat-form-body')">
+                <span id="cat-form-title">＋ 新しい分類ルールを追加</span><span>▼</span>
             </div>
-        </div>
-
-        <!-- ===== 分類ルール ===== -->
-        <div class="section">
-            <h2>分類ルール（カテゴリの自動付与）</h2>
-            <p class="desc">
-                内容パターンに一致した明細に、カテゴリが自動的に付与されます。同じパターンで登録すると上書き更新されます。
-            </p>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>内容パターン</th>
-                        <th>大分類</th>
-                        <th>中分類</th>
-                        <th>小分類</th>
-                        <th>店</th>
-                        <th>所属</th>
-                        <th>人</th>
-                        <th>文脈</th>
-                        <th>登録日</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in category_rules %}
-                    <tr>
-                        <td><strong>{{ r.content_pattern }}</strong></td>
-                        <td>{{ r.category_major or '' }}</td>
-                        <td>{{ r.category_mid or '' }}</td>
-                        <td>{{ r.category_small or '' }}</td>
-                        <td>{{ r.category_shop or '' }}</td>
-                        <td>{{ r.category_belonging or '' }}</td>
-                        <td>{{ r.category_person or '' }}</td>
-                        <td>{{ r.category_context or '' }}</td>
-                        <td style="font-size:12px; color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
-                        <td style="white-space:nowrap;">
-                            <button class="btn btn-secondary" style="margin-right:4px;"
-                                    data-rule='{{ r | tojson }}'
-                                    onclick="editCategoryRule(JSON.parse(this.dataset.rule))">編集</button>
-                            <button class="btn btn-delete" onclick="deleteRule('category', '{{ r.id }}')">削除</button>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="10" style="text-align:center; color:#888;">登録済みのルールはありません</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-
-            <!-- 分類ルール 追加・編集フォーム -->
-            <div class="form-collapse" id="cat-form-collapse">
-                <div class="form-header" onclick="toggleForm('cat-form-body')">
-                    <span id="cat-form-title">＋ 新しい分類ルールを追加</span>
-                    <span id="cat-form-arrow">▼</span>
+            <div class="form-body" id="cat-form-body">
+                <div class="form-grid">
+                    <div class="form-group form-full">
+                        <label>内容パターン（部分一致）<span style="color:#dc3545;">*</span></label>
+                        <input type="text" id="cr-pattern" placeholder="例: アマゾン">
+                    </div>
+                    <div class="form-group"><label>大分類</label><input type="text" id="cr-major" placeholder="例: 買い物"></div>
+                    <div class="form-group"><label>中分類</label><input type="text" id="cr-mid" placeholder="例: 日用品"></div>
+                    <div class="form-group"><label>小分類</label><input type="text" id="cr-small"></div>
+                    <div class="form-group"><label>店</label><input type="text" id="cr-shop" placeholder="例: Amazon"></div>
+                    <div class="form-group"><label>所属</label><input type="text" id="cr-belonging"></div>
+                    <div class="form-group"><label>人</label><input type="text" id="cr-person"></div>
+                    <div class="form-group form-full"><label>文脈</label><input type="text" id="cr-context"></div>
                 </div>
-                <div class="form-body" id="cat-form-body">
-                    <div class="form-grid">
-                        <div class="form-group form-full">
-                            <label>内容パターン（部分一致）<span style="color:#dc3545;">*</span></label>
-                            <input type="text" id="cr-pattern" placeholder="例: アマゾン">
-                        </div>
-                        <div class="form-group">
-                            <label>大分類</label>
-                            <input type="text" id="cr-major" placeholder="例: 買い物">
-                        </div>
-                        <div class="form-group">
-                            <label>中分類</label>
-                            <input type="text" id="cr-mid" placeholder="例: 日用品">
-                        </div>
-                        <div class="form-group">
-                            <label>小分類</label>
-                            <input type="text" id="cr-small" placeholder="例: 消耗品">
-                        </div>
-                        <div class="form-group">
-                            <label>店</label>
-                            <input type="text" id="cr-shop" placeholder="例: Amazon">
-                        </div>
-                        <div class="form-group">
-                            <label>所属</label>
-                            <input type="text" id="cr-belonging" placeholder="例: 家庭">
-                        </div>
-                        <div class="form-group">
-                            <label>人</label>
-                            <input type="text" id="cr-person" placeholder="例: 共通">
-                        </div>
-                        <div class="form-group form-full">
-                            <label>文脈</label>
-                            <input type="text" id="cr-context" placeholder="例: 定期購入">
-                        </div>
-                    </div>
-                    <div class="action-row">
-                        <button class="btn btn-secondary" onclick="resetCatForm()">キャンセル</button>
-                        <button class="btn btn-add" onclick="saveCategoryRule()">保存</button>
-                    </div>
+                <div class="action-row">
+                    <button class="btn btn-secondary" onclick="resetCatForm()">キャンセル</button>
+                    <button class="btn btn-add" onclick="saveCategoryRule()">保存</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        function toggleForm(id) {
-            const body = document.getElementById(id);
-            body.classList.toggle('open');
-        }
+    <!-- ===== 2. 表示先ルール ===== -->
+    <div class="section">
+        <h2>② 表示先ルール（明細一覧 / 現金計算への振り分け）</h2>
+        <p class="desc"><strong>デフォルト: 明細一覧のみ表示。</strong>このルールに一致した明細は「現金のみ表示」または「両方に表示」されます。</p>
+        <table>
+            <thead><tr>
+                <th>ルール名</th><th>アクション</th><th>内容パターン</th><th>金融機関パターン</th><th>登録日</th><th>操作</th>
+            </tr></thead>
+            <tbody>
+            {% for r in auto_rules %}
+            <tr>
+                <td>{{ r.rule_name }}</td>
+                <td>
+                    {% if r.note == 'BOTH' %}<span class="badge badge-both">明細・現金 両方</span>
+                    {% elif r.note == 'CASH_ONLY' %}<span class="badge badge-cash">現金のみ表示</span>
+                    {% else %}<span class="badge badge-unknown">現金のみ扱い</span>{% endif %}
+                </td>
+                <td>{{ r.content_pattern or '（指定なし）' }}</td>
+                <td>{{ r.institution_pattern or '（指定なし）' }}</td>
+                <td style="font-size:12px;color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-secondary" style="margin-right:4px;"
+                            data-rule='{{ r | tojson }}'
+                            onclick="editTargetRule(JSON.parse(this.dataset.rule))">編集</button>
+                    <button class="btn btn-delete" onclick="deleteRule('target','{{ r.id }}')">削除</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" style="text-align:center;color:#888;">登録済みのルールはありません</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="form-collapse" id="target-form-collapse">
+            <div class="form-header" onclick="toggleForm('target-form-body')">
+                <span id="target-form-title">＋ 新しい表示先ルールを追加</span><span>▼</span>
+            </div>
+            <div class="form-body" id="target-form-body">
+                <input type="hidden" id="tr-id">
+                <div class="form-grid">
+                    <div class="form-group"><label>ルール名</label><input type="text" id="tr-name" placeholder="例: 楽天カード引き落とし"></div>
+                    <div class="form-group">
+                        <label>アクション</label>
+                        <select id="tr-action">
+                            <option value="CASH_ONLY">現金のみ表示（明細一覧には出ない）</option>
+                            <option value="BOTH">明細・現金 両方に表示</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>内容パターン（部分一致）</label><input type="text" id="tr-content" placeholder="例: 楽天カード"></div>
+                    <div class="form-group"><label>金融機関パターン（部分一致）</label><input type="text" id="tr-institution" placeholder="例: 楽天銀行"></div>
+                </div>
+                <div class="action-row">
+                    <button class="btn btn-secondary" onclick="resetTargetForm()">キャンセル</button>
+                    <button class="btn btn-add" onclick="saveTargetRule()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        // ===== 表示先ルール =====
-        function editTargetRule(r) {
-            document.getElementById('tr-id').value          = r.id || '';
-            document.getElementById('tr-name').value        = r.rule_name || '';
-            document.getElementById('tr-content').value     = r.content_pattern || '';
-            document.getElementById('tr-institution').value = r.institution_pattern || '';
-            document.getElementById('tr-action').value      = r.note || 'CASH_ONLY';
-            document.getElementById('target-form-title').textContent = '✏️ 表示先ルールを編集';
-            const body = document.getElementById('target-form-body');
-            if (!body.classList.contains('open')) body.classList.add('open');
-            body.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
+    <!-- ===== 3. 現金分類ルール ===== -->
+    <div class="section">
+        <h2>③ 現金分類ルール（現金計算カテゴリの自動付与）</h2>
+        <p class="desc">内容・金融機関・金額符号に一致した明細に、現金計算用の大分類・中分類を自動付与します。手動設定が優先されます。</p>
+        <table>
+            <thead><tr>
+                <th>ルール名</th><th>内容パターン</th><th>金融機関パターン</th>
+                <th>符号</th><th>大分類</th><th>中分類</th><th>登録日</th><th>操作</th>
+            </tr></thead>
+            <tbody>
+            {% for r in cash_category_rules %}
+            <tr>
+                <td>{{ r.rule_name }}</td>
+                <td>{{ r.content_pattern or '（指定なし）' }}</td>
+                <td>{{ r.institution_pattern or '（指定なし）' }}</td>
+                <td>
+                    {% if r.amount_sign == '+' %}<span class="badge badge-plus">＋のみ</span>
+                    {% elif r.amount_sign == '-' %}<span class="badge badge-minus">－のみ</span>
+                    {% else %}<span class="badge badge-any">両方</span>{% endif %}
+                </td>
+                <td>{{ r.cash_cat_major or '' }}</td>
+                <td>{{ r.cash_cat_mid or '' }}</td>
+                <td style="font-size:12px;color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-secondary" style="margin-right:4px;"
+                            data-rule='{{ r | tojson }}'
+                            onclick="editCashCatRule(JSON.parse(this.dataset.rule))">編集</button>
+                    <button class="btn btn-delete" onclick="deleteRule('cash_category','{{ r.id }}')">削除</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" style="text-align:center;color:#888;">登録済みのルールはありません</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="form-collapse" id="cc-form-collapse">
+            <div class="form-header" onclick="toggleForm('cc-form-body')">
+                <span id="cc-form-title">＋ 新しい現金分類ルールを追加</span><span>▼</span>
+            </div>
+            <div class="form-body" id="cc-form-body">
+                <input type="hidden" id="cc-id">
+                <div class="form-grid">
+                    <div class="form-group form-full"><label>ルール名</label><input type="text" id="cc-name" placeholder="例: 塾代引落"></div>
+                    <div class="form-group"><label>内容パターン（部分一致）</label><input type="text" id="cc-content" placeholder="例: 明光義塾"></div>
+                    <div class="form-group"><label>金融機関パターン（部分一致）</label><input type="text" id="cc-institution"></div>
+                    <div class="form-group">
+                        <label>金額符号</label>
+                        <select id="cc-sign">
+                            <option value="any">両方</option>
+                            <option value="+">＋（収入側）のみ</option>
+                            <option value="-">－（支出側）のみ</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>大分類</label>
+                        <select id="cc-major">
+                            <option value="">—</option>
+                            {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
+                            <option value="{{ opt }}">{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group"><label>中分類</label><input type="text" id="cc-mid" placeholder="例: 教育費"></div>
+                </div>
+                <div class="action-row">
+                    <button class="btn btn-secondary" onclick="resetCashCatForm()">キャンセル</button>
+                    <button class="btn btn-add" onclick="saveCashCatRule()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-        function resetTargetForm() {
-            document.getElementById('tr-id').value = '';
-            document.getElementById('tr-name').value = '';
-            document.getElementById('tr-content').value = '';
-            document.getElementById('tr-institution').value = '';
-            document.getElementById('tr-action').value = 'CASH_ONLY';
-            document.getElementById('target-form-title').textContent = '＋ 新しい表示先ルールを追加';
-            document.getElementById('target-form-body').classList.remove('open');
-        }
+    <!-- ===== 4. カードローンルール ===== -->
+    <div class="section">
+        <h2>④ カードローンルール</h2>
+        <p class="desc">内容・金融機関・金額符号でマッチし、現金計算への計上方法（借入/返済/除外）とローン種別を決定します。表示先ルールより優先されます。</p>
+        <table>
+            <thead><tr>
+                <th>ルール名</th><th>内容パターン</th><th>金融機関パターン</th>
+                <th>符号</th><th>現金大分類</th><th>ローン種別</th><th>除外</th><th>登録日</th><th>操作</th>
+            </tr></thead>
+            <tbody>
+            {% for r in card_loan_rules %}
+            <tr>
+                <td>{{ r.rule_name }}</td>
+                <td>{{ r.content_pattern or '（指定なし）' }}</td>
+                <td>{{ r.institution_pattern or '（指定なし）' }}</td>
+                <td>
+                    {% if r.amount_sign == '+' %}<span class="badge badge-plus">＋のみ</span>
+                    {% elif r.amount_sign == '-' %}<span class="badge badge-minus">－のみ</span>
+                    {% else %}<span class="badge badge-any">両方</span>{% endif %}
+                </td>
+                <td>{{ r.cash_cat_major or '—' }}</td>
+                <td>
+                    {% if r.loan_type == '借入' %}<span class="badge badge-borrow">借入</span>
+                    {% elif r.loan_type == '返済' %}<span class="badge badge-repay">返済</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td>
+                    {% if r.exclude %}<span class="badge badge-exclude">計算対象外</span>{% else %}—{% endif %}
+                </td>
+                <td style="font-size:12px;color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
+                <td style="white-space:nowrap;">
+                    <button class="btn btn-secondary" style="margin-right:4px;"
+                            data-rule='{{ r | tojson }}'
+                            onclick="editCardLoanRule(JSON.parse(this.dataset.rule))">編集</button>
+                    <button class="btn btn-delete" onclick="deleteRule('card_loan','{{ r.id }}')">削除</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" style="text-align:center;color:#888;">登録済みのルールはありません</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="form-collapse" id="cl-form-collapse">
+            <div class="form-header" onclick="toggleForm('cl-form-body')">
+                <span id="cl-form-title">＋ 新しいカードローンルールを追加</span><span>▼</span>
+            </div>
+            <div class="form-body" id="cl-form-body">
+                <input type="hidden" id="cl-id">
+                <div class="form-grid">
+                    <div class="form-group form-full"><label>ルール名</label><input type="text" id="cl-name"></div>
+                    <div class="form-group"><label>内容パターン（部分一致）</label><input type="text" id="cl-content" placeholder="例: カードローン"></div>
+                    <div class="form-group"><label>金融機関パターン（部分一致）</label><input type="text" id="cl-institution" placeholder="例: 三井住友銀行"></div>
+                    <div class="form-group">
+                        <label>金額符号</label>
+                        <select id="cl-sign">
+                            <option value="any">両方</option>
+                            <option value="+">＋（借入側）のみ</option>
+                            <option value="-">－（返済側）のみ</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>現金大分類（除外の場合は空）</label>
+                        <select id="cl-major">
+                            <option value="">—（計算対象外）</option>
+                            <option value="借入">借入</option>
+                            <option value="返済">返済</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>ローン種別</label>
+                        <select id="cl-loan-type">
+                            <option value="">—</option>
+                            <option value="借入">借入</option>
+                            <option value="返済">返済</option>
+                        </select>
+                    </div>
+                    <div class="form-group form-full">
+                        <label>
+                            <input type="checkbox" id="cl-exclude">
+                            計算対象外（現金計算にも明細一覧にも出さない）
+                        </label>
+                    </div>
+                </div>
+                <div class="action-row">
+                    <button class="btn btn-secondary" onclick="resetCardLoanForm()">キャンセル</button>
+                    <button class="btn btn-add" onclick="saveCardLoanRule()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-        async function saveTargetRule() {
-            const id          = document.getElementById('tr-id').value.trim();
-            const name        = document.getElementById('tr-name').value.trim();
-            const action      = document.getElementById('tr-action').value;
-            const content     = document.getElementById('tr-content').value.trim();
-            const institution = document.getElementById('tr-institution').value.trim();
+<script>
+    function toggleForm(id) {
+        document.getElementById(id).classList.toggle('open');
+    }
 
-            if (!name) { alert('ルール名を入力してください'); return; }
-            if (!content && !institution) { alert('内容パターンまたは金融機関パターンを入力してください'); return; }
+    // ===== ① 分類ルール =====
+    function editCategoryRule(r) {
+        document.getElementById('cr-pattern').value   = r.content_pattern || '';
+        document.getElementById('cr-major').value     = r.category_major || '';
+        document.getElementById('cr-mid').value       = r.category_mid || '';
+        document.getElementById('cr-small').value     = r.category_small || '';
+        document.getElementById('cr-shop').value      = r.category_shop || '';
+        document.getElementById('cr-belonging').value = r.category_belonging || '';
+        document.getElementById('cr-person').value    = r.category_person || '';
+        document.getElementById('cr-context').value   = r.category_context || '';
+        document.getElementById('cat-form-title').textContent = '✏️ 分類ルールを編集';
+        const body = document.getElementById('cat-form-body');
+        if (!body.classList.contains('open')) body.classList.add('open');
+        body.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+    function resetCatForm() {
+        ['cr-pattern','cr-major','cr-mid','cr-small','cr-shop','cr-belonging','cr-person','cr-context']
+            .forEach(id => document.getElementById(id).value = '');
+        document.getElementById('cat-form-title').textContent = '＋ 新しい分類ルールを追加';
+        document.getElementById('cat-form-body').classList.remove('open');
+    }
+    async function saveCategoryRule() {
+        const pattern = document.getElementById('cr-pattern').value.trim();
+        if (!pattern) { alert('内容パターンを入力してください'); return; }
+        const payload = {
+            pattern,
+            cat_major:     document.getElementById('cr-major').value.trim(),
+            cat_mid:       document.getElementById('cr-mid').value.trim(),
+            cat_small:     document.getElementById('cr-small').value.trim(),
+            cat_shop:      document.getElementById('cr-shop').value.trim(),
+            cat_belonging: document.getElementById('cr-belonging').value.trim(),
+            cat_person:    document.getElementById('cr-person').value.trim(),
+            cat_context:   document.getElementById('cr-context').value.trim(),
+        };
+        const res  = await fetch('/api/register_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const json = await res.json();
+        if (json.status === 'success') location.reload();
+        else alert('登録失敗: ' + json.message);
+    }
 
-            const payload = { rule_name: name, action, content_pattern: content, institution_pattern: institution };
-            const url = id ? '/api/update_target_rule' : '/api/add_target_rule';
-            if (id) payload.id = id;
+    // ===== ② 表示先ルール =====
+    function editTargetRule(r) {
+        document.getElementById('tr-id').value          = r.id || '';
+        document.getElementById('tr-name').value        = r.rule_name || '';
+        document.getElementById('tr-content').value     = r.content_pattern || '';
+        document.getElementById('tr-institution').value = r.institution_pattern || '';
+        document.getElementById('tr-action').value      = r.note || 'CASH_ONLY';
+        document.getElementById('target-form-title').textContent = '✏️ 表示先ルールを編集';
+        const body = document.getElementById('target-form-body');
+        if (!body.classList.contains('open')) body.classList.add('open');
+        body.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+    function resetTargetForm() {
+        ['tr-id','tr-name','tr-content','tr-institution'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('tr-action').value = 'CASH_ONLY';
+        document.getElementById('target-form-title').textContent = '＋ 新しい表示先ルールを追加';
+        document.getElementById('target-form-body').classList.remove('open');
+    }
+    async function saveTargetRule() {
+        const id      = document.getElementById('tr-id').value.trim();
+        const name    = document.getElementById('tr-name').value.trim();
+        const action  = document.getElementById('tr-action').value;
+        const content = document.getElementById('tr-content').value.trim();
+        const inst    = document.getElementById('tr-institution').value.trim();
+        if (!name) { alert('ルール名を入力してください'); return; }
+        if (!content && !inst) { alert('内容パターンまたは金融機関パターンを入力してください'); return; }
+        const payload = { rule_name: name, action, content_pattern: content, institution_pattern: inst };
+        const url = id ? '/api/update_target_rule' : '/api/add_target_rule';
+        if (id) payload.id = id;
+        const res  = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const json = await res.json();
+        if (json.status === 'success') location.reload();
+        else alert('保存失敗: ' + json.message);
+    }
 
-            try {
-                const res = await fetch(url, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                const json = await res.json();
-                if (json.status === 'success') {
-                    location.reload();
-                } else {
-                    alert('保存失敗: ' + json.message);
-                }
-            } catch (e) {
-                alert('通信エラー: ' + e);
-            }
-        }
+    // ===== ③ 現金分類ルール =====
+    function editCashCatRule(r) {
+        document.getElementById('cc-id').value          = r.id || '';
+        document.getElementById('cc-name').value        = r.rule_name || '';
+        document.getElementById('cc-content').value     = r.content_pattern || '';
+        document.getElementById('cc-institution').value = r.institution_pattern || '';
+        document.getElementById('cc-sign').value        = r.amount_sign || 'any';
+        document.getElementById('cc-major').value       = r.cash_cat_major || '';
+        document.getElementById('cc-mid').value         = r.cash_cat_mid || '';
+        document.getElementById('cc-form-title').textContent = '✏️ 現金分類ルールを編集';
+        const body = document.getElementById('cc-form-body');
+        if (!body.classList.contains('open')) body.classList.add('open');
+        body.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+    function resetCashCatForm() {
+        ['cc-id','cc-name','cc-content','cc-institution','cc-mid'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('cc-sign').value  = 'any';
+        document.getElementById('cc-major').value = '';
+        document.getElementById('cc-form-title').textContent = '＋ 新しい現金分類ルールを追加';
+        document.getElementById('cc-form-body').classList.remove('open');
+    }
+    async function saveCashCatRule() {
+        const id   = document.getElementById('cc-id').value.trim();
+        const name = document.getElementById('cc-name').value.trim();
+        if (!name) { alert('ルール名を入力してください'); return; }
+        const payload = {
+            rule_name:           name,
+            content_pattern:     document.getElementById('cc-content').value.trim(),
+            institution_pattern: document.getElementById('cc-institution').value.trim(),
+            amount_sign:         document.getElementById('cc-sign').value,
+            cash_cat_major:      document.getElementById('cc-major').value,
+            cash_cat_mid:        document.getElementById('cc-mid').value.trim(),
+        };
+        const url = id ? '/api/update_cash_category_rule' : '/api/add_cash_category_rule';
+        if (id) payload.id = id;
+        const res  = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const json = await res.json();
+        if (json.status === 'success') location.reload();
+        else alert('保存失敗: ' + json.message);
+    }
 
-        // ===== 分類ルール =====
-        function editCategoryRule(r) {
-            document.getElementById('cr-pattern').value   = r.content_pattern || '';
-            document.getElementById('cr-major').value     = r.category_major || '';
-            document.getElementById('cr-mid').value       = r.category_mid || '';
-            document.getElementById('cr-small').value     = r.category_small || '';
-            document.getElementById('cr-shop').value      = r.category_shop || '';
-            document.getElementById('cr-belonging').value = r.category_belonging || '';
-            document.getElementById('cr-person').value    = r.category_person || '';
-            document.getElementById('cr-context').value   = r.category_context || '';
-            document.getElementById('cat-form-title').textContent = '✏️ 分類ルールを編集';
-            const body = document.getElementById('cat-form-body');
-            if (!body.classList.contains('open')) body.classList.add('open');
-            body.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
+    // ===== ④ カードローンルール =====
+    function editCardLoanRule(r) {
+        document.getElementById('cl-id').value          = r.id || '';
+        document.getElementById('cl-name').value        = r.rule_name || '';
+        document.getElementById('cl-content').value     = r.content_pattern || '';
+        document.getElementById('cl-institution').value = r.institution_pattern || '';
+        document.getElementById('cl-sign').value        = r.amount_sign || 'any';
+        document.getElementById('cl-major').value       = r.cash_cat_major || '';
+        document.getElementById('cl-loan-type').value   = r.loan_type || '';
+        document.getElementById('cl-exclude').checked   = !!r.exclude;
+        document.getElementById('cl-form-title').textContent = '✏️ カードローンルールを編集';
+        const body = document.getElementById('cl-form-body');
+        if (!body.classList.contains('open')) body.classList.add('open');
+        body.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+    function resetCardLoanForm() {
+        ['cl-id','cl-name','cl-content','cl-institution'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('cl-sign').value      = 'any';
+        document.getElementById('cl-major').value     = '';
+        document.getElementById('cl-loan-type').value = '';
+        document.getElementById('cl-exclude').checked = false;
+        document.getElementById('cl-form-title').textContent = '＋ 新しいカードローンルールを追加';
+        document.getElementById('cl-form-body').classList.remove('open');
+    }
+    async function saveCardLoanRule() {
+        const id   = document.getElementById('cl-id').value.trim();
+        const name = document.getElementById('cl-name').value.trim();
+        if (!name) { alert('ルール名を入力してください'); return; }
+        const payload = {
+            rule_name:           name,
+            content_pattern:     document.getElementById('cl-content').value.trim(),
+            institution_pattern: document.getElementById('cl-institution').value.trim(),
+            amount_sign:         document.getElementById('cl-sign').value,
+            cash_cat_major:      document.getElementById('cl-major').value,
+            loan_type:           document.getElementById('cl-loan-type').value,
+            exclude:             document.getElementById('cl-exclude').checked,
+        };
+        const url = id ? '/api/update_card_loan_rule' : '/api/add_card_loan_rule';
+        if (id) payload.id = id;
+        const res  = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const json = await res.json();
+        if (json.status === 'success') location.reload();
+        else alert('保存失敗: ' + json.message);
+    }
 
-        function resetCatForm() {
-            ['cr-pattern','cr-major','cr-mid','cr-small','cr-shop','cr-belonging','cr-person','cr-context']
-                .forEach(id => document.getElementById(id).value = '');
-            document.getElementById('cat-form-title').textContent = '＋ 新しい分類ルールを追加';
-            document.getElementById('cat-form-body').classList.remove('open');
-        }
-
-        async function saveCategoryRule() {
-            const pattern = document.getElementById('cr-pattern').value.trim();
-            if (!pattern) { alert('内容パターンを入力してください'); return; }
-
-            const payload = {
-                pattern,
-                cat_major:     document.getElementById('cr-major').value.trim(),
-                cat_mid:       document.getElementById('cr-mid').value.trim(),
-                cat_small:     document.getElementById('cr-small').value.trim(),
-                cat_shop:      document.getElementById('cr-shop').value.trim(),
-                cat_belonging: document.getElementById('cr-belonging').value.trim(),
-                cat_person:    document.getElementById('cr-person').value.trim(),
-                cat_context:   document.getElementById('cr-context').value.trim(),
-            };
-
-            try {
-                const res = await fetch('/api/register_rule', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                const json = await res.json();
-                if (json.status === 'success') {
-                    location.reload();
-                } else {
-                    alert('登録失敗: ' + json.message);
-                }
-            } catch (e) {
-                alert('通信エラー: ' + e);
-            }
-        }
-
-        async function deleteRule(type, id) {
-            if (!confirm('このルールを削除しますか？')) return;
-            try {
-                const res = await fetch('/api/delete_rule', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ type: type, id: id })
-                });
-                const json = await res.json();
-                if (json.status === 'success') {
-                    location.reload();
-                } else {
-                    alert('削除失敗: ' + json.message);
-                }
-            } catch (e) {
-                alert('通信エラー');
-            }
-        }
-    </script>
+    // ===== 共通 =====
+    async function deleteRule(type, id) {
+        if (!confirm('このルールを削除しますか？')) return;
+        const res  = await fetch('/api/delete_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, id }) });
+        const json = await res.json();
+        if (json.status === 'success') location.reload();
+        else alert('削除失敗: ' + json.message);
+    }
+</script>
 </body>
 </html>

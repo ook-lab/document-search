@@ -165,6 +165,74 @@
         .summary-card h3 { margin: 0 0 5px 0; font-size: 14px; color: #666; }
         .summary-card .value { font-size: 24px; font-weight: bold; font-family: monospace; }
         .summary-card .value.negative { color: #dc3545; }
+
+        /* 利息セクション */
+        .interest-section {
+            border-top: 2px dashed #ffc107;
+            padding: 15px 20px;
+            background: #fffdf0;
+        }
+        .interest-section h4 {
+            margin: 0 0 12px 0;
+            font-size: 14px;
+            color: #856404;
+        }
+        .interest-form {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .interest-form input {
+            padding: 6px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .interest-form input[type="date"] { width: 140px; }
+        .interest-form input[type="number"] { width: 120px; }
+        .interest-form input[type="text"] { width: 200px; }
+        .btn-add-interest {
+            padding: 6px 14px;
+            background: #ffc107;
+            color: #212529;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .btn-add-interest:hover { background: #e0a800; }
+        .interest-table {
+            font-size: 12px;
+        }
+        .interest-table th {
+            background: #fff8e1;
+            font-size: 11px;
+            padding: 6px 8px;
+        }
+        .interest-table td {
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+        .btn-del-interest {
+            padding: 2px 8px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .btn-del-interest:hover { background: #c82333; }
+        .interest-total {
+            font-size: 13px;
+            color: #856404;
+            font-weight: 600;
+            margin-top: 8px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -259,6 +327,48 @@
                         取引明細がありません
                     </div>
                     {% endif %}
+
+                    <!-- 利息手入力セクション -->
+                    <div class="interest-section" id="interest-{{ loan.loan_id }}">
+                        <h4>💴 利息手入力</h4>
+                        <div class="interest-form">
+                            <input type="date" id="idate-{{ loop.index }}" placeholder="日付">
+                            <input type="number" id="iamt-{{ loop.index }}" placeholder="利息金額（円）" min="1">
+                            <input type="text" id="inote-{{ loop.index }}" placeholder="メモ（任意）">
+                            <button class="btn-add-interest"
+                                    onclick="addInterest('{{ loan.loan_id }}', {{ loop.index }})">追加</button>
+                        </div>
+                        {% if loan.interest_list %}
+                        <table class="interest-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:100px;">日付</th>
+                                    <th style="width:110px; text-align:right;">利息金額</th>
+                                    <th>メモ</th>
+                                    <th style="width:50px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="interest-list-{{ loop.index }}">
+                                {% for it in loan.interest_list %}
+                                <tr data-interest-id="{{ it.id }}">
+                                    <td>{{ it.date }}</td>
+                                    <td class="amount-cell negative">{{ "{:,.0f}".format(it.amount) }}</td>
+                                    <td>{{ it.note }}</td>
+                                    <td><button class="btn-del-interest"
+                                                onclick="deleteInterest('{{ it.id }}', this)">削除</button></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <div class="interest-total" id="interest-total-{{ loop.index }}">
+                            利息合計: {{ "{:,.0f}".format(loan.total_interest) }} 円
+                        </div>
+                        {% else %}
+                        <div id="interest-list-{{ loop.index }}" style="display:none;"></div>
+                        <div class="interest-total" id="interest-total-{{ loop.index }}" style="display:none;"></div>
+                        <div id="interest-empty-{{ loop.index }}" style="font-size:12px; color:#999;">利息の記録はありません</div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endfor %}
@@ -275,6 +385,84 @@
         function toggleLoanWindow(header) {
             const window = header.closest('.loan-window');
             window.classList.toggle('collapsed');
+        }
+
+        // 利息追加
+        async function addInterest(loanId, idx) {
+            const date = document.getElementById('idate-' + idx).value;
+            const amt  = parseInt(document.getElementById('iamt-' + idx).value, 10);
+            const note = document.getElementById('inote-' + idx).value.trim();
+
+            if (!date) { alert('日付を入力してください'); return; }
+            if (!amt || amt <= 0) { alert('利息金額を入力してください（正の整数）'); return; }
+
+            const res = await fetch('/api/add_loan_interest', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ loan_id: loanId, date, amount: amt, note })
+            });
+            const data = await res.json();
+            if (!res.ok) { alert('エラー: ' + (data.error || res.status)); return; }
+
+            // フォームをクリア
+            document.getElementById('idate-' + idx).value = '';
+            document.getElementById('iamt-' + idx).value = '';
+            document.getElementById('inote-' + idx).value = '';
+
+            // リストに行を追加
+            let tbody = document.getElementById('interest-list-' + idx);
+            const empty = document.getElementById('interest-empty-' + idx);
+            if (empty) {
+                // テーブルがない場合は簡易リロードで対応
+                location.reload();
+                return;
+            }
+            tbody.style.display = '';
+            const newRow = document.createElement('tr');
+            newRow.dataset.interestId = data.id;
+            newRow.innerHTML = `
+                <td>${date}</td>
+                <td class="amount-cell negative">${amt.toLocaleString()}</td>
+                <td>${note}</td>
+                <td><button class="btn-del-interest" onclick="deleteInterest('${data.id}', this)">削除</button></td>
+            `;
+            tbody.appendChild(newRow);
+
+            // 合計を更新
+            updateInterestTotal(idx);
+            const totalEl = document.getElementById('interest-total-' + idx);
+            if (totalEl) totalEl.style.display = '';
+        }
+
+        // 利息合計を再計算（DOM から）
+        function updateInterestTotal(idx) {
+            const tbody = document.getElementById('interest-list-' + idx);
+            if (!tbody) return;
+            let total = 0;
+            tbody.querySelectorAll('tr').forEach(tr => {
+                const cell = tr.querySelector('.amount-cell');
+                if (cell) total += parseInt(cell.textContent.replace(/,/g, ''), 10) || 0;
+            });
+            const el = document.getElementById('interest-total-' + idx);
+            if (el) el.textContent = '利息合計: ' + total.toLocaleString() + ' 円';
+        }
+
+        // 利息削除
+        async function deleteInterest(interestId, btn) {
+            if (!confirm('この利息記録を削除しますか？')) return;
+            const res = await fetch('/api/delete_loan_interest', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: interestId })
+            });
+            if (!res.ok) { alert('削除に失敗しました'); return; }
+            const tr = btn.closest('tr');
+            const tbody = tr.parentElement;
+            tr.remove();
+            // インデックスを特定して合計更新
+            const tbodyId = tbody.id; // "interest-list-N"
+            const idx = tbodyId.replace('interest-list-', '');
+            updateInterestTotal(idx);
         }
 
         // 表示先切り替え（ローン管理 → 明細一覧）

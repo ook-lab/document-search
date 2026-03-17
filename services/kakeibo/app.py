@@ -80,6 +80,50 @@ def match_category_rule(content, rules):
     return None
 
 
+def match_card_loan_rule(content, institution, amount, rules):
+    """カードローンルールにマッチするか検索。マッチしたルールを返す（なければNone）"""
+    content     = content or ""
+    institution = institution or ""
+    for rule in rules:
+        if not rule.get('is_active'):
+            continue
+        cp   = rule.get('content_pattern', '')
+        ip   = rule.get('institution_pattern', '')
+        sign = rule.get('amount_sign', 'any')
+        if cp and cp not in content:
+            continue
+        if ip and ip not in institution:
+            continue
+        if sign == '+' and amount <= 0:
+            continue
+        if sign == '-' and amount >= 0:
+            continue
+        return rule
+    return None
+
+
+def match_cash_category_rule(content, institution, amount, rules):
+    """現金分類ルールにマッチするか検索。マッチしたルールを返す（なければNone）"""
+    content     = content or ""
+    institution = institution or ""
+    for rule in rules:
+        if not rule.get('is_active'):
+            continue
+        cp   = rule.get('content_pattern', '')
+        ip   = rule.get('institution_pattern', '')
+        sign = rule.get('amount_sign', 'any')
+        if cp and cp not in content:
+            continue
+        if ip and ip not in institution:
+            continue
+        if sign == '+' and amount <= 0:
+            continue
+        if sign == '-' and amount >= 0:
+            continue
+        return rule
+    return None
+
+
 def match_product_name_rule(ocr_name, shop_name, rules):
     """商品名ルールにマッチするかチェック（店舗別ルール優先）"""
     # 1. 店舗別ルールを優先
@@ -362,6 +406,15 @@ def loans_page():
             entries_by_loan[lid] = []
         entries_by_loan[lid].append(e)
 
+    # 利息手入力を取得
+    interest_res = db.table("Kakeibo_Loan_Interest").select("*").order("date", desc=True).execute()
+    interest_by_loan = {}
+    for r in interest_res.data:
+        lid = r['loan_id']
+        if lid not in interest_by_loan:
+            interest_by_loan[lid] = []
+        interest_by_loan[lid].append(r)
+
     # 口座ごとにデータを統合
     loan_data = []
     for acc in accounts:
@@ -369,13 +422,16 @@ def loans_page():
         balance_info = card_balances.get(loan_id, {})
         current_balance = balance_info.get('current_balance', 0)
         loan_entries = entries_by_loan.get(loan_id, [])
+        interest_list = interest_by_loan.get(loan_id, [])
 
         loan_data.append({
             **acc,
             'current_balance': current_balance,
             'balance_date': balance_info.get('latest_date'),
             'entries': loan_entries,
-            'entry_count': len(loan_entries)
+            'entry_count': len(loan_entries),
+            'interest_list': interest_list,
+            'total_interest': sum(r['amount'] for r in interest_list),
         })
 
     return render_template(
@@ -619,19 +675,43 @@ def cash_calc():
         m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
         manual_map = {m['transaction_id']: m for m in m_res.data}
 
-    # 表示先ルールを取得
-    rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
+    # 各種ルールを取得
+    rules_res        = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
     auto_exclude_rules = rules_res.data
-    
+    card_loan_rules_res = db.table("Kakeibo_Card_Loan_Rules").select("*").eq("is_active", True).execute()
+    card_loan_rules  = card_loan_rules_res.data
+    cash_cat_rules_res  = db.table("Kakeibo_Cash_Category_Rules").select("*").eq("is_active", True).execute()
+    cash_cat_rules   = cash_cat_rules_res.data
+
     all_list = []
 
     for t in transactions:
-        m = manual_map.get(t['id'], {})
+        m      = manual_map.get(t['id'], {})
+        amount = t['amount']
+        content     = t.get('content', '')
+        institution = t.get('institution', '')
 
+        # === カードローンルール（最優先） ===
+        card_rule = match_card_loan_rule(content, institution, amount, card_loan_rules)
+        if card_rule:
+            if card_rule.get('exclude'):
+                continue  # 計算対象外：スキップ
+            cash_cat_major = m.get('cash_cat_major') or card_rule.get('cash_cat_major') or ''
+            cash_cat_mid   = m.get('cash_cat_mid', '') or ''
+            all_list.append({
+                **t,
+                "category":      card_rule.get('cash_cat_major') or "未分類",
+                "note":          m.get('note', ''),
+                "cash_cat_major": cash_cat_major,
+                "cash_cat_mid":   cash_cat_mid,
+            })
+            continue
+
+        # === 通常の表示先判定 ===
         is_cash_target = False
 
         # 1. 自動ルールによる判定
-        auto_action, _ = check_auto_target(t.get('content', ''), t.get('institution', ''), auto_exclude_rules)
+        auto_action, _ = check_auto_target(content, institution, auto_exclude_rules)
         if auto_action in ['CASH_ONLY', 'BOTH']:
             is_cash_target = True
 
@@ -650,18 +730,33 @@ def cash_calc():
         if m.get('view_target') == 'BANK_OUTFLOW':
             category = "銀行出金（消込済）"
 
+        # === 現金分類ルール（手動設定がなければ自動付与） ===
+        cash_cat_major = m.get('cash_cat_major', '') or ''
+        cash_cat_mid   = m.get('cash_cat_mid',   '') or ''
+        if not cash_cat_major:
+            cash_rule = match_cash_category_rule(content, institution, amount, cash_cat_rules)
+            if cash_rule:
+                cash_cat_major = cash_rule.get('cash_cat_major', '') or ''
+                cash_cat_mid   = cash_rule.get('cash_cat_mid',   '') or ''
+
         all_list.append({
             **t,
-            "category": category,
-            "note": m.get('note', ''),
-            "cash_cat_major": m.get('cash_cat_major', '') or '',
-            "cash_cat_mid":   m.get('cash_cat_mid',   '') or '',
+            "category":      category,
+            "note":          m.get('note', ''),
+            "cash_cat_major": cash_cat_major,
+            "cash_cat_mid":   cash_cat_mid,
         })
 
     all_list.sort(key=lambda x: x['date'])
     total_income = sum(t['amount'] for t in all_list if t['amount'] > 0)
     total_expense = sum(t['amount'] for t in all_list if t['amount'] <= 0)
     net_cash_flow = total_income + total_expense
+
+    # ローン増減: 返済合計(絶対値) - 借入合計(絶対値)
+    # 正 = 返済超過（残高減）、負 = 借入超過（残高増）
+    loan_repay  = sum(abs(t['amount']) for t in all_list if t.get('cash_cat_major') == '返済')
+    loan_borrow = sum(abs(t['amount']) for t in all_list if t.get('cash_cat_major') == '借入')
+    loan_net    = loan_repay - loan_borrow
 
     return render_template(
         'cash_calc.html',
@@ -670,6 +765,7 @@ def cash_calc():
         total_income=total_income,
         total_expense=total_expense,
         net_cash_flow=net_cash_flow,
+        loan_net=loan_net,
     )
 
 @app.route('/api/reconcile_execute', methods=['POST'])
@@ -812,18 +908,17 @@ def update_target_rule():
 def rules_settings():
     """ルール一覧と管理画面"""
     db = get_db()
-    # 表示先ルール（Kakeibo_Auto_Exclude_Rules）
     auto_rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
-    auto_rules = auto_rules_res.data
-    
-    # 分類ルール（Kakeibo_Category_Rules）
-    cat_rules_res = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
-    category_rules = cat_rules_res.data
+    cat_rules_res  = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
+    cash_cat_res   = db.table("Kakeibo_Cash_Category_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
+    card_loan_res  = db.table("Kakeibo_Card_Loan_Rules").select("*").eq("is_active", True).order("created_at", desc=True).execute()
 
     return render_template(
         'rules.html',
-        auto_rules=auto_rules,
-        category_rules=category_rules
+        auto_rules=auto_rules_res.data,
+        category_rules=cat_rules_res.data,
+        cash_category_rules=cash_cat_res.data,
+        card_loan_rules=card_loan_res.data,
     )
 
 
@@ -832,16 +927,125 @@ def delete_rule():
     """ルールの論理削除（is_active = False）"""
     data = request.json
     rule_type = data.get('type')
+    rule_id   = data.get('id')
+
+    table_map = {
+        'target':      'Kakeibo_Auto_Exclude_Rules',
+        'category':    'Kakeibo_Category_Rules',
+        'cash_category': 'Kakeibo_Cash_Category_Rules',
+        'card_loan':   'Kakeibo_Card_Loan_Rules',
+    }
+    table_name = table_map.get(rule_type)
+    if not table_name:
+        return jsonify({"status": "error", "message": f"unknown type: {rule_type}"}), 400
+
+    db = get_db()
+    db.table(table_name).update({"is_active": False}).eq("id", rule_id).execute()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/add_cash_category_rule', methods=['POST'])
+def add_cash_category_rule():
+    data = request.json
+    payload = {
+        "rule_name":           data.get('rule_name', ''),
+        "content_pattern":     data.get('content_pattern', ''),
+        "institution_pattern": data.get('institution_pattern', ''),
+        "amount_sign":         data.get('amount_sign', 'any'),
+        "cash_cat_major":      data.get('cash_cat_major') or None,
+        "cash_cat_mid":        data.get('cash_cat_mid') or None,
+        "is_active": True,
+    }
+    db = get_db()
+    db.table("Kakeibo_Cash_Category_Rules").insert(payload).execute()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/update_cash_category_rule', methods=['POST'])
+def update_cash_category_rule():
+    data    = request.json
     rule_id = data.get('id')
-    
-    table_name = "Kakeibo_Auto_Exclude_Rules" if rule_type == 'target' else "Kakeibo_Category_Rules"
-    
-    try:
-        db = get_db()
-        db.table(table_name).update({"is_active": False}).eq("id", rule_id).execute()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    if not rule_id:
+        return jsonify({"status": "error", "message": "id required"}), 400
+    payload = {
+        "rule_name":           data.get('rule_name', ''),
+        "content_pattern":     data.get('content_pattern', ''),
+        "institution_pattern": data.get('institution_pattern', ''),
+        "amount_sign":         data.get('amount_sign', 'any'),
+        "cash_cat_major":      data.get('cash_cat_major') or None,
+        "cash_cat_mid":        data.get('cash_cat_mid') or None,
+    }
+    db = get_db()
+    db.table("Kakeibo_Cash_Category_Rules").update(payload).eq("id", rule_id).execute()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/add_card_loan_rule', methods=['POST'])
+def add_card_loan_rule():
+    data = request.json
+    payload = {
+        "rule_name":           data.get('rule_name', ''),
+        "content_pattern":     data.get('content_pattern', ''),
+        "institution_pattern": data.get('institution_pattern', ''),
+        "amount_sign":         data.get('amount_sign', 'any'),
+        "cash_cat_major":      data.get('cash_cat_major') or None,
+        "loan_type":           data.get('loan_type') or None,
+        "exclude":             bool(data.get('exclude', False)),
+        "is_active": True,
+    }
+    db = get_db()
+    db.table("Kakeibo_Card_Loan_Rules").insert(payload).execute()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/update_card_loan_rule', methods=['POST'])
+def update_card_loan_rule():
+    data    = request.json
+    rule_id = data.get('id')
+    if not rule_id:
+        return jsonify({"status": "error", "message": "id required"}), 400
+    payload = {
+        "rule_name":           data.get('rule_name', ''),
+        "content_pattern":     data.get('content_pattern', ''),
+        "institution_pattern": data.get('institution_pattern', ''),
+        "amount_sign":         data.get('amount_sign', 'any'),
+        "cash_cat_major":      data.get('cash_cat_major') or None,
+        "loan_type":           data.get('loan_type') or None,
+        "exclude":             bool(data.get('exclude', False)),
+    }
+    db = get_db()
+    db.table("Kakeibo_Card_Loan_Rules").update(payload).eq("id", rule_id).execute()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/add_loan_interest', methods=['POST'])
+def add_loan_interest():
+    data = request.json
+    loan_id = data.get('loan_id')
+    date    = data.get('date')
+    amount  = data.get('amount')
+    if not loan_id or not date or not amount:
+        return jsonify({"status": "error", "message": "loan_id / date / amount required"}), 400
+    payload = {
+        "loan_id": loan_id,
+        "date":    date,
+        "amount":  int(amount),
+        "note":    data.get('note', ''),
+    }
+    db = get_db()
+    db.table("Kakeibo_Loan_Interest").insert(payload).execute()
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/delete_loan_interest', methods=['POST'])
+def delete_loan_interest():
+    data = request.json
+    interest_id = data.get('id')
+    if not interest_id:
+        return jsonify({"status": "error", "message": "id required"}), 400
+    db = get_db()
+    db.table("Kakeibo_Loan_Interest").delete().eq("id", interest_id).execute()
+    return jsonify({"status": "success"})
 
 
 @app.route('/api/create_transaction', methods=['POST'])

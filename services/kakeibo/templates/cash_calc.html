@@ -23,6 +23,8 @@
         .value.expense { color: #c00; }
         .value.net.pos { color: #1a7a1a; }
         .value.net.neg { color: #c00; }
+        .value.loan.pos { color: #1a7a1a; }
+        .value.loan.neg { color: #c00; }
 
         .content { padding: 20px; }
         .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
@@ -85,6 +87,12 @@
         <div class="label">収支残高</div>
         <div class="value net {% if net_cash_flow >= 0 %}pos{% else %}neg{% endif %}">
             {{ "{:+,.0f}".format(net_cash_flow) }}
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="label">ローン増減（返済－借入）</div>
+        <div class="value loan {% if loan_net >= 0 %}pos{% else %}neg{% endif %}">
+            {{ "{:+,.0f}".format(loan_net) }}
         </div>
     </div>
 </div>
