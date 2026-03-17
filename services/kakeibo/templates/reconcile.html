@@ -69,6 +69,10 @@
 
         .hide-btn { background: none; border: none; cursor: pointer; font-size: 13px; opacity: 0.4; padding: 1px 3px; vertical-align: middle; }
         .hide-btn:hover { opacity: 1; }
+
+        .dest-badge { display: inline-block; padding: 1px 4px; border-radius: 3px; font-size: 10px; font-weight: bold; margin-right: 2px; }
+        .dest-list { background: #d4edda; color: #155724; }
+        .dest-cash { background: #cce5ff; color: #004085; }
     </style>
 </head>
 <body>
@@ -90,6 +94,13 @@
         <span style="color:white; font-size: 13px; margin-right: 15px;">
             <input type="checkbox" id="toggle-hidden" {% if show_hidden %}checked{% endif %} onchange="toggleHidden(this.checked)">
             <label for="toggle-hidden" style="cursor:pointer">非表示を表示</label>
+        </span>
+        <span style="color:white; font-size: 13px; margin-right: 15px; border-left:1px solid #555; padding-left:12px;">
+            表示先:
+            <input type="checkbox" id="filter-list" checked onchange="applyDestFilter()">
+            <label for="filter-list" style="cursor:pointer; color:#a8d5b5;">明細</label>
+            <input type="checkbox" id="filter-cash" checked onchange="applyDestFilter()" style="margin-left:8px;">
+            <label for="filter-cash" style="cursor:pointer; color:#99c7f0;">現金</label>
         </span>
         <a href="/">明細一覧</a>
         <a href="/reconcile" class="active">消込ツール</a>
@@ -295,6 +306,8 @@
             const tr = document.createElement('tr');
             tr.id = `row-${side}-${t.id}`;
             tr.dataset.search = (t.content + " " + t.institution + " " + t.amount).toLowerCase();
+            tr.dataset.showsList = t.shows_in_list ? '1' : '0';
+            tr.dataset.showsCash = t.shows_in_cash ? '1' : '0';
             if (t.is_excluded) tr.classList.add('excluded');
             if (t.is_hidden)   tr.classList.add('hidden-row');
 
@@ -326,13 +339,17 @@
                 </td>`;
             }
 
+            const destBadges =
+                (t.shows_in_list ? '<span class="dest-badge dest-list" title="明細一覧に表示">明</span>' : '') +
+                (t.shows_in_cash ? '<span class="dest-badge dest-cash" title="現金計算に表示">現</span>' : '');
+
             tr.innerHTML = `
                 <td style="width: 30px;">
                     <input type="checkbox" id="check-${side}-${t.id}"
                            onchange="toggleSelect('${side}', '${t.id}')">
                 </td>
                 <td>
-                    <div>${t.date}</div>
+                    <div>${destBadges}${t.date}</div>
                     <div style="font-weight:bold;">${t.content}</div>
                     <div style="font-size:10px; color:#666;">${t.institution}</div>
                 </td>
@@ -640,14 +657,23 @@
     }
 
     function filterList(side, text) {
+        const showList = document.getElementById('filter-list').checked;
+        const showCash = document.getElementById('filter-cash').checked;
         const rows = document.querySelectorAll(`#table-${side} tr`);
         const lowerText = text.toLowerCase();
         rows.forEach(tr => {
-            if (tr.dataset.search.includes(lowerText)) {
-                tr.style.display = '';
-            } else {
-                tr.style.display = 'none';
-            }
+            const textOk = tr.dataset.search.includes(lowerText);
+            const destOk = (showList && tr.dataset.showsList === '1') ||
+                           (showCash && tr.dataset.showsCash === '1') ||
+                           (!showList && !showCash);  // 両方オフなら全表示
+            tr.style.display = (textOk && destOk) ? '' : 'none';
+        });
+    }
+
+    function applyDestFilter() {
+        ['left', 'right'].forEach(side => {
+            const input = document.querySelector(`#panel-${side} .filter-input`);
+            filterList(side, input ? input.value : '');
         });
     }
 

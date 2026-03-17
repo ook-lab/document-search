@@ -584,7 +584,8 @@ def reconcile_page():
     ids = [r['id'] for r in raw_data]
     excluded_ids = set()
     manual_ids = set()
-    note_map = {}    # transaction_id → clean note
+    note_map = {}         # transaction_id → clean note
+    view_target_map = {}  # transaction_id → view_target
     hidden_ids = set()
     if ids:
         # 1000件のIDを一度にURLフィルタに入れると制限（URL長）に抵触するため、分割して取得
@@ -607,6 +608,7 @@ def reconcile_page():
                         if '|hidden' in raw_note:
                             hidden_ids.add(m['transaction_id'])
                         note_map[m['transaction_id']] = raw_note.replace('|hidden', '')
+                        view_target_map[m['transaction_id']] = m.get('view_target')
                 else:
                     raise RuntimeError(f"Manual Edits fetch error chunk {i}: {resp.status_code} {resp.text}")
         print(f"[RECONCILE] Total IDs: {len(ids)}, Excluded: {len(excluded_ids)}, Hidden: {len(hidden_ids)}, show_excluded: {show_excluded}")
@@ -635,6 +637,7 @@ def reconcile_page():
 
         raw_note = note_map.get(r['id'], '')
         is_hidden = r['id'] in hidden_ids
+        view_target = view_target_map.get(r['id'])
 
         # 除外済み かつ 「消込済みを表示」がオフの場合はスキップ
         if is_ex and not show_excluded:
@@ -644,11 +647,24 @@ def reconcile_page():
         if is_hidden and not show_hidden:
             continue
 
+        # 表示先の計算
+        shows_in_list = not is_ex and view_target != 'loan'
+
+        auto_action_r, _ = check_auto_target(r.get('content', ''), r.get('institution', ''), auto_exclude_rules)
+        is_cash = auto_action_r in ('CASH_ONLY', 'BOTH')
+        if view_target in ('BANK_OUTFLOW', 'BOTH', 'CASH_ONLY'):
+            is_cash = True
+        elif view_target in ('INTERNAL_TRANSFER', 'LIST_ONLY'):
+            is_cash = False
+        shows_in_cash = is_cash and not is_ex
+
         candidates.append({
             **r,
             'is_excluded': is_ex,
             'note': raw_note,
             'is_hidden': is_hidden,
+            'shows_in_list': shows_in_list,
+            'shows_in_cash': shows_in_cash,
         })
 
     return render_template(
@@ -703,6 +719,10 @@ def cash_calc():
         amount = t['amount']
         content     = t.get('content', '')
         institution = t.get('institution', '')
+
+        # 消し込み済み（is_excluded=True）は現金計算対象外
+        if m.get('is_excluded'):
+            continue
 
         # === カードローンルール（最優先） ===
         card_rule = match_card_loan_rule(content, institution, amount, card_loan_rules)
