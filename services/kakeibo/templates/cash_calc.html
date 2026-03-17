@@ -26,16 +26,25 @@
         .value.loan.pos { color: #1a7a1a; }
         .value.loan.neg { color: #c00; }
 
-        .content { padding: 20px; }
+        .content { padding: 20px; display: flex; flex-direction: column; gap: 24px; }
         .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 8px;
+            padding-left: 4px;
+            border-left: 4px solid #555;
+        }
+        .section-title.loan-section { border-left-color: #17a2b8; color: #117a8b; }
 
         table { width: 100%; border-collapse: collapse; background: white; font-size: 13px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); border-radius: 8px; overflow: hidden; }
         th { background: #f0f0f0; padding: 8px 10px; text-align: left; font-size: 12px; color: #555; border-bottom: 2px solid #ddd; white-space: nowrap; }
+        th.loan-header { background: #e6f7fa; }
         td { padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: #fafafa; }
-        tr.loan-tx td { opacity: 0.55; }
-        tr.loan-tx .col-amount { text-decoration: line-through; }
 
         .col-date { white-space: nowrap; color: #555; font-size: 12px; }
         .col-content { font-weight: bold; }
@@ -99,51 +108,114 @@
     </div>
 </div>
 
+{% set cash_txs = transactions | selectattr('is_loan_tx', 'equalto', false) | list %}
+{% set loan_txs = transactions | selectattr('is_loan_tx', 'equalto', true)  | list %}
+
 <div class="content">
     {% if not transactions %}
     <div class="empty">現金計算対象のデータがありません</div>
     {% else %}
-    <table>
-        <thead>
-            <tr>
-                <th>日付</th>
-                <th>内容</th>
-                <th>金融機関</th>
-                <th style="text-align:right;">金額</th>
-                <th>大分類</th>
-                <th>中分類</th>
-                <th>メモ</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for t in transactions %}
-            <tr data-id="{{ t.id }}" {% if t.is_loan_tx %}class="loan-tx" title="カードローン（収支集計対象外）"{% endif %}>
-                <td class="col-date">{{ t.date }}</td>
-                <td class="col-content">{{ t.content }}</td>
-                <td class="col-inst">{{ t.institution or '' }}</td>
-                <td class="col-amount {% if t.amount > 0 %}income{% else %}expense{% endif %}">
-                    {{ '{:+,}'.format(t.amount) }}
-                </td>
-                <td>
-                    <select class="cat-select cash-cat-major">
-                        <option value="">—</option>
-                        {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
-                        <option value="{{ opt }}" {% if t.cash_cat_major == opt %}selected{% endif %}>{{ opt }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-                <td>
-                    <input type="text" class="cat-input cash-cat-mid" value="{{ t.cash_cat_mid }}" placeholder="中分類">
-                </td>
-                <td class="col-note">{{ t.note or '' }}</td>
-                <td>
-                    <button class="btn-save" onclick="saveRow(this)">保存</button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+
+    <!-- 上段：現金入出金 -->
+    <div>
+        <div class="section-title">現金入出金（{{ cash_txs|length }} 件）</div>
+        {% if cash_txs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>日付</th>
+                    <th>内容</th>
+                    <th>金融機関</th>
+                    <th style="text-align:right;">金額</th>
+                    <th>大分類</th>
+                    <th>中分類</th>
+                    <th>メモ</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in cash_txs %}
+                <tr data-id="{{ t.id }}">
+                    <td class="col-date">{{ t.date }}</td>
+                    <td class="col-content">{{ t.content }}</td>
+                    <td class="col-inst">{{ t.institution or '' }}</td>
+                    <td class="col-amount {% if t.amount > 0 %}income{% else %}expense{% endif %}">
+                        {{ '{:+,}'.format(t.amount) }}
+                    </td>
+                    <td>
+                        <select class="cat-select cash-cat-major">
+                            <option value="">—</option>
+                            {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
+                            <option value="{{ opt }}" {% if t.cash_cat_major == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" class="cat-input cash-cat-mid" value="{{ t.cash_cat_mid }}" placeholder="中分類">
+                    </td>
+                    <td class="col-note">{{ t.note or '' }}</td>
+                    <td>
+                        <button class="btn-save" onclick="saveRow(this)">保存</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty" style="padding:20px 0;">現金入出金のデータがありません</div>
+        {% endif %}
+    </div>
+
+    <!-- 下段：ローン入出金 -->
+    <div>
+        <div class="section-title loan-section">ローン入出金（{{ loan_txs|length }} 件）</div>
+        {% if loan_txs %}
+        <table>
+            <thead>
+                <tr>
+                    <th class="loan-header">日付</th>
+                    <th class="loan-header">内容</th>
+                    <th class="loan-header">金融機関</th>
+                    <th class="loan-header" style="text-align:right;">金額</th>
+                    <th class="loan-header">大分類</th>
+                    <th class="loan-header">中分類</th>
+                    <th class="loan-header">メモ</th>
+                    <th class="loan-header"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in loan_txs %}
+                <tr data-id="{{ t.id }}">
+                    <td class="col-date">{{ t.date }}</td>
+                    <td class="col-content">{{ t.content }}</td>
+                    <td class="col-inst">{{ t.institution or '' }}</td>
+                    <td class="col-amount {% if t.amount > 0 %}income{% else %}expense{% endif %}">
+                        {{ '{:+,}'.format(t.amount) }}
+                    </td>
+                    <td>
+                        <select class="cat-select cash-cat-major">
+                            <option value="">—</option>
+                            {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
+                            <option value="{{ opt }}" {% if t.cash_cat_major == opt %}selected{% endif %}>{{ opt }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" class="cat-input cash-cat-mid" value="{{ t.cash_cat_mid }}" placeholder="中分類">
+                    </td>
+                    <td class="col-note">{{ t.note or '' }}</td>
+                    <td>
+                        <button class="btn-save" onclick="saveRow(this)">保存</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty" style="padding:20px 0;">ローン入出金のデータがありません</div>
+        {% endif %}
+    </div>
+
     {% endif %}
 </div>
 
