@@ -74,7 +74,10 @@ class GeminiClient:
                 {"mime_type": "image/jpeg", "data": image_bytes},
                 prompt,
             ],
-            generation_config=genai.GenerationConfig(temperature=temperature),
+            generation_config=genai.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=8192,
+            ),
         )
         _log('kakeibo', 'receipt-ocr', model, response)
         return response.text
