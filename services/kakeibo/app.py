@@ -466,17 +466,13 @@ def reconcile_history():
         .in_("id", tx_ids).execute()
     tx_map = {t['id']: t for t in tx_res.data}
 
-    # グループ化
+    # グループ化（月フィルタはグループ単位で後から適用）
+    from datetime import timezone
     groups = {}
     for m in me_data:
         note = m.get('note', '')
         tx = tx_map.get(m['transaction_id'])
         if not tx:
-            continue
-
-        # 月フィルタ（トランザクション日付）
-        tx_date = str(tx.get('date', ''))[:7]
-        if month_filter and tx_date != month_filter:
             continue
 
         # グループキー抽出（|hidden サフィックスを除去してからマッチ）
@@ -486,16 +482,14 @@ def reconcile_history():
             group_key = gm.group(1)
             is_legacy = False
         else:
-            # レガシー: created_at の分単位でグループ化（updated_at は hide 操作で変わるため使わない）
+            # レガシー: created_at の分単位でグループ化
             group_key = f"L_{(m.get('created_at') or '')[:16]}"
             is_legacy = True
 
         if group_key not in groups:
             type_match = re.match(r'消込:([^:]+):', note_core)
             mode = 'transfer' if ':T(' in note_core else 'same_amount'
-            # 表示時刻: 新方式はグループID（Unixタイムスタンプ）から復元、レガシーは created_at
             if not is_legacy:
-                from datetime import timezone
                 reconciled_at = datetime.fromtimestamp(int(group_key), tz=timezone.utc).strftime('%Y-%m-%dT%H:%M')
             else:
                 reconciled_at = (m.get('created_at') or '')[:16].replace('T', ' ')
@@ -519,7 +513,19 @@ def reconcile_history():
         elif '(右)' in note:
             groups[group_key]['right'].append(entry)
 
-    sorted_groups = sorted(groups.values(), key=lambda g: g['reconciled_at'], reverse=True)
+    # 月フィルタ: グループの所属月は「左側の最小日付」で決定
+    # 左側がない場合は右側の最小日付にフォールバック
+    filtered_groups = []
+    for g in groups.values():
+        left_dates  = [e['tx']['date'] for e in g['left']  if e.get('tx')]
+        right_dates = [e['tx']['date'] for e in g['right'] if e.get('tx')]
+        ref_date = min(left_dates) if left_dates else (min(right_dates) if right_dates else '')
+        ref_month = str(ref_date)[:7]
+        if month_filter and ref_month != month_filter:
+            continue
+        filtered_groups.append(g)
+
+    sorted_groups = sorted(filtered_groups, key=lambda g: g['reconciled_at'], reverse=True)
 
     return render_template('reconcile_history.html', groups=sorted_groups, month=month_filter)
 
