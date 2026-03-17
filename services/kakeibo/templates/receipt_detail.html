@@ -349,6 +349,7 @@
                         {% if not linked_transaction and candidates %}
                         <div class="actions">
                             <button class="btn btn-primary" onclick="linkSelected()" id="linkBtn" disabled>選択した取引と紐付け</button>
+                            <button class="btn btn-secondary" onclick="linkShopOnly()" id="linkShopBtn" disabled>店名だけ紐付け</button>
                         </div>
                         {% endif %}
                     </div>
@@ -388,6 +389,8 @@
             selectedTxAmount = txAmount;
             const linkBtn = document.getElementById('linkBtn');
             if (linkBtn) linkBtn.disabled = false;
+            const linkShopBtn = document.getElementById('linkShopBtn');
+            if (linkShopBtn) linkShopBtn.disabled = false;
         }
 
         // 現金決済として登録（紐付けなしで明細一覧へ追加）
@@ -459,6 +462,41 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     showToast('紐付けを保存しました');
+                    location.reload();
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        async function linkShopOnly() {
+            if (!selectedTxId || !receiptId) return;
+
+            // 金額不一致チェック
+            if (receiptTotal > 0 && selectedTxAmount !== null) {
+                const txAbs = Math.abs(selectedTxAmount);
+                if (receiptTotal !== txAbs) {
+                    const ok = confirm(
+                        `⚠️ 金額が一致していません。\n` +
+                        `レシート合計: ¥${receiptTotal.toLocaleString()}\n` +
+                        `取引金額: ¥${txAbs.toLocaleString()}\n\n` +
+                        `店名だけ紐付けを続けますか？`
+                    );
+                    if (!ok) return;
+                }
+            }
+
+            try {
+                const res = await fetch('/api/receipt/link_shop_only', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId, transaction_id: selectedTxId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('店名だけで紐付けました');
                     location.reload();
                 } else {
                     showToast(data.message || 'エラーが発生しました', 'error');

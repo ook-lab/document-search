@@ -2224,6 +2224,77 @@ def link_receipt_to_transaction():
     return jsonify({"status": "success"})
 
 
+@app.route('/api/receipt/link_shop_only', methods=['POST'])
+def link_receipt_shop_only():
+    """レシートと取引を紐付け（店名＋合計額のみ1行追加、明細は反映しない）"""
+    data = request.json
+    receipt_id = data.get('receipt_id')
+    transaction_id = data.get('transaction_id')
+
+    if not receipt_id or not transaction_id:
+        return jsonify({"status": "error", "message": "receipt_id and transaction_id are required"}), 400
+
+    db = get_db()
+
+    # 既存の紐付けがあれば、その取引の除外を解除
+    old_link = db.table("Kakeibo_Receipt_Links").select("transaction_id").eq("receipt_id", receipt_id).execute()
+    if old_link.data:
+        old_tx_id = old_link.data[0]['transaction_id']
+        db.table("Kakeibo_Manual_Edits").upsert({
+            "transaction_id": old_tx_id,
+            "is_excluded": False,
+            "has_receipt": False,
+            "receipt_id": None,
+            "note": "レシート紐付け解除"
+        }, on_conflict="transaction_id").execute()
+
+    # 既存の紐付けを削除
+    db.table("Kakeibo_Receipt_Links").delete().eq("receipt_id", receipt_id).execute()
+
+    # 新規紐付け
+    try:
+        db.table("Kakeibo_Receipt_Links").insert({
+            "receipt_id": receipt_id,
+            "transaction_id": transaction_id
+        }).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    # 取引を除外
+    db.table("Kakeibo_Manual_Edits").upsert({
+        "transaction_id": transaction_id,
+        "is_excluded": True,
+        "has_receipt": True,
+        "receipt_id": receipt_id,
+        "note": "レシート紐付け（店名のみ）"
+    }, on_conflict="transaction_id").execute()
+
+    # 店名＋合計額を1行だけ追加
+    receipt_shop = db.table("Rawdata_RECEIPT_shops").select("shop_name, transaction_date, total_amount_check").eq("id", receipt_id).execute()
+    if receipt_shop.data:
+        shop_name = receipt_shop.data[0].get("shop_name", "")
+        tx_date = receipt_shop.data[0].get("transaction_date")
+        total = receipt_shop.data[0].get("total_amount_check") or 0
+        amount = -total  # 支出なのでマイナス
+
+        new_id = f"RECEIPT-{receipt_id}-SHOP"
+        existing = db.table("Rawdata_BANK_transactions").select("id").eq("id", new_id).execute()
+        if not existing.data:
+            db.table("Rawdata_BANK_transactions").insert({
+                "id": new_id,
+                "date": tx_date,
+                "content": shop_name,
+                "amount": amount,
+                "institution": shop_name,
+                "category_major": "未分類",
+                "memo": f"レシート紐付け・店名のみ（{receipt_id}）",
+                "is_target": True,
+                "is_transfer": False
+            }).execute()
+
+    return jsonify({"status": "success"})
+
+
 @app.route('/api/receipt/unlink', methods=['POST'])
 def unlink_receipt():
     """レシートと取引の紐付けを解除（取引の除外も解除、追加した明細も削除）"""
