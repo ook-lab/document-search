@@ -12,6 +12,26 @@ from gemini_client import GeminiClient
 import httpx
 
 
+def _n(v, default=0):
+    """文字列・数値・None を int に変換。'1,706' や '¥500' も対応。"""
+    if v is None or v == "" or v == "null":
+        return default
+    try:
+        return int(str(v).replace(',', '').replace('¥', '').replace('￥', '').strip())
+    except (ValueError, TypeError):
+        return default
+
+
+def _ni(v):
+    """None を返す版の _n（DBカラムに NULL を入れたい場合）"""
+    if v is None or v == "" or v == "null":
+        return None
+    try:
+        return int(str(v).replace(',', '').replace('¥', '').replace('￥', '').strip())
+    except (ValueError, TypeError):
+        return None
+
+
 class TransactionProcessor:
     """レシートOCR結果をDBに登録するプロセッサ"""
 
@@ -146,8 +166,8 @@ class TransactionProcessor:
         # レシート全体が単一税率の場合は最優先
         receipt_level_tax_rate = None
         if tax_summary:
-            tax_8  = tax_summary.get("tax_8_amount") or 0
-            tax_10 = tax_summary.get("tax_10_amount") or 0
+            tax_8  = _n(tax_summary.get("tax_8_amount"))
+            tax_10 = _n(tax_summary.get("tax_10_amount"))
             if tax_8 > 0 and tax_10 == 0:
                 receipt_level_tax_rate = 8
             elif tax_10 > 0 and tax_8 == 0:
@@ -214,25 +234,24 @@ class TransactionProcessor:
         tax_summary = ocr_result.get("tax_summary", {})
         subtotal_amount = None
         if tax_summary:
-            s8  = (tax_summary.get("tax_8_subtotal", 0) or 0)
-            s10 = (tax_summary.get("tax_10_subtotal", 0) or 0)
+            s8  = _n(tax_summary.get("tax_8_subtotal"))
+            s10 = _n(tax_summary.get("tax_10_subtotal"))
             if s8 or s10:
                 subtotal_amount = s8 + s10
         total_amount = sum(
-            item.get("total_amount") or item.get("amount") or item.get("displayed_amount") or 0
+            _n(item.get("total_amount") or item.get("amount") or item.get("displayed_amount"))
             for item in ocr_result.get("items", [])
         )
         tax_s = ocr_result.get("tax_summary", {}) or {}
-        def _ti(v): return int(v) if v not in (None, "", "null") else None
         data = {
             "shop_name":          ocr_result["shop_name"],
             "transaction_date":   ocr_result["transaction_date"],
-            "total_amount_check": ocr_result.get("total_amount_check") or total_amount or 0,
+            "total_amount_check": _n(ocr_result.get("total_amount_check")) or total_amount or 0,
             "subtotal_amount":    subtotal_amount,
-            "tax_8_amount":       _ti(tax_s.get("tax_8_amount")),
-            "tax_10_amount":      _ti(tax_s.get("tax_10_amount")),
-            "tax_8_subtotal":     _ti(tax_s.get("tax_8_subtotal")),
-            "tax_10_subtotal":    _ti(tax_s.get("tax_10_subtotal")),
+            "tax_8_amount":       _ni(tax_s.get("tax_8_amount")),
+            "tax_10_amount":      _ni(tax_s.get("tax_10_amount")),
+            "tax_8_subtotal":     _ni(tax_s.get("tax_8_subtotal")),
+            "tax_10_subtotal":    _ni(tax_s.get("tax_10_subtotal")),
             "tax_type":           tax_s.get("tax_type", "内税"),
         }
         self.db.table("Rawdata_RECEIPT_shops").update(data).eq("id", receipt_id).execute()
@@ -240,28 +259,26 @@ class TransactionProcessor:
     def _insert_receipt(self, ocr_result, file_name, drive_file_id, model_name, source_folder) -> str:
         trans_date   = datetime.strptime(ocr_result["transaction_date"], "%Y-%m-%d").date()
         total_amount = sum(
-            item.get("total_amount") or item.get("amount") or item.get("displayed_amount") or 0
+            _n(item.get("total_amount") or item.get("amount") or item.get("displayed_amount"))
             for item in ocr_result.get("items", [])
         )
         tax_summary     = ocr_result.get("tax_summary", {})
         subtotal_amount = None
         if tax_summary:
-            s8  = (tax_summary.get("tax_8_subtotal", 0) or 0)
-            s10 = (tax_summary.get("tax_10_subtotal", 0) or 0)
+            s8  = _n(tax_summary.get("tax_8_subtotal"))
+            s10 = _n(tax_summary.get("tax_10_subtotal"))
             if s8 or s10:
                 subtotal_amount = s8 + s10
-
-        def _ti(v): return int(v) if v not in (None, "", "null") else None
 
         data = {
             "transaction_date":    ocr_result["transaction_date"],
             "shop_name":           ocr_result["shop_name"],
-            "total_amount_check":  ocr_result.get("total_amount_check") or total_amount or 0,
+            "total_amount_check":  _n(ocr_result.get("total_amount_check")) or total_amount or 0,
             "subtotal_amount":     subtotal_amount,
-            "tax_8_amount":        _ti((tax_summary or {}).get("tax_8_amount")),
-            "tax_10_amount":       _ti((tax_summary or {}).get("tax_10_amount")),
-            "tax_8_subtotal":      _ti((tax_summary or {}).get("tax_8_subtotal")),
-            "tax_10_subtotal":     _ti((tax_summary or {}).get("tax_10_subtotal")),
+            "tax_8_amount":        _ni((tax_summary or {}).get("tax_8_amount")),
+            "tax_10_amount":       _ni((tax_summary or {}).get("tax_10_amount")),
+            "tax_8_subtotal":      _ni((tax_summary or {}).get("tax_8_subtotal")),
+            "tax_10_subtotal":     _ni((tax_summary or {}).get("tax_10_subtotal")),
             "tax_type":            (tax_summary or {}).get("tax_type", "内税"),
             "image_path":          f"99_Archive/{trans_date.strftime('%Y-%m')}/{file_name}",
             "drive_file_id":       drive_file_id,
@@ -295,13 +312,8 @@ class TransactionProcessor:
             "discount_text": discount_text,
             "owner_id":      DEFAULT_OWNER_ID,
         }
-        def _to_int(v):
-            if v is None or v == "" or v == "null": return None
-            try: return int(float(v))
-            except (ValueError, TypeError): return None
-
-        data["unit_price"] = _to_int(data["unit_price"])
-        data["quantity"]   = _to_int(data["quantity"])
+        data["unit_price"] = _ni(data["unit_price"])
+        data["quantity"]   = _ni(data["quantity"])
 
         if normalized:
             printed   = _to_int(total_amount)
