@@ -1767,8 +1767,8 @@ def receipts_page():
 
     # 取込失敗件数（月に関係なく全件）
     failed_count_res = db.table("99_lg_image_proc_log") \
-        .select("id", count='exact').eq("status", "failed").execute()
-    total_failed = failed_count_res.count or 0
+        .select("id").eq("status", "failed").execute()
+    total_failed = len(failed_count_res.data)
 
     # 取込失敗ビュー
     if view == 'failed':
