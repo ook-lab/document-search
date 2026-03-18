@@ -32,6 +32,9 @@ def _ni(v):
         return None
 
 
+_to_int = _ni  # 後方互換エイリアス（None保持版）
+
+
 class TransactionProcessor:
     """レシートOCR結果をDBに登録するプロセッサ"""
 
@@ -391,18 +394,18 @@ class TransactionProcessor:
             else:
                 items_10.append(item_data)
 
-        total_8  = sum((i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items_8)
-        total_10 = sum((i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items_10)
+        total_8  = sum(_n(i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items_8)
+        total_10 = sum(_n(i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items_10)
         needs_review = False
 
         tax_type = (tax_summary or {}).get("tax_type", "内税")
         is_exclusive = (tax_type == "外税")  # 外税=税抜価格表示、内税=税込価格表示
 
         if tax_summary:
-            sub8  = (tax_summary.get("tax_8_subtotal",  0) or 0)
-            tax8  = (tax_summary.get("tax_8_amount",    0) or 0)
-            sub10 = (tax_summary.get("tax_10_subtotal", 0) or 0)
-            tax10 = (tax_summary.get("tax_10_amount",   0) or 0)
+            sub8  = _n(tax_summary.get("tax_8_subtotal",  0) or 0)
+            tax8  = _n(tax_summary.get("tax_8_amount",    0) or 0)
+            sub10 = _n(tax_summary.get("tax_10_subtotal", 0) or 0)
+            tax10 = _n(tax_summary.get("tax_10_amount",   0) or 0)
             # 外税: レシート記載の合計は税抜小計+税額、内税: 税込小計+税額で税込合計
             r8  = sub8  + tax8  if not is_exclusive else sub8
             r10 = sub10 + tax10 if not is_exclusive else sub10
@@ -445,12 +448,12 @@ class TransactionProcessor:
             for item in items:
                 item["normalized"]["tax_amount"] = 0
             return
-        grand = sum((i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items)
+        grand = sum(_n(i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) for i in items)
         if grand == 0:
             for item in items:
                 item["normalized"]["tax_amount"] = 0
             return
-        distributed = [int(total_tax * (i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) / grand) for i in items]
+        distributed = [int(total_tax * _n(i["raw_item"].get("total_amount") or i["raw_item"].get("amount") or 0) / grand) for i in items]
         remainder   = total_tax - sum(distributed)
         if remainder and distributed:
             distributed[0] += remainder
@@ -460,8 +463,8 @@ class TransactionProcessor:
     def _save_tax_summary(self, receipt_id, processing_log_id, tax_summary, items_with_tax):
         calc_8  = sum(i["normalized"]["tax_amount"] for i in items_with_tax if i["normalized"]["tax_rate"] == 8)
         calc_10 = sum(i["normalized"]["tax_amount"] for i in items_with_tax if i["normalized"]["tax_rate"] == 10)
-        act_8   = tax_summary.get("tax_8_amount", 0) or 0
-        act_10  = tax_summary.get("tax_10_amount", 0) or 0
+        act_8   = _n(tax_summary.get("tax_8_amount", 0) or 0)
+        act_10  = _n(tax_summary.get("tax_10_amount", 0) or 0)
         matches = abs(calc_8 - act_8) <= 1 and abs(calc_10 - act_10) <= 1
         data = {
             "receipt_id":                 receipt_id,
