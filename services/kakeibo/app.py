@@ -188,17 +188,23 @@ def index():
     transactions = res.data
     ids = [t['id'] for t in transactions]
 
-    # Manualデータを取得
+    # Manualデータを取得（チャンク分割）
     manual_map = {}
     if ids:
-        m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
-        manual_map = {m['transaction_id']: m for m in m_res.data}
+        CHUNK = 200
+        all_edits = []
+        for i in range(0, len(ids), CHUNK):
+            chunk_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            all_edits.extend(chunk_res.data)
+        manual_map = {m['transaction_id']: m for m in all_edits}
 
-    # カードローン取引のIDを取得（自動判定用）
+    # カードローン取引のIDを取得（チャンク分割）
     card_loan_ids = set()
     if ids:
-        loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids).execute()
-        card_loan_ids = {e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan'}
+        CHUNK = 200
+        for i in range(0, len(ids), CHUNK):
+            loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            card_loan_ids.update(e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan')
 
     # 表示用データ構築
     display_data = []
@@ -321,17 +327,23 @@ def categorize():
     transactions = res.data
     ids = [t['id'] for t in transactions]
 
-    # Manual Edits 取得
+    # Manual Edits 取得（IDが多い場合チャンク分割）
     manual_map = {}
     if ids:
-        m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
-        manual_map = {m['transaction_id']: m for m in m_res.data}
+        CHUNK = 200
+        all_edits = []
+        for i in range(0, len(ids), CHUNK):
+            chunk_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            all_edits.extend(chunk_res.data)
+        manual_map = {m['transaction_id']: m for m in all_edits}
 
-    # カードローンID 取得
+    # カードローンID 取得（同様にチャンク分割）
     card_loan_ids = set()
     if ids:
-        loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids).execute()
-        card_loan_ids = {e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan'}
+        CHUNK = 200
+        for i in range(0, len(ids), CHUNK):
+            loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            card_loan_ids.update(e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan')
 
     # 口座一覧（フィルタ用）
     all_institutions = sorted(set(t.get('institution', '') for t in transactions if t.get('institution')))
@@ -841,8 +853,12 @@ def cash_calc():
     ids = [t['id'] for t in transactions]
     manual_map = {}
     if ids:
-        m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
-        manual_map = {m['transaction_id']: m for m in m_res.data}
+        CHUNK = 200
+        all_edits = []
+        for i in range(0, len(ids), CHUNK):
+            chunk_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            all_edits.extend(chunk_res.data)
+        manual_map = {m['transaction_id']: m for m in all_edits}
 
     # 各種ルールを取得
     rules_res        = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
@@ -1415,17 +1431,23 @@ def export_data():
     transactions = res.data
     ids = [t['id'] for t in transactions]
 
-    # Manualデータを取得
+    # Manualデータを取得（チャンク分割）
     manual_map = {}
     if ids:
-        m_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids).execute()
-        manual_map = {m['transaction_id']: m for m in m_res.data}
+        CHUNK = 200
+        all_edits = []
+        for i in range(0, len(ids), CHUNK):
+            chunk_res = db.table("Kakeibo_Manual_Edits").select("*").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            all_edits.extend(chunk_res.data)
+        manual_map = {m['transaction_id']: m for m in all_edits}
 
-    # カードローン取引のIDを取得
+    # カードローン取引のIDを取得（チャンク分割）
     card_loan_ids = set()
     if ids:
-        loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids).execute()
-        card_loan_ids = {e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan'}
+        CHUNK = 200
+        for i in range(0, len(ids), CHUNK):
+            loan_res = db.table("view_kakeibo_loan_entries").select("transaction_id, loan_type").in_("transaction_id", ids[i:i+CHUNK]).execute()
+            card_loan_ids.update(e['transaction_id'] for e in loan_res.data if e.get('loan_type') == 'card_loan')
 
     # エクスポート用データ構築
     export_data = []
@@ -1936,6 +1958,11 @@ def receipt_detail(receipt_id):
     calc_tax = sum(i.get("tax_amount") or 0 for i in display_items)
     calc_tax_8 = sum(i.get("tax_amount") or 0 for i in display_items if i.get("tax_rate") == 8)
     calc_tax_10 = sum(i.get("tax_amount") or 0 for i in display_items if i.get("tax_rate") == 10)
+    # 税率別の対象額・税抜額
+    calc_total_8  = sum(i.get("tax_included") or 0 for i in display_items if i.get("tax_rate") == 8)
+    calc_total_10 = sum(i.get("tax_included") or 0 for i in display_items if i.get("tax_rate") == 10)
+    calc_base_8   = calc_total_8  - calc_tax_8
+    calc_base_10  = calc_total_10 - calc_tax_10
 
     # レシートから読み取った値（OCR値）
     ocr_total        = receipt.get("total_amount_check") if receipt else None
@@ -1960,6 +1987,10 @@ def receipt_detail(receipt_id):
         calc_tax=calc_tax,
         calc_tax_8=calc_tax_8,
         calc_tax_10=calc_tax_10,
+        calc_total_8=calc_total_8,
+        calc_total_10=calc_total_10,
+        calc_base_8=calc_base_8,
+        calc_base_10=calc_base_10,
         # OCR読み取り値
         ocr_total=ocr_total,
         ocr_subtotal=ocr_subtotal,

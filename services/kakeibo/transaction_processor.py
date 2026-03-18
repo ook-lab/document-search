@@ -417,9 +417,10 @@ class TransactionProcessor:
             tax8  = _n(tax_summary.get("tax_8_amount",    0) or 0)
             sub10 = _n(tax_summary.get("tax_10_subtotal", 0) or 0)
             tax10 = _n(tax_summary.get("tax_10_amount",   0) or 0)
-            # 外税: レシート記載の合計は税抜小計+税額、内税: 税込小計+税額で税込合計
-            r8  = sub8  + tax8  if not is_exclusive else sub8
-            r10 = sub10 + tax10 if not is_exclusive else sub10
+            # 内税: tax_10_subtotal は税込小計 ≈ total_10 と比較
+            # 外税: tax_10_subtotal は税抜小計 ≈ total_10（商品の表示価格も税抜）と比較
+            r8  = sub8
+            r10 = sub10
             if abs(total_8  - r8)  > 5: needs_review = True
             if abs(total_10 - r10) > 5: needs_review = True
             # 外税の場合は税額を直接使用（レシート記載値が正確）

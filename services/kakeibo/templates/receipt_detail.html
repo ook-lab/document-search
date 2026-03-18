@@ -251,7 +251,7 @@
 
                         <div>{{ tax_type }}8%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_8_base is not none %}¥{{ '{:,}'.format(ocr_tax_8_base) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_total - calc_tax) if calc_tax_8 > 0 else 0 }}</div>
+                        <div style="text-align: right;">{% if calc_tax_8 > 0 %}¥{{ '{:,}'.format(calc_total_8 if tax_type == '内税' else calc_base_8) }}{% else %}¥0{% endif %}</div>
 
                         <div>8%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_8 is not none %}¥{{ '{:,}'.format(ocr_tax_8) }}{% else %}-{% endif %}</div>
@@ -259,7 +259,7 @@
 
                         <div>{{ tax_type }}10%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_10_base is not none %}¥{{ '{:,}'.format(ocr_tax_10_base) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">¥{{ '{:,}'.format(0) }}</div>
+                        <div style="text-align: right;">{% if calc_tax_10 > 0 %}¥{{ '{:,}'.format(calc_total_10 if tax_type == '内税' else calc_base_10) }}{% else %}¥0{% endif %}</div>
 
                         <div>10%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_10 is not none %}¥{{ '{:,}'.format(ocr_tax_10) }}{% else %}-{% endif %}</div>
@@ -271,7 +271,7 @@
 
                         <div>小計</div>
                         <div style="text-align: right;">{% if ocr_subtotal is not none %}¥{{ '{:,}'.format(ocr_subtotal) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_total - calc_tax) }}</div>
+                        <div style="text-align: right;">{% if tax_type == '内税' %}¥{{ '{:,}'.format(calc_total) }}{% else %}¥{{ '{:,}'.format(calc_total - calc_tax) }}{% endif %}</div>
 
                         <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem;">合計</div>
                         <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem; text-align: right;">{% if ocr_total is not none %}¥{{ '{:,}'.format(ocr_total) }}{% else %}-{% endif %}</div>
