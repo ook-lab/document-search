@@ -1819,29 +1819,25 @@ def receipt_detail(receipt_id):
     # 日付フィルタパラメータ
     filter_date = request.args.get('filter_date', '')
 
-    # 処理ログを取得
-    log_res = db.table("99_lg_image_proc_log").select("*").eq("receipt_id", receipt_id).execute()
-    if not log_res.data:
+    # レシート情報を取得（メイン）
+    receipt_res = db.table("Rawdata_RECEIPT_shops").select("*").eq("id", receipt_id).execute()
+    if not receipt_res.data:
         return "レシートが見つかりません", 404
+    receipt = receipt_res.data[0]
 
-    log = log_res.data[0]
+    # 処理ログを取得（オプション：drive_file_id 補完用）
+    log_res = db.table("99_lg_image_proc_log").select("*").eq("receipt_id", receipt_id).execute()
+    log = log_res.data[0] if log_res.data else {}
 
-    # レシート情報を取得
-    receipt = None
-    items = []
-    if log.get("status") == "success" and log.get("receipt_id"):
-        receipt_res = db.table("Rawdata_RECEIPT_shops").select("*").eq("id", receipt_id).execute()
-        if receipt_res.data:
-            receipt = receipt_res.data[0]
-
-            # 明細を取得（ITEMのみ）
-            items_res = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt_id).order("line_number").execute()
-            items = items_res.data
+    # 明細を取得
+    items_res = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt_id).order("line_number").execute()
+    items = items_res.data
 
     # 画像をBase64エンコード
     image_base64 = None
-    if log.get("drive_file_id"):
-        image_base64 = get_receipt_image_base64(log["drive_file_id"])
+    drive_file_id = receipt.get("drive_file_id") or log.get("drive_file_id")
+    if drive_file_id:
+        image_base64 = get_receipt_image_base64(drive_file_id)
 
     # 紐付け済み銀行取引を取得
     linked_transaction = None

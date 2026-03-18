@@ -115,13 +115,14 @@
                 <div class="panel" style="margin-top: 1rem;">
                     <div class="panel-header">処理情報</div>
                     <div class="panel-body">
+                        {% if log.id %}
                         <dl class="info-grid">
                             <dt>ファイル名</dt>
-                            <dd>{{ log.file_name }}</dd>
+                            <dd>{{ log.file_name or '-' }}</dd>
                             <dt>処理日時</dt>
                             <dd>{{ log.processed_at[:19] if log.processed_at else '-' }}</dd>
                             <dt>ステータス</dt>
-                            <dd>{{ log.status }}</dd>
+                            <dd>{{ log.status or '-' }}</dd>
                             <dt>OCRモデル</dt>
                             <dd>{{ log.ocr_model or '-' }}</dd>
                             {% if log.error_message %}
@@ -130,6 +131,9 @@
                             {% endif %}
                         </dl>
                         <button class="btn btn-primary" onclick="reprocessReceipt('{{ log.id }}')">🔄 再読み込み</button>
+                        {% else %}
+                        <p style="color: #999; font-size: 13px;">処理ログがありません</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
