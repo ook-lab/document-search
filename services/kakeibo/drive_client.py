@@ -18,6 +18,7 @@ class DriveClient:
     """Google Drive API クライアント（Kakeibo専用）"""
 
     def __init__(self):
+        self._creds = None
         self.service = self._authenticate()
 
     def _authenticate(self):
@@ -25,6 +26,7 @@ class DriveClient:
         try:
             import google.auth
             creds, _ = google.auth.default(scopes=SCOPES)
+            self._creds = creds
             return build("drive", "v3", credentials=creds)
         except Exception:
             pass
@@ -35,6 +37,7 @@ class DriveClient:
             creds = service_account.Credentials.from_service_account_file(
                 cred_path, scopes=SCOPES
             )
+            self._creds = creds
             return build("drive", "v3", credentials=creds)
 
         raise RuntimeError(
@@ -102,14 +105,18 @@ class DriveClient:
     # ── 画像取得（プレビュー用）───────────────────────────────
 
     def get_file_bytes(self, file_id: str) -> bytes:
-        """ファイルをバイト列で取得（レシート画像プレビュー用）"""
-        request = self.service.files().get_media(
-            fileId=file_id, supportsAllDrives=True
+        """ファイルをバイト列で取得（レシート画像プレビュー用）
+        httplib2のSSL接続使い回し問題を避けるため requests を使用。
+        """
+        import requests
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+
+        self._creds.refresh(GoogleAuthRequest())
+        url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&supportsAllDrives=true"
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {self._creds.token}"},
+            timeout=30,
         )
-        buf = io.BytesIO()
-        downloader = MediaIoBaseDownload(buf, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        buf.seek(0)
-        return buf.read()
+        resp.raise_for_status()
+        return resp.content

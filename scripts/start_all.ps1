@@ -4,7 +4,7 @@
 $ErrorActionPreference = "Continue"
 
 # プロジェクトルートを設定
-$ProjectRoot = $PSScriptRoot
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $ProjectRoot
 
 # PYTHONPATHを設定（shared フォルダを認識させる）

@@ -74,6 +74,17 @@ class TransactionProcessor:
 
             trans_date = datetime.strptime(ocr_result["transaction_date"], "%Y-%m-%d").date()
 
+            # drive_file_id で既存レコードを検索（existing_receipt_id 未指定時）
+            if not existing_receipt_id and drive_file_id:
+                existing_res = self.db.table("Rawdata_RECEIPT_shops") \
+                    .select("id").eq("drive_file_id", drive_file_id).execute()
+                if existing_res.data:
+                    existing_receipt_id = existing_res.data[0]["id"]
+                    # 重複レコードを削除
+                    for dup in existing_res.data[1:]:
+                        self.db.table("Rawdata_RECEIPT_items").delete().eq("receipt_id", dup["id"]).execute()
+                        self.db.table("Rawdata_RECEIPT_shops").delete().eq("id", dup["id"]).execute()
+
             if existing_receipt_id:
                 receipt_id = existing_receipt_id
                 self._update_receipt(ocr_result, existing_receipt_id)

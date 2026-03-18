@@ -1769,6 +1769,10 @@ def receipts_page():
     failed_count_res = db.table("99_lg_image_proc_log") \
         .select("id").eq("status", "failed").execute()
     total_failed = len(failed_count_res.data)
+    all_log = db.table('99_lg_image_proc_log').select('status').execute().data
+    from collections import Counter
+    status_counts = Counter(r.get('status') for r in all_log)
+    print(f"[receipts_page] failed_count={total_failed}, status_counts={dict(status_counts)}")
 
     # 取込失敗ビュー
     if view == 'failed':
