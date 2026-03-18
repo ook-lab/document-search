@@ -384,16 +384,15 @@ async function saveRule() {
     if (!pattern) { alert('パターンを入力してください'); return; }
 
     const payload = {
-        rule_name:            pattern,
-        content_pattern:      pattern,
+        pattern:              pattern,
         priority:             parseInt(document.getElementById('rule-priority').value) || 10,
-        category_major:       document.getElementById('rule-cat-major').value,
-        category_mid:         document.getElementById('rule-cat-mid').value,
-        category_small:       document.getElementById('rule-cat-small').value,
-        category_shop:        document.getElementById('rule-cat-shop').value,
-        category_belonging:   document.getElementById('rule-cat-belonging').value,
-        category_person:      document.getElementById('rule-cat-person').value,
-        category_context:     document.getElementById('rule-cat-context').value,
+        cat_major:            document.getElementById('rule-cat-major').value,
+        cat_mid:              document.getElementById('rule-cat-mid').value,
+        cat_small:            document.getElementById('rule-cat-small').value,
+        cat_shop:             document.getElementById('rule-cat-shop').value,
+        cat_belonging:        document.getElementById('rule-cat-belonging').value,
+        cat_person:           document.getElementById('rule-cat-person').value,
+        cat_context:          document.getElementById('rule-cat-context').value,
     };
 
     const res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -425,7 +424,7 @@ async function saveExRule() {
     if (!name) { alert('ルール名を入力してください'); return; }
     const payload = {
         rule_name:            name,
-        note:                 document.getElementById('ex-rule-action').value,
+        action:               document.getElementById('ex-rule-action').value,
         content_pattern:      document.getElementById('ex-rule-content').value,
         institution_pattern:  document.getElementById('ex-rule-institution').value,
     };
