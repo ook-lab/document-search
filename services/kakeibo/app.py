@@ -1729,44 +1729,85 @@ def receipts_page():
     """レシート一覧画面"""
     db = get_db()
 
-    # フィルタパラメータ
-    status_filter = request.args.get('status', 'all')  # all, success, failed, unverified
+    month = request.args.get('month', '')
+    view  = request.args.get('view', 'unverified')  # unverified|verified|unlinked|linked|failed
 
-    # 処理ログ取得（レシート単位）
-    query = db.table("99_lg_image_proc_log").select("*").order("processed_at", desc=True).limit(100)
+    # 全レシートの transaction_date を取得（月リスト用）
+    all_dates_res = db.table("Rawdata_RECEIPT_shops").select("id, transaction_date").execute()
+    months = sorted(
+        set(s['transaction_date'][:7] for s in all_dates_res.data if s.get('transaction_date')),
+        reverse=True
+    )
+    if not month and months:
+        month = months[0]
 
-    if status_filter == 'success':
-        query = query.eq("status", "success")
-    elif status_filter == 'failed':
-        query = query.eq("status", "failed")
+    # 対象月のレシート取得
+    shops_query = db.table("Rawdata_RECEIPT_shops") \
+        .select("id, transaction_date, shop_name, total_amount_check, is_verified") \
+        .order("transaction_date", desc=True)
+    if month:
+        y, m = int(month[:4]), int(month[5:7])
+        next_month_str = f"{y+1}-01-01" if m == 12 else f"{y}-{m+1:02d}-01"
+        shops_query = shops_query.gte("transaction_date", f"{month}-01").lt("transaction_date", next_month_str)
+    shops_in_month = shops_query.execute().data
 
-    logs = query.execute()
+    # 紐付け済みID取得
+    shop_ids = [s['id'] for s in shops_in_month]
+    linked_ids = set()
+    if shop_ids:
+        links_res = db.table("Kakeibo_Receipt_Links") \
+            .select("receipt_id").in_("receipt_id", shop_ids).execute()
+        linked_ids = {l['receipt_id'] for l in links_res.data}
 
-    # 紐付け済み件数を取得
-    linked_receipts = set()
-    if logs.data:
-        receipt_ids = [log.get('receipt_id') for log in logs.data if log.get('receipt_id')]
-        if receipt_ids:
-            links_res = db.table("Kakeibo_Receipt_Links").select("receipt_id").in_("receipt_id", receipt_ids).execute()
-            linked_receipts = {link['receipt_id'] for link in links_res.data}
+    # カウント集計（月フィルタ適用後）
+    total_unverified = sum(1 for s in shops_in_month if not s.get('is_verified'))
+    total_verified   = sum(1 for s in shops_in_month if s.get('is_verified'))
+    total_unlinked   = sum(1 for s in shops_in_month if s['id'] not in linked_ids)
+    total_linked     = sum(1 for s in shops_in_month if s['id'] in linked_ids)
 
-    # 表示用データ構築
-    display_data = []
-    for log in logs.data:
-        status_icon = {"success": "✓", "failed": "✗"}.get(log.get("status"), "?")
-        is_linked = log.get('receipt_id') in linked_receipts
+    # 取込失敗件数（月に関係なく全件）
+    failed_count_res = db.table("99_lg_image_proc_log") \
+        .select("id", count='exact').eq("status", "failed").execute()
+    total_failed = failed_count_res.count or 0
 
-        display_data.append({
-            **log,
-            "status_icon": status_icon,
-            "is_linked": is_linked,
-            "date_short": log.get("processed_at", "")[:10] if log.get("processed_at") else ""
-        })
+    # 取込失敗ビュー
+    if view == 'failed':
+        failed_log_res = db.table("99_lg_image_proc_log") \
+            .select("*").eq("status", "failed") \
+            .order("processed_at", desc=True).limit(200).execute()
+        receipts = [
+            {**log, "is_shop": False, "date_short": (log.get("processed_at") or "")[:10]}
+            for log in failed_log_res.data
+        ]
+        return render_template(
+            'receipts.html',
+            receipts=receipts, month=month, months=months, view=view,
+            total_unverified=total_unverified, total_verified=total_verified,
+            total_unlinked=total_unlinked, total_linked=total_linked,
+            total_failed=total_failed,
+        )
+
+    # ビューフィルタ適用
+    if view == 'verified':
+        display_shops = [s for s in shops_in_month if s.get('is_verified')]
+    elif view == 'unlinked':
+        display_shops = [s for s in shops_in_month if s['id'] not in linked_ids]
+    elif view == 'linked':
+        display_shops = [s for s in shops_in_month if s['id'] in linked_ids]
+    else:  # unverified
+        display_shops = [s for s in shops_in_month if not s.get('is_verified')]
+
+    for s in display_shops:
+        s['is_linked'] = s['id'] in linked_ids
+
+    receipts = [{**s, "is_shop": True, "date_short": s.get("transaction_date", "")} for s in display_shops]
 
     return render_template(
         'receipts.html',
-        receipts=display_data,
-        status_filter=status_filter
+        receipts=receipts, month=month, months=months, view=view,
+        total_unverified=total_unverified, total_verified=total_verified,
+        total_unlinked=total_unlinked, total_linked=total_linked,
+        total_failed=total_failed,
     )
 
 

@@ -13,36 +13,122 @@
         .nav a { color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 4px; }
         .nav a:hover { background: rgba(255,255,255,0.1); }
         .nav a.active { background: rgba(255,255,255,0.2); }
-        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
 
-        .filters { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 1rem; align-items: center; }
-        .filters label { font-weight: 500; }
-        .filters select { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+        /* 取り込みバー */
+        .import-bar {
+            background: white;
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .import-bar label { font-size: 13px; color: #555; }
+        .import-bar select { padding: 0.35rem 0.6rem; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .import-bar button { padding: 0.35rem 1rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 13px; }
+        .import-bar button:disabled { background: #95a5a6; cursor: not-allowed; }
+        #importStatus { font-size: 13px; padding: 0.35rem 0.75rem; border-radius: 4px; display: none; }
 
-        .receipt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+        /* コントロールバー */
+        .controls-bar {
+            background: white;
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .controls-bar select { padding: 0.35rem 0.6rem; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-weight: 500; }
+        .summary-counts { font-size: 13px; color: #555; }
+        .summary-counts strong { color: #e74c3c; }
+        .summary-dot { color: #ccc; margin: 0 0.4rem; }
 
-        .receipt-card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
+        /* タブ */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 1rem;
+            background: white;
+            border-radius: 8px 8px 0 0;
+            padding: 0 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .tab {
+            padding: 0.65rem 1.1rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        .tab:hover { color: #333; }
+        .tab.active { color: #2c3e50; font-weight: 600; border-bottom-color: #2c3e50; }
+        .tab .cnt {
+            display: inline-block;
+            background: #e8e8e8;
+            color: #666;
+            border-radius: 10px;
+            padding: 1px 7px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .tab.active .cnt { background: #2c3e50; color: white; }
+        .tab.danger .cnt { background: #fde8e8; color: #c0392b; }
+        .tab.danger.active .cnt { background: #e74c3c; color: white; }
+
+        /* カードグリッド */
+        .receipt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
+        .receipt-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
         .receipt-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        .receipt-card a { text-decoration: none; color: inherit; display: block; }
+        .receipt-card a, .receipt-card .card-inner { text-decoration: none; color: inherit; display: block; }
 
-        .card-header { padding: 1rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .card-header .status { font-size: 1.2rem; }
-        .card-header .status.success { color: #27ae60; }
-        .card-header .status.failed { color: #e74c3c; }
-        .card-header .date { color: #7f8c8d; font-size: 0.9rem; }
+        .card-date  { font-size: 12px; color: #aaa; padding: 0.65rem 0.9rem 0.1rem; }
+        .card-shop  { font-size: 15px; font-weight: 600; padding: 0.1rem 0.9rem 0.3rem; color: #2c3e50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-amount { font-size: 20px; font-weight: 700; padding: 0 0.9rem 0.55rem; color: #2c3e50; }
+        .card-amount .yen { font-size: 12px; font-weight: 400; margin-right: 1px; }
 
-        .card-body { padding: 1rem; }
-        .card-body .filename { font-weight: 500; margin-bottom: 0.5rem; word-break: break-all; }
-        .card-body .info { color: #7f8c8d; font-size: 0.85rem; }
+        .card-filename { font-size: 12px; font-weight: 500; padding: 0.65rem 0.9rem 0.2rem; color: #444; word-break: break-all; line-height: 1.4; }
+        .card-error { font-size: 11px; color: #e74c3c; padding: 0 0.9rem 0.5rem; line-height: 1.4; }
 
-        .card-footer { padding: 0.75rem 1rem; background: #f8f9fa; display: flex; justify-content: space-between; align-items: center; }
-        .badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
-        .badge.linked { background: #d4edda; color: #155724; }
-        .badge.unlinked { background: #fff3cd; color: #856404; }
-        .badge.verified { background: #cce5ff; color: #004085; }
+        .card-footer {
+            padding: 0.4rem 0.9rem;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #eee;
+        }
+        .badges { display: flex; gap: 4px; }
+        .badge { padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge.verified   { background: #cce5ff; color: #004085; }
+        .badge.unverified { background: #fff3cd; color: #856404; }
+        .badge.linked     { background: #d4edda; color: #155724; }
+        .badge.unlinked   { background: #fde8e8; color: #c0392b; }
+        .badge.failed     { background: #f8d7da; color: #721c24; }
+
+        .arrow { color: #ccc; font-size: 13px; }
 
         .empty-state { text-align: center; padding: 4rem 2rem; color: #7f8c8d; }
-        .empty-state h2 { margin-bottom: 1rem; }
+        .empty-state h2 { margin-bottom: 0.5rem; font-size: 1.2rem; }
     </style>
 </head>
 <body>
@@ -57,87 +143,126 @@
     </div>
 
     <div class="container">
-        <div class="filters">
-            <label>ステータス:</label>
-            <select id="statusFilter" onchange="applyFilter()">
-                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>すべて</option>
-                <option value="success" {% if status_filter == 'success' %}selected{% endif %}>成功</option>
-                <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>失敗</option>
+
+        <!-- 取り込みバー -->
+        <div class="import-bar">
+            <label>件数:</label>
+            <select id="importLimit">
+                <option value="1">1件</option>
+                <option value="3">3件</option>
+                <option value="5" selected>5件</option>
+                <option value="10">10件</option>
+                <option value="20">20件</option>
+                <option value="50">50件</option>
             </select>
-            <span style="color: #7f8c8d;">{{ receipts|length }}件</span>
-            <div style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
-                <label style="font-size: 13px; color: #555;">件数:</label>
-                <select id="importLimit" style="padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
-                    <option value="1">1件</option>
-                    <option value="3">3件</option>
-                    <option value="5" selected>5件</option>
-                    <option value="10">10件</option>
-                    <option value="20">20件</option>
-                    <option value="50">50件</option>
-                </select>
-                <button id="importBtn" onclick="importReceipts()" style="padding: 0.5rem 1rem; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
-                    📥 レシート取り込み
-                </button>
+            <button id="importBtn" onclick="importReceipts()">📥 レシート取り込み</button>
+            <div id="importStatus"></div>
+        </div>
+
+        <!-- コントロールバー -->
+        <div class="controls-bar">
+            <select id="monthSelect" onchange="applyMonth()">
+                {% for m in months %}
+                <option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+            <div class="summary-counts">
+                未確認 <strong>{{ total_unverified }}</strong>件
+                <span class="summary-dot">·</span>
+                未紐付け <strong>{{ total_unlinked }}</strong>件
             </div>
         </div>
 
-        <div id="importStatus" style="display: none; background: #fff3cd; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-            <span id="importMessage">取り込み中...</span>
+        <!-- タブ -->
+        <div class="tabs">
+            <a href="?view=unverified&month={{ month }}" class="tab {% if view == 'unverified' %}active{% endif %}">
+                未確認<span class="cnt">{{ total_unverified }}</span>
+            </a>
+            <a href="?view=verified&month={{ month }}" class="tab {% if view == 'verified' %}active{% endif %}">
+                確認済み<span class="cnt">{{ total_verified }}</span>
+            </a>
+            <a href="?view=unlinked&month={{ month }}" class="tab {% if view == 'unlinked' %}active{% endif %}">
+                未紐付け<span class="cnt">{{ total_unlinked }}</span>
+            </a>
+            <a href="?view=linked&month={{ month }}" class="tab {% if view == 'linked' %}active{% endif %}">
+                紐付け済み<span class="cnt">{{ total_linked }}</span>
+            </a>
+            <a href="?view=failed&month={{ month }}" class="tab danger {% if view == 'failed' %}active{% endif %}">
+                取込失敗<span class="cnt">{{ total_failed }}</span>
+            </a>
         </div>
 
+        <!-- カードグリッド -->
         {% if receipts %}
         <div class="receipt-grid">
             {% for r in receipts %}
             <div class="receipt-card">
-                <a href="/receipts/{{ r.receipt_id or r.id }}">
-                    <div class="card-header">
-                        <span class="status {% if r.status == 'success' %}success{% else %}failed{% endif %}">
-                            {{ r.status_icon }}
-                        </span>
-                        <span class="date">{{ r.date_short }}</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="filename">{{ r.file_name }}</div>
-                        <div class="info">
-                            {% if r.ocr_model %}モデル: {{ r.ocr_model }}{% endif %}
-                            {% if r.error_message %}<br>エラー: {{ r.error_message[:50] }}...{% endif %}
-                        </div>
+                {% if r.is_shop %}
+                <a href="/receipts/{{ r.id }}">
+                    <div class="card-date">{{ r.date_short }}</div>
+                    <div class="card-shop">{{ r.shop_name or '店名不明' }}</div>
+                    <div class="card-amount">
+                        <span class="yen">¥</span>{{ "{:,}".format(r.total_amount_check or 0) }}
                     </div>
                     <div class="card-footer">
-                        {% if r.is_linked %}
-                        <span class="badge linked">紐付け済</span>
-                        {% else %}
-                        <span class="badge unlinked">未紐付け</span>
-                        {% endif %}
-                        <span style="color: #7f8c8d; font-size: 0.85rem;">詳細を見る →</span>
+                        <div class="badges">
+                            {% if r.is_verified %}
+                            <span class="badge verified">確認済</span>
+                            {% else %}
+                            <span class="badge unverified">未確認</span>
+                            {% endif %}
+                            {% if r.is_linked %}
+                            <span class="badge linked">紐付済</span>
+                            {% else %}
+                            <span class="badge unlinked">未紐付け</span>
+                            {% endif %}
+                        </div>
+                        <span class="arrow">→</span>
                     </div>
                 </a>
+                {% else %}
+                <div class="card-inner">
+                    <div class="card-date">{{ r.date_short }}</div>
+                    <div class="card-filename">{{ r.file_name }}</div>
+                    <div class="card-error">{{ (r.error_message or '')[:100] }}</div>
+                    <div class="card-footer">
+                        <div class="badges">
+                            <span class="badge failed">失敗</span>
+                        </div>
+                        {% if r.ocr_model %}
+                        <span style="color:#bbb; font-size:11px;">{{ r.ocr_model }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
             {% endfor %}
         </div>
         {% else %}
         <div class="empty-state">
-            <h2>レシートがありません</h2>
-            <p>処理済みのレシートがここに表示されます</p>
+            <h2>該当するレシートがありません</h2>
+            <p>{{ month }} の{{ {'unverified':'未確認', 'verified':'確認済み', 'unlinked':'未紐付け', 'linked':'紐付け済み', 'failed':'取込失敗'}[view] or '' }}レシートはありません</p>
         </div>
         {% endif %}
+
     </div>
 
     <script>
-        function applyFilter() {
-            const status = document.getElementById('statusFilter').value;
-            window.location.href = `/receipts?status=${status}`;
+        function applyMonth() {
+            const month = document.getElementById('monthSelect').value;
+            window.location.href = `/receipts?view={{ view }}&month=${month}`;
         }
 
         async function importReceipts() {
             const btn = document.getElementById('importBtn');
             const statusDiv = document.getElementById('importStatus');
-            const messageSpan = document.getElementById('importMessage');
 
             btn.disabled = true;
             btn.textContent = '取り込み中...';
-            statusDiv.style.display = 'block';
-            messageSpan.textContent = 'Google Driveからレシート画像を取得しています...';
+            statusDiv.style.display = 'inline-block';
+            statusDiv.style.background = '#fff3cd';
+            statusDiv.style.color = '#856404';
+            statusDiv.textContent = 'Google Driveから取得中...';
 
             try {
                 const limit = parseInt(document.getElementById('importLimit').value);
@@ -146,26 +271,26 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ limit })
                 });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`サーバーエラー ${res.status}: ${text.slice(0, 100)}`);
+                }
                 const data = await res.json();
 
                 if (data.status === 'success') {
-                    let msg = `✅ ${data.processed}件のレシートを取り込みました（成功: ${data.success}件、失敗: ${data.failed}件）`;
-                    if (data.errors && data.errors.length > 0) {
-                        msg += '\n' + data.errors.join('\n');
-                        statusDiv.style.background = '#fff3cd';
-                    } else {
-                        statusDiv.style.background = '#d4edda';
-                    }
-                    messageSpan.style.whiteSpace = 'pre-wrap';
-                    messageSpan.textContent = msg;
-                    setTimeout(() => location.reload(), 5000);
+                    statusDiv.style.background = data.failed > 0 ? '#fff3cd' : '#d4edda';
+                    statusDiv.style.color = data.failed > 0 ? '#856404' : '#155724';
+                    statusDiv.textContent = `✅ 成功${data.success}件 / 失敗${data.failed}件`;
+                    setTimeout(() => location.reload(), 3000);
                 } else {
-                    messageSpan.textContent = `❌ エラー: ${data.message}`;
                     statusDiv.style.background = '#f8d7da';
+                    statusDiv.style.color = '#721c24';
+                    statusDiv.textContent = `❌ ${data.message}`;
                 }
             } catch (e) {
-                messageSpan.textContent = `❌ 通信エラー: ${e.message}`;
                 statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = `❌ 通信エラー: ${e.message}`;
             } finally {
                 btn.disabled = false;
                 btn.textContent = '📥 レシート取り込み';
