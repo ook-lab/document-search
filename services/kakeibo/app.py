@@ -2957,6 +2957,19 @@ def mark_receipt_as_cash():
     return jsonify({"status": "success"})
 
 
+@app.route('/api/receipt/update_tax_type', methods=['POST'])
+def update_receipt_tax_type():
+    """内税/外税の切り替えを保存"""
+    data = request.json
+    receipt_id = data.get('receipt_id')
+    tax_type   = data.get('tax_type')
+    if not receipt_id or tax_type not in ('内税', '外税'):
+        return jsonify({"status": "error", "message": "invalid params"}), 400
+    db = get_db()
+    db.table("Rawdata_RECEIPT_shops").update({"tax_type": tax_type}).eq("id", receipt_id).execute()
+    return jsonify({"status": "success"})
+
+
 @app.route('/api/receipt/unmark_cash', methods=['POST'])
 def unmark_receipt_as_cash():
     """現金決済登録を解除（CASH-エントリ削除 + is_cash/is_verified をリセット）"""

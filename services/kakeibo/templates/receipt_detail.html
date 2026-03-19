@@ -175,10 +175,10 @@
                 <div class="panel">
                     <div class="panel-header">
                         明細一覧 ({{ items|length }}件)
-                        <span style="margin-left: 0.75rem; font-size: 0.8rem; padding: 2px 8px; border-radius: 10px; font-weight: normal;
-                            {% if tax_type == '外税' %}background: #fde8d8; color: #c0392b;{% else %}background: #dff0d8; color: #2c6e2f;{% endif %}">
+                        <button id="tax-type-badge" onclick="toggleTaxType()" style="margin-left: 0.75rem; font-size: 0.8rem; padding: 2px 8px; border-radius: 10px; font-weight: normal; border: none; cursor: pointer;
+                            {% if tax_type == '外税' %}background: #fde8d8; color: #c0392b;{% else %}background: #dff0d8; color: #2c6e2f;{% endif %}" title="クリックで内税/外税を切り替え">
                             {{ tax_type }}
-                        </span>
+                        </button>
                     </div>
                     <div class="panel-body" style="padding: 0; overflow-x: auto;">
                         <table class="items-table">
@@ -257,7 +257,7 @@
                         <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; text-align: right;">レシート記載</div>
                         <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; text-align: right;">明細合算</div>
 
-                        <div>{{ tax_type }}8%対象額</div>
+                        <div id="label-base-8">{{ tax_type }}8%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_8_base is not none %}¥{{ '{:,}'.format(ocr_tax_8_base) }}{% else %}-{% endif %}</div>
                         <div id="calc-base-8" style="text-align: right;">{% if calc_total_8 > 0 %}¥{{ '{:,}'.format(calc_total_8 if tax_type == '内税' else calc_base_8) }}{% else %}¥0{% endif %}</div>
 
@@ -265,7 +265,7 @@
                         <div style="text-align: right;">{% if ocr_tax_8 is not none %}¥{{ '{:,}'.format(ocr_tax_8) }}{% else %}-{% endif %}</div>
                         <div id="calc-tax-8" style="text-align: right;">¥{{ '{:,}'.format(calc_tax_8) }}</div>
 
-                        <div>{{ tax_type }}10%対象額</div>
+                        <div id="label-base-10">{{ tax_type }}10%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_10_base is not none %}¥{{ '{:,}'.format(ocr_tax_10_base) }}{% else %}-{% endif %}</div>
                         <div id="calc-base-10" style="text-align: right;">{% if calc_total_10 > 0 %}¥{{ '{:,}'.format(calc_total_10 if tax_type == '内税' else calc_base_10) }}{% else %}¥0{% endif %}</div>
 
@@ -393,7 +393,7 @@
     <script>
         const receiptId = "{{ receipt.id if receipt else '' }}";
         const receiptTotal = {{ (receipt.total_amount_check or 0) | int if receipt else 0 }};
-        const taxType = "{{ tax_type }}";
+        let taxType = "{{ tax_type }}";
         const ocrTotal = {{ ocr_total | int if ocr_total is not none else 'null' }};
         let selectedTxId = null;
         let selectedTxAmount = null;
@@ -491,6 +491,41 @@
                 document.getElementById(id).style.display = show ? '' : 'none';
             });
             if (show) document.getElementById('calc-diff').textContent = fmt(total - ocrTotal);
+        }
+
+        async function toggleTaxType() {
+            const newType = taxType === '内税' ? '外税' : '内税';
+            if (!confirm(`税種別を「${taxType}」→「${newType}」に切り替えますか？\n（税額が再計算されます）`)) return;
+
+            taxType = newType;
+
+            // バッジ更新
+            const badge = document.getElementById('tax-type-badge');
+            badge.textContent = newType;
+            if (newType === '外税') {
+                badge.style.background = '#fde8d8'; badge.style.color = '#c0392b';
+            } else {
+                badge.style.background = '#dff0d8'; badge.style.color = '#2c6e2f';
+            }
+            // サマリーラベル更新
+            document.getElementById('label-base-8').textContent  = newType + '8%対象額';
+            document.getElementById('label-base-10').textContent = newType + '10%対象額';
+
+            // 税額再計算
+            redistributeTax();
+            recalcSummary();
+
+            // DB保存
+            try {
+                await fetch('/api/receipt/update_tax_type', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId, tax_type: newType })
+                });
+                showToast(`${newType}に切り替えました`);
+            } catch (e) {
+                showToast('切り替えはしましたが保存に失敗しました', 'error');
+            }
         }
 
         function applyDiscount() {
