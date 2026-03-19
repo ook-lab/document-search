@@ -478,7 +478,18 @@
             const field = e.target.dataset?.field;
             if (!['displayed_amount','tax_rate','tax_included_amount','tax_amount'].includes(field)) return;
             const row = e.target.closest('tr[data-item-id]');
-            if (row && field !== 'tax_amount') recalcRow(row, field);
+
+            if (field === 'tax_amount') {
+                // 税額を手動変更した場合はその行だけ反映（按分しない）
+                recalcSummary();
+                return;
+            }
+            // 内税で印字価が変わったら税込価を先に同期してから按分
+            if (field === 'displayed_amount' && taxType === '内税' && row) {
+                const inclEl = row.querySelector('[data-field="tax_included_amount"]');
+                if (inclEl) inclEl.value = e.target.value;
+            }
+            redistributeTax();
             recalcSummary();
         });
 
