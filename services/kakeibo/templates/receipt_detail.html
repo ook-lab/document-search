@@ -429,8 +429,8 @@
                 }
 
                 const totalTax = taxType === '内税'
-                    ? Math.round(grand * rate / (100 + rate))
-                    : Math.round(grand * rate / 100);
+                    ? Math.floor(grand * rate / (100 + rate))
+                    : Math.floor(grand * rate / 100);
 
                 // 比例配分（余りは先頭行に加算）
                 const distributed = items.map(i => Math.floor(totalTax * i.base / grand));
@@ -481,6 +481,14 @@
 
             if (field === 'tax_amount') {
                 // 税額を手動変更した場合はその行だけ反映（按分しない）
+                // 外税: tax_included = displayed + tax_amount を更新
+                if (taxType === '外税' && row) {
+                    const dispEl = row.querySelector('[data-field="displayed_amount"]');
+                    const inclEl = row.querySelector('[data-field="tax_included_amount"]');
+                    if (dispEl && inclEl) {
+                        inclEl.value = (parseInt(dispEl.value) || 0) + (parseInt(e.target.value) || 0);
+                    }
+                }
                 recalcSummary();
                 return;
             }

@@ -441,11 +441,11 @@ class TransactionProcessor:
                 if r10 > 0: total_10 = r10
 
         if is_exclusive:
-            tax_8_total  = round(total_8  * 8  / 100) if total_8  > 0 else 0
-            tax_10_total = round(total_10 * 10 / 100) if total_10 > 0 else 0
+            tax_8_total  = int(total_8  * 8  / 100) if total_8  > 0 else 0
+            tax_10_total = int(total_10 * 10 / 100) if total_10 > 0 else 0
         else:
-            tax_8_total  = round(total_8  * 8  / 108) if total_8  > 0 else 0
-            tax_10_total = round(total_10 * 10 / 110) if total_10 > 0 else 0
+            tax_8_total  = int(total_8  * 8  / 108) if total_8  > 0 else 0
+            tax_10_total = int(total_10 * 10 / 110) if total_10 > 0 else 0
 
         self._distribute_tax(items_8,  tax_8_total)
         self._distribute_tax(items_10, tax_10_total)
