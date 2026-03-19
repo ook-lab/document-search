@@ -408,35 +408,41 @@
 
         function redistributeTax() {
             // 税率別にグループ化
-            const groups = { 8: [], 10: [] };
+            // 内税: tax_included_amount を基準（= 税込表示価格）、この値は変えない
+            // 外税: displayed_amount を基準（= 税抜表示価格）、tax_included_amount を更新
+            const groups = {};
             document.querySelectorAll('tbody tr[data-item-id]').forEach(row => {
-                const rate = parseInt(row.querySelector('[data-field="tax_rate"]')?.value) || 10;
-                const disp = parseInt(row.querySelector('[data-field="displayed_amount"]')?.value) || 0;
-                (groups[rate] || (groups[rate] = [])).push({ row, disp });
+                const rate    = parseInt(row.querySelector('[data-field="tax_rate"]')?.value) || 10;
+                const baseField = taxType === '内税' ? 'tax_included_amount' : 'displayed_amount';
+                const base    = parseInt(row.querySelector(`[data-field="${baseField}"]`)?.value) || 0;
+                if (!groups[rate]) groups[rate] = [];
+                groups[rate].push({ row, base });
             });
 
             [8, 10].forEach(rate => {
                 const items = groups[rate] || [];
                 if (!items.length) return;
-                const grand = items.reduce((s, i) => s + i.disp, 0);
-                if (grand === 0) { items.forEach(i => { i.row.querySelector('[data-field="tax_amount"]').value = 0; }); return; }
-
-                let totalTax;
-                if (taxType === '内税') {
-                    totalTax = Math.round(grand * rate / (100 + rate));
-                } else {
-                    totalTax = Math.round(grand * rate / 100);
+                const grand = items.reduce((s, i) => s + i.base, 0);
+                if (grand === 0) {
+                    items.forEach(i => { i.row.querySelector('[data-field="tax_amount"]').value = 0; });
+                    return;
                 }
 
-                // 比例配分
-                const distributed = items.map(i => Math.floor(totalTax * i.disp / grand));
+                const totalTax = taxType === '内税'
+                    ? Math.round(grand * rate / (100 + rate))
+                    : Math.round(grand * rate / 100);
+
+                // 比例配分（余りは先頭行に加算）
+                const distributed = items.map(i => Math.floor(totalTax * i.base / grand));
                 distributed[0] += totalTax - distributed.reduce((s, v) => s + v, 0);
 
                 items.forEach((item, idx) => {
-                    const taxAmtEl = item.row.querySelector('[data-field="tax_amount"]');
-                    const inclEl   = item.row.querySelector('[data-field="tax_included_amount"]');
-                    taxAmtEl.value = distributed[idx];
-                    if (inclEl) inclEl.value = taxType === '内税' ? item.disp : item.disp + distributed[idx];
+                    item.row.querySelector('[data-field="tax_amount"]').value = distributed[idx];
+                    // 外税のみ tax_included_amount を更新（内税は元の値を維持）
+                    if (taxType === '外税') {
+                        const inclEl = item.row.querySelector('[data-field="tax_included_amount"]');
+                        if (inclEl) inclEl.value = item.base + distributed[idx];
+                    }
                 });
             });
         }

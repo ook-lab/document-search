@@ -2392,7 +2392,7 @@ def link_receipt_to_transaction():
         shop_name = receipt_shop.data[0].get("shop_name", "")
         tx_date = receipt_shop.data[0].get("transaction_date")
 
-        items = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt_id).eq("line_type", "ITEM").execute()
+        items = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt_id).in_("line_type", ["ITEM", "DISCOUNT"]).execute()
 
         for item in items.data:
             product_name = item.get("official_name") or item.get("product_name", "")

@@ -116,9 +116,11 @@ class TransactionProcessor:
                         },
                     })
                     continue
+                # ITEM と DISCOUNT は同じ正規化処理（DISCOUNT は負の amount を持つ）
                 normalized_items.append({
                     "raw_item": item,
                     "normalized": self._normalize_item(item, ocr_result["shop_name"], ocr_result.get("tax_summary")),
+                    "line_type": line_type,  # ITEM or DISCOUNT
                 })
 
             items_with_tax = self._calculate_and_distribute_tax(
@@ -147,6 +149,7 @@ class TransactionProcessor:
                     tax_amount=normalized["tax_amount"],
                     needs_review=item_data.get("needs_review", False),
                     tax_type=tax_type,
+                    line_type=item_data.get("line_type", "ITEM"),
                 )
                 transaction_ids.append(trans_id)
 
@@ -310,12 +313,12 @@ class TransactionProcessor:
         product_name, item_name, unit_price, quantity,
         marks_text=None, discount_text=None, normalized=None,
         situation_id=None, total_amount=None, tax_amount=None, needs_review=False,
-        tax_type="内税",
+        tax_type="内税", line_type="ITEM",
     ) -> str:
         data = {
             "receipt_id":    receipt_id,
             "line_number":   line_number,
-            "line_type":     "ITEM",
+            "line_type":     line_type,
             "ocr_raw_text":  ocr_raw_text,
             "ocr_confidence": ocr_confidence,
             "product_name":  product_name,

@@ -54,6 +54,14 @@ GEMINI_PROMPT = """
    - 「R」「*」「★」「※」「外8」「外10」などの記号・税区分表示は product_name から除外し tax_mark に格納する
    - 複数行にわたる商品名は適切に結合する
 
+4. **割引行の扱い**
+   - 「会員割引」「ポイント割引」「値引き」等の割引行は items に含める
+   - amount は負の値（例: -26）で格納する
+   - tax_rate は直前の商品行と同じ税率を設定する
+   - line_type を "DISCOUNT" に設定する
+   - 小計・合計行は line_type を "SUBTOTAL" / "TOTAL" に設定する
+   - 通常商品行は line_type を "ITEM" に設定する（省略時は "ITEM" 扱い）
+
 4. **店舗名**
    - ヘッダーに複数の店名がある場合はすべて抽出し「 / 」で連結する（例：魚力 / かつゐ / 九州屋）
    - フッターのショッピングモール名等は shop_info.address または notes に格納する
@@ -80,13 +88,14 @@ GEMINI_PROMPT = """
   },
   "items": [
     {
+      "line_type": "ITEM または DISCOUNT または SUBTOTAL または TOTAL",
       "line_text": "行全体のテキスト",
-      "product_name": "記号を除いた純粋な商品名",
+      "product_name": "記号を除いた純粋な商品名（割引行は割引名）",
       "quantity": 1,
       "unit_price": 100,
       "amount": 100,
       "tax_mark": "R, ※, ★ などの記号（なければ null）",
-      "tax_rate": "8 または 10 または null"
+      "tax_rate": "8 または 10 または null（割引行は直前商品と同じ税率）"
     }
   ],
   "amounts": {
