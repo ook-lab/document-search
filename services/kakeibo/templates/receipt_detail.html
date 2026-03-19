@@ -251,37 +251,35 @@
 
                         <div>{{ tax_type }}8%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_8_base is not none %}¥{{ '{:,}'.format(ocr_tax_8_base) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">{% if calc_tax_8 > 0 %}¥{{ '{:,}'.format(calc_total_8 if tax_type == '内税' else calc_base_8) }}{% else %}¥0{% endif %}</div>
+                        <div id="calc-base-8" style="text-align: right;">{% if calc_tax_8 > 0 %}¥{{ '{:,}'.format(calc_total_8 if tax_type == '内税' else calc_base_8) }}{% else %}¥0{% endif %}</div>
 
                         <div>8%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_8 is not none %}¥{{ '{:,}'.format(ocr_tax_8) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax_8) }}</div>
+                        <div id="calc-tax-8" style="text-align: right;">¥{{ '{:,}'.format(calc_tax_8) }}</div>
 
                         <div>{{ tax_type }}10%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_10_base is not none %}¥{{ '{:,}'.format(ocr_tax_10_base) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">{% if calc_tax_10 > 0 %}¥{{ '{:,}'.format(calc_total_10 if tax_type == '内税' else calc_base_10) }}{% else %}¥0{% endif %}</div>
+                        <div id="calc-base-10" style="text-align: right;">{% if calc_tax_10 > 0 %}¥{{ '{:,}'.format(calc_total_10 if tax_type == '内税' else calc_base_10) }}{% else %}¥0{% endif %}</div>
 
                         <div>10%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_10 is not none %}¥{{ '{:,}'.format(ocr_tax_10) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax_10) }}</div>
+                        <div id="calc-tax-10" style="text-align: right;">¥{{ '{:,}'.format(calc_tax_10) }}</div>
 
                         <div>税額合計</div>
                         <div style="text-align: right;">{% if ocr_tax_8 is not none or ocr_tax_10 is not none %}¥{{ '{:,}'.format((ocr_tax_8 or 0) + (ocr_tax_10 or 0)) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">¥{{ '{:,}'.format(calc_tax) }}</div>
+                        <div id="calc-tax-total" style="text-align: right;">¥{{ '{:,}'.format(calc_tax) }}</div>
 
                         <div>小計</div>
                         <div style="text-align: right;">{% if ocr_subtotal is not none %}¥{{ '{:,}'.format(ocr_subtotal) }}{% else %}-{% endif %}</div>
-                        <div style="text-align: right;">{% if tax_type == '内税' %}¥{{ '{:,}'.format(calc_total) }}{% else %}¥{{ '{:,}'.format(calc_total - calc_tax) }}{% endif %}</div>
+                        <div id="calc-subtotal" style="text-align: right;">{% if tax_type == '内税' %}¥{{ '{:,}'.format(calc_total) }}{% else %}¥{{ '{:,}'.format(calc_total - calc_tax) }}{% endif %}</div>
 
                         <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem;">合計</div>
                         <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem; text-align: right;">{% if ocr_total is not none %}¥{{ '{:,}'.format(ocr_total) }}{% else %}-{% endif %}</div>
-                        <div style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem; text-align: right;">¥{{ '{:,}'.format(calc_total) }}</div>
+                        <div id="calc-total" style="font-weight: 600; border-top: 2px solid #ddd; padding-top: 0.5rem; text-align: right;">¥{{ '{:,}'.format(calc_total) }}</div>
 
-                        {% if ocr_total is not none and calc_total != ocr_total %}
-                        <div style="color: #e74c3c;">差額</div>
-                        <div></div>
-                        <div style="text-align: right; color: #e74c3c;">¥{{ '{:,}'.format(calc_total - ocr_total) }}</div>
-                        {% endif %}
+                        <div id="diff-label" style="color: #e74c3c; {% if ocr_total is none or calc_total == ocr_total %}display:none;{% endif %}">差額</div>
+                        <div id="diff-spacer" style="{% if ocr_total is none or calc_total == ocr_total %}display:none;{% endif %}"></div>
+                        <div id="calc-diff" style="text-align: right; color: #e74c3c; {% if ocr_total is none or calc_total == ocr_total %}display:none;{% endif %};">{% if ocr_total is not none %}¥{{ '{:,}'.format(calc_total - ocr_total) }}{% endif %}</div>
                     </div>
 
                     <div class="actions">
@@ -376,8 +374,72 @@
     <script>
         const receiptId = "{{ receipt.id if receipt else '' }}";
         const receiptTotal = {{ (receipt.total_amount_check or 0) | int if receipt else 0 }};
+        const taxType = "{{ tax_type }}";
+        const ocrTotal = {{ ocr_total | int if ocr_total is not none else 'null' }};
         let selectedTxId = null;
         let selectedTxAmount = null;
+
+        // ── リアルタイム再計算 ──────────────────────────────────
+
+        function recalcRow(row, changedField) {
+            const rateEl     = row.querySelector('[data-field="tax_rate"]');
+            const dispEl     = row.querySelector('[data-field="displayed_amount"]');
+            const taxAmtEl   = row.querySelector('[data-field="tax_amount"]');
+            const inclEl     = row.querySelector('[data-field="tax_included_amount"]');
+            if (!rateEl || !dispEl || !taxAmtEl || !inclEl) return;
+
+            const rate     = parseInt(rateEl.value) || 10;
+            const disp     = parseInt(dispEl.value) || 0;
+            const incl     = parseInt(inclEl.value) || 0;
+
+            if (changedField === 'displayed_amount' || changedField === 'tax_rate') {
+                if (taxType === '内税') {
+                    taxAmtEl.value = Math.floor(disp * rate / (100 + rate));
+                    inclEl.value   = disp;
+                } else {
+                    const tax      = Math.floor(disp * rate / 100);
+                    taxAmtEl.value = tax;
+                    inclEl.value   = disp + tax;
+                }
+            } else if (changedField === 'tax_included_amount') {
+                taxAmtEl.value = Math.floor(incl * rate / (100 + rate));
+            }
+        }
+
+        function recalcSummary() {
+            let total = 0, tax = 0, total8 = 0, tax8 = 0, total10 = 0, tax10 = 0;
+            document.querySelectorAll('tbody tr[data-item-id]').forEach(row => {
+                const rate  = parseInt(row.querySelector('[data-field="tax_rate"]')?.value) || 10;
+                const incl  = parseInt(row.querySelector('[data-field="tax_included_amount"]')?.value) || 0;
+                const txAmt = parseInt(row.querySelector('[data-field="tax_amount"]')?.value) || 0;
+                total += incl; tax += txAmt;
+                if (rate === 8) { total8 += incl; tax8 += txAmt; }
+                else            { total10 += incl; tax10 += txAmt; }
+            });
+
+            const fmt = v => '¥' + v.toLocaleString();
+            document.getElementById('calc-base-8').textContent   = tax8  > 0 ? fmt(taxType === '内税' ? total8  : total8  - tax8)  : '¥0';
+            document.getElementById('calc-tax-8').textContent    = fmt(tax8);
+            document.getElementById('calc-base-10').textContent  = tax10 > 0 ? fmt(taxType === '内税' ? total10 : total10 - tax10) : '¥0';
+            document.getElementById('calc-tax-10').textContent   = fmt(tax10);
+            document.getElementById('calc-tax-total').textContent = fmt(tax);
+            document.getElementById('calc-subtotal').textContent  = taxType === '内税' ? fmt(total) : fmt(total - tax);
+            document.getElementById('calc-total').textContent     = fmt(total);
+
+            const show = ocrTotal !== null && total !== ocrTotal;
+            ['diff-label','diff-spacer','calc-diff'].forEach(id => {
+                document.getElementById(id).style.display = show ? '' : 'none';
+            });
+            if (show) document.getElementById('calc-diff').textContent = fmt(total - ocrTotal);
+        }
+
+        document.querySelector('tbody').addEventListener('input', function(e) {
+            const field = e.target.dataset?.field;
+            if (!['displayed_amount','tax_rate','tax_included_amount','tax_amount'].includes(field)) return;
+            const row = e.target.closest('tr[data-item-id]');
+            if (row && field !== 'tax_amount') recalcRow(row, field);
+            recalcSummary();
+        });
 
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
