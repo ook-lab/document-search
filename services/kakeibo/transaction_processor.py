@@ -93,9 +93,16 @@ class TransactionProcessor:
                 receipt_id = self._insert_receipt(ocr_result, file_name, drive_file_id, model_name, source_folder)
             situation_id = self._determine_situation(trans_date)
 
+            # 税集計行として除外するキーワード（レシートの税明細行をGeminiがitemsに含めてしまった場合の防衛）
+            _TAX_SUMMARY_KEYWORDS = ("外税8%", "外税10%", "内税8%", "内税10%", "対象額", "消費税", "税額合計")
+
             normalized_items = []
             for item in ocr_result["items"]:
                 line_type = item.get("line_type", "ITEM")
+                # 税集計行・合計行はスキップ（amountsに含まれるべき情報）
+                product_name_raw = (item.get("product_name") or item.get("line_text") or "")
+                if any(kw in product_name_raw for kw in _TAX_SUMMARY_KEYWORDS):
+                    continue
                 if line_type in ["SUBTOTAL", "TOTAL"]:
                     name = (
                         item.get("product_name") or item.get("line_text")
