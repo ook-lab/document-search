@@ -728,9 +728,7 @@ def reconcile_page():
     if not start_date and not end_date:
         query = query.limit(1000)
 
-    print(f"[RECONCILE] date filter: start={start_date!r} end={end_date!r}")
     res = query.execute()
-    print(f"[RECONCILE] fetched {len(res.data)} rows")
     raw_data = res.data
 
     ids = [r['id'] for r in raw_data]
@@ -763,7 +761,6 @@ def reconcile_page():
                         view_target_map[m['transaction_id']] = m.get('view_target')
                 else:
                     raise RuntimeError(f"Manual Edits fetch error chunk {i}: {resp.status_code} {resp.text}")
-        print(f"[RECONCILE] Total IDs: {len(ids)}, Excluded: {len(excluded_ids)}, Hidden: {len(hidden_ids)}, show_excluded: {show_excluded}")
     # 自動除外ルールを取得
     rules_res = db.table("Kakeibo_Auto_Exclude_Rules").select("*").eq("is_active", True).execute()
     auto_exclude_rules = rules_res.data
@@ -976,8 +973,6 @@ def reconcile_execute():
     remove_ids = data.get('remove_ids', [])  # 左側
     keep_ids = data.get('keep_ids', [])      # 右側
     mode = data.get('mode', 'transfer')      # 'transfer' or 'same_amount'
-
-    print(f"[reconcile_execute] START: mode={mode}, remove={len(remove_ids)}, keep={len(keep_ids)}")
 
     if not remove_ids:
         return jsonify({"status": "error", "message": "左側が選択されていません"}), 400
@@ -1794,7 +1789,6 @@ def receipts_page():
     all_log = db.table('99_lg_image_proc_log').select('status').execute().data
     from collections import Counter
     status_counts = Counter(r.get('status') for r in all_log)
-    print(f"[receipts_page] failed_count={total_failed}, status_counts={dict(status_counts)}")
 
     # 取込失敗ビュー
     if view == 'failed':
@@ -2042,7 +2036,6 @@ def import_mf_csv():
             # このCSVに含まれるMF IDを収集してDB一括チェック
             rows = list(reader)
             if not rows:
-                print(f"[MF_IMPORT] {file_name} is empty")
                 continue
             
             # 1. 1行目からヘッダーを特定
@@ -2055,7 +2048,6 @@ def import_mf_csv():
                 return None
             
             id_key = find_key(['ID', '収支ID', '取引ID'])
-            print(f"[MF_IMPORT] File: {file_name}, ID key detected: {id_key}")
             
             # 2. 全行のIDを収集（ID列がない場合は内容のハッシュを一時IDとする）
             import hashlib
@@ -2222,7 +2214,6 @@ def import_receipts():
 
                 # ── ダブリチェック ──────────────────────────────
                 if file_id in already_done:
-                    print(f"[import_receipts] スキップ（処理済み）: {file_name}")
                     # INBOX に残っていれば ARCHIVE へ移動
                     if ARCHIVE_FOLDER_ID:
                         drive.move_file(file_id, ARCHIVE_FOLDER_ID)
@@ -2923,7 +2914,7 @@ def mark_receipt_as_cash():
     # 明細を明細一覧に追加
     for item in items.data:
         product_name = item.get("official_name") or item.get("product_name", "")
-        amount = item.get("tax_included_amount") or 0
+        amount = -(item.get("tax_included_amount") or 0)
 
         new_id = f"CASH-{receipt_id}-{item['id']}"
 
@@ -2947,6 +2938,44 @@ def mark_receipt_as_cash():
 
     # レシートを確認済みに
     db.table("Rawdata_RECEIPT_shops").update({"is_verified": True, "is_cash": True}).eq("id", receipt_id).execute()
+
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/receipt/unmark_cash', methods=['POST'])
+def unmark_receipt_as_cash():
+    """現金決済登録を解除（CASH-エントリ削除 + is_cash/is_verified をリセット）"""
+    data = request.json
+    receipt_id = data.get('receipt_id')
+
+    if not receipt_id:
+        return jsonify({"status": "error", "message": "receipt_id is required"}), 400
+
+    db = get_db()
+
+    # CASH-{receipt_id}-* のエントリを削除
+    items_res = db.table("Rawdata_RECEIPT_items").select("id").eq("receipt_id", receipt_id).execute()
+    for item in items_res.data:
+        cash_id = f"CASH-{receipt_id}-{item['id']}"
+        db.table("Rawdata_BANK_transactions").delete().eq("id", cash_id).execute()
+
+    # フラグをリセット
+    db.table("Rawdata_RECEIPT_shops").update({"is_verified": False, "is_cash": False}).eq("id", receipt_id).execute()
+
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/receipt/unverify', methods=['POST'])
+def unverify_receipt():
+    """確認済みを解除（is_verified → false）"""
+    data = request.json
+    receipt_id = data.get('receipt_id')
+
+    if not receipt_id:
+        return jsonify({"status": "error", "message": "receipt_id is required"}), 400
+
+    db = get_db()
+    db.table("Rawdata_RECEIPT_shops").update({"is_verified": False}).eq("id", receipt_id).execute()
 
     return jsonify({"status": "success"})
 

@@ -283,7 +283,11 @@
                     </div>
 
                     <div class="actions">
+                        {% if receipt and receipt.is_verified %}
+                        <button class="btn btn-secondary" onclick="unverifyReceipt()">確認済みを解除</button>
+                        {% else %}
                         <button class="btn btn-success" onclick="verifyReceipt()">確認済みにする</button>
+                        {% endif %}
                         <button class="btn btn-primary" onclick="saveAllCategories()">明細を保存</button>
                     </div>
                 </div>
@@ -308,9 +312,16 @@
                         {% else %}
                         <!-- 現金決済オプション -->
                         <div style="margin-bottom: 1rem; padding: 0.75rem; background: #fff3cd; border-radius: 4px;">
+                            {% if receipt and receipt.is_cash %}
+                            <div style="margin-bottom: 0.5rem; color: #28a745; font-size: 0.85rem; font-weight: 600;">✓ 現金決済として登録済み</div>
+                            <button class="btn btn-danger" style="width: 100%;" onclick="unmarkAsCash()">
+                                現金決済登録を解除
+                            </button>
+                            {% else %}
                             <button class="btn" style="background: #28a745; color: white; width: 100%;" onclick="markAsCash()">
                                 💵 現金決済として登録（紐付けなしで明細一覧へ追加）
                             </button>
+                            {% endif %}
                         </div>
 
                         <!-- 日付フィルタ -->
@@ -666,6 +677,51 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     showToast('確認済みにしました');
+                    location.reload();
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        async function unverifyReceipt() {
+            if (!receiptId) return;
+            if (!confirm('確認済みを解除しますか？')) return;
+
+            try {
+                const res = await fetch('/api/receipt/unverify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('確認済みを解除しました');
+                    location.reload();
+                } else {
+                    showToast(data.message || 'エラーが発生しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        async function unmarkAsCash() {
+            if (!receiptId) return;
+            if (!confirm('現金決済登録を解除しますか？\n（明細一覧に追加されたCASH-エントリが削除され、確認済みも解除されます）')) return;
+
+            try {
+                const res = await fetch('/api/receipt/unmark_cash', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ receipt_id: receiptId })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast('現金決済登録を解除しました');
+                    location.reload();
                 } else {
                     showToast(data.message || 'エラーが発生しました', 'error');
                 }
