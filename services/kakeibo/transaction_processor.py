@@ -142,7 +142,7 @@ class TransactionProcessor:
                 trans_id   = self._insert_transaction(
                     receipt_id=receipt_id,
                     line_number=line_num,
-                    ocr_raw_text=item.get("ocr_raw", item["product_name"]),
+                    ocr_raw_text=item.get("ocr_raw") or item.get("product_name") or item.get("line_text") or "不明",
                     ocr_confidence=item.get("confidence"),
                     product_name=normalized["product_name"],
                     item_name=None,

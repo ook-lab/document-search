@@ -2734,6 +2734,19 @@ def reprocess_receipt():
                 ocr_result["transaction_date"] = ocr_result["transaction_info"]["date"]
             if "shop_info" in ocr_result and "name" in ocr_result["shop_info"]:
                 ocr_result["shop_name"] = ocr_result["shop_info"]["name"]
+
+            # 必須フィールドが取れなかった場合はレシートの既存値で補完
+            if not ocr_result.get("transaction_date"):
+                receipt_res = db.table("Rawdata_RECEIPT_shops").select("transaction_date, shop_name").eq("id", receipt_id).execute()
+                if receipt_res.data:
+                    existing = receipt_res.data[0]
+                    ocr_result.setdefault("transaction_date", str(existing.get("transaction_date", "")))
+                    ocr_result.setdefault("shop_name", existing.get("shop_name", "不明"))
+            if not ocr_result.get("shop_name"):
+                ocr_result["shop_name"] = "不明"
+            if not ocr_result.get("items"):
+                ocr_result["items"] = []
+
             if "items" in ocr_result:
                 for item in ocr_result["items"]:
                     if "line_type" not in item:
@@ -2767,6 +2780,8 @@ def reprocess_receipt():
             return jsonify({"status": "success"})
 
     except Exception as e:
+        import traceback
+        print(f"[reprocess] EXCEPTION receipt_id={receipt_id}: {e}\n{traceback.format_exc()}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

@@ -243,6 +243,14 @@
                         </div>
                     </div>
 
+                    <!-- 値引き按分 -->
+                    <div style="margin: 0.5rem 0; padding: 0.5rem 0.75rem; background: #f0f4ff; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <span style="font-size: 0.85rem; color: #555;">値引き按分:</span>
+                        <input type="number" id="discount-amount" placeholder="値引き額（例: 100）" style="width: 140px; padding: 0.3rem 0.5rem; border: 1px solid #ccd; border-radius: 4px; font-size: 0.85rem;">
+                        <button class="btn btn-secondary" style="padding: 0.3rem 0.75rem; font-size: 0.85rem;" onclick="applyDiscount()">各商品に按分</button>
+                        <span style="font-size: 0.8rem; color: #888;">※入力は正の値。各商品の税込価から比例配分で差し引きます。</span>
+                    </div>
+
                     <!-- 金額比較表（OCR vs 計算） -->
                     <div class="summary" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem;">
                         <div style="font-weight: 600; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem;"></div>
@@ -251,7 +259,7 @@
 
                         <div>{{ tax_type }}8%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_8_base is not none %}¥{{ '{:,}'.format(ocr_tax_8_base) }}{% else %}-{% endif %}</div>
-                        <div id="calc-base-8" style="text-align: right;">{% if calc_tax_8 > 0 %}¥{{ '{:,}'.format(calc_total_8 if tax_type == '内税' else calc_base_8) }}{% else %}¥0{% endif %}</div>
+                        <div id="calc-base-8" style="text-align: right;">{% if calc_total_8 > 0 %}¥{{ '{:,}'.format(calc_total_8 if tax_type == '内税' else calc_base_8) }}{% else %}¥0{% endif %}</div>
 
                         <div>8%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_8 is not none %}¥{{ '{:,}'.format(ocr_tax_8) }}{% else %}-{% endif %}</div>
@@ -259,7 +267,7 @@
 
                         <div>{{ tax_type }}10%対象額</div>
                         <div style="text-align: right;">{% if ocr_tax_10_base is not none %}¥{{ '{:,}'.format(ocr_tax_10_base) }}{% else %}-{% endif %}</div>
-                        <div id="calc-base-10" style="text-align: right;">{% if calc_tax_10 > 0 %}¥{{ '{:,}'.format(calc_total_10 if tax_type == '内税' else calc_base_10) }}{% else %}¥0{% endif %}</div>
+                        <div id="calc-base-10" style="text-align: right;">{% if calc_total_10 > 0 %}¥{{ '{:,}'.format(calc_total_10 if tax_type == '内税' else calc_base_10) }}{% else %}¥0{% endif %}</div>
 
                         <div>10%税額</div>
                         <div style="text-align: right;">{% if ocr_tax_10 is not none %}¥{{ '{:,}'.format(ocr_tax_10) }}{% else %}-{% endif %}</div>
@@ -470,9 +478,9 @@
             });
 
             const fmt = v => '¥' + v.toLocaleString();
-            document.getElementById('calc-base-8').textContent   = tax8  > 0 ? fmt(taxType === '内税' ? total8  : total8  - tax8)  : '¥0';
+            document.getElementById('calc-base-8').textContent   = total8  > 0 ? fmt(taxType === '内税' ? total8  : total8  - tax8)  : '¥0';
             document.getElementById('calc-tax-8').textContent    = fmt(tax8);
-            document.getElementById('calc-base-10').textContent  = tax10 > 0 ? fmt(taxType === '内税' ? total10 : total10 - tax10) : '¥0';
+            document.getElementById('calc-base-10').textContent  = total10 > 0 ? fmt(taxType === '内税' ? total10 : total10 - tax10) : '¥0';
             document.getElementById('calc-tax-10').textContent   = fmt(tax10);
             document.getElementById('calc-tax-total').textContent = fmt(tax);
             document.getElementById('calc-subtotal').textContent  = taxType === '内税' ? fmt(total) : fmt(total - tax);
@@ -483,6 +491,41 @@
                 document.getElementById(id).style.display = show ? '' : 'none';
             });
             if (show) document.getElementById('calc-diff').textContent = fmt(total - ocrTotal);
+        }
+
+        function applyDiscount() {
+            const discountTotal = parseInt(document.getElementById('discount-amount').value) || 0;
+            if (discountTotal <= 0) { showToast('値引き額を正の値で入力してください', 'error'); return; }
+            if (!confirm(`¥${discountTotal.toLocaleString()} を各商品に按分します。よいですか？`)) return;
+
+            const rows = [...document.querySelectorAll('tbody tr[data-item-id]')];
+            if (!rows.length) return;
+
+            // 按分基準: tax_included_amount の合計
+            const amounts = rows.map(row => parseInt(row.querySelector('[data-field="tax_included_amount"]')?.value) || 0);
+            const grand = amounts.reduce((s, v) => s + v, 0);
+            if (grand === 0) { showToast('税込価合計が0のため按分できません', 'error'); return; }
+
+            // 比例配分（切り捨て）+ 端数を最初の行に集約
+            const cuts = amounts.map(a => Math.floor(discountTotal * a / grand));
+            const remainder = discountTotal - cuts.reduce((s, v) => s + v, 0);
+            cuts[0] += remainder;
+
+            rows.forEach((row, i) => {
+                const inclEl = row.querySelector('[data-field="tax_included_amount"]');
+                const dispEl = row.querySelector('[data-field="displayed_amount"]');
+                if (!inclEl) return;
+                const newIncl = (parseInt(inclEl.value) || 0) - cuts[i];
+                inclEl.value = newIncl;
+                // 内税: displayed_amount = tax_included_amount
+                if (taxType === '内税' && dispEl) dispEl.value = newIncl;
+                // 外税: displayed_amount は変えない（税抜価格は別途）
+            });
+
+            document.getElementById('discount-amount').value = '';
+            redistributeTax();
+            recalcSummary();
+            showToast('按分しました');
         }
 
         document.querySelector('tbody').addEventListener('input', function(e) {
