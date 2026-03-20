@@ -72,7 +72,10 @@ class TransactionProcessor:
                 self._log_error(file_name, drive_file_id, ocr_result, model_name, None)
                 return ocr_result
 
-            trans_date = datetime.strptime(ocr_result["transaction_date"], "%Y-%m-%d").date()
+            raw_date = ocr_result.get("transaction_date") or ""
+            if raw_date in (None, "", "null", "None"):
+                raise ValueError(f"transaction_date が取得できませんでした: {raw_date!r}")
+            trans_date = datetime.strptime(str(raw_date).strip(), "%Y-%m-%d").date()
 
             # drive_file_id で既存レコードを検索（existing_receipt_id 未指定時）
             if not existing_receipt_id and drive_file_id:

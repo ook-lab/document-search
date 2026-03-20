@@ -27,6 +27,10 @@ except ImportError:
 
 app = Flask(__name__)
 
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
+
 # DriveClient シングルトン（初回アクセス時に初期化）
 _drive_client: DriveClient = None
 
@@ -2736,12 +2740,15 @@ def reprocess_receipt():
                 ocr_result["shop_name"] = ocr_result["shop_info"]["name"]
 
             # 必須フィールドが取れなかった場合はレシートの既存値で補完
+            # ※ setdefault は「キー不存在時のみ」設定するため、None/nullが入っている場合に機能しない。
+            #    直接代入で確実に上書きする。
             if not ocr_result.get("transaction_date"):
                 receipt_res = db.table("Rawdata_RECEIPT_shops").select("transaction_date, shop_name").eq("id", receipt_id).execute()
                 if receipt_res.data:
                     existing = receipt_res.data[0]
-                    ocr_result.setdefault("transaction_date", str(existing.get("transaction_date", "")))
-                    ocr_result.setdefault("shop_name", existing.get("shop_name", "不明"))
+                    ocr_result["transaction_date"] = str(existing.get("transaction_date") or "")
+                    if not ocr_result.get("shop_name"):
+                        ocr_result["shop_name"] = existing.get("shop_name") or "不明"
             if not ocr_result.get("shop_name"):
                 ocr_result["shop_name"] = "不明"
             if not ocr_result.get("items"):
