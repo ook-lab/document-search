@@ -10,15 +10,23 @@
         header a { color: #ccc; text-decoration: none; margin-left: 16px; font-size: 13px; }
         header a:hover { color: white; }
 
-        .toolbar { background: white; padding: 10px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .toolbar label { font-size: 12px; color: #555; }
-        .toolbar input[type="date"], .toolbar input[type="text"], .toolbar select {
-            padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;
-        }
-        .toolbar input[type="text"] { width: 160px; }
+        /* サーバー側フィルタ（期間・口座・キーワード・確定済み表示） */
+        .toolbar { background: white; padding: 8px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .toolbar label { font-size: 12px; color: #555; white-space: nowrap; }
+        .toolbar input[type="date"], .toolbar select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        .toolbar input[type="text"] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; width: 140px; }
         .toolbar button { padding: 5px 14px; background: #555; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
         .toolbar button:hover { background: #333; }
-        .toolbar .sep { border-left: 1px solid #ddd; height: 24px; margin: 0 4px; }
+        .toolbar .sep { border-left: 1px solid #ddd; height: 24px; margin: 0 2px; }
+
+        /* クライアント側クイックフィルタ */
+        .quickbar { background: #fffde7; padding: 6px 20px; border-bottom: 1px solid #f0d800; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .quickbar label { font-size: 12px; color: #664d00; white-space: nowrap; font-weight: bold; }
+        .quickbar input[type="text"] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+        .quickbar input.q-content  { width: 200px; }
+        .quickbar input.q-inst    { width: 160px; }
+        .quickbar .q-count        { font-size: 12px; color: #888; margin-left: 8px; }
+        .quickbar button.clear-btn { padding: 3px 10px; background: #aaa; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
 
         .progress-bar-wrap { background: white; padding: 8px 20px; border-bottom: 1px solid #ddd; display: flex; align-items: center; gap: 12px; }
         .progress-label { font-size: 13px; font-weight: bold; }
@@ -30,11 +38,20 @@
         .content { padding: 12px 20px; }
 
         table { width: 100%; border-collapse: collapse; background: white; font-size: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); border-radius: 6px; overflow: hidden; }
-        th { background: #f0f0f0; padding: 7px 8px; text-align: left; font-size: 11px; color: #555; border-bottom: 2px solid #ddd; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
+        th {
+            background: #f0f0f0; padding: 7px 8px; text-align: left; font-size: 11px; color: #555;
+            border-bottom: 2px solid #ddd; white-space: nowrap;
+            position: sticky; top: 0; z-index: 2;
+        }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { background: #e4e4e4; }
+        th.sort-asc::after  { content: ' ▲'; color: #333; }
+        th.sort-desc::after { content: ' ▼'; color: #333; }
         td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: #fafafa; }
         tr.decided td { background: #f0fff4; opacity: 0.6; }
+        tr.hidden-by-filter { display: none; }
 
         .col-date  { white-space: nowrap; color: #666; font-size: 11px; width: 80px; }
         .col-inst  { font-size: 11px; color: #888; width: 100px; }
@@ -49,32 +66,29 @@
         .cat-input { padding: 3px 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; width: 85px; }
         .cat-input-wide { padding: 3px 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; width: 100px; }
         .cat-input:focus, .cat-input-wide:focus { outline: none; border-color: #888; }
-
         .suggested .cat-input { border-color: #17a2b8; background: #f0fdff; }
 
         .btn-confirm { padding: 3px 10px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; font-weight: bold; }
         .btn-confirm:hover { background: #1e8449; }
         .btn-confirm.saved { background: #95a5a6; cursor: default; }
-        .btn-rule { padding: 3px 6px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
+        .btn-rule    { padding: 3px 6px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-ex-rule { padding: 3px 6px; background: #6f42c1; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
-
         .btn-vis { padding: 2px 6px; font-size: 10px; color: white; border: none; border-radius: 3px; cursor: pointer; margin: 1px; }
 
         .badge { display:inline-block; padding:0 5px; border-radius:3px; font-size:10px; font-weight:bold; vertical-align:middle; margin-left:2px; }
         .badge-suggest { background:#d1ecf1; color:#0c5460; }
         .badge-receipt { background:#fde8ff; color:#6a0dad; }
-        .badge-rule { background:#fff3cd; color:#856404; font-size:9px; }
+        .badge-rule    { background:#fff3cd; color:#856404; font-size:9px; }
 
         .empty { text-align: center; color: #999; padding: 60px 0; font-size: 16px; }
         .complete-msg { text-align: center; padding: 40px; background: #d4edda; border-radius: 8px; color: #155724; font-size: 18px; font-weight: bold; margin: 20px 0; }
 
-        /* モーダル */
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal.open { display: flex; }
         .modal-content { background: white; border-radius: 8px; padding: 20px; width: 480px; max-width: 95vw; max-height: 80vh; overflow-y: auto; }
         .modal-content h3 { margin: 0 0 16px; font-size: 16px; }
         .modal-content label { display: block; font-size: 12px; color: #555; margin-top: 10px; margin-bottom: 2px; }
-        .modal-content input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
+        .modal-content input[type="text"], .modal-content input[type="number"] { width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; box-sizing: border-box; }
         .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
         .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
         .modal-buttons button { padding: 7px 18px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; color: white; }
@@ -94,7 +108,7 @@
     </nav>
 </header>
 
-<!-- フィルタ -->
+<!-- サーバー側フィルタ（期間・口座・キーワード） -->
 <div class="toolbar">
     <form method="get" action="/categorize" id="filterForm" style="display:contents;">
         <label>期間</label>
@@ -119,6 +133,15 @@
         </label>
         <button type="submit">絞り込み</button>
     </form>
+</div>
+
+<!-- クライアント側クイックフィルタ（ページ遷移なし） -->
+<div class="quickbar">
+    <label>⚡ クイック絞り込み</label>
+    <input type="text" class="q-content" id="qContent" placeholder="内容で絞り込み…" oninput="applyQuickFilter()">
+    <input type="text" class="q-inst"    id="qInst"    placeholder="口座名で絞り込み…" oninput="applyQuickFilter()">
+    <button class="clear-btn" onclick="clearQuickFilter()">クリア</button>
+    <span class="q-count" id="qCount"></span>
 </div>
 
 <!-- 進捗バー -->
@@ -146,10 +169,10 @@
 <table id="mainTable">
     <thead>
         <tr>
-            <th>日付</th>
-            <th>内容</th>
-            <th>口座</th>
-            <th style="text-align:right;">金額</th>
+            <th class="sortable" data-col="date"   data-type="str">日付</th>
+            <th class="sortable" data-col="content" data-type="str">内容</th>
+            <th class="sortable" data-col="inst"   data-type="str">口座</th>
+            <th class="sortable" data-col="amount" data-type="num" style="text-align:right;">金額</th>
             <th>大分類</th>
             <th>中分類</th>
             <th>小分類</th>
@@ -163,7 +186,11 @@
     </thead>
     <tbody>
     {% for t in transactions %}
-    <tr data-id="{{ t.id }}" data-content="{{ t.content }}" data-institution="{{ t.institution or '' }}"
+    <tr data-id="{{ t.id }}"
+        data-date="{{ t.date }}"
+        data-content="{{ t.content }}"
+        data-inst="{{ t.institution or '' }}"
+        data-amount="{{ t.amount }}"
         class="{% if t.is_decided %}decided{% endif %} {% if t.is_suggested %}suggested{% endif %}"
         id="row-{{ t.id }}">
         <td class="col-date">{{ t.date }}</td>
@@ -182,21 +209,21 @@
         <td class="col-amount {% if t.amount > 0 %}positive{% else %}negative{% endif %}">
             {{ "{:,.0f}".format(t.amount) }}
         </td>
-        <td><input type="text" class="cat-input edit-cat-major"    value="{{ t.cat_major }}"     placeholder="大分類"></td>
-        <td><input type="text" class="cat-input edit-cat-mid"      value="{{ t.cat_mid }}"       placeholder="中分類"></td>
-        <td><input type="text" class="cat-input edit-cat-small"    value="{{ t.cat_small }}"     placeholder="小分類"></td>
-        <td><input type="text" class="cat-input-wide edit-cat-shop" value="{{ t.cat_shop }}"     placeholder="店"></td>
+        <td><input type="text" class="cat-input edit-cat-major"     value="{{ t.cat_major }}"     placeholder="大分類"></td>
+        <td><input type="text" class="cat-input edit-cat-mid"       value="{{ t.cat_mid }}"       placeholder="中分類"></td>
+        <td><input type="text" class="cat-input edit-cat-small"     value="{{ t.cat_small }}"     placeholder="小分類"></td>
+        <td><input type="text" class="cat-input-wide edit-cat-shop" value="{{ t.cat_shop }}"      placeholder="店"></td>
         <td><input type="text" class="cat-input edit-cat-belonging" value="{{ t.cat_belonging }}" placeholder="所属"></td>
-        <td><input type="text" class="cat-input edit-cat-person"   value="{{ t.cat_person }}"   placeholder="人"></td>
+        <td><input type="text" class="cat-input edit-cat-person"    value="{{ t.cat_person }}"    placeholder="人"></td>
         <td class="col-note"><input type="text" class="cat-input-wide edit-note" value="{{ t.note }}" placeholder="メモ"></td>
         <td style="white-space:nowrap;">
-            <button class="btn-vis" style="background:#28a745;" onclick="setVis(this,'BOTH')" title="明細・現金の両方">両</button>
+            <button class="btn-vis" style="background:#28a745;" onclick="setVis(this,'BOTH')"      title="明細・現金の両方">両</button>
             <button class="btn-vis" style="background:#17a2b8;" onclick="setVis(this,'CASH_ONLY')" title="現金のみ">現</button>
             <button class="btn-vis" style="background:#6c757d;" onclick="setVis(this,'LIST_ONLY')" title="明細のみ">明</button>
         </td>
         <td style="white-space:nowrap;">
             <button class="btn-confirm" onclick="confirmRow(this)">確定</button>
-            <button class="btn-rule" onclick="openRuleModal(this)" title="分類ルール登録">R</button>
+            <button class="btn-rule"    onclick="openRuleModal(this)"   title="分類ルール登録">R</button>
             <button class="btn-ex-rule" onclick="openExRuleModal(this)" title="表示先ルール登録">現R</button>
         </td>
     </tr>
@@ -257,13 +284,94 @@ let currentRuleRow = null;
 let remainCount = {{ undecided_count }};
 const totalCount = {{ total_count }};
 
-// ── 確定 ─────────────────────────────────────────
+// ── ソート ──────────────────────────────────────────────
+let sortCol = null, sortDir = 1;
+
+document.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (sortCol === col) {
+            sortDir *= -1;
+        } else {
+            sortCol = col;
+            sortDir = 1;
+        }
+        // ヘッダーのインジケーター更新
+        document.querySelectorAll('th.sortable').forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+        th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+        applySortAndFilter();
+    });
+});
+
+function getRowValue(tr, col) {
+    if (col === 'date')    return tr.dataset.date    || '';
+    if (col === 'content') return tr.dataset.content || '';
+    if (col === 'inst')    return tr.dataset.inst    || '';
+    if (col === 'amount')  return parseFloat(tr.dataset.amount) || 0;
+    return '';
+}
+
+function applySortAndFilter() {
+    applyQuickFilter();  // フィルタも同時適用
+    if (!sortCol) return;
+
+    const tbody = document.querySelector('#mainTable tbody');
+    if (!tbody) return;
+    const rows = [...tbody.querySelectorAll('tr')];
+    const th = document.querySelector(`th[data-col="${sortCol}"]`);
+    const isNum = th && th.dataset.type === 'num';
+
+    rows.sort((a, b) => {
+        const av = getRowValue(a, sortCol);
+        const bv = getRowValue(b, sortCol);
+        if (isNum) return (av - bv) * sortDir;
+        return av.localeCompare(bv, 'ja') * sortDir;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+// ── クイックフィルタ ────────────────────────────────────
+function applyQuickFilter() {
+    const qc = document.getElementById('qContent').value.toLowerCase().trim();
+    const qi = document.getElementById('qInst').value.toLowerCase().trim();
+
+    const rows = document.querySelectorAll('#mainTable tbody tr');
+    let visible = 0;
+    rows.forEach(tr => {
+        const content = (tr.dataset.content || '').toLowerCase();
+        const inst    = (tr.dataset.inst    || '').toLowerCase();
+        const matchC  = !qc || content.includes(qc);
+        const matchI  = !qi || inst.includes(qi);
+        if (matchC && matchI) {
+            tr.classList.remove('hidden-by-filter');
+            visible++;
+        } else {
+            tr.classList.add('hidden-by-filter');
+        }
+    });
+
+    const total = rows.length;
+    const countEl = document.getElementById('qCount');
+    if (qc || qi) {
+        countEl.textContent = `${visible} / ${total} 件表示中`;
+    } else {
+        countEl.textContent = '';
+    }
+}
+
+function clearQuickFilter() {
+    document.getElementById('qContent').value = '';
+    document.getElementById('qInst').value    = '';
+    document.querySelectorAll('#mainTable tbody tr').forEach(tr => tr.classList.remove('hidden-by-filter'));
+    document.getElementById('qCount').textContent = '';
+}
+
+// ── 確定 ─────────────────────────────────────────────────
 async function confirmRow(btn) {
     const tr = btn.closest('tr');
     const id = tr.dataset.id;
     const payload = buildPayload(tr, id);
 
-    // 大分類が空なら警告
     if (!payload.cat_major) {
         if (!confirm('大分類が未入力です。このまま確定しますか？')) return;
         payload.cat_major = '確認済';
@@ -273,19 +381,13 @@ async function confirmRow(btn) {
     btn.textContent = '保存中…';
 
     try {
-        const res = await fetch('/api/update', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
+        const res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
         const json = await res.json();
         if (json.status === 'success') {
             if (!tr.classList.contains('decided')) {
                 remainCount = Math.max(0, remainCount - 1);
                 updateProgress();
             }
-            // show_all のとき: 確定済みスタイルに変更して残す
-            // show_all でないとき: 行を消す
             const showAll = new URLSearchParams(location.search).get('show_all') === 'true';
             if (showAll) {
                 tr.classList.add('decided');
@@ -294,7 +396,7 @@ async function confirmRow(btn) {
             } else {
                 tr.style.transition = 'opacity .3s';
                 tr.style.opacity = '0';
-                setTimeout(() => tr.remove(), 300);
+                setTimeout(() => { tr.remove(); applyQuickFilter(); }, 300);
             }
         } else {
             btn.disabled = false;
@@ -311,66 +413,59 @@ async function confirmRow(btn) {
 function buildPayload(tr, id) {
     return {
         id,
-        cat_major:     tr.querySelector('.edit-cat-major')?.value    || '',
-        cat_mid:       tr.querySelector('.edit-cat-mid')?.value      || '',
-        cat_small:     tr.querySelector('.edit-cat-small')?.value    || '',
-        cat_shop:      tr.querySelector('.edit-cat-shop')?.value     || '',
-        cat_belonging: tr.querySelector('.edit-cat-belonging')?.value || '',
-        cat_person:    tr.querySelector('.edit-cat-person')?.value   || '',
-        note:          tr.querySelector('.edit-note')?.value         || '',
+        cat_major:     tr.querySelector('.edit-cat-major')?.value     || '',
+        cat_mid:       tr.querySelector('.edit-cat-mid')?.value       || '',
+        cat_small:     tr.querySelector('.edit-cat-small')?.value     || '',
+        cat_shop:      tr.querySelector('.edit-cat-shop')?.value      || '',
+        cat_belonging: tr.querySelector('.edit-cat-belonging')?.value  || '',
+        cat_person:    tr.querySelector('.edit-cat-person')?.value    || '',
+        note:          tr.querySelector('.edit-note')?.value          || '',
     };
 }
 
-// ── 進捗更新 ─────────────────────────────────────
+// ── 進捗更新 ──────────────────────────────────────────────
 function updateProgress() {
     const done = totalCount - remainCount;
     const pct  = totalCount > 0 ? Math.round(done / totalCount * 100) : 0;
     document.getElementById('progressBar').style.width = pct + '%';
-
-    // ラベル更新
     const label = document.querySelector('.progress-label');
     label.innerHTML = `<span class="remain">未決定 ${remainCount}件</span>`
         + `<span style="color:#888; font-size:12px; margin-left:8px;">/ 全 ${totalCount}件（確定済 ${done}件）</span>`;
-
     if (remainCount === 0) {
         const tbody = document.querySelector('#mainTable tbody');
-        if (tbody && tbody.children.length === 0) {
+        if (tbody && [...tbody.querySelectorAll('tr:not(.hidden-by-filter)')].length === 0) {
             document.querySelector('.content').innerHTML =
                 '<div class="complete-msg">この期間の仕分けはすべて完了しました！</div>';
         }
     }
 }
 
-// ── 表示先設定 ────────────────────────────────────
+// ── 表示先設定 ──────────────────────────────────────────
 async function setVis(btn, action) {
     const tr  = btn.closest('tr');
     const id  = tr.dataset.id;
-    const res = await fetch('/api/update', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id, view_target: action })
-    });
+    const res = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, view_target: action }) });
     const json = await res.json();
     if (json.status === 'success') {
-        btn.style.outline = '2px solid #fff';
+        btn.style.outline = '2px solid #333';
         setTimeout(() => btn.style.outline = '', 1000);
     } else {
         alert('エラー: ' + json.message);
     }
 }
 
-// ── 分類ルール登録 ────────────────────────────────
+// ── 分類ルール登録 ──────────────────────────────────────
 function openRuleModal(btn) {
     currentRuleRow = btn.closest('tr');
     const content = currentRuleRow.dataset.content || '';
-    document.getElementById('rule-pattern').value      = content.substring(0, 20);
-    document.getElementById('rule-cat-major').value    = currentRuleRow.querySelector('.edit-cat-major')?.value    || '';
-    document.getElementById('rule-cat-mid').value      = currentRuleRow.querySelector('.edit-cat-mid')?.value      || '';
-    document.getElementById('rule-cat-small').value    = currentRuleRow.querySelector('.edit-cat-small')?.value    || '';
-    document.getElementById('rule-cat-shop').value     = currentRuleRow.querySelector('.edit-cat-shop')?.value     || '';
-    document.getElementById('rule-cat-belonging').value= currentRuleRow.querySelector('.edit-cat-belonging')?.value|| '';
-    document.getElementById('rule-cat-person').value   = currentRuleRow.querySelector('.edit-cat-person')?.value   || '';
-    document.getElementById('rule-cat-context').value  = '';
+    document.getElementById('rule-pattern').value       = content.substring(0, 20);
+    document.getElementById('rule-cat-major').value     = currentRuleRow.querySelector('.edit-cat-major')?.value     || '';
+    document.getElementById('rule-cat-mid').value       = currentRuleRow.querySelector('.edit-cat-mid')?.value       || '';
+    document.getElementById('rule-cat-small').value     = currentRuleRow.querySelector('.edit-cat-small')?.value     || '';
+    document.getElementById('rule-cat-shop').value      = currentRuleRow.querySelector('.edit-cat-shop')?.value      || '';
+    document.getElementById('rule-cat-belonging').value = currentRuleRow.querySelector('.edit-cat-belonging')?.value  || '';
+    document.getElementById('rule-cat-person').value    = currentRuleRow.querySelector('.edit-cat-person')?.value    || '';
+    document.getElementById('rule-cat-context').value   = '';
     document.getElementById('rule-modal').classList.add('open');
 }
 
@@ -382,35 +477,36 @@ function closeRuleModal() {
 async function saveRule() {
     const pattern = document.getElementById('rule-pattern').value.trim();
     if (!pattern) { alert('パターンを入力してください'); return; }
-
     const payload = {
-        pattern:              pattern,
-        priority:             parseInt(document.getElementById('rule-priority').value) || 10,
-        cat_major:            document.getElementById('rule-cat-major').value,
-        cat_mid:              document.getElementById('rule-cat-mid').value,
-        cat_small:            document.getElementById('rule-cat-small').value,
-        cat_shop:             document.getElementById('rule-cat-shop').value,
-        cat_belonging:        document.getElementById('rule-cat-belonging').value,
-        cat_person:           document.getElementById('rule-cat-person').value,
-        cat_context:          document.getElementById('rule-cat-context').value,
+        pattern:       pattern,
+        priority:      parseInt(document.getElementById('rule-priority').value) || 10,
+        cat_major:     document.getElementById('rule-cat-major').value,
+        cat_mid:       document.getElementById('rule-cat-mid').value,
+        cat_small:     document.getElementById('rule-cat-small').value,
+        cat_shop:      document.getElementById('rule-cat-shop').value,
+        cat_belonging: document.getElementById('rule-cat-belonging').value,
+        cat_person:    document.getElementById('rule-cat-person').value,
+        cat_context:   document.getElementById('rule-cat-context').value,
     };
-
     const res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const json = await res.json();
     if (json.status === 'success') {
-        alert('ルールを登録しました');
         closeRuleModal();
+        // 対象行のカテゴリを即座に反映（ページ遷移なし）
+        if (currentRuleRow === null && payload.cat_major) {
+            // モーダルを閉じた後currentRuleRowはnull済み。参照保持なし。
+        }
     } else {
         alert('エラー: ' + (json.message || ''));
     }
 }
 
-// ── 表示先ルール登録 ──────────────────────────────
+// ── 表示先ルール登録 ────────────────────────────────────
 function openExRuleModal(btn) {
     currentRuleRow = btn.closest('tr');
     document.getElementById('ex-rule-name').value        = currentRuleRow.dataset.content?.substring(0, 20) || '';
     document.getElementById('ex-rule-content').value     = currentRuleRow.dataset.content?.substring(0, 20) || '';
-    document.getElementById('ex-rule-institution').value = currentRuleRow.dataset.institution || '';
+    document.getElementById('ex-rule-institution').value = currentRuleRow.dataset.inst || '';
     document.getElementById('ex-rule-modal').classList.add('open');
 }
 
@@ -423,15 +519,14 @@ async function saveExRule() {
     const name = document.getElementById('ex-rule-name').value.trim();
     if (!name) { alert('ルール名を入力してください'); return; }
     const payload = {
-        rule_name:            name,
-        action:               document.getElementById('ex-rule-action').value,
-        content_pattern:      document.getElementById('ex-rule-content').value,
-        institution_pattern:  document.getElementById('ex-rule-institution').value,
+        rule_name:           name,
+        action:              document.getElementById('ex-rule-action').value,
+        content_pattern:     document.getElementById('ex-rule-content').value,
+        institution_pattern: document.getElementById('ex-rule-institution').value,
     };
     const res  = await fetch('/api/add_target_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const json = await res.json();
     if (json.status === 'success') {
-        alert('表示先ルールを登録しました');
         closeExRuleModal();
     } else {
         alert('エラー: ' + (json.message || ''));

@@ -121,6 +121,12 @@ def _get_rules(db):
     return auto_rules, cat_rules, card_loan_rules, cash_cat_rules
 
 
+def _get_excluded_majors(db):
+    """集計から除外する大分類の一覧を取得"""
+    res = db.table("Kakeibo_View_Excluded_Majors").select("cat_major").execute()
+    return {row['cat_major'] for row in (res.data or [])}
+
+
 def _check_auto_target(content, institution, auto_rules):
     for rule in auto_rules:
         cp = rule.get('content_pattern') or ""
@@ -311,9 +317,11 @@ def expense_summary():
     year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     db = get_db()
     auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
+    excluded_majors = _get_excluded_majors(db)
 
     start, end = month_range(year_month)
     txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
+    txs = [t for t in txs if t['category'] not in excluded_majors]
 
     expenses = [t for t in txs if t['amount'] < 0]
 
@@ -383,9 +391,11 @@ def cash_summary():
     year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     db = get_db()
     auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
+    excluded_majors = _get_excluded_majors(db)
 
     start, end = month_range(year_month)
     txs = get_cash_transactions(db, start, end, auto_rules, card_loan_rules, cash_cat_rules)
+    txs = [t for t in txs if t['category'] not in excluded_majors]
 
     income  = [t for t in txs if t['amount'] > 0]
     expense = [t for t in txs if t['amount'] < 0]
@@ -420,6 +430,7 @@ def multi_month():
 
     db = get_db()
     auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
+    excluded_majors = _get_excluded_majors(db)
 
     month_list = months_between(from_ym, to_ym)
     ty, tm = map(int, to_ym.split('-'))
@@ -427,6 +438,7 @@ def multi_month():
     end   = f"{ty + 1}-01-01" if tm == 12 else f"{ty}-{tm + 1:02d}-01"
 
     txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
+    txs = [t for t in txs if t['category'] not in excluded_majors]
 
     # data[cat][ym] = amount
     data        = defaultdict(lambda: defaultdict(int))
@@ -487,12 +499,14 @@ def trend():
 
     db = get_db()
     auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
+    excluded_majors = _get_excluded_majors(db)
 
     ty, tm = map(int, to_ym.split('-'))
     start = f"{from_ym}-01"
     end   = f"{ty + 1}-01-01" if tm == 12 else f"{ty}-{tm + 1:02d}-01"
 
     txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
+    txs = [t for t in txs if t['category'] not in excluded_majors]
     month_list = months_between(from_ym, to_ym)
 
     def _cat_key(t):
@@ -578,9 +592,11 @@ def person():
     year_month = request.args.get('month', datetime.now().strftime('%Y-%m'))
     db = get_db()
     auto_rules, cat_rules, card_loan_rules, cash_cat_rules = _get_rules(db)
+    excluded_majors = _get_excluded_majors(db)
 
     start, end = month_range(year_month)
     txs = get_list_transactions(db, start, end, auto_rules, cat_rules, card_loan_rules)
+    txs = [t for t in txs if t['category'] not in excluded_majors]
 
     person_cat   = defaultdict(lambda: defaultdict(int))
     person_total = defaultdict(int)
@@ -620,6 +636,37 @@ def person():
         chart_datasets=chart_datasets,
     )
 
+
+
+@app.route('/settings')
+def settings():
+    """大分類除外設定"""
+    db = get_db()
+    # 既知の大分類を Manual_Edits と Category_Rules から収集
+    manual_res = db.table("Kakeibo_Manual_Edits").select("category_major").execute()
+    rule_res   = db.table("Kakeibo_Category_Rules").select("category_major").execute()
+    all_cats = sorted({
+        r['category_major']
+        for r in (manual_res.data or []) + (rule_res.data or [])
+        if r.get('category_major')
+    })
+    excluded = _get_excluded_majors(db)
+    return render_template('settings.html', all_cats=all_cats, excluded=excluded)
+
+
+@app.route('/api/settings/excluded_majors', methods=['POST'])
+def update_excluded_majors():
+    """除外大分類リストを一括更新"""
+    data = request.json or {}
+    new_excluded = set(data.get('excluded', []))
+    db = get_db()
+    # 既存行を全削除してから再挿入
+    db.table("Kakeibo_View_Excluded_Majors").delete().gte("id", 1).execute()
+    if new_excluded:
+        db.table("Kakeibo_View_Excluded_Majors").insert(
+            [{'cat_major': c} for c in new_excluded]
+        ).execute()
+    return jsonify({'status': 'success'})
 
 
 if __name__ == '__main__':

@@ -10,6 +10,8 @@
   header a { color:#aed6f1; text-decoration:none; margin-left:20px; font-size:14px; }
   header a:hover { color:white; }
   header a.active { color:white; font-weight:bold; border-bottom:2px solid #3498db; }
+  .settings-btn { background:none; border:none; color:#aed6f1; cursor:pointer; font-size:18px; margin-left:20px; line-height:1; padding:2px 4px; border-radius:4px; }
+  .settings-btn:hover { color:white; background:rgba(255,255,255,.1); }
   .container { max-width:1200px; margin:20px auto; padding:0 15px; }
   .card { background:white; border-radius:8px; padding:20px; margin-bottom:20px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
   h2 { margin-top:0; color:#2c3e50; font-size:18px; }
@@ -48,6 +50,7 @@
     <a href="/trend"       {% if active=='trend'       %}class="active"{% endif %}>カテゴリ推移</a>
     <a href="/person"      {% if active=='person'      %}class="active"{% endif %}>人物別</a>
     <a href="http://localhost:5000" style="color:#f39c12;">← 入力アプリ</a>
+    <a href="/settings" title="集計設定" class="settings-btn">⚙</a>
   </nav>
 </header>
 <div class="container">

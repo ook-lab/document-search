@@ -2728,17 +2728,33 @@ def reprocess_receipt():
             if not ocr_response:
                 return jsonify({"status": "error", "message": "Geminiが空のレスポンスを返しました（安全フィルターによるブロックの可能性）"}), 500
 
-            json_start = ocr_response.find('{')
-            json_end = ocr_response.rfind('}') + 1
-            if json_start == -1 or json_end == 0:
+            # Markdownコードブロック（```json ... ```）を除去
+            cleaned = ocr_response.strip()
+            if cleaned.startswith("```"):
+                cleaned = cleaned.split("```", 2)[1]          # 先頭の ``` を除去
+                if cleaned.startswith("json"):
+                    cleaned = cleaned[4:]                      # "json" ラベルを除去
+                end_fence = cleaned.rfind("```")
+                if end_fence != -1:
+                    cleaned = cleaned[:end_fence]
+                cleaned = cleaned.strip()
+
+            json_start = cleaned.find('{')
+            json_end = cleaned.rfind('}') + 1
+            if json_start == -1:
                 preview = ocr_response[:200].replace('\n', ' ')
                 print(f"[reprocess] JSON解析失敗 receipt_id={receipt_id} response_preview={preview!r}")
                 return jsonify({"status": "error", "message": f"OCR結果にJSONが含まれていません。Geminiの返答: {ocr_response[:100]}"}), 500
 
+            # json_end==0 はレスポンスが途中で切れた場合（max_output_tokens 超過）
+            if json_end == 0:
+                print(f"[reprocess] JSONが途中で切断されました receipt_id={receipt_id} len={len(cleaned)}")
+                return jsonify({"status": "error", "message": "OCRレスポンスが途中で切れました。再試行してください。"}), 500
+
             try:
-                ocr_result = json.loads(ocr_response[json_start:json_end])
+                ocr_result = json.loads(cleaned[json_start:json_end])
             except json.JSONDecodeError as e:
-                preview = ocr_response[json_start:json_start+200].replace('\n', ' ')
+                preview = cleaned[json_start:json_start+200].replace('\n', ' ')
                 print(f"[reprocess] JSONDecodeError receipt_id={receipt_id}: {e} preview={preview!r}")
                 return jsonify({"status": "error", "message": f"OCR結果のJSON解析エラー: {e}"}), 500
             if "error" in ocr_result:

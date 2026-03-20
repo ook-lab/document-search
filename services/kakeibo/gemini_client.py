@@ -76,7 +76,7 @@ class GeminiClient:
             ],
             generation_config=genai.GenerationConfig(
                 temperature=temperature,
-                max_output_tokens=8192,
+                max_output_tokens=32768,
             ),
         )
         _log('kakeibo', 'receipt-ocr', model, response)
