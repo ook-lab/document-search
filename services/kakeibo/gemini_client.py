@@ -80,7 +80,17 @@ class GeminiClient:
             ),
         )
         _log('kakeibo', 'receipt-ocr', model, response)
-        return response.text
+        text = response.text
+        if not text:
+            # 安全フィルターやブロックで candidates が空の場合
+            finish = None
+            try:
+                finish = response.candidates[0].finish_reason if response.candidates else "NO_CANDIDATES"
+            except Exception:
+                pass
+            print(f"[GeminiClient] response.text が空 model={model} finish_reason={finish}")
+            return ""
+        return text
 
     # ── テキスト生成（商品名一般化など）──────────────────────
 

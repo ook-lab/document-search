@@ -2725,12 +2725,22 @@ def reprocess_receipt():
                 temperature=GEMINI_TEMPERATURE
             )
 
+            if not ocr_response:
+                return jsonify({"status": "error", "message": "Geminiが空のレスポンスを返しました（安全フィルターによるブロックの可能性）"}), 500
+
             json_start = ocr_response.find('{')
             json_end = ocr_response.rfind('}') + 1
             if json_start == -1 or json_end == 0:
-                return jsonify({"status": "error", "message": "OCR結果のJSON解析失敗"}), 500
+                preview = ocr_response[:200].replace('\n', ' ')
+                print(f"[reprocess] JSON解析失敗 receipt_id={receipt_id} response_preview={preview!r}")
+                return jsonify({"status": "error", "message": f"OCR結果にJSONが含まれていません。Geminiの返答: {ocr_response[:100]}"}), 500
 
-            ocr_result = json.loads(ocr_response[json_start:json_end])
+            try:
+                ocr_result = json.loads(ocr_response[json_start:json_end])
+            except json.JSONDecodeError as e:
+                preview = ocr_response[json_start:json_start+200].replace('\n', ' ')
+                print(f"[reprocess] JSONDecodeError receipt_id={receipt_id}: {e} preview={preview!r}")
+                return jsonify({"status": "error", "message": f"OCR結果のJSON解析エラー: {e}"}), 500
             if "error" in ocr_result:
                 return jsonify({"status": "error", "message": f"OCRエラー: {ocr_result.get('message', ocr_result['error'])}"}), 500
 
