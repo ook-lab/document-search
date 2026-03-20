@@ -1,5 +1,0 @@
-# シェルスクリプトは常にLF改行を使用
-*.sh text eol=lf
-
-# Dockerfileも常にLF
-Dockerfile text eol=lf

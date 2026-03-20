@@ -421,6 +421,20 @@
             applyFilter();
         }
 
+        function openExRuleModal(btn) {
+            currentRuleRow = btn.closest('tr');
+            const content = currentRuleRow.dataset.content || '';
+            document.getElementById('ex-rule-name').value        = content.substring(0, 20);
+            document.getElementById('ex-rule-content').value     = content.substring(0, 20);
+            document.getElementById('ex-rule-institution').value = '';
+            document.getElementById('ex-rule-modal').classList.add('show');
+        }
+
+        function closeExRuleModal() {
+            document.getElementById('ex-rule-modal').classList.remove('show');
+            currentRuleRow = null;
+        }
+
         async function saveExRule() {
             if (!currentRuleRow) return;
             const name = document.getElementById('ex-rule-name').value;
