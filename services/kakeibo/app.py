@@ -362,12 +362,14 @@ def categorize():
         auto_action, auto_rule = check_auto_target(
             t.get('content', ''), t.get('institution', ''), auto_exclude_rules
         )
-        if not m:
-            if auto_action == 'CASH_ONLY':
-                is_excluded = True
-        else:
-            if view_target == 'CASH_ONLY':
-                is_excluded = True
+        # CASH-* は現金決済レシート。自動除外ルール対象外（仕分け必須）
+        if not str(t['id']).startswith('CASH-'):
+            if not m:
+                if auto_action == 'CASH_ONLY':
+                    is_excluded = True
+            else:
+                if view_target == 'CASH_ONLY':
+                    is_excluded = True
 
         if is_excluded:
             continue
@@ -404,7 +406,7 @@ def categorize():
             "view_target":   view_target,
             "auto_rule":     auto_rule,
             "is_decided":    has_manual_category,
-            "is_receipt":    t['id'].startswith('RECEIPT-'),
+            "is_receipt":    t['id'].startswith('RECEIPT-') or t['id'].startswith('CASH-'),
         })
 
     undecided_count = sum(1 for t in all_display if not t['is_decided'])

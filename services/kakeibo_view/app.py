@@ -141,6 +141,21 @@ def _check_auto_target(content, institution, auto_rules):
 # データ取得：明細一覧ベース（支出分析用）
 # ──────────────────────────────────────────────
 
+def _get_card_loan_ids(db, ids):
+    """view_kakeibo_loan_entries からカードローン取引IDを取得（kakeibo/app.py と同ロジック）"""
+    card_loan_ids = set()
+    for i in range(0, len(ids), 200):
+        chunk = ids[i:i + 200]
+        res = db.table("view_kakeibo_loan_entries") \
+            .select("transaction_id, loan_type") \
+            .in_("transaction_id", chunk) \
+            .execute()
+        card_loan_ids.update(
+            e['transaction_id'] for e in res.data if e.get('loan_type') == 'card_loan'
+        )
+    return card_loan_ids
+
+
 def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules, card_loan_rules):
     """
     明細一覧に表示されるトランザクションを返す。
@@ -155,15 +170,21 @@ def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules, card_
     transactions = res.data
 
     ids = [t['id'] for t in transactions]
-    manual_map = _get_manual_map(db, ids) if ids else {}
+    manual_map    = _get_manual_map(db, ids) if ids else {}
+    card_loan_ids = _get_card_loan_ids(db, ids) if ids else set()
 
     result = []
     for t in transactions:
-        m           = manual_map.get(t['id'], {})
+        tid         = t['id']
+        m           = manual_map.get(tid, {})
         content     = t.get('content', '')
         institution = t.get('institution', '')
         amount      = t['amount']
         view_target = m.get('view_target')
+
+        # CASH-* は現金決済レシートなのでリストビュー対象外
+        if str(tid).startswith('CASH-'):
+            continue
 
         # 消し込み済み（is_excluded=True）は除外
         is_excluded = m.get('is_excluded', False)
@@ -183,10 +204,12 @@ def get_list_transactions(db, start_date, end_date, auto_rules, cat_rules, card_
         if view_target == 'loan':
             continue
 
-        # カードローンルールにマッチする取引は明細一覧から除外
+        # カードローン判定（kakeibo と同じロジック: view_kakeibo_loan_entries + Card_Loan_Rules）
+        is_card_loan      = tid in card_loan_ids
         matched_card_rule = _match_card_loan_rule(content, institution, amount, card_loan_rules)
-        if matched_card_rule and view_target != 'list':
-            continue
+        if view_target == 'loan' or (view_target is None and is_card_loan) or (view_target != 'list' and matched_card_rule):
+            if view_target != 'list':
+                continue
 
         # カテゴリ解決：Manual_Edits → Category_Rules 自動マッチ
         cat_major  = m.get('category_major') or ''

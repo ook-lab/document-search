@@ -105,7 +105,7 @@
         <a href="/">明細一覧</a>
         <a href="/reconcile" class="active">消込ツール</a>
         <a href="/reconcile_history">消込履歴</a>
-        <a href="/cash_calc">現金計算</a>
+        <a href="/cash_calc">資金繰り</a>
         <a href="/loans">ローン管理</a>
         <a href="/receipts">レシート検証</a>
         <a href="/rules_settings" style="background:#fd7e14;">ルール管理</a>
@@ -341,7 +341,7 @@
 
             const destBadges =
                 (t.shows_in_list ? '<span class="dest-badge dest-list" title="明細一覧に表示">明</span>' : '') +
-                (t.shows_in_cash ? '<span class="dest-badge dest-cash" title="現金計算に表示">現</span>' : '');
+                (t.shows_in_cash ? '<span class="dest-badge dest-cash" title="資金繰りに表示">現</span>' : '');
 
             tr.innerHTML = `
                 <td style="width: 30px;">
