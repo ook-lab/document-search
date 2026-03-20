@@ -92,7 +92,9 @@
 
         .btn-confirm { padding: 3px 10px; background: #27ae60; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; font-weight: bold; }
         .btn-confirm:hover { background: #1e8449; }
-        .btn-confirm.saved { background: #95a5a6; cursor: default; }
+        .btn-confirm.saved { background: #6c757d; }
+        .btn-confirm.saved:hover { background: #c0392b; }
+        .btn-apply-rule { padding: 3px 6px; background: #0d6efd; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-rule    { padding: 3px 6px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-ex-rule { padding: 3px 6px; background: #6f42c1; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-vis { padding: 2px 6px; font-size: 10px; color: white; border: none; border-radius: 3px; cursor: pointer; margin: 1px; }
@@ -275,6 +277,7 @@
         </td>
         <td style="white-space:nowrap;">
             <button class="btn-confirm" onclick="confirmRow(this)">確定</button>
+            <button class="btn-apply-rule" onclick="applyRule(this)" title="ルールから上書き">↺</button>
             <button class="btn-rule"    onclick="openRuleModal(this)"   title="分類ルール登録">R</button>
             <button class="btn-ex-rule" onclick="openExRuleModal(this)" title="表示先ルール登録">現R</button>
         </td>
@@ -443,6 +446,34 @@ function clearAllFilters() {
 async function confirmRow(btn) {
     const tr = btn.closest('tr');
     const id = tr.dataset.id;
+
+    // 確定済みなら解除
+    if (tr.classList.contains('decided')) {
+        if (!confirm('確定を解除しますか？')) return;
+        btn.disabled = true;
+        btn.textContent = '解除中…';
+        try {
+            const res  = await fetch('/api/unconfirm', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id }) });
+            const json = await res.json();
+            if (json.status === 'success') {
+                tr.classList.remove('decided');
+                btn.textContent = '確定';
+                btn.classList.remove('saved');
+                remainCount++;
+                updateProgress();
+            } else {
+                btn.disabled = false;
+                btn.textContent = '確定済';
+                alert('エラー: ' + json.message);
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = '確定済';
+            alert('通信エラー');
+        }
+        return;
+    }
+
     const payload = buildPayload(tr, id);
 
     if (!payload.cat_major) {
@@ -466,6 +497,7 @@ async function confirmRow(btn) {
                 tr.classList.add('decided');
                 btn.textContent = '確定済';
                 btn.classList.add('saved');
+                btn.disabled = false;
             } else {
                 tr.style.transition = 'opacity .3s';
                 tr.style.opacity = '0';
@@ -481,6 +513,44 @@ async function confirmRow(btn) {
         btn.textContent = '確定';
         alert('通信エラー');
     }
+}
+
+// ── ルール再適用 ─────────────────────────────────────────
+async function applyRule(btn) {
+    const tr = btn.closest('tr');
+    const id = tr.dataset.id;
+    const content = tr.dataset.content;
+
+    btn.disabled = true;
+    btn.textContent = '…';
+
+    try {
+        const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content }) });
+        const json = await res.json();
+        if (json.status === 'success') {
+            const m = json.matched;
+            tr.querySelector('.edit-cat-major')?.setAttribute('value', m.cat_major || '');
+            tr.querySelector('.edit-cat-major').value     = m.cat_major     || '';
+            tr.querySelector('.edit-cat-mid').value       = m.cat_mid       || '';
+            tr.querySelector('.edit-cat-small').value     = m.cat_small     || '';
+            tr.querySelector('.edit-cat-shop').value      = m.cat_shop      || '';
+            tr.querySelector('.edit-cat-belonging').value = m.cat_belonging || '';
+            tr.querySelector('.edit-cat-person').value    = m.cat_person    || '';
+            tr.classList.remove('decided');
+            tr.classList.add('suggested');
+            btn.textContent = '↺';
+        } else if (json.status === 'no_match') {
+            alert('マッチするルールがありません');
+            btn.textContent = '↺';
+        } else {
+            alert('エラー: ' + json.message);
+            btn.textContent = '↺';
+        }
+    } catch (e) {
+        btn.textContent = '↺';
+        alert('通信エラー');
+    }
+    btn.disabled = false;
 }
 
 function buildPayload(tr, id) {

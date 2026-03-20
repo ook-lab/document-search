@@ -1593,6 +1593,99 @@ def export_excel(data, headers, year_month):
     )
 
 
+@app.route('/api/apply_rule', methods=['POST'])
+def apply_rule():
+    """ルールを再適用して Manual_Edits を更新する"""
+    data = request.json
+    tx_id = data.get('id')
+    content = data.get('content', '')
+
+    if not tx_id:
+        return jsonify({"status": "error", "message": "ID is required"}), 400
+
+    db = get_db()
+    cat_rules_res = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
+    matched = match_category_rule(content, cat_rules_res.data)
+
+    if not matched:
+        return jsonify({"status": "no_match"})
+
+    existing_res = db.table("Kakeibo_Manual_Edits").select("*").eq("transaction_id", tx_id).execute()
+    existing = existing_res.data[0] if existing_res.data else {}
+
+    payload = {
+        "transaction_id": tx_id,
+        "category_major":     matched['cat_major'],
+        "category_mid":       matched['cat_mid'],
+        "category_small":     matched['cat_small'],
+        "category_shop":      matched['cat_shop'],
+        "category_belonging": matched['cat_belonging'],
+        "category_person":    matched['cat_person'],
+        "category_context":   matched['cat_context'],
+        "is_excluded":        existing.get('is_excluded', False),
+        "note":               existing.get('note'),
+        "view_target":        existing.get('view_target'),
+        "cash_cat_major":     existing.get('cash_cat_major'),
+        "cash_cat_mid":       existing.get('cash_cat_mid'),
+    }
+
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    with httpx.Client() as client:
+        resp = client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+
+    return jsonify({"status": "success", "matched": matched})
+
+
+@app.route('/api/unconfirm', methods=['POST'])
+def unconfirm():
+    """確定を解除：category_major を null にする"""
+    data = request.json
+    tx_id = data.get('id')
+
+    if not tx_id:
+        return jsonify({"status": "error", "message": "ID is required"}), 400
+
+    db = get_db()
+    existing_res = db.table("Kakeibo_Manual_Edits").select("*").eq("transaction_id", tx_id).execute()
+    existing = existing_res.data[0] if existing_res.data else {}
+
+    payload = {
+        "transaction_id":     tx_id,
+        "category_major":     None,
+        "category_mid":       existing.get('category_mid'),
+        "category_small":     existing.get('category_small'),
+        "category_shop":      existing.get('category_shop'),
+        "category_belonging": existing.get('category_belonging'),
+        "category_person":    existing.get('category_person'),
+        "category_context":   existing.get('category_context'),
+        "is_excluded":        existing.get('is_excluded', False),
+        "note":               existing.get('note'),
+        "view_target":        existing.get('view_target'),
+        "cash_cat_major":     existing.get('cash_cat_major'),
+        "cash_cat_mid":       existing.get('cash_cat_mid'),
+    }
+
+    url = f"{SUPABASE_URL}/rest/v1/Kakeibo_Manual_Edits"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal, resolution=merge-duplicates"
+    }
+    with httpx.Client() as client:
+        resp = client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+
+    return jsonify({"status": "success"})
+
+
 @app.route('/api/register_rule', methods=['POST'])
 def register_rule():
     """

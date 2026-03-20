@@ -294,6 +294,7 @@
                     <td><input type="text" class="cat-input edit-note" value="{{ t.note }}" placeholder="メモ"></td>
                     <td class="action-cell">
                         <button class="btn-save" onclick="saveRow(this)">保存</button>
+                        <button class="btn-rule" style="background:#0d6efd;" onclick="applyRule(this)" title="ルールから上書き">↺</button>
                         <button class="btn-rule" onclick="openRuleModal(this)" title="分類ルール登録">R</button>
                         <button class="btn-rule" style="background:#6f42c1;" onclick="openExRuleModal(this)" title="現金ルール登録（ルール履歴へ）">現R</button>
                         <hr style="margin:2px 0; border:0; border-top:1px solid #ccc;">
@@ -550,6 +551,43 @@
             } else {
                 alert('エラーが発生しました');
             }
+        }
+
+        // ルール再適用
+        async function applyRule(btn) {
+            const tr = btn.closest('tr');
+            const id = tr.dataset.id;
+            const content = tr.dataset.content;
+
+            btn.disabled = true;
+            btn.textContent = '…';
+
+            try {
+                const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content }) });
+                const json = await res.json();
+                if (json.status === 'success') {
+                    const m = json.matched;
+                    tr.querySelector('.edit-cat-major').value     = m.cat_major     || '';
+                    tr.querySelector('.edit-cat-mid').value       = m.cat_mid       || '';
+                    tr.querySelector('.edit-cat-small').value     = m.cat_small     || '';
+                    tr.querySelector('.edit-cat-shop').value      = m.cat_shop      || '';
+                    tr.querySelector('.edit-cat-belonging').value = m.cat_belonging || '';
+                    tr.querySelector('.edit-cat-person').value    = m.cat_person    || '';
+                    tr.querySelector('.edit-cat-context').value   = m.cat_context   || '';
+                    tr.classList.add('suggested');
+                    btn.textContent = '↺';
+                } else if (json.status === 'no_match') {
+                    alert('マッチするルールがありません');
+                    btn.textContent = '↺';
+                } else {
+                    alert('エラー: ' + json.message);
+                    btn.textContent = '↺';
+                }
+            } catch (e) {
+                btn.textContent = '↺';
+                alert('通信エラー');
+            }
+            btn.disabled = false;
         }
 
         // ルール登録モーダルを開く
