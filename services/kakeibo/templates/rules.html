@@ -63,16 +63,18 @@
     <!-- ===== 1. 分類ルール ===== -->
     <div class="section">
         <h2>① 分類ルール（明細一覧カテゴリの自動付与）</h2>
-        <p class="desc">内容パターンに一致した明細に、明細一覧用のカテゴリが自動的に付与されます。</p>
+        <p class="desc">内容パターン・口座パターンのどちらか、または両方に一致した明細にカテゴリが付与されます。複数ルールが一致した場合は全て適用（設定済みフィールドのみ上書き）されます。</p>
+        <input type="hidden" id="cr-id">
         <table>
             <thead><tr>
-                <th>内容パターン</th><th>大分類</th><th>中分類</th><th>小分類</th>
+                <th>内容パターン</th><th>口座パターン</th><th>大分類</th><th>中分類</th><th>小分類</th>
                 <th>店</th><th>所属</th><th>人</th><th>文脈</th><th>登録日</th><th>操作</th>
             </tr></thead>
             <tbody>
             {% for r in category_rules %}
             <tr>
-                <td><strong>{{ r.content_pattern }}</strong></td>
+                <td><strong>{{ r.content_pattern or '（指定なし）' }}</strong></td>
+                <td>{{ r.institution_pattern or '（指定なし）' }}</td>
                 <td>{{ r.category_major or '' }}</td><td>{{ r.category_mid or '' }}</td>
                 <td>{{ r.category_small or '' }}</td><td>{{ r.category_shop or '' }}</td>
                 <td>{{ r.category_belonging or '' }}</td><td>{{ r.category_person or '' }}</td>
@@ -86,7 +88,7 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="10" style="text-align:center;color:#888;">登録済みのルールはありません</td></tr>
+            <tr><td colspan="11" style="text-align:center;color:#888;">登録済みのルールはありません</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -96,9 +98,13 @@
             </div>
             <div class="form-body" id="cat-form-body">
                 <div class="form-grid">
-                    <div class="form-group form-full">
-                        <label>内容パターン（部分一致）<span style="color:#dc3545;">*</span></label>
+                    <div class="form-group">
+                        <label>内容パターン（部分一致）</label>
                         <input type="text" id="cr-pattern" placeholder="例: アマゾン">
+                    </div>
+                    <div class="form-group">
+                        <label>口座パターン（部分一致）</label>
+                        <input type="text" id="cr-institution" placeholder="例: ローソン武蔵小杉店">
                     </div>
                     <div class="form-group"><label>大分類</label><input type="text" id="cr-major" placeholder="例: 買い物"></div>
                     <div class="form-group"><label>中分類</label><input type="text" id="cr-mid" placeholder="例: 日用品"></div>
@@ -345,30 +351,34 @@
 
     // ===== ① 分類ルール =====
     function editCategoryRule(r) {
-        document.getElementById('cr-pattern').value   = r.content_pattern || '';
-        document.getElementById('cr-major').value     = r.category_major || '';
-        document.getElementById('cr-mid').value       = r.category_mid || '';
-        document.getElementById('cr-small').value     = r.category_small || '';
-        document.getElementById('cr-shop').value      = r.category_shop || '';
-        document.getElementById('cr-belonging').value = r.category_belonging || '';
-        document.getElementById('cr-person').value    = r.category_person || '';
-        document.getElementById('cr-context').value   = r.category_context || '';
+        document.getElementById('cr-id').value          = r.id || '';
+        document.getElementById('cr-pattern').value     = r.content_pattern || '';
+        document.getElementById('cr-institution').value = r.institution_pattern || '';
+        document.getElementById('cr-major').value       = r.category_major || '';
+        document.getElementById('cr-mid').value         = r.category_mid || '';
+        document.getElementById('cr-small').value       = r.category_small || '';
+        document.getElementById('cr-shop').value        = r.category_shop || '';
+        document.getElementById('cr-belonging').value   = r.category_belonging || '';
+        document.getElementById('cr-person').value      = r.category_person || '';
+        document.getElementById('cr-context').value     = r.category_context || '';
         document.getElementById('cat-form-title').textContent = '✏️ 分類ルールを編集';
         const body = document.getElementById('cat-form-body');
         if (!body.classList.contains('open')) body.classList.add('open');
         body.scrollIntoView({ behavior:'smooth', block:'nearest' });
     }
     function resetCatForm() {
-        ['cr-pattern','cr-major','cr-mid','cr-small','cr-shop','cr-belonging','cr-person','cr-context']
+        ['cr-id','cr-pattern','cr-institution','cr-major','cr-mid','cr-small','cr-shop','cr-belonging','cr-person','cr-context']
             .forEach(id => document.getElementById(id).value = '');
         document.getElementById('cat-form-title').textContent = '＋ 新しい分類ルールを追加';
         document.getElementById('cat-form-body').classList.remove('open');
     }
     async function saveCategoryRule() {
         const pattern = document.getElementById('cr-pattern').value.trim();
-        if (!pattern) { alert('内容パターンを入力してください'); return; }
+        const inst    = document.getElementById('cr-institution').value.trim();
+        if (!pattern && !inst) { alert('内容パターンまたは口座パターンを入力してください'); return; }
         const payload = {
-            pattern,
+            content_pattern:     pattern,
+            institution_pattern: inst,
             cat_major:     document.getElementById('cr-major').value.trim(),
             cat_mid:       document.getElementById('cr-mid').value.trim(),
             cat_small:     document.getElementById('cr-small').value.trim(),

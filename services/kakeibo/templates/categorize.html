@@ -295,8 +295,10 @@
 <div class="modal" id="rule-modal">
     <div class="modal-content">
         <h3>分類ルールの登録</h3>
-        <label>パターン（内容に含まれる文字列）</label>
+        <label>内容パターン（部分一致）</label>
         <input type="text" id="rule-pattern" placeholder="例: マクドナルド">
+        <label>口座パターン（部分一致）</label>
+        <input type="text" id="rule-institution" placeholder="例: ローソン武蔵小杉店">
         <label>優先度（高いほど優先）</label>
         <input type="number" id="rule-priority" value="10" min="1" max="100">
         <div class="modal-grid">
@@ -545,25 +547,26 @@ async function confirmRow(btn) {
 
 // ── ルール再適用 ─────────────────────────────────────────
 async function applyRule(btn) {
-    const tr = btn.closest('tr');
-    const id = tr.dataset.id;
-    const content = tr.dataset.content;
+    const tr          = btn.closest('tr');
+    const id          = tr.dataset.id;
+    const content     = tr.dataset.content;
+    const institution = tr.dataset.inst || '';
 
     btn.disabled = true;
     btn.textContent = '…';
 
     try {
-        const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content }) });
+        const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content, institution }) });
         const json = await res.json();
         if (json.status === 'success') {
             const m = json.matched;
-            tr.querySelector('.edit-cat-major')?.setAttribute('value', m.cat_major || '');
-            tr.querySelector('.edit-cat-major').value     = m.cat_major     || '';
-            tr.querySelector('.edit-cat-mid').value       = m.cat_mid       || '';
-            tr.querySelector('.edit-cat-small').value     = m.cat_small     || '';
-            tr.querySelector('.edit-cat-shop').value      = m.cat_shop      || '';
-            tr.querySelector('.edit-cat-belonging').value = m.cat_belonging || '';
-            tr.querySelector('.edit-cat-person').value    = m.cat_person    || '';
+            // 設定済みフィールドのみ上書き（空は既存値を保持）
+            if (m.cat_major)     tr.querySelector('.edit-cat-major').value     = m.cat_major;
+            if (m.cat_mid)       tr.querySelector('.edit-cat-mid').value       = m.cat_mid;
+            if (m.cat_small)     tr.querySelector('.edit-cat-small').value     = m.cat_small;
+            if (m.cat_shop)      tr.querySelector('.edit-cat-shop').value      = m.cat_shop;
+            if (m.cat_belonging) tr.querySelector('.edit-cat-belonging').value = m.cat_belonging;
+            if (m.cat_person)    tr.querySelector('.edit-cat-person').value    = m.cat_person;
             tr.classList.remove('decided');
             tr.classList.add('suggested');
             btn.textContent = '↺';
@@ -630,6 +633,7 @@ function openRuleModal(btn) {
     currentRuleRow = btn.closest('tr');
     const content = currentRuleRow.dataset.content || '';
     document.getElementById('rule-pattern').value       = content.substring(0, 20);
+    document.getElementById('rule-institution').value   = '';
     document.getElementById('rule-cat-major').value     = currentRuleRow.querySelector('.edit-cat-major')?.value     || '';
     document.getElementById('rule-cat-mid').value       = currentRuleRow.querySelector('.edit-cat-mid')?.value       || '';
     document.getElementById('rule-cat-small').value     = currentRuleRow.querySelector('.edit-cat-small')?.value     || '';
@@ -647,9 +651,11 @@ function closeRuleModal() {
 
 async function saveRule() {
     const pattern = document.getElementById('rule-pattern').value.trim();
-    if (!pattern) { alert('パターンを入力してください'); return; }
+    const inst    = document.getElementById('rule-institution').value.trim();
+    if (!pattern && !inst) { alert('内容パターンまたは口座パターンを入力してください'); return; }
     const payload = {
-        pattern,
+        content_pattern:     pattern,
+        institution_pattern: inst,
         priority:      parseInt(document.getElementById('rule-priority').value) || 10,
         cat_major:     document.getElementById('rule-cat-major').value,
         cat_mid:       document.getElementById('rule-cat-mid').value,

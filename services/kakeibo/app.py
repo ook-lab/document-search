@@ -65,23 +65,65 @@ def check_auto_target(content, institution, rules):
     return None, None
 
 
-def match_category_rule(content, rules):
-    """分類ルールにマッチするかチェック（優先度順にソート済み前提）"""
+def apply_category_rules(content, institution, rules):
+    """全マッチルールを統合してカテゴリを返す（複数ルール・部分上書き対応）
+
+    マッチ条件:
+    - content_pattern と institution_pattern の両方が設定 → AND（両方一致必須）
+    - どちらか一方だけ設定 → その条件のみで判定
+    - 両方とも未設定 → スキップ
+
+    適用:
+    - 全マッチルールを優先度の低い順に適用（高優先度が上書き）
+    - 各ルールは非空フィールドのみを上書き（空フィールドは既存値を保持）
+    """
+    content     = content     or ''
+    institution = institution or ''
+
+    matched = []
     for rule in rules:
-        pattern = rule.get('content_pattern', '')
-        if pattern and pattern in content:
-            return {
-                'cat_major': rule.get('category_major', ''),
-                'cat_mid': rule.get('category_mid', ''),
-                'cat_small': rule.get('category_small', ''),
-                'cat_shop': rule.get('category_shop', ''),
-                'cat_belonging': rule.get('category_belonging', ''),
-                'cat_person': rule.get('category_person', ''),
-                'cat_context': rule.get('category_context', ''),
-                'rule_id': rule.get('id'),
-                'rule_pattern': pattern
-            }
-    return None
+        cp = rule.get('content_pattern')     or ''
+        ip = rule.get('institution_pattern') or ''
+        if not cp and not ip:
+            continue
+        if cp and cp not in content:
+            continue
+        if ip and ip not in institution:
+            continue
+        matched.append(rule)
+
+    if not matched:
+        return None
+
+    # 優先度の低い順に適用（高優先度が後から上書き）
+    matched.sort(key=lambda r: r.get('priority') or 0)
+
+    result = {}
+    patterns = []
+    for rule in matched:
+        cp = rule.get('content_pattern')     or ''
+        ip = rule.get('institution_pattern') or ''
+        patterns.append(cp or ip)
+        for result_key, rule_key in [
+            ('cat_major',     'category_major'),
+            ('cat_mid',       'category_mid'),
+            ('cat_small',     'category_small'),
+            ('cat_shop',      'category_shop'),
+            ('cat_belonging', 'category_belonging'),
+            ('cat_person',    'category_person'),
+            ('cat_context',   'category_context'),
+        ]:
+            val = rule.get(rule_key) or ''
+            if val:
+                result[result_key] = val
+
+    result['rule_pattern'] = ' + '.join(patterns)
+    return result
+
+
+# 後方互換エイリアス（内部利用のみ）
+def match_category_rule(content, rules):
+    return apply_category_rules(content, '', rules)
 
 
 def match_card_loan_rule(content, institution, amount, rules):
@@ -235,7 +277,7 @@ def index():
         has_manual_category = m.get("category_major") or m.get("category_mid")
         suggested = None
         if not has_manual_category:
-            suggested = match_category_rule(t.get('content', ''), category_rules)
+            suggested = apply_category_rules(t.get('content', ''), t.get('institution', ''), category_rules)
 
         # 表示対象の判定：明細一覧は「使途」を重視する
         # 原則：クレジットカード、電子マネー、レシートを表示。
@@ -383,7 +425,7 @@ def categorize():
         has_manual_category = bool(m.get("category_major"))
         suggested = None
         if not has_manual_category:
-            suggested = match_category_rule(t.get('content', ''), category_rules)
+            suggested = apply_category_rules(t.get('content', ''), t.get('institution', ''), category_rules)
 
         # 口座・キーワードフィルタ
         if institution and t.get('institution', '') != institution:
@@ -1475,7 +1517,7 @@ def export_data():
         has_manual = m.get("category_major") or m.get("category_mid")
         suggested = None
         if not has_manual:
-            suggested = match_category_rule(t.get('content', ''), category_rules)
+            suggested = apply_category_rules(t.get('content', ''), t.get('institution', ''), category_rules)
 
         export_data.append({
             'date': t.get('date', ''),
@@ -1595,33 +1637,35 @@ def export_excel(data, headers, year_month):
 
 @app.route('/api/apply_rule', methods=['POST'])
 def apply_rule():
-    """ルールを再適用して Manual_Edits を更新する"""
+    """ルールを再適用して Manual_Edits を更新する（複数ルール・部分上書き対応）"""
     data = request.json
-    tx_id = data.get('id')
-    content = data.get('content', '')
+    tx_id       = data.get('id')
+    content     = data.get('content', '')
+    institution = data.get('institution', '')
 
     if not tx_id:
         return jsonify({"status": "error", "message": "ID is required"}), 400
 
     db = get_db()
     cat_rules_res = db.table("Kakeibo_Category_Rules").select("*").eq("is_active", True).order("priority", desc=True).order("use_count", desc=True).execute()
-    matched = match_category_rule(content, cat_rules_res.data)
+    merged = apply_category_rules(content, institution, cat_rules_res.data)
 
-    if not matched:
+    if not merged:
         return jsonify({"status": "no_match"})
 
     existing_res = db.table("Kakeibo_Manual_Edits").select("*").eq("transaction_id", tx_id).execute()
     existing = existing_res.data[0] if existing_res.data else {}
 
+    # 既存値をベースに、マッチしたフィールドのみ上書き
     payload = {
-        "transaction_id": tx_id,
-        "category_major":     matched['cat_major'],
-        "category_mid":       matched['cat_mid'],
-        "category_small":     matched['cat_small'],
-        "category_shop":      matched['cat_shop'],
-        "category_belonging": matched['cat_belonging'],
-        "category_person":    matched['cat_person'],
-        "category_context":   matched['cat_context'],
+        "transaction_id":     tx_id,
+        "category_major":     merged.get('cat_major')     or existing.get('category_major'),
+        "category_mid":       merged.get('cat_mid')       or existing.get('category_mid'),
+        "category_small":     merged.get('cat_small')     or existing.get('category_small'),
+        "category_shop":      merged.get('cat_shop')      or existing.get('category_shop'),
+        "category_belonging": merged.get('cat_belonging') or existing.get('category_belonging'),
+        "category_person":    merged.get('cat_person')    or existing.get('category_person'),
+        "category_context":   merged.get('cat_context')   or existing.get('category_context'),
         "is_excluded":        existing.get('is_excluded', False),
         "note":               existing.get('note'),
         "view_target":        existing.get('view_target'),
@@ -1640,7 +1684,7 @@ def apply_rule():
         resp = client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
 
-    return jsonify({"status": "success", "matched": matched})
+    return jsonify({"status": "success", "matched": merged})
 
 
 @app.route('/api/unconfirm', methods=['POST'])
@@ -1693,30 +1737,37 @@ def register_rule():
     現在の分類設定をルールとして保存
     """
     data = request.json
-    pattern = data.get('pattern')
+    content_pattern     = data.get('pattern') or data.get('content_pattern') or None
+    institution_pattern = data.get('institution_pattern') or None
 
-    if not pattern:
-        return jsonify({"status": "error", "message": "パターンが必要です"}), 400
+    if not content_pattern and not institution_pattern:
+        return jsonify({"status": "error", "message": "内容パターンまたは口座パターンが必要です"}), 400
 
     payload = {
-        "content_pattern": pattern,
-        "category_major": data.get('cat_major') or None,
-        "category_mid": data.get('cat_mid') or None,
-        "category_small": data.get('cat_small') or None,
-        "category_shop": data.get('cat_shop') or None,
+        "content_pattern":     content_pattern,
+        "institution_pattern": institution_pattern,
+        "category_major":     data.get('cat_major')     or None,
+        "category_mid":       data.get('cat_mid')       or None,
+        "category_small":     data.get('cat_small')     or None,
+        "category_shop":      data.get('cat_shop')      or None,
         "category_belonging": data.get('cat_belonging') or None,
-        "category_person": data.get('cat_person') or None,
-        "category_context": data.get('cat_context') or None,
+        "category_person":    data.get('cat_person')    or None,
+        "category_context":   data.get('cat_context')   or None,
     }
 
     db = get_db()
-    # Upsert（同じパターンがあれば更新）
-    res = db.table("Kakeibo_Category_Rules").upsert(payload, on_conflict="content_pattern").execute()
+    # 同一(content_pattern, institution_pattern)の既存ルールを検索して更新、なければ挿入
+    q = db.table("Kakeibo_Category_Rules").select("id")
+    q = q.eq("content_pattern", content_pattern) if content_pattern else q.is_("content_pattern", "null")
+    q = q.eq("institution_pattern", institution_pattern) if institution_pattern else q.is_("institution_pattern", "null")
+    existing = q.execute()
 
-    if getattr(res, 'error', None):
-        return jsonify({"status": "error", "message": str(res.error)}), 500
+    if existing.data:
+        db.table("Kakeibo_Category_Rules").update(payload).eq("id", existing.data[0]["id"]).execute()
+    else:
+        db.table("Kakeibo_Category_Rules").insert(payload).execute()
 
-    return jsonify({"status": "success", "pattern": pattern})
+    return jsonify({"status": "success"})
 
 
 @app.route('/api/increment_rule_usage', methods=['POST'])

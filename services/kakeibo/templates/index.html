@@ -259,6 +259,7 @@
                     data-cat_belonging="{{ t.cat_belonging }}"
                     data-cat_person="{{ t.cat_person }}"
                     data-cat_context="{{ t.cat_context }}"
+                    data-inst="{{ (t.institution or '') | e }}"
                     data-suggested="{{ t.suggested_rule or '' }}">
                     <td><input type="checkbox" class="row-select"></td>
                     <td>
@@ -313,9 +314,11 @@
     <div class="modal" id="rule-modal">
         <div class="modal-content">
             <h3>分類ルール登録</h3>
-            <label>パターン（内容に含まれる文字列）</label>
+            <label>内容パターン（部分一致）</label>
             <input type="text" id="rule-pattern" placeholder="例: マクドナルド">
-            <p style="font-size: 12px; color: #666;">このパターンを含む取引に、以下の分類が自動適用されます。</p>
+            <label>口座パターン（部分一致）</label>
+            <input type="text" id="rule-institution" placeholder="例: ローソン武蔵小杉店">
+            <p style="font-size: 12px; color: #666;">どちらか一方または両方を指定できます。設定したフィールドのみ上書きします。</p>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
                     <label>大分類</label>
@@ -555,25 +558,27 @@
 
         // ルール再適用
         async function applyRule(btn) {
-            const tr = btn.closest('tr');
-            const id = tr.dataset.id;
-            const content = tr.dataset.content;
+            const tr          = btn.closest('tr');
+            const id          = tr.dataset.id;
+            const content     = tr.dataset.content;
+            const institution = tr.dataset.inst || '';
 
             btn.disabled = true;
             btn.textContent = '…';
 
             try {
-                const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content }) });
+                const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content, institution }) });
                 const json = await res.json();
                 if (json.status === 'success') {
                     const m = json.matched;
-                    tr.querySelector('.edit-cat-major').value     = m.cat_major     || '';
-                    tr.querySelector('.edit-cat-mid').value       = m.cat_mid       || '';
-                    tr.querySelector('.edit-cat-small').value     = m.cat_small     || '';
-                    tr.querySelector('.edit-cat-shop').value      = m.cat_shop      || '';
-                    tr.querySelector('.edit-cat-belonging').value = m.cat_belonging || '';
-                    tr.querySelector('.edit-cat-person').value    = m.cat_person    || '';
-                    tr.querySelector('.edit-cat-context').value   = m.cat_context   || '';
+                    // 設定済みフィールドのみ上書き（空は既存値を保持）
+                    if (m.cat_major)     tr.querySelector('.edit-cat-major').value     = m.cat_major;
+                    if (m.cat_mid)       tr.querySelector('.edit-cat-mid').value       = m.cat_mid;
+                    if (m.cat_small)     tr.querySelector('.edit-cat-small').value     = m.cat_small;
+                    if (m.cat_shop)      tr.querySelector('.edit-cat-shop').value      = m.cat_shop;
+                    if (m.cat_belonging) tr.querySelector('.edit-cat-belonging').value = m.cat_belonging;
+                    if (m.cat_person)    tr.querySelector('.edit-cat-person').value    = m.cat_person;
+                    if (m.cat_context)   tr.querySelector('.edit-cat-context').value   = m.cat_context;
                     tr.classList.add('suggested');
                     btn.textContent = '↺';
                 } else if (json.status === 'no_match') {
@@ -595,15 +600,15 @@
             currentRuleRow = btn.closest('tr');
             const content = currentRuleRow.dataset.content;
 
-            // 現在の分類値をモーダルにセット
-            document.getElementById('rule-pattern').value = content.substring(0, 20);
-            document.getElementById('rule-cat-major').value = currentRuleRow.querySelector('.edit-cat-major').value;
-            document.getElementById('rule-cat-mid').value = currentRuleRow.querySelector('.edit-cat-mid').value;
-            document.getElementById('rule-cat-small').value = currentRuleRow.querySelector('.edit-cat-small').value;
-            document.getElementById('rule-cat-shop').value = currentRuleRow.querySelector('.edit-cat-shop').value;
+            document.getElementById('rule-pattern').value       = content.substring(0, 20);
+            document.getElementById('rule-institution').value   = '';
+            document.getElementById('rule-cat-major').value     = currentRuleRow.querySelector('.edit-cat-major').value;
+            document.getElementById('rule-cat-mid').value       = currentRuleRow.querySelector('.edit-cat-mid').value;
+            document.getElementById('rule-cat-small').value     = currentRuleRow.querySelector('.edit-cat-small').value;
+            document.getElementById('rule-cat-shop').value      = currentRuleRow.querySelector('.edit-cat-shop').value;
             document.getElementById('rule-cat-belonging').value = currentRuleRow.querySelector('.edit-cat-belonging').value;
-            document.getElementById('rule-cat-person').value = currentRuleRow.querySelector('.edit-cat-person').value;
-            document.getElementById('rule-cat-context').value = currentRuleRow.querySelector('.edit-cat-context').value;
+            document.getElementById('rule-cat-person').value    = currentRuleRow.querySelector('.edit-cat-person').value;
+            document.getElementById('rule-cat-context').value   = currentRuleRow.querySelector('.edit-cat-context').value;
 
             document.getElementById('rule-modal').classList.add('show');
         }
@@ -617,20 +622,22 @@
         // ルール保存
         async function saveRule() {
             const pattern = document.getElementById('rule-pattern').value.trim();
-            if (!pattern) {
-                alert('パターンを入力してください');
+            const inst    = document.getElementById('rule-institution').value.trim();
+            if (!pattern && !inst) {
+                alert('内容パターンまたは口座パターンを入力してください');
                 return;
             }
 
             const data = {
-                pattern: pattern,
-                cat_major: document.getElementById('rule-cat-major').value,
-                cat_mid: document.getElementById('rule-cat-mid').value,
-                cat_small: document.getElementById('rule-cat-small').value,
-                cat_shop: document.getElementById('rule-cat-shop').value,
+                content_pattern:     pattern,
+                institution_pattern: inst,
+                cat_major:     document.getElementById('rule-cat-major').value,
+                cat_mid:       document.getElementById('rule-cat-mid').value,
+                cat_small:     document.getElementById('rule-cat-small').value,
+                cat_shop:      document.getElementById('rule-cat-shop').value,
                 cat_belonging: document.getElementById('rule-cat-belonging').value,
-                cat_person: document.getElementById('rule-cat-person').value,
-                cat_context: document.getElementById('rule-cat-context').value
+                cat_person:    document.getElementById('rule-cat-person').value,
+                cat_context:   document.getElementById('rule-cat-context').value
             };
 
             const res = await fetch('/api/register_rule', {
@@ -640,7 +647,7 @@
             });
 
             if (res.ok) {
-                alert(`ルール「${pattern}」を登録しました`);
+                alert('ルールを登録しました');
                 closeRuleModal();
             } else {
                 alert('エラーが発生しました');
