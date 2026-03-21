@@ -118,6 +118,7 @@ def apply_category_rules(content, institution, rules):
                 result[result_key] = val
 
     result['rule_pattern'] = ' + '.join(patterns)
+    result['rule_ids']     = [r['id'] for r in matched if r.get('id')]
     return result
 
 
@@ -444,6 +445,7 @@ def categorize():
             "cat_context":   m.get("category_context", "")  or (suggested.get('cat_context', '')  if suggested else ''),
             "is_suggested":  suggested is not None and not has_manual_category,
             "suggested_rule": suggested.get('rule_pattern') if suggested else None,
+            "auto_rule_ids": suggested.get('rule_ids', []) if suggested and not has_manual_category else [],
             "note":          m.get("note", ""),
             "view_target":   view_target,
             "auto_rule":     auto_rule,
@@ -1730,6 +1732,16 @@ def unconfirm():
     return jsonify({"status": "success"})
 
 
+@app.route('/api/get_category_rule/<rule_id>', methods=['GET'])
+def get_category_rule(rule_id):
+    """分類ルールを1件取得"""
+    db = get_db()
+    res = db.table("Kakeibo_Category_Rules").select("*").eq("id", rule_id).execute()
+    if not res.data:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify({"status": "success", "rule": res.data[0]})
+
+
 @app.route('/api/register_rule', methods=['POST'])
 def register_rule():
     """
@@ -1756,16 +1768,21 @@ def register_rule():
     }
 
     db = get_db()
-    # 同一(content_pattern, institution_pattern)の既存ルールを検索して更新、なければ挿入
-    q = db.table("Kakeibo_Category_Rules").select("id")
-    q = q.eq("content_pattern", content_pattern) if content_pattern else q.is_("content_pattern", "null")
-    q = q.eq("institution_pattern", institution_pattern) if institution_pattern else q.is_("institution_pattern", "null")
-    existing = q.execute()
+    rule_id = data.get('id')
 
-    if existing.data:
-        db.table("Kakeibo_Category_Rules").update(payload).eq("id", existing.data[0]["id"]).execute()
+    if rule_id:
+        # ID指定あり → 直接 UPDATE
+        db.table("Kakeibo_Category_Rules").update(payload).eq("id", rule_id).execute()
     else:
-        db.table("Kakeibo_Category_Rules").insert(payload).execute()
+        # 同一(content_pattern, institution_pattern)の既存ルールを検索して更新、なければ挿入
+        q = db.table("Kakeibo_Category_Rules").select("id")
+        q = q.eq("content_pattern", content_pattern) if content_pattern else q.is_("content_pattern", "null")
+        q = q.eq("institution_pattern", institution_pattern) if institution_pattern else q.is_("institution_pattern", "null")
+        existing = q.execute()
+        if existing.data:
+            db.table("Kakeibo_Category_Rules").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            db.table("Kakeibo_Category_Rules").insert(payload).execute()
 
     return jsonify({"status": "success"})
 

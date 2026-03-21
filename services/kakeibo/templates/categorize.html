@@ -98,6 +98,7 @@
         .btn-save:hover { background: #138496; }
         .btn-apply-rule { padding: 3px 6px; background: #0d6efd; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-rule    { padding: 3px 6px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
+        .btn-edit-rule { padding: 3px 6px; background: #20c997; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-ex-rule { padding: 3px 6px; background: #6f42c1; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-vis { padding: 2px 6px; font-size: 10px; color: white; border: none; border-radius: 3px; cursor: pointer; margin: 1px; }
 
@@ -247,6 +248,7 @@
         data-content="{{ t.content | e }}"
         data-inst="{{ (t.institution or '') | e }}"
         data-amount="{{ t.amount }}"
+        data-rule-ids="{{ t.auto_rule_ids | tojson | e }}"
         class="{% if t.is_decided %}decided{% endif %} {% if t.is_suggested %}suggested{% endif %}"
         id="row-{{ t.id }}">
         <td class="col-date">{{ t.date }}</td>
@@ -282,6 +284,9 @@
             <button class="btn-confirm" onclick="confirmRow(this)">確定</button>
             <button class="btn-apply-rule" onclick="applyRule(this)" title="ルールから上書き">↺</button>
             <button class="btn-rule"    onclick="openRuleModal(this)"   title="分類ルール登録">R</button>
+            {% if t.auto_rule_ids %}
+            <button class="btn-edit-rule" onclick="openEditRuleModal(this)" title="適用済みルールを変更">✏R</button>
+            {% endif %}
             <button class="btn-ex-rule" onclick="openExRuleModal(this)" title="表示先ルール登録">現R</button>
         </td>
     </tr>
@@ -313,6 +318,39 @@
         <div class="modal-buttons">
             <button onclick="closeRuleModal()" style="background:#6c757d;">キャンセル</button>
             <button onclick="saveRule()" style="background:#fd7e14;">ルール登録</button>
+        </div>
+    </div>
+</div>
+
+<!-- ルール編集モーダル -->
+<div class="modal" id="edit-rule-modal">
+    <div class="modal-content">
+        <h3 id="edit-rule-modal-title">適用済みルールの変更</h3>
+        <!-- 複数ルールの選択リスト（1件のみなら非表示） -->
+        <div id="edit-rule-picker" style="display:none; margin-bottom:12px;">
+            <p style="font-size:12px; color:#555; margin:0 0 6px;">複数のルールが適用されています。編集するルールを選択してください：</p>
+            <div id="edit-rule-picker-list"></div>
+        </div>
+        <!-- 編集フォーム -->
+        <div id="edit-rule-form" style="display:none;">
+            <input type="hidden" id="edit-rule-id">
+            <label>内容パターン</label>
+            <input type="text" id="edit-rule-pattern" placeholder="例: マクドナルド">
+            <label>口座パターン</label>
+            <input type="text" id="edit-rule-institution" placeholder="例: ローソン武蔵小杉店">
+            <div class="modal-grid">
+                <div><label>大分類</label><input type="text" id="edit-rule-major"></div>
+                <div><label>中分類</label><input type="text" id="edit-rule-mid"></div>
+                <div><label>小分類</label><input type="text" id="edit-rule-small"></div>
+                <div><label>店</label><input type="text" id="edit-rule-shop"></div>
+                <div><label>所属</label><input type="text" id="edit-rule-belonging"></div>
+                <div><label>人</label><input type="text" id="edit-rule-person"></div>
+                <div style="grid-column:span 2;"><label>文脈</label><input type="text" id="edit-rule-context"></div>
+            </div>
+            <div class="modal-buttons">
+                <button onclick="closeEditRuleModal()" style="background:#6c757d;">キャンセル</button>
+                <button onclick="saveEditRule()" style="background:#20c997;">ルールを更新</button>
+            </div>
         </div>
     </div>
 </div>
@@ -704,6 +742,88 @@ async function saveExRule() {
     } else {
         alert('エラー: ' + (json.message || ''));
     }
+}
+
+// ── 適用済みルール編集 ────────────────────────────────────
+async function openEditRuleModal(btn) {
+    const tr = btn.closest('tr');
+    const ruleIds = JSON.parse(tr.dataset.ruleIds || '[]');
+    if (ruleIds.length === 0) { alert('ルール情報がありません'); return; }
+
+    document.getElementById('edit-rule-modal').classList.add('open');
+    document.getElementById('edit-rule-picker').style.display = 'none';
+    document.getElementById('edit-rule-form').style.display   = 'none';
+
+    if (ruleIds.length === 1) {
+        await loadEditRuleForm(ruleIds[0]);
+    } else {
+        // 複数ルール → 選択リスト表示
+        const picker = document.getElementById('edit-rule-picker-list');
+        picker.innerHTML = '';
+        document.getElementById('edit-rule-picker').style.display = 'block';
+        for (const rid of ruleIds) {
+            const res  = await fetch(`/api/get_category_rule/${rid}`);
+            const json = await res.json();
+            if (json.status !== 'success') continue;
+            const r = json.rule;
+            const label = [r.content_pattern, r.institution_pattern].filter(Boolean).join(' + ');
+            const btn2 = document.createElement('button');
+            btn2.textContent = label;
+            btn2.style.cssText = 'display:block; width:100%; margin-bottom:4px; padding:6px 10px; background:#f0f0f0; border:1px solid #ccc; border-radius:4px; cursor:pointer; text-align:left;';
+            btn2.onclick = () => { document.getElementById('edit-rule-picker').style.display = 'none'; loadEditRuleForm(rid); };
+            picker.appendChild(btn2);
+        }
+    }
+}
+
+async function loadEditRuleForm(ruleId) {
+    const res  = await fetch(`/api/get_category_rule/${ruleId}`);
+    const json = await res.json();
+    if (json.status !== 'success') { alert('ルールの取得に失敗しました'); return; }
+    const r = json.rule;
+    document.getElementById('edit-rule-id').value          = r.id || '';
+    document.getElementById('edit-rule-pattern').value     = r.content_pattern     || '';
+    document.getElementById('edit-rule-institution').value = r.institution_pattern || '';
+    document.getElementById('edit-rule-major').value       = r.category_major      || '';
+    document.getElementById('edit-rule-mid').value         = r.category_mid        || '';
+    document.getElementById('edit-rule-small').value       = r.category_small      || '';
+    document.getElementById('edit-rule-shop').value        = r.category_shop       || '';
+    document.getElementById('edit-rule-belonging').value   = r.category_belonging  || '';
+    document.getElementById('edit-rule-person').value      = r.category_person     || '';
+    document.getElementById('edit-rule-context').value     = r.category_context    || '';
+    document.getElementById('edit-rule-form').style.display = 'block';
+}
+
+async function saveEditRule() {
+    const id      = document.getElementById('edit-rule-id').value;
+    const pattern = document.getElementById('edit-rule-pattern').value.trim();
+    const inst    = document.getElementById('edit-rule-institution').value.trim();
+    if (!pattern && !inst) { alert('内容パターンまたは口座パターンを入力してください'); return; }
+    const payload = {
+        id,
+        content_pattern:     pattern,
+        institution_pattern: inst,
+        cat_major:     document.getElementById('edit-rule-major').value,
+        cat_mid:       document.getElementById('edit-rule-mid').value,
+        cat_small:     document.getElementById('edit-rule-small').value,
+        cat_shop:      document.getElementById('edit-rule-shop').value,
+        cat_belonging: document.getElementById('edit-rule-belonging').value,
+        cat_person:    document.getElementById('edit-rule-person').value,
+        cat_context:   document.getElementById('edit-rule-context').value,
+    };
+    const res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const json = await res.json();
+    if (json.status === 'success') {
+        closeEditRuleModal();
+    } else {
+        alert('エラー: ' + (json.message || ''));
+    }
+}
+
+function closeEditRuleModal() {
+    document.getElementById('edit-rule-modal').classList.remove('open');
+    document.getElementById('edit-rule-form').style.display   = 'none';
+    document.getElementById('edit-rule-picker').style.display = 'none';
 }
 
 // モーダル外クリックで閉じる
