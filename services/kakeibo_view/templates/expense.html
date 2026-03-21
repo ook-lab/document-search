@@ -27,7 +27,7 @@
 
 <div class="two-col">
   <div class="card">
-    <h2>カテゴリ別 <span style="font-size:12px; color:#888; font-weight:normal;">▶ で中分類・小分類を展開</span></h2>
+    <h2>カテゴリ別 <span style="font-size:12px; color:#888; font-weight:normal;">▶ で中分類・小分類・明細を展開</span></h2>
     <table id="cat-table">
       <thead>
         <tr>
@@ -68,15 +68,38 @@
         </tr>
 
         {# 小分類行（初期非表示）#}
-        {% for sml, sml_amt in sml_list %}
+        {% for sml, sml_amt, sml_txs in sml_list %}
+        {% set sml_id = mid_id ~ '_' ~ loop.index %}
         <tr class="row-sml row-sml-{{ mid_id }} row-mid-{{ maj_id }}" style="display:none; background:#fafcff;">
           <td></td>
-          <td style="padding-left:40px; font-size:12px; color:#777;">{{ sml }}</td>
+          <td style="padding-left:40px; font-size:12px; color:#777;
+                     cursor:{% if sml_txs %}pointer{% else %}default{% endif %};"
+              onclick="{% if sml_txs %}toggleSml('{{ sml_id }}'){% endif %}">
+            {% if sml_txs %}
+              <span id="icon-sml-{{ sml_id }}" style="color:#3498db; font-size:10px;">▶</span>
+            {% else %}
+              <span style="color:#ccc;">─</span>
+            {% endif %}
+            {{ sml }}
+          </td>
           <td class="amt neg" style="font-size:12px; color:#777;">{{ "{:,}".format(sml_amt) }}</td>
           <td class="amt" style="font-size:12px; color:#aaa;">
             {% if mid_amt != 0 %}{{ "%.1f"|format(sml_amt / mid_amt * 100) }}%{% endif %}
           </td>
         </tr>
+        {# 個別明細行（初期非表示）#}
+        {% for tx in sml_txs %}
+        <tr class="row-tx row-tx-{{ sml_id }} row-sml-{{ mid_id }} row-mid-{{ maj_id }}" style="display:none; background:#edf2ff;">
+          <td></td>
+          <td style="padding-left:56px; font-size:11px; color:#999;">
+            <span style="color:#bbb; margin-right:6px;">{{ tx.date }}</span>{{ tx.content }}
+          </td>
+          <td class="amt neg" style="font-size:11px; color:#999;">{{ "{:,}".format(tx.amount) }}</td>
+          <td class="amt" style="font-size:11px; color:#ccc;">
+            {% if sml_amt != 0 %}{{ "%.1f"|format(tx.amount / sml_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
         {% endfor %}
         {% endfor %}
 
@@ -212,8 +235,8 @@ function toggleMajor(majId) {
     if (isOpen) {
       row.style.display = 'none';
     } else {
-      // 小分類行（row-sml）は中分類が閉じたら非表示に戻す
-      if (row.classList.contains('row-sml')) {
+      // 小分類行・明細行は初期非表示
+      if (row.classList.contains('row-sml') || row.classList.contains('row-tx')) {
         row.style.display = 'none';
       } else {
         row.style.display = '';
@@ -221,9 +244,10 @@ function toggleMajor(majId) {
     }
   });
 
-  // 中分類アイコンをリセット
+  // 中分類・小分類アイコンをリセット
   if (isOpen) {
     document.querySelectorAll(`[id^="icon-mid-${majId}_"]`).forEach(ic => ic.textContent = '▶');
+    document.querySelectorAll(`[id^="icon-sml-${majId}_"]`).forEach(ic => ic.textContent = '▶');
   }
 
   if (icon) icon.textContent = isOpen ? '▶' : '▼';
@@ -235,7 +259,34 @@ function toggleMid(midId) {
   const icon    = document.getElementById(`icon-mid-${midId}`);
   const isOpen  = icon && icon.textContent === '▼';
 
-  smlRows.forEach(row => { row.style.display = isOpen ? 'none' : ''; });
+  smlRows.forEach(row => {
+    if (isOpen) {
+      row.style.display = 'none';
+    } else {
+      // 明細行は小分類クリックで展開するので初期非表示
+      if (row.classList.contains('row-tx')) {
+        row.style.display = 'none';
+      } else {
+        row.style.display = '';
+      }
+    }
+  });
+
+  // 小分類アイコンをリセット
+  if (isOpen) {
+    document.querySelectorAll(`[id^="icon-sml-${midId}_"]`).forEach(ic => ic.textContent = '▶');
+  }
+
+  if (icon) icon.textContent = isOpen ? '▶' : '▼';
+}
+
+// 小分類の展開/折りたたみ（個別明細）
+function toggleSml(smlId) {
+  const txRows = document.querySelectorAll(`.row-tx-${smlId}`);
+  const icon   = document.getElementById(`icon-sml-${smlId}`);
+  const isOpen = icon && icon.textContent === '▼';
+
+  txRows.forEach(row => { row.style.display = isOpen ? 'none' : ''; });
   if (icon) icon.textContent = isOpen ? '▶' : '▼';
 }
 

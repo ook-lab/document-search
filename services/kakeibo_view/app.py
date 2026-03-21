@@ -325,23 +325,31 @@ def expense_summary():
 
     expenses = [t for t in txs if t['amount'] < 0]
 
-    # 階層集計: {大分類: {中分類: {小分類: amount}}}
-    hierarchy = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    # 階層集計: {大分類: {中分類: {小分類: [transaction]}}}
+    hierarchy = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     major_total = defaultdict(int)
     for t in expenses:
         maj = t['category']
         mid = t['cat_mid'] or '（未設定）'
         sml = t['cat_small'] or ''
-        hierarchy[maj][mid][sml] += t['amount']
+        hierarchy[maj][mid][sml].append({'date': t['date'], 'content': t['content'], 'amount': t['amount']})
         major_total[maj] += t['amount']
 
     cat_sorted = sorted(major_total.items(), key=lambda x: x[1])
     hierarchy_list = []
     for maj, maj_amt in cat_sorted:
         mid_list = []
-        for mid, sml_dict in sorted(hierarchy[maj].items(), key=lambda x: sum(x[1].values())):
-            sml_list = [(s, a) for s, a in sorted(sml_dict.items(), key=lambda x: x[1]) if s]
-            mid_total = sum(sml_dict.values())
+        for mid, sml_dict in sorted(
+            hierarchy[maj].items(),
+            key=lambda x: sum(sum(tx['amount'] for tx in txs) for txs in x[1].values())
+        ):
+            sml_list = []
+            for sml, txs in sml_dict.items():
+                if sml:
+                    sml_amt = sum(tx['amount'] for tx in txs)
+                    sml_list.append((sml, sml_amt, sorted(txs, key=lambda x: x['date'])))
+            sml_list = sorted(sml_list, key=lambda x: x[1])
+            mid_total = sum(sum(tx['amount'] for tx in txs) for txs in sml_dict.values())
             mid_list.append((mid, mid_total, sml_list))
         hierarchy_list.append((maj, maj_amt, mid_list))
 
