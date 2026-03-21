@@ -94,6 +94,8 @@
         .btn-confirm:hover { background: #1e8449; }
         .btn-confirm.saved { background: #6c757d; }
         .btn-confirm.saved:hover { background: #c0392b; }
+        .btn-save { padding: 3px 8px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+        .btn-save:hover { background: #138496; }
         .btn-apply-rule { padding: 3px 6px; background: #0d6efd; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-rule    { padding: 3px 6px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
         .btn-ex-rule { padding: 3px 6px; background: #6f42c1; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; margin-left: 2px; }
@@ -276,6 +278,7 @@
             <button class="btn-vis" style="background:#6c757d;" onclick="setVis(this,'LIST_ONLY')" title="明細のみ">明</button>
         </td>
         <td style="white-space:nowrap;">
+            <button class="btn-save"    onclick="saveRow(this)">一時保存</button>
             <button class="btn-confirm" onclick="confirmRow(this)">確定</button>
             <button class="btn-apply-rule" onclick="applyRule(this)" title="ルールから上書き">↺</button>
             <button class="btn-rule"    onclick="openRuleModal(this)"   title="分類ルール登録">R</button>
@@ -440,6 +443,31 @@ function clearAllFilters() {
     });
     document.querySelectorAll('#mainTable tbody tr').forEach(tr => tr.classList.remove('hidden-by-filter'));
     document.getElementById('filterStatus').classList.remove('active');
+}
+
+// ── 一時保存 ──────────────────────────────────────────────
+async function saveRow(btn) {
+    const tr = btn.closest('tr');
+    const id = tr.dataset.id;
+    btn.disabled = true;
+    btn.textContent = '保存中…';
+    try {
+        const res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(buildPayload(tr, id)) });
+        const json = await res.json();
+        if (json.status === 'success') {
+            tr.classList.remove('suggested');
+            btn.textContent = '✓';
+            setTimeout(() => { btn.textContent = '一時保存'; btn.disabled = false; }, 1000);
+        } else {
+            btn.textContent = '一時保存';
+            btn.disabled = false;
+            alert('エラー: ' + json.message);
+        }
+    } catch (e) {
+        btn.textContent = '一時保存';
+        btn.disabled = false;
+        alert('通信エラー');
+    }
 }
 
 // ── 確定 ─────────────────────────────────────────────────

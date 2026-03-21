@@ -48,21 +48,32 @@ class DriveClient:
     # ── ファイル一覧 ─────────────────────────────────────────
 
     def list_files_in_folder(self, folder_id: str) -> List[Dict]:
-        """フォルダ内のファイル一覧（フォルダ除外）"""
+        """フォルダ内のファイル一覧（フォルダ除外・全件取得）"""
         query = (
             f"'{folder_id}' in parents "
             "and trashed=false "
             "and mimeType != 'application/vnd.google-apps.folder'"
         )
-        result = self.service.files().list(
-            q=query,
-            spaces="drive",
-            fields="files(id, name, mimeType, size)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            corpora="allDrives",
-        ).execute()
-        return result.get("files", [])
+        files = []
+        page_token = None
+        while True:
+            kwargs = dict(
+                q=query,
+                spaces="drive",
+                fields="nextPageToken, files(id, name, mimeType, size)",
+                pageSize=1000,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                corpora="allDrives",
+            )
+            if page_token:
+                kwargs["pageToken"] = page_token
+            result = self.service.files().list(**kwargs).execute()
+            files.extend(result.get("files", []))
+            page_token = result.get("nextPageToken")
+            if not page_token:
+                break
+        return files
 
     # ── ダウンロード ─────────────────────────────────────────
 
