@@ -387,10 +387,13 @@
             cat_person:    document.getElementById('cr-person').value.trim(),
             cat_context:   document.getElementById('cr-context').value.trim(),
         };
-        const res  = await fetch('/api/register_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        const json = await res.json();
-        if (json.status === 'success') location.reload();
-        else alert('登録失敗: ' + json.message);
+        let res, json;
+        try {
+            res  = await fetch('/api/register_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            json = await res.json();
+        } catch(e) { alert('通信エラー: ' + e); return; }
+        if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+        location.reload();
     }
 
     // ===== ② 表示先ルール =====

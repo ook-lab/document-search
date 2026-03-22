@@ -65,6 +65,15 @@ def check_auto_target(content, institution, rules):
     return None, None
 
 
+def _check_institution_col(db):
+    """Kakeibo_Category_Rules に institution_pattern カラムが存在するか確認"""
+    try:
+        res = db.table("Kakeibo_Category_Rules").select("institution_pattern").limit(1).execute()
+        return True
+    except Exception:
+        return False
+
+
 def apply_category_rules(content, institution, rules):
     """全マッチルールを統合してカテゴリを返す（複数ルール・部分上書き対応）
 
@@ -1755,9 +1764,11 @@ def register_rule():
     if not content_pattern and not institution_pattern:
         return jsonify({"status": "error", "message": "内容パターンまたは口座パターンが必要です"}), 400
 
+    # institution_pattern カラムが存在するか確認（マイグレーション未実施でも動く）
+    has_institution_col = _check_institution_col(db)
+
     payload = {
-        "content_pattern":     content_pattern,
-        "institution_pattern": institution_pattern,
+        "content_pattern": content_pattern,
         "category_major":     data.get('cat_major')     or None,
         "category_mid":       data.get('cat_mid')       or None,
         "category_small":     data.get('cat_small')     or None,
@@ -1766,19 +1777,21 @@ def register_rule():
         "category_person":    data.get('cat_person')    or None,
         "category_context":   data.get('cat_context')   or None,
     }
+    if has_institution_col:
+        payload["institution_pattern"] = institution_pattern
 
-    db = get_db()
     rule_id = data.get('id')
 
     if rule_id:
-        # ID指定あり → 直接 UPDATE
         db.table("Kakeibo_Category_Rules").update(payload).eq("id", rule_id).execute()
     else:
-        # 同一(content_pattern, institution_pattern)の既存ルールを検索して更新、なければ挿入
+        # content_pattern で既存ルールを検索して更新、なければ挿入
         q = db.table("Kakeibo_Category_Rules").select("id")
-        q = q.eq("content_pattern", content_pattern) if content_pattern else q.is_("content_pattern", "null")
-        q = q.eq("institution_pattern", institution_pattern) if institution_pattern else q.is_("institution_pattern", "null")
-        existing = q.execute()
+        if content_pattern:
+            q = q.eq("content_pattern", content_pattern)
+            existing = q.execute()
+        else:
+            existing = type('R', (), {'data': []})()
         if existing.data:
             db.table("Kakeibo_Category_Rules").update(payload).eq("id", existing.data[0]["id"]).execute()
         else:
