@@ -1765,18 +1765,9 @@ def register_rule():
     if not content_pattern and not institution_pattern:
         return jsonify({"status": "error", "message": "内容パターンまたは口座パターンが必要です"}), 400
 
-    # institution_pattern カラムが存在するか確認
-    has_institution_col = _check_institution_col(db)
-
-    # 口座パターンのみで登録しようとしているのにカラムが未追加
-    if not content_pattern and not has_institution_col:
-        return jsonify({
-            "status": "error",
-            "message": "口座パターンのみのルールを登録するには、Supabaseで以下を実行してください:\nALTER TABLE \"Kakeibo_Category_Rules\" ADD COLUMN IF NOT EXISTS institution_pattern text;"
-        }), 400
-
     payload = {
-        "content_pattern":    content_pattern,
+        "content_pattern":     content_pattern     or None,
+        "institution_pattern": institution_pattern or None,
         "category_major":     data.get('cat_major')     or None,
         "category_mid":       data.get('cat_mid')       or None,
         "category_small":     data.get('cat_small')     or None,
@@ -1785,8 +1776,6 @@ def register_rule():
         "category_person":    data.get('cat_person')    or None,
         "category_context":   data.get('cat_context')   or None,
     }
-    if has_institution_col:
-        payload["institution_pattern"] = institution_pattern or None
 
     rule_id = data.get('id')
 
@@ -1795,7 +1784,7 @@ def register_rule():
     else:
         # 既存ルールを検索して更新、なければ挿入
         existing = None
-        if content_pattern and institution_pattern and has_institution_col:
+        if content_pattern and institution_pattern:
             res = db.table("Kakeibo_Category_Rules").select("id") \
                 .eq("content_pattern", content_pattern) \
                 .eq("institution_pattern", institution_pattern).execute()
@@ -1804,7 +1793,7 @@ def register_rule():
             res = db.table("Kakeibo_Category_Rules").select("id") \
                 .eq("content_pattern", content_pattern).execute()
             existing = res.data
-        elif institution_pattern and has_institution_col:
+        elif institution_pattern:
             res = db.table("Kakeibo_Category_Rules").select("id") \
                 .eq("institution_pattern", institution_pattern).execute()
             existing = res.data
