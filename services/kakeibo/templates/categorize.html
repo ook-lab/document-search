@@ -761,7 +761,8 @@ async function loadEditRuleForm(ruleId) {
     if (json.status !== 'success') { alert('ルールが見つかりません (id=' + ruleId + ')'); return; }
     const r = json.rule;
     document.getElementById('edit-rule-id').value          = r.id || '';
-    document.getElementById('edit-rule-pattern').value     = r.content_pattern     || '';
+    const cp = (r.content_pattern || '').startsWith('__INST_ONLY__') ? '' : (r.content_pattern || '');
+    document.getElementById('edit-rule-pattern').value     = cp;
     document.getElementById('edit-rule-institution').value = r.institution_pattern || '';
     document.getElementById('edit-rule-major').value       = r.category_major      || '';
     document.getElementById('edit-rule-mid').value         = r.category_mid        || '';

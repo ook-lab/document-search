@@ -73,7 +73,7 @@
             <tbody>
             {% for r in category_rules %}
             <tr>
-                <td><strong>{{ r.content_pattern or '（指定なし）' }}</strong></td>
+                <td><strong>{{ '' if r.content_pattern and r.content_pattern.startswith('__INST_ONLY__') else (r.content_pattern or '（指定なし）') }}</strong></td>
                 <td>{{ r.institution_pattern or '（指定なし）' }}</td>
                 <td>{{ r.category_major or '' }}</td><td>{{ r.category_mid or '' }}</td>
                 <td>{{ r.category_small or '' }}</td><td>{{ r.category_shop or '' }}</td>
@@ -366,7 +366,8 @@
     // ===== ① 分類ルール =====
     function editCategoryRule(r) {
         document.getElementById('cr-id').value          = r.id || '';
-        document.getElementById('cr-pattern').value     = r.content_pattern || '';
+        const cp = (r.content_pattern || '').startsWith('__INST_ONLY__') ? '' : (r.content_pattern || '');
+        document.getElementById('cr-pattern').value     = cp;
         document.getElementById('cr-institution').value = r.institution_pattern || '';
         document.getElementById('cr-major').value       = r.category_major || '';
         document.getElementById('cr-mid').value         = r.category_mid || '';
