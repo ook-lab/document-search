@@ -95,7 +95,8 @@ def apply_category_rules(content, institution, rules):
         ip = rule.get('institution_pattern') or ''
         if not cp and not ip:
             continue
-        if cp and cp not in content:
+        # __INST_ONLY__ プレフィックスは口座パターン専用（内容マッチをスキップ）
+        if cp and not cp.startswith('__INST_ONLY__') and cp not in content:
             continue
         if ip and ip not in institution:
             continue
@@ -1765,8 +1766,13 @@ def register_rule():
     if not content_pattern and not institution_pattern:
         return jsonify({"status": "error", "message": "内容パターンまたは口座パターンが必要です"}), 400
 
+    # content_pattern は NOT NULL + UNIQUE 制約あり。
+    # 口座パターン専用ルールはプレースホルダーで一意性を確保。
+    if not content_pattern:
+        content_pattern = f"__INST_ONLY__{uuid.uuid4()}"
+
     payload = {
-        "content_pattern":     content_pattern     or None,
+        "content_pattern":     content_pattern,
         "institution_pattern": institution_pattern or None,
         "category_major":     data.get('cat_major')     or None,
         "category_mid":       data.get('cat_mid')       or None,
@@ -1784,17 +1790,22 @@ def register_rule():
     else:
         # 既存ルールを検索して更新、なければ挿入
         existing = None
-        if content_pattern and institution_pattern:
+        is_inst_only = content_pattern.startswith('__INST_ONLY__')
+        if not is_inst_only and institution_pattern:
+            # 内容＋口座の両方でマッチ
             res = db.table("Kakeibo_Category_Rules").select("id") \
                 .eq("content_pattern", content_pattern) \
                 .eq("institution_pattern", institution_pattern).execute()
             existing = res.data
-        elif content_pattern:
+        elif not is_inst_only:
+            # 内容のみでマッチ
             res = db.table("Kakeibo_Category_Rules").select("id") \
                 .eq("content_pattern", content_pattern).execute()
             existing = res.data
-        elif institution_pattern:
+        else:
+            # 口座専用ルール: institution_pattern でマッチ
             res = db.table("Kakeibo_Category_Rules").select("id") \
+                .like("content_pattern", "__INST_ONLY__%") \
                 .eq("institution_pattern", institution_pattern).execute()
             existing = res.data
         if existing:
