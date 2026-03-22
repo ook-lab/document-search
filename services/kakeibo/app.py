@@ -1786,15 +1786,23 @@ def register_rule():
     if rule_id:
         db.table("Kakeibo_Category_Rules").update(payload).eq("id", rule_id).execute()
     else:
-        # content_pattern で既存ルールを検索して更新、なければ挿入
-        q = db.table("Kakeibo_Category_Rules").select("id")
-        if content_pattern:
-            q = q.eq("content_pattern", content_pattern)
-            existing = q.execute()
-        else:
-            existing = type('R', (), {'data': []})()
-        if existing.data:
-            db.table("Kakeibo_Category_Rules").update(payload).eq("id", existing.data[0]["id"]).execute()
+        # 既存ルールを検索して更新、なければ挿入
+        existing = None
+        if content_pattern and institution_pattern and has_institution_col:
+            res = db.table("Kakeibo_Category_Rules").select("id") \
+                .eq("content_pattern", content_pattern) \
+                .eq("institution_pattern", institution_pattern).execute()
+            existing = res.data
+        elif content_pattern:
+            res = db.table("Kakeibo_Category_Rules").select("id") \
+                .eq("content_pattern", content_pattern).execute()
+            existing = res.data
+        elif institution_pattern and has_institution_col:
+            res = db.table("Kakeibo_Category_Rules").select("id") \
+                .eq("institution_pattern", institution_pattern).execute()
+            existing = res.data
+        if existing:
+            db.table("Kakeibo_Category_Rules").update(payload).eq("id", existing[0]["id"]).execute()
         else:
             db.table("Kakeibo_Category_Rules").insert(payload).execute()
 

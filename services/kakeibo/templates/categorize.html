@@ -656,7 +656,7 @@ function openRuleModal(btn) {
     currentRuleRow = btn.closest('tr');
     const content = currentRuleRow.dataset.content || '';
     document.getElementById('rule-pattern').value       = content.substring(0, 20);
-    document.getElementById('rule-institution').value   = '';
+    document.getElementById('rule-institution').value   = currentRuleRow.dataset.inst || '';
     document.getElementById('rule-cat-major').value     = currentRuleRow.querySelector('.edit-cat-major')?.value     || '';
     document.getElementById('rule-cat-mid').value       = currentRuleRow.querySelector('.edit-cat-mid')?.value       || '';
     document.getElementById('rule-cat-small').value     = currentRuleRow.querySelector('.edit-cat-small')?.value     || '';
