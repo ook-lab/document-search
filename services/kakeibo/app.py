@@ -1757,6 +1757,7 @@ def register_rule():
     分類ルール登録API
     現在の分類設定をルールとして保存
     """
+    db = get_db()
     data = request.json
     content_pattern     = data.get('pattern') or data.get('content_pattern') or None
     institution_pattern = data.get('institution_pattern') or None
