@@ -536,24 +536,18 @@
                 note: tr.querySelector('.edit-note').value
             };
 
-            const res = await fetch('/api/update', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-
-            if (res.ok) {
-                btn.textContent = '✓';
-                setTimeout(() => btn.textContent = '保存', 1000);
-                tr.classList.remove('suggested');
-                if (data.is_excluded) {
-                    tr.classList.add('excluded');
-                } else {
-                    tr.classList.remove('excluded');
-                }
-            } else {
-                alert('エラーが発生しました');
-            }
+            btn.disabled = true;
+            let res, json;
+            try {
+                res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+                json = await res.json();
+            } catch(e) { btn.disabled = false; alert('通信エラー: ' + e); return; }
+            btn.disabled = false;
+            if (!res.ok || json.status !== 'success') { alert('保存失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            btn.textContent = '✓';
+            setTimeout(() => btn.textContent = '保存', 1000);
+            tr.classList.remove('suggested');
+            if (data.is_excluded) { tr.classList.add('excluded'); } else { tr.classList.remove('excluded'); }
         }
 
         // ルール再適用
@@ -640,18 +634,14 @@
                 cat_context:   document.getElementById('rule-cat-context').value
             };
 
-            const res = await fetch('/api/register_rule', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-
-            if (res.ok) {
-                alert('ルールを登録しました');
-                closeRuleModal();
-            } else {
-                alert('エラーが発生しました');
-            }
+            let res, json;
+            try {
+                res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+                json = await res.json();
+            } catch(e) { alert('通信エラー: ' + e); return; }
+            if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            alert('ルールを登録しました');
+            closeRuleModal();
         }
 
         // 一括除外
@@ -666,17 +656,13 @@
 
             const ids = Array.from(selected).map(cb => cb.closest('tr').dataset.id);
 
-            const res = await fetch('/api/bulk_exclude', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ ids })
-            });
-
-            if (res.ok) {
-                location.reload();
-            } else {
-                alert('エラーが発生しました');
-            }
+            let res, json;
+            try {
+                res  = await fetch('/api/bulk_exclude', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids }) });
+                json = await res.json();
+            } catch(e) { alert('通信エラー: ' + e); return; }
+            if (!res.ok || json.status !== 'success') { alert('除外失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            location.reload();
         }
 
         // 全選択
@@ -715,19 +701,15 @@
             const tr = btn.closest('tr');
             const id = tr.dataset.id;
 
-            const res = await fetch('/api/toggle_view_target', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ id: id, view_target: target })
-            });
-
-            if (res.ok) {
-                tr.style.transition = 'opacity 0.3s';
-                tr.style.opacity = '0';
-                setTimeout(() => tr.remove(), 300);
-            } else {
-                alert('エラーが発生しました');
-            }
+            let res, json;
+            try {
+                res  = await fetch('/api/toggle_view_target', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: id, view_target: target }) });
+                json = await res.json();
+            } catch(e) { alert('通信エラー: ' + e); return; }
+            if (!res.ok || json.status !== 'success') { alert('更新失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            tr.style.transition = 'opacity 0.3s';
+            tr.style.opacity = '0';
+            setTimeout(() => tr.remove(), 300);
         }
 
         // モーダル外クリックで閉じる

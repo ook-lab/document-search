@@ -656,14 +656,14 @@ function updateProgress() {
 async function setVis(btn, action) {
     const tr  = btn.closest('tr');
     const id  = tr.dataset.id;
-    const res = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, view_target: action }) });
-    const json = await res.json();
-    if (json.status === 'success') {
-        btn.style.outline = '2px solid #333';
-        setTimeout(() => btn.style.outline = '', 1000);
-    } else {
-        alert('エラー: ' + json.message);
-    }
+    let res, json;
+    try {
+        res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, view_target: action }) });
+        json = await res.json();
+    } catch(e) { alert('通信エラー: ' + e); return; }
+    if (!res.ok || json.status !== 'success') { alert('エラー (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    btn.style.outline = '2px solid #333';
+    setTimeout(() => btn.style.outline = '', 1000);
 }
 
 // ── 分類ルール登録 ──────────────────────────────────────
@@ -703,13 +703,13 @@ async function saveRule() {
         cat_person:    document.getElementById('rule-cat-person').value,
         cat_context:   document.getElementById('rule-cat-context').value,
     };
-    const res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const json = await res.json();
-    if (json.status === 'success') {
-        closeRuleModal();
-    } else {
-        alert('エラー: ' + (json.message || ''));
-    }
+    let res, json;
+    try {
+        res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        json = await res.json();
+    } catch(e) { alert('通信エラー: ' + e); return; }
+    if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    closeRuleModal();
 }
 
 // ── 表示先ルール登録 ────────────────────────────────────
@@ -735,13 +735,13 @@ async function saveExRule() {
         content_pattern:     document.getElementById('ex-rule-content').value,
         institution_pattern: document.getElementById('ex-rule-institution').value,
     };
-    const res  = await fetch('/api/add_target_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const json = await res.json();
-    if (json.status === 'success') {
-        closeExRuleModal();
-    } else {
-        alert('エラー: ' + (json.message || ''));
-    }
+    let res, json;
+    try {
+        res  = await fetch('/api/add_target_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        json = await res.json();
+    } catch(e) { alert('通信エラー: ' + e); return; }
+    if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    closeExRuleModal();
 }
 
 // ── 適用済みルール編集 ────────────────────────────────────
@@ -815,13 +815,13 @@ async function saveEditRule() {
         cat_person:    document.getElementById('edit-rule-person').value,
         cat_context:   document.getElementById('edit-rule-context').value,
     };
-    const res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const json = await res.json();
-    if (json.status === 'success') {
-        closeEditRuleModal();
-    } else {
-        alert('エラー: ' + (json.message || ''));
-    }
+    let res, json;
+    try {
+        res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+        json = await res.json();
+    } catch(e) { alert('通信エラー: ' + e); return; }
+    if (!res.ok || json.status !== 'success') { alert('更新失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    closeEditRuleModal();
 }
 
 function closeEditRuleModal() {
