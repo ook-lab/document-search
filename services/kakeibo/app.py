@@ -1759,17 +1759,24 @@ def register_rule():
     """
     db = get_db()
     data = request.json
-    content_pattern     = data.get('pattern') or data.get('content_pattern') or None
-    institution_pattern = data.get('institution_pattern') or None
+    content_pattern     = data.get('pattern') or data.get('content_pattern') or ''
+    institution_pattern = data.get('institution_pattern') or ''
 
     if not content_pattern and not institution_pattern:
         return jsonify({"status": "error", "message": "内容パターンまたは口座パターンが必要です"}), 400
 
-    # institution_pattern カラムが存在するか確認（マイグレーション未実施でも動く）
+    # institution_pattern カラムが存在するか確認
     has_institution_col = _check_institution_col(db)
 
+    # 口座パターンのみで登録しようとしているのにカラムが未追加
+    if not content_pattern and not has_institution_col:
+        return jsonify({
+            "status": "error",
+            "message": "口座パターンのみのルールを登録するには、Supabaseで以下を実行してください:\nALTER TABLE \"Kakeibo_Category_Rules\" ADD COLUMN IF NOT EXISTS institution_pattern text;"
+        }), 400
+
     payload = {
-        "content_pattern": content_pattern,
+        "content_pattern":    content_pattern,
         "category_major":     data.get('cat_major')     or None,
         "category_mid":       data.get('cat_mid')       or None,
         "category_small":     data.get('cat_small')     or None,
@@ -1779,7 +1786,7 @@ def register_rule():
         "category_context":   data.get('cat_context')   or None,
     }
     if has_institution_col:
-        payload["institution_pattern"] = institution_pattern
+        payload["institution_pattern"] = institution_pattern or None
 
     rule_id = data.get('id')
 
