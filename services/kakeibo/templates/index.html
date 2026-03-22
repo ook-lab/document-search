@@ -385,6 +385,20 @@
     <script>
         let currentRuleRow = null;
 
+        // ── API呼び出しヘルパー ──────────────────────────────────
+        async function apiFetch(url, options) {
+            let res;
+            try { res = await fetch(url, options); }
+            catch(e) { alert('通信エラー: ' + e); return null; }
+            if (!res.ok) {
+                let msg = `サーバーエラー (HTTP ${res.status})`;
+                try { const j = await res.json(); if (j?.message) msg += ': ' + j.message; } catch(_) {}
+                alert(msg); return null;
+            }
+            try { return await res.json(); }
+            catch(e) { alert('レスポンス解析エラー: ' + e); return null; }
+        }
+
         // エクスポート
         function exportData(format) {
             const month = document.getElementById('month-filter').value;
@@ -537,13 +551,10 @@
             };
 
             btn.disabled = true;
-            let res, json;
-            try {
-                res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
-                json = await res.json();
-            } catch(e) { btn.disabled = false; alert('通信エラー: ' + e); return; }
+            const json = await apiFetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
             btn.disabled = false;
-            if (!res.ok || json.status !== 'success') { alert('保存失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            if (!json) return;
+            if (json.status !== 'success') { alert('保存失敗: ' + (json.message || 'エラー')); return; }
             btn.textContent = '✓';
             setTimeout(() => btn.textContent = '保存', 1000);
             tr.classList.remove('suggested');
@@ -634,12 +645,9 @@
                 cat_context:   document.getElementById('rule-cat-context').value
             };
 
-            let res, json;
-            try {
-                res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
-                json = await res.json();
-            } catch(e) { alert('通信エラー: ' + e); return; }
-            if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            const json = await apiFetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            if (!json) return;
+            if (json.status !== 'success') { alert('登録失敗: ' + (json.message || 'エラー')); return; }
             alert('ルールを登録しました');
             closeRuleModal();
         }
@@ -656,12 +664,9 @@
 
             const ids = Array.from(selected).map(cb => cb.closest('tr').dataset.id);
 
-            let res, json;
-            try {
-                res  = await fetch('/api/bulk_exclude', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids }) });
-                json = await res.json();
-            } catch(e) { alert('通信エラー: ' + e); return; }
-            if (!res.ok || json.status !== 'success') { alert('除外失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            const json = await apiFetch('/api/bulk_exclude', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids }) });
+            if (!json) return;
+            if (json.status !== 'success') { alert('除外失敗: ' + (json.message || 'エラー')); return; }
             location.reload();
         }
 
@@ -701,12 +706,9 @@
             const tr = btn.closest('tr');
             const id = tr.dataset.id;
 
-            let res, json;
-            try {
-                res  = await fetch('/api/toggle_view_target', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: id, view_target: target }) });
-                json = await res.json();
-            } catch(e) { alert('通信エラー: ' + e); return; }
-            if (!res.ok || json.status !== 'success') { alert('更新失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+            const json = await apiFetch('/api/toggle_view_target', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id: id, view_target: target }) });
+            if (!json) return;
+            if (json.status !== 'success') { alert('更新失敗: ' + (json.message || 'エラー')); return; }
             tr.style.transition = 'opacity 0.3s';
             tr.style.opacity = '0';
             setTimeout(() => tr.remove(), 300);

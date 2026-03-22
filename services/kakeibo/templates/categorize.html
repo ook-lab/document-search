@@ -382,6 +382,20 @@ let currentRuleRow = null;
 let remainCount = {{ undecided_count }};
 const totalCount = {{ total_count }};
 
+// ── API呼び出しヘルパー ──────────────────────────────────
+async function apiFetch(url, options) {
+    let res;
+    try { res = await fetch(url, options); }
+    catch(e) { alert('通信エラー: ' + e); return null; }
+    if (!res.ok) {
+        let msg = `サーバーエラー (HTTP ${res.status})`;
+        try { const j = await res.json(); if (j?.message) msg += ': ' + j.message; } catch(_) {}
+        alert(msg); return null;
+    }
+    try { return await res.json(); }
+    catch(e) { alert('レスポンス解析エラー: ' + e); return null; }
+}
+
 // ── カラム値取得（ソート・フィルタ共用）─────────────────
 function getColValue(tr, col) {
     switch (col) {
@@ -491,22 +505,16 @@ async function saveRow(btn) {
     const id = tr.dataset.id;
     btn.disabled = true;
     btn.textContent = '保存中…';
-    try {
-        const res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(buildPayload(tr, id)) });
-        const json = await res.json();
-        if (json.status === 'success') {
-            tr.classList.remove('suggested');
-            btn.textContent = '✓';
-            setTimeout(() => { btn.textContent = '一時保存'; btn.disabled = false; }, 1000);
-        } else {
-            btn.textContent = '一時保存';
-            btn.disabled = false;
-            alert('エラー: ' + json.message);
-        }
-    } catch (e) {
+    const json = await apiFetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(buildPayload(tr, id)) });
+    if (!json) { btn.textContent = '一時保存'; btn.disabled = false; return; }
+    if (json.status === 'success') {
+        tr.classList.remove('suggested');
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '一時保存'; btn.disabled = false; }, 1000);
+    } else {
         btn.textContent = '一時保存';
         btn.disabled = false;
-        alert('通信エラー');
+        alert('エラー: ' + json.message);
     }
 }
 
@@ -520,24 +528,18 @@ async function confirmRow(btn) {
         if (!confirm('確定を解除しますか？')) return;
         btn.disabled = true;
         btn.textContent = '解除中…';
-        try {
-            const res  = await fetch('/api/unconfirm', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id }) });
-            const json = await res.json();
-            if (json.status === 'success') {
-                tr.classList.remove('decided');
-                btn.textContent = '確定';
-                btn.classList.remove('saved');
-                remainCount++;
-                updateProgress();
-            } else {
-                btn.disabled = false;
-                btn.textContent = '確定済';
-                alert('エラー: ' + json.message);
-            }
-        } catch (e) {
+        const json = await apiFetch('/api/unconfirm', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id }) });
+        if (!json) { btn.disabled = false; btn.textContent = '確定済'; return; }
+        if (json.status === 'success') {
+            tr.classList.remove('decided');
+            btn.textContent = '確定';
+            btn.classList.remove('saved');
+            remainCount++;
+            updateProgress();
+        } else {
             btn.disabled = false;
             btn.textContent = '確定済';
-            alert('通信エラー');
+            alert('エラー: ' + json.message);
         }
         return;
     }
@@ -552,34 +554,28 @@ async function confirmRow(btn) {
     btn.disabled = true;
     btn.textContent = '保存中…';
 
-    try {
-        const res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-        const json = await res.json();
-        if (json.status === 'success') {
-            if (!tr.classList.contains('decided')) {
-                remainCount = Math.max(0, remainCount - 1);
-                updateProgress();
-            }
-            const showAll = new URLSearchParams(location.search).get('show_all') === 'true';
-            if (showAll) {
-                tr.classList.add('decided');
-                btn.textContent = '確定済';
-                btn.classList.add('saved');
-                btn.disabled = false;
-            } else {
-                tr.style.transition = 'opacity .3s';
-                tr.style.opacity = '0';
-                setTimeout(() => { tr.remove(); applyFilters(); }, 300);
-            }
-        } else {
-            btn.disabled = false;
-            btn.textContent = '確定';
-            alert('エラー: ' + json.message);
+    const json = await apiFetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (!json) { btn.disabled = false; btn.textContent = '確定'; return; }
+    if (json.status === 'success') {
+        if (!tr.classList.contains('decided')) {
+            remainCount = Math.max(0, remainCount - 1);
+            updateProgress();
         }
-    } catch (e) {
+        const showAll = new URLSearchParams(location.search).get('show_all') === 'true';
+        if (showAll) {
+            tr.classList.add('decided');
+            btn.textContent = '確定済';
+            btn.classList.add('saved');
+            btn.disabled = false;
+        } else {
+            tr.style.transition = 'opacity .3s';
+            tr.style.opacity = '0';
+            setTimeout(() => { tr.remove(); applyFilters(); }, 300);
+        }
+    } else {
         btn.disabled = false;
         btn.textContent = '確定';
-        alert('通信エラー');
+        alert('エラー: ' + json.message);
     }
 }
 
@@ -593,33 +589,25 @@ async function applyRule(btn) {
     btn.disabled = true;
     btn.textContent = '…';
 
-    try {
-        const res  = await fetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content, institution }) });
-        const json = await res.json();
-        if (json.status === 'success') {
-            const m = json.matched;
-            // 設定済みフィールドのみ上書き（空は既存値を保持）
-            if (m.cat_major)     tr.querySelector('.edit-cat-major').value     = m.cat_major;
-            if (m.cat_mid)       tr.querySelector('.edit-cat-mid').value       = m.cat_mid;
-            if (m.cat_small)     tr.querySelector('.edit-cat-small').value     = m.cat_small;
-            if (m.cat_shop)      tr.querySelector('.edit-cat-shop').value      = m.cat_shop;
-            if (m.cat_belonging) tr.querySelector('.edit-cat-belonging').value = m.cat_belonging;
-            if (m.cat_person)    tr.querySelector('.edit-cat-person').value    = m.cat_person;
-            tr.classList.remove('decided');
-            tr.classList.add('suggested');
-            btn.textContent = '↺';
-        } else if (json.status === 'no_match') {
-            alert('マッチするルールがありません');
-            btn.textContent = '↺';
-        } else {
-            alert('エラー: ' + json.message);
-            btn.textContent = '↺';
-        }
-    } catch (e) {
-        btn.textContent = '↺';
-        alert('通信エラー');
-    }
+    const json = await apiFetch('/api/apply_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, content, institution }) });
     btn.disabled = false;
+    btn.textContent = '↺';
+    if (!json) return;
+    if (json.status === 'success') {
+        const m = json.matched;
+        if (m.cat_major)     tr.querySelector('.edit-cat-major').value     = m.cat_major;
+        if (m.cat_mid)       tr.querySelector('.edit-cat-mid').value       = m.cat_mid;
+        if (m.cat_small)     tr.querySelector('.edit-cat-small').value     = m.cat_small;
+        if (m.cat_shop)      tr.querySelector('.edit-cat-shop').value      = m.cat_shop;
+        if (m.cat_belonging) tr.querySelector('.edit-cat-belonging').value = m.cat_belonging;
+        if (m.cat_person)    tr.querySelector('.edit-cat-person').value    = m.cat_person;
+        tr.classList.remove('decided');
+        tr.classList.add('suggested');
+    } else if (json.status === 'no_match') {
+        alert('マッチするルールがありません');
+    } else {
+        alert('エラー: ' + json.message);
+    }
 }
 
 function buildPayload(tr, id) {
@@ -656,12 +644,9 @@ function updateProgress() {
 async function setVis(btn, action) {
     const tr  = btn.closest('tr');
     const id  = tr.dataset.id;
-    let res, json;
-    try {
-        res  = await fetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, view_target: action }) });
-        json = await res.json();
-    } catch(e) { alert('通信エラー: ' + e); return; }
-    if (!res.ok || json.status !== 'success') { alert('エラー (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    const json = await apiFetch('/api/update', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ id, view_target: action }) });
+    if (!json) return;
+    if (json.status !== 'success') { alert('エラー: ' + (json.message || 'サーバーエラー')); return; }
     btn.style.outline = '2px solid #333';
     setTimeout(() => btn.style.outline = '', 1000);
 }
@@ -703,12 +688,9 @@ async function saveRule() {
         cat_person:    document.getElementById('rule-cat-person').value,
         cat_context:   document.getElementById('rule-cat-context').value,
     };
-    let res, json;
-    try {
-        res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-        json = await res.json();
-    } catch(e) { alert('通信エラー: ' + e); return; }
-    if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    const json = await apiFetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (!json) return;
+    if (json.status !== 'success') { alert('登録失敗: ' + (json.message || 'エラー')); return; }
     closeRuleModal();
 }
 
@@ -735,12 +717,9 @@ async function saveExRule() {
         content_pattern:     document.getElementById('ex-rule-content').value,
         institution_pattern: document.getElementById('ex-rule-institution').value,
     };
-    let res, json;
-    try {
-        res  = await fetch('/api/add_target_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-        json = await res.json();
-    } catch(e) { alert('通信エラー: ' + e); return; }
-    if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    const json = await apiFetch('/api/add_target_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (!json) return;
+    if (json.status !== 'success') { alert('登録失敗: ' + (json.message || 'エラー')); return; }
     closeExRuleModal();
 }
 
@@ -763,9 +742,8 @@ async function openEditRuleModal(btn) {
         picker.innerHTML = '';
         document.getElementById('edit-rule-picker').style.display = 'block';
         for (const rid of ruleIds) {
-            const res  = await fetch(`/api/get_category_rule/${rid}`);
-            const json = await res.json();
-            if (json.status !== 'success') continue;
+            const json = await apiFetch(`/api/get_category_rule/${rid}`);
+            if (!json || json.status !== 'success') continue;
             const r = json.rule;
             const label = [r.content_pattern, r.institution_pattern].filter(Boolean).join(' + ');
             const btn2 = document.createElement('button');
@@ -778,11 +756,8 @@ async function openEditRuleModal(btn) {
 }
 
 async function loadEditRuleForm(ruleId) {
-    let res, json;
-    try {
-        res  = await fetch(`/api/get_category_rule/${ruleId}`);
-        json = await res.json();
-    } catch(e) { alert('ルールの取得に失敗しました（通信エラー）: ' + e); return; }
+    const json = await apiFetch(`/api/get_category_rule/${ruleId}`);
+    if (!json) return;
     if (json.status !== 'success') { alert('ルールが見つかりません (id=' + ruleId + ')'); return; }
     const r = json.rule;
     document.getElementById('edit-rule-id').value          = r.id || '';
@@ -815,12 +790,9 @@ async function saveEditRule() {
         cat_person:    document.getElementById('edit-rule-person').value,
         cat_context:   document.getElementById('edit-rule-context').value,
     };
-    let res, json;
-    try {
-        res  = await fetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-        json = await res.json();
-    } catch(e) { alert('通信エラー: ' + e); return; }
-    if (!res.ok || json.status !== 'success') { alert('更新失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+    const json = await apiFetch('/api/register_rule', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if (!json) return;
+    if (json.status !== 'success') { alert('更新失敗: ' + (json.message || 'エラー')); return; }
     closeEditRuleModal();
 }
 

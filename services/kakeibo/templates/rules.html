@@ -345,6 +345,20 @@
 </div>
 
 <script>
+    // ── API呼び出しヘルパー ──────────────────────────────────
+    async function apiFetch(url, options) {
+        let res;
+        try { res = await fetch(url, options); }
+        catch(e) { alert('通信エラー: ' + e); return null; }
+        if (!res.ok) {
+            let msg = `サーバーエラー (HTTP ${res.status})`;
+            try { const j = await res.json(); if (j?.message) msg += ': ' + j.message; } catch(_) {}
+            alert(msg); return null;
+        }
+        try { return await res.json(); }
+        catch(e) { alert('レスポンス解析エラー: ' + e); return null; }
+    }
+
     function toggleForm(id) {
         document.getElementById(id).classList.toggle('open');
     }
@@ -387,12 +401,9 @@
             cat_person:    document.getElementById('cr-person').value.trim(),
             cat_context:   document.getElementById('cr-context').value.trim(),
         };
-        let res, json;
-        try {
-            res  = await fetch('/api/register_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-            json = await res.json();
-        } catch(e) { alert('通信エラー: ' + e); return; }
-        if (!res.ok || json.status !== 'success') { alert('登録失敗 (HTTP ' + res.status + '): ' + (json?.message || 'サーバーエラー')); return; }
+        const json = await apiFetch('/api/register_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (!json) return;
+        if (json.status !== 'success') { alert('登録失敗: ' + (json.message || 'エラー')); return; }
         location.reload();
     }
 
@@ -425,8 +436,8 @@
         const payload = { rule_name: name, action, content_pattern: content, institution_pattern: inst };
         const url = id ? '/api/update_target_rule' : '/api/add_target_rule';
         if (id) payload.id = id;
-        const res  = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        const json = await res.json();
+        const json = await apiFetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (!json) return;
         if (json.status === 'success') location.reload();
         else alert('保存失敗: ' + json.message);
     }
@@ -466,8 +477,8 @@
         };
         const url = id ? '/api/update_cash_category_rule' : '/api/add_cash_category_rule';
         if (id) payload.id = id;
-        const res  = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        const json = await res.json();
+        const json = await apiFetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (!json) return;
         if (json.status === 'success') location.reload();
         else alert('保存失敗: ' + json.message);
     }
@@ -511,8 +522,8 @@
         };
         const url = id ? '/api/update_card_loan_rule' : '/api/add_card_loan_rule';
         if (id) payload.id = id;
-        const res  = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-        const json = await res.json();
+        const json = await apiFetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (!json) return;
         if (json.status === 'success') location.reload();
         else alert('保存失敗: ' + json.message);
     }
@@ -520,8 +531,8 @@
     // ===== 共通 =====
     async function deleteRule(type, id) {
         if (!confirm('このルールを削除しますか？')) return;
-        const res  = await fetch('/api/delete_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, id }) });
-        const json = await res.json();
+        const json = await apiFetch('/api/delete_rule', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ type, id }) });
+        if (!json) return;
         if (json.status === 'success') location.reload();
         else alert('削除失敗: ' + json.message);
     }
