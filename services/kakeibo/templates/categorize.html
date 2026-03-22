@@ -248,7 +248,7 @@
         data-content="{{ t.content | e }}"
         data-inst="{{ (t.institution or '') | e }}"
         data-amount="{{ t.amount }}"
-        data-rule-ids="{{ t.auto_rule_ids | tojson | e }}"
+        data-rule-ids='{{ t.auto_rule_ids | tojson }}'
         class="{% if t.is_decided %}decided{% endif %} {% if t.is_suggested %}suggested{% endif %}"
         id="row-{{ t.id }}">
         <td class="col-date">{{ t.date }}</td>
@@ -747,7 +747,8 @@ async function saveExRule() {
 // ── 適用済みルール編集 ────────────────────────────────────
 async function openEditRuleModal(btn) {
     const tr = btn.closest('tr');
-    const ruleIds = JSON.parse(tr.dataset.ruleIds || '[]');
+    let ruleIds;
+    try { ruleIds = JSON.parse(tr.dataset.ruleIds || '[]'); } catch(e) { alert('ルールIDの読み取りに失敗しました: ' + e); return; }
     if (ruleIds.length === 0) { alert('ルール情報がありません'); return; }
 
     document.getElementById('edit-rule-modal').classList.add('open');
@@ -777,9 +778,12 @@ async function openEditRuleModal(btn) {
 }
 
 async function loadEditRuleForm(ruleId) {
-    const res  = await fetch(`/api/get_category_rule/${ruleId}`);
-    const json = await res.json();
-    if (json.status !== 'success') { alert('ルールの取得に失敗しました'); return; }
+    let res, json;
+    try {
+        res  = await fetch(`/api/get_category_rule/${ruleId}`);
+        json = await res.json();
+    } catch(e) { alert('ルールの取得に失敗しました（通信エラー）: ' + e); return; }
+    if (json.status !== 'success') { alert('ルールが見つかりません (id=' + ruleId + ')'); return; }
     const r = json.rule;
     document.getElementById('edit-rule-id').value          = r.id || '';
     document.getElementById('edit-rule-pattern').value     = r.content_pattern     || '';
