@@ -1255,15 +1255,16 @@ function CalendarApp() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ baseId: triad.baseId, baseName: triad.baseSummary, penId: triad.penId, arcId: triad.arcId, memberEmail: member.email }),
         });
+        const data = await res.json();
         if (res.ok) {
           setCalendarAcls(p => ({ ...p, [triad.baseId]: [...(p[triad.baseId] ?? []), member.email] }));
           // _pen/_arc が新規作成された場合はカレンダー一覧を再取得
-          const data = await res.json();
           if (!triad.penId || !triad.arcId) {
-            void data; // 再取得トリガー
             const r = await fetch("/api/calendar/calendars");
             if (r.ok) setCalendars(await r.json());
           }
+        } else {
+          alert(`共有失敗: ${data.error ?? res.status}`);
         }
       }
     } finally {
