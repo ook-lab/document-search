@@ -22,7 +22,7 @@ export async function GET() {
   const email = await getEmail();
   if (!email) return Response.json({ selected_base_ids: [], selected_group_ids: [], cal_view_mode: {}, group_view_mode: {} });
   try {
-    const url = `${SUPABASE_URL}/rest/v1/user_preferences?email=eq.${encodeURIComponent(email)}&select=selected_base_ids,selected_group_ids,cal_view_mode,group_view_mode,week_start_monday,use_24h`;
+    const url = `${SUPABASE_URL}/rest/v1/user_preferences?owner_email=eq.${encodeURIComponent(email)}&select=selected_base_ids,selected_group_ids,cal_view_mode,group_view_mode,week_start_monday,use_24h`;
     const res = await fetch(url, { headers: sbHeaders() });
     if (!res.ok) return Response.json({ selected_base_ids: [], selected_group_ids: [], cal_view_mode: {}, group_view_mode: {} });
     const rows = await res.json();
@@ -40,7 +40,7 @@ export async function PUT(req: Request) {
   try {
     const body = await req.json();
     const payload: Record<string, unknown> = {
-      email,
+      owner_email: email,
       updated_at: new Date().toISOString(),
     };
     if ("selected_base_ids"  in body) payload.selected_base_ids  = body.selected_base_ids;
