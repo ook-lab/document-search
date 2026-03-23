@@ -96,8 +96,13 @@ def apply_category_rules(content, institution, rules):
         if not cp and not ip:
             continue
         # __INST_ONLY__ プレフィックスは口座パターン専用（内容マッチをスキップ）
-        if cp and not cp.startswith('__INST_ONLY__') and cp not in content:
-            continue
+        if cp and not cp.startswith('__INST_ONLY__'):
+            if rule.get('match_exact'):
+                if cp != content:
+                    continue
+            else:
+                if cp not in content:
+                    continue
         if ip and ip not in institution:
             continue
         matched.append(rule)
@@ -1774,6 +1779,7 @@ def register_rule():
     payload = {
         "content_pattern":     content_pattern,
         "institution_pattern": institution_pattern or None,
+        "match_exact":         bool(data.get('match_exact')),
         "category_major":     data.get('cat_major')     or None,
         "category_mid":       data.get('cat_mid')       or None,
         "category_small":     data.get('cat_small')     or None,

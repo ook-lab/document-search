@@ -67,13 +67,14 @@
         <input type="hidden" id="cr-id">
         <table>
             <thead><tr>
-                <th>内容パターン</th><th>口座パターン</th><th>大分類</th><th>中分類</th><th>小分類</th>
+                <th>内容パターン</th><th>一致方式</th><th>口座パターン</th><th>大分類</th><th>中分類</th><th>小分類</th>
                 <th>店</th><th>所属</th><th>人</th><th>文脈</th><th>登録日</th><th>操作</th>
             </tr></thead>
             <tbody>
             {% for r in category_rules %}
             <tr>
                 <td><strong>{{ '' if r.content_pattern and r.content_pattern.startswith('__INST_ONLY__') else (r.content_pattern or '（指定なし）') }}</strong></td>
+                <td style="font-size:12px; color:#666;">{{ '完全' if r.match_exact else '部分' }}</td>
                 <td>{{ r.institution_pattern or '（指定なし）' }}</td>
                 <td>{{ r.category_major or '' }}</td><td>{{ r.category_mid or '' }}</td>
                 <td>{{ r.category_small or '' }}</td><td>{{ r.category_shop or '' }}</td>

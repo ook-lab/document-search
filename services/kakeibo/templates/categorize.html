@@ -300,8 +300,13 @@
 <div class="modal" id="rule-modal">
     <div class="modal-content">
         <h3>分類ルールの登録</h3>
-        <label>内容パターン（部分一致）</label>
-        <input type="text" id="rule-pattern" placeholder="例: マクドナルド">
+        <label>内容パターン</label>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+            <input type="text" id="rule-pattern" placeholder="例: マクドナルド" style="flex:1; margin-bottom:0;">
+            <label style="display:flex; align-items:center; gap:4px; font-size:13px; white-space:nowrap; cursor:pointer;">
+                <input type="checkbox" id="rule-match-exact"> 完全一致
+            </label>
+        </div>
         <label>口座パターン（部分一致）</label>
         <input type="text" id="rule-institution" placeholder="例: ローソン武蔵小杉店">
         <label>優先度（高いほど優先）</label>
@@ -335,7 +340,12 @@
         <div id="edit-rule-form" style="display:none;">
             <input type="hidden" id="edit-rule-id">
             <label>内容パターン</label>
-            <input type="text" id="edit-rule-pattern" placeholder="例: マクドナルド">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+                <input type="text" id="edit-rule-pattern" placeholder="例: マクドナルド" style="flex:1; margin-bottom:0;">
+                <label style="display:flex; align-items:center; gap:4px; font-size:13px; white-space:nowrap; cursor:pointer;">
+                    <input type="checkbox" id="edit-rule-match-exact"> 完全一致
+                </label>
+            </div>
             <label>口座パターン</label>
             <input type="text" id="edit-rule-institution" placeholder="例: ローソン武蔵小杉店">
             <div class="modal-grid">
@@ -679,6 +689,7 @@ async function saveRule() {
     const payload = {
         content_pattern:     pattern,
         institution_pattern: inst,
+        match_exact:   document.getElementById('rule-match-exact').checked,
         priority:      parseInt(document.getElementById('rule-priority').value) || 10,
         cat_major:     document.getElementById('rule-cat-major').value,
         cat_mid:       document.getElementById('rule-cat-mid').value,
@@ -762,8 +773,9 @@ async function loadEditRuleForm(ruleId) {
     const r = json.rule;
     document.getElementById('edit-rule-id').value          = r.id || '';
     const cp = (r.content_pattern || '').startsWith('__INST_ONLY__') ? '' : (r.content_pattern || '');
-    document.getElementById('edit-rule-pattern').value     = cp;
-    document.getElementById('edit-rule-institution').value = r.institution_pattern || '';
+    document.getElementById('edit-rule-pattern').value          = cp;
+    document.getElementById('edit-rule-match-exact').checked    = !!r.match_exact;
+    document.getElementById('edit-rule-institution').value      = r.institution_pattern || '';
     document.getElementById('edit-rule-major').value       = r.category_major      || '';
     document.getElementById('edit-rule-mid').value         = r.category_mid        || '';
     document.getElementById('edit-rule-small').value       = r.category_small      || '';
@@ -783,6 +795,7 @@ async function saveEditRule() {
         id,
         content_pattern:     pattern,
         institution_pattern: inst,
+        match_exact:   document.getElementById('edit-rule-match-exact').checked,
         cat_major:     document.getElementById('edit-rule-major').value,
         cat_mid:       document.getElementById('edit-rule-mid').value,
         cat_small:     document.getElementById('edit-rule-small').value,
