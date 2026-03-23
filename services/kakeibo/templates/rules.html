@@ -100,8 +100,13 @@
             <div class="form-body" id="cat-form-body">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label>内容パターン（部分一致）</label>
-                        <input type="text" id="cr-pattern" placeholder="例: アマゾン">
+                        <label>内容パターン</label>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <input type="text" id="cr-pattern" placeholder="例: アマゾン" style="flex:1; margin-bottom:0;">
+                            <label style="display:flex; align-items:center; gap:4px; font-size:13px; white-space:nowrap; cursor:pointer;">
+                                <input type="checkbox" id="cr-match-exact"> 完全一致
+                            </label>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>口座パターン（部分一致）</label>
@@ -368,8 +373,9 @@
     function editCategoryRule(r) {
         document.getElementById('cr-id').value          = r.id || '';
         const cp = (r.content_pattern || '').startsWith('__INST_ONLY__') ? '' : (r.content_pattern || '');
-        document.getElementById('cr-pattern').value     = cp;
-        document.getElementById('cr-institution').value = r.institution_pattern || '';
+        document.getElementById('cr-pattern').value          = cp;
+        document.getElementById('cr-match-exact').checked    = !!r.match_exact;
+        document.getElementById('cr-institution').value      = r.institution_pattern || '';
         document.getElementById('cr-major').value       = r.category_major || '';
         document.getElementById('cr-mid').value         = r.category_mid || '';
         document.getElementById('cr-small').value       = r.category_small || '';
@@ -385,6 +391,7 @@
     function resetCatForm() {
         ['cr-id','cr-pattern','cr-institution','cr-major','cr-mid','cr-small','cr-shop','cr-belonging','cr-person','cr-context']
             .forEach(id => document.getElementById(id).value = '');
+        document.getElementById('cr-match-exact').checked = false;
         document.getElementById('cat-form-title').textContent = '＋ 新しい分類ルールを追加';
         document.getElementById('cat-form-body').classList.remove('open');
     }
@@ -395,6 +402,7 @@
         const payload = {
             content_pattern:     pattern,
             institution_pattern: inst,
+            match_exact:   document.getElementById('cr-match-exact').checked,
             cat_major:     document.getElementById('cr-major').value.trim(),
             cat_mid:       document.getElementById('cr-mid').value.trim(),
             cat_small:     document.getElementById('cr-small').value.trim(),
