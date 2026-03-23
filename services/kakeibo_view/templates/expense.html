@@ -52,13 +52,14 @@
         </tr>
 
         {# 中分類行（初期非表示）#}
-        {% for mid, mid_amt, sml_list in mid_list %}
+        {% for mid, mid_amt, sml_list, direct_txs in mid_list %}
         {% set mid_id = maj_id ~ '_' ~ loop.index %}
+        {% set expandable = sml_list or direct_txs %}
         <tr class="row-mid row-mid-{{ maj_id }}" style="display:none; background:#f7f9fc;">
           <td></td>
-          <td style="padding-left:20px; cursor:{% if sml_list %}pointer{% else %}default{% endif %}; color:#555;"
-              onclick="{% if sml_list %}toggleMid('{{ mid_id }}'){% endif %}">
-            {% if sml_list %}<span id="icon-mid-{{ mid_id }}" style="color:#3498db; font-size:11px;">▶</span>{% else %}<span style="color:#ccc;">─</span>{% endif %}
+          <td style="padding-left:20px; cursor:{% if expandable %}pointer{% else %}default{% endif %}; color:#555;"
+              onclick="{% if expandable %}toggleMid('{{ mid_id }}'){% endif %}">
+            {% if expandable %}<span id="icon-mid-{{ mid_id }}" style="color:#3498db; font-size:11px;">▶</span>{% else %}<span style="color:#ccc;">─</span>{% endif %}
             {{ mid }}
           </td>
           <td class="amt neg" style="color:#555;">{{ "{:,}".format(mid_amt) }}</td>
@@ -100,6 +101,20 @@
           </td>
         </tr>
         {% endfor %}
+        {% endfor %}
+
+        {# 小分類未設定の取引を中分類の直下に表示 #}
+        {% for tx in direct_txs %}
+        <tr class="row-sml row-sml-{{ mid_id }} row-mid-{{ maj_id }}" style="display:none; background:#edf2ff;">
+          <td></td>
+          <td style="padding-left:40px; font-size:11px; color:#999;">
+            <span style="color:#bbb; margin-right:6px;">{{ tx.date }}</span>{{ tx.content }}
+          </td>
+          <td class="amt neg" style="font-size:11px; color:#999;">{{ "{:,}".format(tx.amount) }}</td>
+          <td class="amt" style="font-size:11px; color:#ccc;">
+            {% if mid_amt != 0 %}{{ "%.1f"|format(tx.amount / mid_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
         {% endfor %}
         {% endfor %}
 

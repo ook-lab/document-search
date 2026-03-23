@@ -344,13 +344,16 @@ def expense_summary():
             key=lambda x: sum(sum(tx['amount'] for tx in txs) for txs in x[1].values())
         ):
             sml_list = []
+            direct_txs = []
             for sml, txs in sml_dict.items():
                 if sml:
                     sml_amt = sum(tx['amount'] for tx in txs)
                     sml_list.append((sml, sml_amt, sorted(txs, key=lambda x: x['date'])))
+                else:
+                    direct_txs = sorted(txs, key=lambda x: x['date'])
             sml_list = sorted(sml_list, key=lambda x: x[1])
             mid_total = sum(sum(tx['amount'] for tx in txs) for txs in sml_dict.values())
-            mid_list.append((mid, mid_total, sml_list))
+            mid_list.append((mid, mid_total, sml_list, direct_txs))
         hierarchy_list.append((maj, maj_amt, mid_list))
 
     person_cat   = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
