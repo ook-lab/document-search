@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <style>
+        body {
+            font-family: "游明朝", "YuMincho", serif;
+            font-size: 9.5pt;
+            line-height: 1.6;
+            background-color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+        #print-area {
+            width: 794px;
+            margin: 0 auto;
+            padding: 30px;
+            border: 1px solid #ccc; /* 画面確認用 */
+        }
+        @media print {
+            @page {
+                size: A4;
+                margin: 15mm; /* エッジまで印字されるのを防ぎ、すべてのページに均等な余白をつける */
+            }
+            body { 
+                margin: 0 !important; 
+                padding: 0 !important; /* 画面用のpadding=20pxによる横幅の拡張をリセット */
+                width: auto !important;
+                background-color: transparent !important;
+            }
+            #print-area { 
+                border: none !important; 
+                padding: 0 !important; 
+                margin: 0 !important;
+                width: 100% !important; /* 794px固定を解除し、用紙100%に追従させる */
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+            }
+            button { display: none; }
+
+            /* 全要素に対するはみ出し防止ロック */
+            * {
+                max-width: 100% !important;
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+            }
+        }
+        .header-title {
+            text-align: center;
+            font-size: 1.4em;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 5px;
+        }
+        .question-section {
+            margin-bottom: 30px;
+        }
+        .conversation-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-bottom: 15px;
+            background-color: #fafafa;
+        }
+        .explanation-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-top: 40px;
+            page-break-before: always;
+        }
+        .guide-box {
+            border: 2px dashed #666;
+            padding: 15px;
+            margin-top: 20px;
+            background-color: #f9f9f9;
+        }
+        .answer-label {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .answer-line {
+            display: block;
+            border-bottom: 1px solid #000;
+            height: 24px;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+        .svg-container {
+            text-align: center;
+            margin: 15px 0;
+        }
+        .edit-buttons {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+<div class="edit-buttons">
+    <button onclick="toggleEdit()">編集</button>
+    <button onclick="window.print()">印刷</button>
+</div>
+
+<div id="print-area">
+    <div class="header-title">算数 特解演習：正方形の分割論理</div>
+
+    <div id="question-area" class="question-section">
+        <p>次の方と生徒の会話を読み、あとの問いに答えなさい。</p>
+        
+        <div class="conversation-box">
+            <p>先生「一辺が $70 \text{ cm}$ の大きな正方形のタイルがあります。これを、何枚かの『サイズが異なる2種類の正方形（アとイ）』に隙間なく分割することを考えましょう。」</p>
+            <p>生徒「ただの等分じゃなくて、2種類使うんですね。面白そうです。」</p>
+            <p>先生「図1を見てください。これは大きい方の正方形『ア』をたて・横に5枚ずつ並べ、余った右側と下側の隙間に、小さい方の正方形『イ』を1列に並べて敷き詰めたものです。この並べ方を『パターンA』と呼びましょう。このとき、アとイの枚数の合計は $52$ 枚になりました。」</p>
+            
+            <div class="svg-container">
+                <!-- 図1: アが5x5, イがL字型に1列 -->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" style="display: block; margin: 0 auto; border: 1px solid #ccc;">
+                    <!-- アの正方形群 5x5 -->
+                    <rect x="10" y="10" width="150" height="150" fill="#e0e0e0" stroke="black" stroke-width="1"/>
+                    <line x1="40" y1="10" x2="40" y2="160" stroke="black" stroke-width="0.5"/>
+                    <line x1="70" y1="10" x2="70" y2="160" stroke="black" stroke-width="0.5"/>
+                    <line x1="100" y1="10" x2="100" y2="160" stroke="black" stroke-width="0.5"/>
+                    <line x1="130" y1="10" x2="130" y2="160" stroke="black" stroke-width="0.5"/>
+                    <line x1="10" y1="40" x2="160" y2="40" stroke="black" stroke-width="0.5"/>
+                    <line x1="10" y1="70" x2="160" y2="70" stroke="black" stroke-width="0.5"/>
+                    <line x1="10" y1="100" x2="160" y2="100" stroke="black" stroke-width="0.5"/>
+                    <line x1="10" y1="130" x2="160" y2="130" stroke="black" stroke-width="0.5"/>
+                    <!-- イの正方形群 1列 -->
+                    <rect x="160" y="10" width="30" height="180" fill="none" stroke="black" stroke-width="1"/>
+                    <rect x="10" y="160" width="150" height="30" fill="none" stroke="black" stroke-width="1"/>
+                    <!-- テキストラベル -->
+                    <text x="75" y="85" font-size="14" font-weight="bold">ア</text>
+                    <text x="170" y="100" font-size="12">イ</text>
+                    <text x="80" y="180" font-size="12">イ</text>
+                </svg>
+                <p style="font-size: 8pt; margin-top: 5px;">図1：パターンA（イが1列）</p>
+            </div>
+
+            <p>生徒「なるほど。アは $25$ 枚ありますから、イは全部で $27$ 枚並んでいるということですね。」</p>
+            <p>先生「その通りです。では、アの一辺の長さは何 $\text{ cm}$ でしょうか。」</p>
+            <p>生徒「ええと、全体の長さが $70 \text{ cm}$ だから……わかりました！ アの一辺は <span style="border-bottom: 1px solid #000; padding: 0 10px;">　(1)　</span> $\text{ cm}$ ですね！」</p>
+            <p>先生「正解です。さらに工夫して、イを2列ずつ並べる『パターンB』についても考えてみましょう。アをたて・横に $5$ 枚ずつ並べるのは変えずに、隙間をイで2列ずつ埋めると、合計個数は何枚になりますか。」</p>
+            <p>生徒「それは簡単です！ 全部で <span style="border-bottom: 1px solid #000; padding: 0 10px;">　(2)　</span> 枚になります！」</p>
+        </div>
+
+        <p>（1）会話文中の空欄（1）にあてはまる数を答えなさい。</p>
+        <p class="answer-label">解答欄：</p>
+        <div class="answer-line"></div>
+
+        <p>（2）会話文中の空欄（2）にあてはまる数を答えなさい。</p>
+        <p class="answer-label">解答欄：</p>
+        <div class="answer-line"></div>
+
+        <p>（3）パターンAに則って、一辺が $100 \text{ cm}$ の正方形を「ア」と「イ」合計 $101$ 枚に分割します。アを一辺 $a \text{ cm}$、イを一辺 $b \text{ cm}$ としたとき、$a:b$ を最も簡単な整数の比で答えなさい。ただし、アはたて・横に同じ枚数ずつ並べるものとし、$a > b$ とします。</p>
+        <p class="answer-label">解答欄：</p>
+        <div class="answer-line"></div>
+    </div>
+
+    <div class="explanation-box">
+        <h3 style="margin-top: 0;">解答と解説</h3>
+        
+        <h4>② 解答一覧</h4>
+        <ul>
+            <li>（1）$13$</li>
+            <li>（2）$83$</li>
+            <li>（3）$9 : 4$</li>
+        </ul>
+
+        <h4>③ 詳細解説</h4>
+        <p><strong>（1）の考え方：</strong><br>
+        アは $5 \times 5 = 25$ 枚あるため、イの枚数は $52 - 25 = 27$ 枚です。図1の「L字型」の並び方に注目すると、右側に並ぶイの枚数を $N$ 枚とすると、下側に並ぶ枚数は $N-1$ 枚となります（角の1枚を共有するため）。<br>
+        よって、$N + (N-1) = 27$ より、$2N = 28$、つまり $N=14$ 枚です。<br>
+        全体の長さ $70 \text{ cm}$ は、「ア5枚分の長さ ＋ イ1枚分の長さ」と等しく、またイが縦に14枚並んでいることから「イ14枚分の長さ」とも等しくなります。<br>
+        イの一辺を $b$ とすると、$14 \times b = 70$ より、$b = 5 \text{ cm}$ です。<br>
+        アの一辺を $a$ とすると、$5 \times a + 5 = 70$ より、$5 \times a = 65$、つまり $a = 13 \text{ cm}$ と求められます。</p>
+
+        <p><strong>（2）の考え方：</strong><br>
+        パターンBでは、隙間にイが「2列」並びます。全体の幅 $70 \text{ cm}$ は「ア5枚 ＋ イ2枚」の長さです。<br>
+        $a=13, b=5$ なので、$5 \times 13 + 2 \times 5 = 65 + 10 = 75$ となり、全体の大きさが変わってしまいます。しかし、問題文では「アを5枚ずつ並べるのは変えない」とあるため、全体の長さ $70 \text{ cm}$ を基準にイの枚数を再計算します。<br>
+        右側の2列分に並ぶイの数は、$14 \times 2 = 28$ 枚。下側の2列分に並ぶイの数は、アの幅（$65 \text{ cm}$）に対して $65 \div 5 = 13$ 枚が2列分なので $13 \times 2 = 26$ 枚。さらに右下の「角」の部分には $2 \times 2 = 4$ 枚のイが入ります。<br>
+        合計枚数は、ア $25$ 枚 ＋ イ $(28 + 26 + 4)$ 枚 $= 25 + 58 = 83$ 枚となります。</p>
+
+        <p><strong>（3）の考え方：</strong><br>
+        アが $k \times k$ 枚あるとします。イが1列並ぶときの合計枚数は $k^2 + (2 \times \frac{ka}{b} + 1) = 101$ と表せます。ここで $k$ は整数です。<br>
+        $k=8$ のとき、$64 + (2 \times \frac{8a}{b} + 1) = 101$ より、$2 \times \frac{8a}{b} = 36$、$\frac{8a}{b} = 18$。<br>
+        これを整理すると $\frac{a}{b} = \frac{18}{8} = \frac{9}{4}$。よって $a:b = 9:4$ です。<br>
+        （検算：$a=9, b=4$ のとき全体の幅は $8 \times 9 + 4 = 76$。面積保存を確認すると $64 \times 81 + 37 \times 16 = 5184 + 592 = 5776 = 76^2$。整合性が取れています）</p>
+
+        <div class="guide-box">
+            <h4>④ 保護者向けガイド</h4>
+            <p><strong>出題意図：</strong><br>
+            本問は、一見複雑な幾何学的分割を「1列の規則性」という代数的視点に落とし込む力を問うています。特に（1）で導いた $a$ と $b$ の関係が、（3）の比の計算の土台となります。<br>
+            <strong>分析ポイント：</strong><br>
+            お子様が「面積の合計」と「辺の長さの合計」の両面からアプローチできているかを確認してください。図1のL字部分の枚数を $(N + N-1)$ と置く考え方は、植木算や方陣算の応用であり、難関校で好まれる思考プロセスです。</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false}
+            ],
+            throwOnError : false
+        });
+    });
+
+    function toggleEdit() {
+        const el = document.getElementById('print-area');
+        el.contentEditable = el.contentEditable !== "true";
+    }
+</script>
+</body>
+</html>

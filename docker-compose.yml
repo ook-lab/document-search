@@ -66,3 +66,16 @@ services:
     environment:
       - PYTHONPATH=/app
     restart: unless-stopped
+
+  # A4 HTML プレビュー・印刷アプリ
+  html-to-a4:
+    build:
+      context: .
+      dockerfile: services/html-to-a4/Dockerfile
+    ports:
+      - "5051:5051"
+    env_file: .env
+    environment:
+      - PYTHONPATH=/app
+      - PORT=5051
+    restart: unless-stopped
