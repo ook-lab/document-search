@@ -1,0 +1,1164 @@
+{% extends "base.html" %}
+{% block title %}ダッシュボード | JobMetrics{% endblock %}
+{% block main_class %}flex h-[calc(100vh-53px)] overflow-hidden{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="init()" class="flex w-full h-full">
+
+    <!-- サイドバー -->
+    <aside :class="sidebarOpen ? 'w-56' : 'w-10'"
+           class="shrink-0 border-r flex flex-col overflow-hidden transition-all duration-200"
+           style="background: var(--bg-surface); border-color: var(--border-mid);">
+
+        <!-- トグルボタン -->
+        <button @click="sidebarOpen = !sidebarOpen"
+                class="shrink-0 flex items-center justify-center h-10 w-full border-b transition"
+                style="border-color:var(--border-mid); color:var(--text-muted);"
+                :title="sidebarOpen ? 'フィルターを閉じる' : 'フィルターを開く'">
+            <svg class="w-4 h-4 transition-transform duration-200" :class="sidebarOpen ? '' : 'rotate-180'"
+                 viewBox="0 0 16 16" fill="none">
+                <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+
+        <!-- 収納コンテンツ -->
+        <div x-show="sidebarOpen" class="flex flex-col flex-1 overflow-y-auto scrollbar-thin p-4 gap-4">
+
+        <div class="flex items-center gap-2 mb-1">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M3 6h10M5 10h6M1 2h14v12H1z" stroke="#4F46E5" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <h2 class="text-xs font-bold tracking-widest uppercase" style="color:var(--text-muted);">絞り込み</h2>
+        </div>
+
+        <!-- キーワード -->
+        <div class="space-y-1.5">
+            <label class="block text-xs font-semibold" style="color:var(--text-secondary);">キーワード</label>
+            <input type="text" x-model="filters.keyword"
+                   @input.debounce.300ms="applyFilters()"
+                   placeholder="職種・スキル・会社名..."
+                   class="sidebar-input">
+        </div>
+
+        <!-- スキル -->
+        <div class="space-y-1.5">
+            <label class="block text-xs font-semibold" style="color:var(--text-secondary);">スキル</label>
+            <select x-model="filters.skill" @change="applyFilters()" class="sidebar-input">
+                <option value="">指定なし</option>
+                <template x-for="tag in allSkills" :key="tag">
+                    <option :value="tag" x-text="tag"></option>
+                </template>
+            </select>
+        </div>
+
+        <!-- 給与スライダー -->
+        <div class="space-y-1.5">
+            <label class="block text-xs font-semibold" style="color:var(--text-secondary);">
+                実質年収
+                <span style="color:var(--accent); font-weight:700;" class="ml-1"
+                      x-text="filters.salary_min ? (filters.salary_min/10000).toFixed(0)+'万以上' : '指定なし'"></span>
+            </label>
+            <input type="range" min="0" max="15000000" step="500000"
+                   x-model.number="filters.salary_min" @change="applyFilters()">
+            <div class="flex justify-between text-[10px]" style="color:var(--text-muted);">
+                <span>0</span><span>1500万</span>
+            </div>
+        </div>
+
+        <!-- チェックボックス -->
+        <div class="space-y-2.5 py-1">
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+                <span class="relative w-4 h-4 rounded-md border flex items-center justify-center transition"
+                      :class="filters.remote
+                          ? 'border-indigo-500'
+                          : 'border-gray-300 bg-white'"
+                      :style="filters.remote ? 'background:#4F46E5;' : ''">
+                    <input type="checkbox" x-model="filters.remote" @change="applyFilters()" class="sr-only">
+                    <svg x-show="filters.remote" class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
+                        <path d="M1 5l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
+                <span class="text-sm font-medium" style="color:var(--text-secondary);">リモート可</span>
+            </label>
+            <label class="flex items-center gap-2.5 cursor-pointer group">
+                <span class="relative w-4 h-4 rounded-md border flex items-center justify-center transition"
+                      :class="filters.inexperienced_ok
+                          ? 'border-indigo-500'
+                          : 'border-gray-300 bg-white'"
+                      :style="filters.inexperienced_ok ? 'background:#4F46E5;' : ''">
+                    <input type="checkbox" x-model="filters.inexperienced_ok" @change="applyFilters()" class="sr-only">
+                    <svg x-show="filters.inexperienced_ok" class="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
+                        <path d="M1 5l3 3 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
+                <span class="text-sm font-medium" style="color:var(--text-secondary);">未経験OK</span>
+            </label>
+        </div>
+
+        <!-- 企業フェーズ -->
+        <div class="space-y-1.5">
+            <label class="block text-xs font-semibold" style="color:var(--text-secondary);">企業フェーズ</label>
+            <select x-model="filters.listing" @change="applyFilters()" class="sidebar-input">
+                <option value="">すべて</option>
+                <option value="listed_prime">東証プライム</option>
+                <option value="listed_growth">東証グロース</option>
+                <option value="ipo_preparing">上場準備中</option>
+                <option value="unlisted">非上場</option>
+            </select>
+        </div>
+
+        <!-- 英語 -->
+        <div class="space-y-1.5">
+            <label class="block text-xs font-semibold" style="color:var(--text-secondary);">英語レベル</label>
+            <select x-model="filters.english" @change="applyFilters()" class="sidebar-input">
+                <option value="">指定なし</option>
+                <option value="none">不要</option>
+                <option value="daily">日常会話</option>
+                <option value="business">ビジネス</option>
+                <option value="native">ネイティブ</option>
+            </select>
+        </div>
+
+        <!-- 休日・残業（折りたたみ） -->
+        <div x-data="{ open: false }" class="border-t pt-3" style="border-color: var(--border-mid);">
+            <button @click="open = !open"
+                    class="w-full flex items-center justify-between text-xs font-semibold transition"
+                    style="color:var(--text-muted);">
+                <span>休日・残業</span>
+                <svg class="w-3.5 h-3.5 transition-transform" :class="open ? 'rotate-180' : ''"
+                     viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+            <div x-show="open" x-transition class="pt-3 space-y-3">
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-semibold" style="color:var(--text-secondary);">
+                        年間休日
+                        <span style="color:var(--accent); font-weight:700;" class="ml-1"
+                              x-text="filters.holidays_min ? filters.holidays_min+'日以上' : '指定なし'"></span>
+                    </label>
+                    <input type="range" min="0" max="140" step="5"
+                           x-model.number="filters.holidays_min" @change="applyFilters()">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-xs font-semibold" style="color:var(--text-secondary);">
+                        残業
+                        <span style="color:var(--accent); font-weight:700;" class="ml-1"
+                              x-text="filters.overtime_max ? filters.overtime_max+'h以内' : '指定なし'"></span>
+                    </label>
+                    <input type="range" min="0" max="80" step="5"
+                           x-model.number="filters.overtime_max" @change="applyFilters()">
+                </div>
+            </div>
+        </div>
+
+        <button @click="resetFilters()"
+                class="w-full py-2 text-xs font-semibold rounded-lg transition"
+                style="border: 1.5px solid var(--border-mid); background: var(--bg-elevated); color:var(--text-muted);"
+                onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
+                onmouseout="this.style.borderColor='var(--border-mid)'; this.style.color='var(--text-muted)';">
+            フィルターをリセット
+        </button>
+
+        </div><!-- /収納コンテンツ -->
+
+        <!-- 削除モード（常時表示） -->
+        <div class="shrink-0 border-t px-3 pt-3" style="border-color:var(--border-mid);">
+            <button @click="toggleDeleteMode()"
+                    class="w-full py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
+                    :style="deleteMode
+                        ? 'border:1.5px solid #C0392B; background:#FFF0F0; color:#C0392B;'
+                        : 'border:1.5px solid var(--border-mid); background:var(--bg-elevated); color:var(--text-muted);'">
+                <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4h10M6 4V2h4v2M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <template x-if="sidebarOpen">
+                    <span x-text="deleteMode ? '削除モード終了' : '削除モード'"></span>
+                </template>
+            </button>
+        </div>
+
+        <!-- 取り込み・構造化ボタン（常時表示） -->
+        <div x-show="sidebarOpen" class="shrink-0 border-t p-3 space-y-2" style="border-color:var(--border-mid);">
+
+            <!-- 求人取り込み -->
+            <button @click="triggerScrape()"
+                    :disabled="scraping"
+                    class="w-full py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1.5"
+                    style="border:1.5px solid #0066CC; background:#EBF5FF; color:#0066CC;">
+                <svg class="w-3.5 h-3.5" :class="scraping ? 'animate-spin' : ''" viewBox="0 0 16 16" fill="none">
+                    <path d="M8 1v10M4 7l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span x-text="scraping ? '取り込み中...' : '求人を取り込む'"></span>
+            </button>
+            <div x-show="scrapeResult" class="text-xs text-center space-y-1">
+                <p :style="scrapeResult === 'started' ? 'color:#0066CC;' : 'color:#C0392B;'"
+                   x-text="scrapeResult === 'started' ? '実行中（ログ↓）'
+                          : scrapeResult === 'already_running' ? '実行中です'
+                          : scrapeErrorMsg || 'エラー'"></p>
+                <template x-if="scrapeResult === 'started'">
+                    <button @click="loadScrapeLog()" class="underline text-xs" style="color:#0066CC;">ログ更新</button>
+                </template>
+            </div>
+            <!-- ログ表示 -->
+            <div x-show="scrapeLog.length > 0"
+                 class="rounded-lg p-2 text-xs font-mono overflow-y-auto max-h-40 space-y-0.5"
+                 style="background:#0A0A0A; color:#A8FF78;">
+                <template x-for="(line, i) in scrapeLog" :key="i">
+                    <div x-text="line" class="leading-relaxed whitespace-pre-wrap break-all"></div>
+                </template>
+            </div>
+
+            <!-- Gemini 構造化 -->
+            <div class="flex gap-1.5">
+                <button @click="triggerEnrich(false)"
+                        :disabled="enriching"
+                        class="flex-1 py-2 text-xs font-semibold rounded-lg transition flex items-center justify-center gap-1"
+                        style="border:1.5px solid #1A8C44; background:#EDFAF2; color:#1A8C44;"
+                        title="未処理レコードのみ構造化">
+                    <svg class="w-3 h-3 shrink-0" :class="enriching ? 'animate-spin' : ''" viewBox="0 0 16 16" fill="none">
+                        <path d="M14 8A6 6 0 1 1 8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M8 2l2-2M8 2l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span x-text="enriching ? '処理中...' : '構造化'"></span>
+                </button>
+                <button @click="triggerEnrich(true)"
+                        :disabled="enriching"
+                        class="flex-1 py-2 text-xs font-semibold rounded-lg transition"
+                        style="border:1.5px solid #6025C0; background:#F3F0FF; color:#6025C0;"
+                        title="全件再処理（仕事内容・必須要件を再抽出）">
+                    <span x-text="enriching ? '...' : '全件再処理'"></span>
+                </button>
+            </div>
+            <div x-show="enrichResult" class="text-xs text-center space-y-1">
+                <p :style="enrichResult === 'started' ? 'color:#1A8C44;' : 'color:#C0392B;'"
+                   x-text="enrichResult === 'started' ? '実行中（ログ↓）'
+                          : enrichResult === 'already_running' ? '実行中です' : 'エラー'"></p>
+                <template x-if="enrichResult === 'started'">
+                    <button @click="loadEnrichLog()" class="underline text-xs" style="color:#1A8C44;">ログ更新</button>
+                </template>
+            </div>
+            <div x-show="enrichLog.length > 0"
+                 class="rounded-lg p-2 text-xs font-mono overflow-y-auto max-h-40 space-y-0.5"
+                 style="background:#0A0A0A; color:#A8FF78;">
+                <template x-for="(line, i) in enrichLog" :key="i">
+                    <div x-text="line" class="leading-relaxed whitespace-pre-wrap break-all"></div>
+                </template>
+            </div>
+
+        </div>
+    </aside>
+
+    <!-- メインエリア -->
+    <div class="flex flex-col flex-1 overflow-hidden">
+
+        <!-- 業界タブ -->
+        <div class="shrink-0 border-b overflow-x-auto scrollbar-thin"
+             style="background: var(--bg-surface); border-color: var(--border-mid);">
+            <div class="flex items-end px-3 min-w-max">
+                <template x-for="tab in activeTabs()" :key="tab.key">
+                    <button @click="activeTab = tab.key"
+                            :style="activeTab === tab.key ? 'border-color:' + tabColor(tab.key) + '; color:' + tabColor(tab.key) + ';' : ''"
+                            :class="activeTab === tab.key
+                                ? 'border-b-2 font-bold'
+                                : 'border-b-2 border-transparent font-medium hover:border-gray-200'"
+                            class="px-4 py-3 text-sm transition whitespace-nowrap flex items-center gap-2"
+                            style="color: var(--text-secondary);">
+                        <span x-text="tab.label"></span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-full font-bold tabular-nums"
+                              :style="activeTab === tab.key
+                                  ? 'background:' + tabColorLight(tab.key) + '; color:' + tabColor(tab.key)
+                                  : 'background:#EEF0F8; color:var(--text-muted)'"
+                              x-text="tabCount(tab.key)"></span>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <!-- グリッド + 詳細 -->
+        <div class="flex flex-1 overflow-hidden">
+
+            <!-- カードグリッド -->
+            <div class="flex-1 overflow-y-auto scrollbar-thin p-4" style="background:var(--bg-page);">
+                <template x-if="tabJobs().length === 0">
+                    <div class="flex flex-col items-center justify-center py-32 text-center">
+                        <div class="w-14 h-14 rounded-full flex items-center justify-center mb-4"
+                             style="background: var(--accent-light);">
+                            <svg class="w-6 h-6" fill="none" viewBox="0 0 20 20" style="color:#4F46E5">
+                                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/>
+                                <path d="M7 7h.01M13 7h.01M7 13s1 2 3 2 3-2 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <p class="text-sm font-semibold" style="color:var(--text-secondary);">条件に合う求人がありません</p>
+                        <p class="text-xs mt-1" style="color:var(--text-muted);">フィルターを変更してください</p>
+                    </div>
+                </template>
+
+                <div class="grid grid-cols-2 gap-4 xl:grid-cols-3">
+                    <template x-for="job in tabJobs()" :key="job.id">
+                        <div @click="selectJob(job)"
+                             :class="selectedJob && selectedJob.id === job.id ? 'selected' : ''"
+                             class="job-card cursor-pointer flex flex-col min-h-[400px] overflow-hidden">
+
+                            <!-- ブランドカラー アクセントストリップ -->
+                            <div :style="'height:5px; background:' + brandColor(job) + ';'"></div>
+
+                            <div class="flex flex-col flex-1 gap-3 p-4">
+
+                                <!-- ヘッダー: 会社名 + バッジ群 -->
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-1.5 flex-wrap mb-1.5">
+                                            <span class="text-xs font-bold truncate"
+                                                  :style="'color:' + brandColor(job)"
+                                                  x-text="job.company_name || '企業名未取得'"></span>
+                                            <template x-if="serviceLabel(job)">
+                                                <span class="tag-service" x-text="serviceLabel(job)"></span>
+                                            </template>
+                                            <template x-if="job.listing_status === 'listed_prime'">
+                                                <span class="tag-prime">Prime</span>
+                                            </template>
+                                            <template x-if="job.listing_status === 'listed_growth'">
+                                                <span class="tag-growth">Growth</span>
+                                            </template>
+                                            <template x-if="job.listing_status === 'ipo_preparing'">
+                                                <span class="tag-ipo">IPO準備</span>
+                                            </template>
+                                            <template x-if="job.is_remote_allowed">
+                                                <span class="tag-remote">リモート</span>
+                                            </template>
+                                        </div>
+                                        <!-- 職種名 -->
+                                        <p class="text-sm font-bold leading-snug line-clamp-2"
+                                           style="color:var(--text-primary);"
+                                           x-text="job.job_title || '—'"></p>
+                                    </div>
+                                    <input type="checkbox"
+                                           :checked="(deleteMode ? deleteIds : compareIds).includes(job.id)"
+                                           @click.stop
+                                           @change="toggleSelect(job.id)"
+                                           :class="deleteMode ? 'accent-red-600' : 'accent-indigo-500'"
+                                           class="shrink-0 mt-0.5 w-4 h-4 rounded cursor-pointer">
+                                </div>
+
+                                <!-- スキルタグ -->
+                                <div class="flex flex-wrap gap-1.5">
+                                    <template x-for="tag in (job.skill_tags || []).slice(0, 7)" :key="tag">
+                                        <span class="tag-skill" x-text="tag"></span>
+                                    </template>
+                                    <template x-if="(job.skill_tags||[]).length > 7">
+                                        <span class="text-xs font-semibold self-center"
+                                              style="color:var(--text-muted);"
+                                              x-text="'+'+(job.skill_tags.length-7)"></span>
+                                    </template>
+                                    <template x-if="(job.skill_tags||[]).length === 0">
+                                        <span class="text-xs italic" style="color:var(--text-muted);">スキル情報なし</span>
+                                    </template>
+                                </div>
+
+                                <!-- 仕事内容プレビュー -->
+                                <div class="flex-1 min-h-0">
+                                    <template x-if="cardExcerpt(job)">
+                                        <div>
+                                            <p class="section-label mb-1.5">仕事内容</p>
+                                            <p class="job-preview-text" x-text="cardExcerpt(job)"></p>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <!-- 必須要件 -->
+                                <template x-if="job.requirements && job.requirements.trim()">
+                                    <div>
+                                        <p class="section-label mb-1.5">必須要件</p>
+                                        <p class="job-preview-text text-xs whitespace-pre-line"
+                                           x-text="job.requirements"></p>
+                                    </div>
+                                </template>
+
+                                <!-- カラフルなメトリクス（アイコン付き） -->
+                                <div class="grid grid-cols-3 gap-2">
+                                    <!-- 年収 -->
+                                    <div class="metric-icon-box flex-col items-start gap-1 p-2">
+                                        <div class="flex items-center gap-1.5 w-full">
+                                            <div class="mic-icon" style="background:#FFF4E0;">
+                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                                    <circle cx="10" cy="10" r="8" stroke="#D4A017" stroke-width="1.5"/>
+                                                    <path d="M10 6v8M7.5 8.5C7.5 7.4 8.6 7 10 7s2.5.4 2.5 1.5S11.4 10 10 10s-2.5.4-2.5 1.5S8.6 13 10 13s2.5-.4 2.5-1.5" stroke="#D4A017" stroke-width="1.2" stroke-linecap="round"/>
+                                                </svg>
+                                            </div>
+                                            <span class="mic-label">年収</span>
+                                        </div>
+                                        <span class="font-extrabold text-sm leading-tight" style="color:#B8860B;"
+                                              x-text="job.real_base_annual
+                                                  ? (job.real_base_annual/10000).toFixed(0)+'万'
+                                                  : (job.salary_min && job.salary_max)
+                                                      ? (job.salary_min/10000).toFixed(0)+'〜'+(job.salary_max/10000).toFixed(0)+'万'
+                                                  : job.salary_min
+                                                      ? (job.salary_min/10000).toFixed(0)+'万〜'
+                                                  : '—'"></span>
+                                    </div>
+                                    <!-- 休日 -->
+                                    <div class="metric-icon-box flex-col items-start gap-1 p-2">
+                                        <div class="flex items-center gap-1.5 w-full">
+                                            <div class="mic-icon" style="background:#EBF5FF;">
+                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                                    <rect x="3" y="4" width="14" height="13" rx="2" stroke="#0066CC" stroke-width="1.5"/>
+                                                    <path d="M3 8h14M7 2v4M13 2v4" stroke="#0066CC" stroke-width="1.5" stroke-linecap="round"/>
+                                                </svg>
+                                            </div>
+                                            <span class="mic-label">休日</span>
+                                        </div>
+                                        <span class="font-extrabold text-sm leading-tight" style="color:#0066CC;"
+                                              x-text="job.annual_holidays ? job.annual_holidays+'日' : '—'"></span>
+                                    </div>
+                                    <!-- 英語 -->
+                                    <div class="metric-icon-box flex-col items-start gap-1 p-2">
+                                        <div class="flex items-center gap-1.5 w-full">
+                                            <div class="mic-icon" style="background:#EDFAF2;">
+                                                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                                    <circle cx="10" cy="10" r="7" stroke="#1A8C44" stroke-width="1.5"/>
+                                                    <path d="M4 10c2-4 10-4 12 0M4 10c2 4 10 4 12 0M10 3v14" stroke="#1A8C44" stroke-width="1.2"/>
+                                                </svg>
+                                            </div>
+                                            <span class="mic-label">英語</span>
+                                        </div>
+                                        <span class="font-extrabold text-sm leading-tight" style="color:#1A8C44;"
+                                              x-text="{'none':'不要','daily':'日常','business':'BIZ','native':'NT'}[job.english_level] || '—'"></span>
+                                    </div>
+                                </div>
+
+                                <!-- フッター -->
+                                <div class="flex items-center gap-2 flex-wrap pt-2 border-t"
+                                     style="border-color: var(--border-subtle);">
+                                    <template x-if="job.is_inexperienced_ok">
+                                        <span class="text-xs font-bold" style="color:#C45D00;">未経験OK</span>
+                                    </template>
+                                    <template x-if="job.is_managerial">
+                                        <span class="text-xs font-bold" style="color:#6025C0;">管理職</span>
+                                    </template>
+                                    <template x-if="job.avg_overtime_hours != null">
+                                        <span class="text-xs font-semibold"
+                                              :style="(job.avg_overtime_hours > 30) ? 'color:#C0392B;' : 'color:var(--text-muted);'"
+                                              x-text="'残業'+job.avg_overtime_hours+'h'"></span>
+                                    </template>
+                                </div>
+
+                            </div><!-- /p-4 -->
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- 詳細パネル -->
+            <div x-show="selectedJob" x-cloak
+                 class="w-96 shrink-0 border-l overflow-y-auto scrollbar-thin p-5"
+                 style="background: var(--bg-surface); border-color: var(--border-mid);">
+                <template x-if="selectedJob">
+                    <div class="space-y-5">
+
+                        <!-- ブランドカラー ストリップ -->
+                        <div :style="'height:6px; border-radius:6px; background:' + brandColor(selectedJob) + '; margin:-1.25rem -1.25rem 0 -1.25rem;'"></div>
+
+                        <!-- 会社名・求人タイトル -->
+                        <div>
+                            <div class="flex items-center gap-2 mb-1.5 flex-wrap mt-3">
+                                <a :href="selectedJob.url" target="_blank"
+                                   class="text-sm hover:underline font-bold transition"
+                                   :style="'color:' + brandColor(selectedJob)"
+                                   x-text="selectedJob.company_name || '企業名未取得'"></a>
+                                <template x-if="serviceLabel(selectedJob)">
+                                    <span class="tag-service" x-text="serviceLabel(selectedJob)"></span>
+                                </template>
+                                <template x-if="selectedJob.listing_status === 'listed_prime'">
+                                    <span class="tag-prime">東証プライム</span>
+                                </template>
+                                <template x-if="selectedJob.listing_status === 'listed_growth'">
+                                    <span class="tag-growth">東証グロース</span>
+                                </template>
+                                <template x-if="selectedJob.listing_status === 'ipo_preparing'">
+                                    <span class="tag-ipo">IPO準備中</span>
+                                </template>
+                                <template x-if="selectedJob.listing_status === 'unlisted'">
+                                    <span class="tag-benefit">非上場</span>
+                                </template>
+                            </div>
+                            <p class="text-base font-bold leading-snug" style="color:var(--text-primary);"
+                               x-text="selectedJob.job_title || '—'"></p>
+                            <p class="text-xs mt-1" style="color:var(--text-muted);"
+                               x-text="selectedJob.category_label + '　／　' + inferIndustry(selectedJob)"></p>
+                            <template x-if="selectedJob.location">
+                                <p class="text-xs mt-0.5 flex items-center gap-1" style="color:var(--text-secondary);">
+                                    <svg class="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none">
+                                        <path d="M8 1.5C5.51 1.5 3.5 3.51 3.5 6c0 3.75 4.5 8.5 4.5 8.5s4.5-4.75 4.5-8.5c0-2.49-2.01-4.5-4.5-4.5z" stroke="currentColor" stroke-width="1.2"/>
+                                        <circle cx="8" cy="6" r="1.5" stroke="currentColor" stroke-width="1.2"/>
+                                    </svg>
+                                    <span x-text="selectedJob.location"></span>
+                                </p>
+                            </template>
+                        </div>
+
+                        <!-- ① 仕事内容 -->
+                        <div>
+                            <p class="section-label mb-2">仕事内容</p>
+                            <template x-if="selectedJob.description && selectedJob.description.trim()">
+                                <p class="job-preview-text whitespace-pre-line"
+                                   x-text="selectedJob.description"></p>
+                            </template>
+                            <template x-if="!selectedJob.description || !selectedJob.description.trim()">
+                                <p class="text-xs italic" style="color:var(--text-muted);">未取得（全件再処理で取得できます）</p>
+                            </template>
+                        </div>
+
+                        <!-- ② 必須要件 -->
+                        <div x-show="selectedJob.requirements">
+                            <p class="section-label mb-2">必須要件</p>
+                            <p class="job-preview-text whitespace-pre-line text-xs"
+                               x-text="selectedJob.requirements"></p>
+                        </div>
+
+                        <!-- ② 歓迎要件 -->
+                        <div x-show="selectedJob.preferred_requirements">
+                            <p class="section-label mb-2">歓迎要件</p>
+                            <p class="job-preview-text whitespace-pre-line text-xs"
+                               x-text="selectedJob.preferred_requirements"></p>
+                        </div>
+
+                        <!-- ③ スキル・応募要件 -->
+                        <div>
+                            <p class="section-label mb-2">スキル・応募要件</p>
+                            <div class="flex flex-wrap gap-1.5 mb-2.5">
+                                <template x-for="tag in (selectedJob.skill_tags || [])" :key="tag">
+                                    <span class="tag-skill" x-text="tag"></span>
+                                </template>
+                                <template x-if="(selectedJob.skill_tags||[]).length === 0">
+                                    <span class="text-sm" style="color:var(--text-muted);">—</span>
+                                </template>
+                            </div>
+                            <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs" style="color:var(--text-secondary);">
+                                <template x-if="selectedJob.required_exp_years">
+                                    <span>経験 <span class="font-bold" style="color:var(--text-primary);" x-text="selectedJob.required_exp_years+'年以上'"></span></span>
+                                </template>
+                                <template x-if="selectedJob.management_exp_required">
+                                    <span class="font-bold" style="color:#C45D00;">管理職経験 必須</span>
+                                </template>
+                                <template x-if="selectedJob.is_managerial">
+                                    <span class="font-bold" style="color:#6025C0;">管理職ポジション</span>
+                                </template>
+                                <template x-if="selectedJob.is_inexperienced_ok">
+                                    <span class="font-bold" style="color:#C45D00;">未経験・第二新卒歓迎</span>
+                                </template>
+                                <template x-if="selectedJob.english_level && selectedJob.english_level !== 'none'">
+                                    <span>英語 <span class="font-bold" style="color:var(--text-primary);"
+                                        x-text="{'daily':'日常会話','business':'ビジネス','native':'ネイティブ'}[selectedJob.english_level]"></span>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- ④ 給与 -->
+                        <div class="salary-card">
+                            <p class="section-label mb-3">給与</p>
+                            <div class="space-y-2 text-sm">
+                                <template x-if="selectedJob.real_base_annual">
+                                    <div class="flex justify-between items-center">
+                                        <span style="color:var(--text-secondary);">実質基本給（年）</span>
+                                        <span class="text-xl font-extrabold" style="color:#B8860B;"
+                                              x-text="(selectedJob.real_base_annual/10000).toFixed(0)+'万'"></span>
+                                    </div>
+                                </template>
+                                <template x-if="selectedJob.base_salary_monthly">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-xs" style="color:var(--text-secondary);">基本月給</span>
+                                        <span class="font-bold text-xs" style="color:#B8860B;"
+                                              x-text="(selectedJob.base_salary_monthly/10000).toFixed(1)+'万'
+                                                     + (selectedJob.salary_system === 'annual' ? '（年俸）' : '')"></span>
+                                    </div>
+                                </template>
+                                <template x-if="selectedJob.fixed_overtime_pay">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-xs" style="color:#C45D00;">固定残業代（月）</span>
+                                        <span class="font-bold text-xs" style="color:#E07000;"
+                                              x-text="'+'+(selectedJob.fixed_overtime_pay/10000).toFixed(1)+'万 ('+selectedJob.fixed_overtime_hours+'h分)'"></span>
+                                    </div>
+                                </template>
+                                <template x-if="selectedJob.has_incentive">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-xs" style="color:#1A8C44;">インセンティブ</span>
+                                        <span class="font-bold text-xs" style="color:#1A8C44;">あり</span>
+                                    </div>
+                                </template>
+                                <template x-if="selectedJob.salary_min || selectedJob.salary_max">
+                                    <div class="flex justify-between items-center border-t pt-2" style="border-color:#C7D2FE;">
+                                        <span class="text-xs" style="color:var(--text-muted);">提示年収レンジ</span>
+                                        <span class="text-xs font-bold" style="color:var(--text-secondary);"
+                                              x-text="(selectedJob.salary_min ? (selectedJob.salary_min/10000).toFixed(0)+'万' : '?')
+                                                     + ' 〜 '
+                                                     + (selectedJob.salary_max ? (selectedJob.salary_max/10000).toFixed(0)+'万' : '?')"></span>
+                                    </div>
+                                </template>
+                                <template x-if="selectedJob.salary_average">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-xs" style="color:var(--text-muted);">額面年収（中央値）</span>
+                                        <span class="text-xs font-bold" style="color:var(--text-secondary);"
+                                              x-text="(selectedJob.salary_average/10000).toFixed(0)+'万'"></span>
+                                    </div>
+                                </template>
+                                <template x-if="selectedJob.salary && !selectedJob.salary_min && !selectedJob.real_base_annual">
+                                    <p class="text-xs" style="color:var(--text-secondary);" x-text="selectedJob.salary"></p>
+                                </template>
+                                <template x-if="!selectedJob.real_base_annual && !selectedJob.salary_min && !selectedJob.salary_max && !selectedJob.salary_average && !selectedJob.salary">
+                                    <p class="text-xs italic" style="color:var(--text-muted);">未取得（全件再処理で取得できます）</p>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- ⑤ 勤務条件 -->
+                        <div>
+                            <p class="section-label mb-2">勤務条件</p>
+                            <div class="grid grid-cols-2 gap-2 text-sm">
+                                <div class="metric-box">
+                                    <p class="metric-label">リモート</p>
+                                    <p class="metric-value text-sm"
+                                       x-text="{'full':'フルリモート','partial':'一部リモート','none':'出社のみ'}[selectedJob.remote_type] || '—'"></p>
+                                </div>
+                                <div class="metric-box">
+                                    <p class="metric-label">フレックス</p>
+                                    <p class="metric-value text-sm"
+                                       :style="selectedJob.is_flex_time ? 'color:#1A8C44;' : ''"
+                                       x-text="selectedJob.is_flex_time ? 'あり' : 'なし'"></p>
+                                </div>
+                                <div class="metric-box">
+                                    <p class="metric-label">試用期間</p>
+                                    <p class="metric-value text-sm"
+                                       x-text="selectedJob.probation_months ? selectedJob.probation_months+'ヶ月' : '—'"></p>
+                                </div>
+                                <div class="metric-box">
+                                    <p class="metric-label">雇用形態</p>
+                                    <p class="metric-value text-sm"
+                                       x-text="selectedJob.employment_type || '—'"></p>
+                                </div>
+                            </div>
+                            <template x-if="selectedJob.working_hours">
+                                <div class="mt-2">
+                                    <p class="metric-label mb-1">勤務時間</p>
+                                    <p class="text-xs" style="color:var(--text-secondary);" x-text="selectedJob.working_hours"></p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- ⑥ 休日・残業 -->
+                        <div class="flex gap-3 text-sm">
+                            <div class="metric-icon-box flex-1 flex-col items-start gap-1">
+                                <div class="flex items-center gap-1.5 w-full">
+                                    <div class="mic-icon" style="background:#EBF5FF; width:28px; height:28px;">
+                                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                                            <rect x="3" y="4" width="14" height="13" rx="2" stroke="#0066CC" stroke-width="1.5"/>
+                                            <path d="M3 8h14M7 2v4M13 2v4" stroke="#0066CC" stroke-width="1.5" stroke-linecap="round"/>
+                                        </svg>
+                                    </div>
+                                    <span class="mic-label">年間休日</span>
+                                </div>
+                                <span class="font-extrabold text-base" style="color:#0066CC;"
+                                      x-text="selectedJob.annual_holidays ? selectedJob.annual_holidays+'日' : '—'"></span>
+                            </div>
+                            <div class="metric-icon-box flex-1 flex-col items-start gap-1">
+                                <div class="flex items-center gap-1.5 w-full">
+                                    <div class="mic-icon" style="background:#FFF0F0; width:28px; height:28px;">
+                                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                                            <circle cx="10" cy="10" r="7" stroke="#C0392B" stroke-width="1.5"/>
+                                            <path d="M10 6v4l2.5 2.5" stroke="#C0392B" stroke-width="1.5" stroke-linecap="round"/>
+                                        </svg>
+                                    </div>
+                                    <span class="mic-label">月平均残業</span>
+                                </div>
+                                <span class="font-extrabold text-base"
+                                      :style="(selectedJob.avg_overtime_hours||0) > 30 ? 'color:#C0392B;' : 'color:var(--text-primary);'"
+                                      x-text="selectedJob.avg_overtime_hours != null ? selectedJob.avg_overtime_hours+'h' : '—'"></span>
+                            </div>
+                        </div>
+                        <template x-if="selectedJob.holidays">
+                            <p class="text-xs" style="color:var(--text-secondary);" x-text="selectedJob.holidays"></p>
+                        </template>
+
+                        <!-- ⑦ 福利厚生 -->
+                        <div x-show="(selectedJob.benefit_tags||[]).length > 0">
+                            <p class="section-label mb-2">福利厚生</p>
+                            <div class="flex flex-wrap gap-1.5">
+                                <template x-for="tag in (selectedJob.benefit_tags || [])" :key="tag">
+                                    <span class="tag-benefit" x-text="tag"></span>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- ⑧ 企業情報 -->
+                        <template x-if="selectedJob.company_employee_count || selectedJob.company_average_age || selectedJob.foreign_employee_ratio">
+                            <div>
+                                <p class="section-label mb-2">企業情報</p>
+                                <div class="grid grid-cols-3 gap-2 text-sm">
+                                    <template x-if="selectedJob.company_employee_count">
+                                        <div class="metric-box">
+                                            <p class="metric-label">従業員数</p>
+                                            <p class="metric-value text-sm" x-text="selectedJob.company_employee_count+'名'"></p>
+                                        </div>
+                                    </template>
+                                    <template x-if="selectedJob.company_average_age">
+                                        <div class="metric-box">
+                                            <p class="metric-label">平均年齢</p>
+                                            <p class="metric-value text-sm" x-text="selectedJob.company_average_age+'歳'"></p>
+                                        </div>
+                                    </template>
+                                    <template x-if="selectedJob.foreign_employee_ratio">
+                                        <div class="metric-box">
+                                            <p class="metric-label">外国籍比率</p>
+                                            <p class="metric-value text-sm" x-text="selectedJob.foreign_employee_ratio+'%'"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- ⑨ その他メタデータ -->
+                        <template x-if="selectedJob.metadata && Object.keys(selectedJob.metadata).length > 0">
+                            <div>
+                                <p class="section-label mb-2">その他情報</p>
+                                <div class="space-y-1">
+                                    <template x-for="[k, v] in Object.entries(selectedJob.metadata)" :key="k">
+                                        <div class="flex justify-between items-center text-xs">
+                                            <span style="color:var(--text-muted);" x-text="k"></span>
+                                            <span class="font-medium" style="color:var(--text-secondary);" x-text="v"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- アクションボタン -->
+                        <div class="flex gap-2 pt-1">
+                            <button @click="addToCompare(selectedJob.id)"
+                                    class="btn-primary flex-1">
+                                比較に追加
+                            </button>
+                            <a :href="selectedJob.url" target="_blank"
+                               class="btn-secondary flex-1">
+                                求人票を見る
+                            </a>
+                        </div>
+
+                    </div>
+                </template>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 比較バー -->
+    <div x-show="compareIds.length > 0 && !deleteMode" x-cloak x-transition
+         class="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-2xl px-6 py-3.5 flex items-center gap-5 z-50"
+         style="background: #FFFFFF; border: 2px solid #4F46E5; box-shadow: 0 8px 32px rgba(79,70,229,0.25);">
+        <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-extrabold"
+                  style="background: #4F46E5; color: #fff;"
+                  x-text="compareIds.length"></span>
+            <span class="text-sm font-semibold" style="color:var(--text-primary);">件選択中</span>
+        </div>
+        <button @click="goCompare()" :disabled="compareIds.length < 2"
+                class="btn-primary px-5 py-2 text-sm">
+            比較する
+        </button>
+        <button @click="compareIds = []" class="text-sm font-medium transition"
+                style="color:var(--text-muted);"
+                onmouseover="this.style.color='#C0392B';"
+                onmouseout="this.style.color='var(--text-muted)';">クリア</button>
+    </div>
+
+    <!-- 削除バー -->
+    <div x-show="deleteIds.length > 0 && deleteMode" x-cloak x-transition
+         class="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-2xl px-6 py-3.5 flex items-center gap-5 z-50"
+         style="background: #FFFFFF; border: 2px solid #C0392B; box-shadow: 0 8px 32px rgba(192,57,43,0.25);">
+        <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-extrabold"
+                  style="background: #C0392B; color: #fff;"
+                  x-text="deleteIds.length"></span>
+            <span class="text-sm font-semibold" style="color:var(--text-primary);">件選択中</span>
+        </div>
+        <button @click="deleteSelected()"
+                class="px-5 py-2 text-sm font-semibold rounded-lg transition"
+                style="background:#C0392B; color:#fff; border:none; cursor:pointer;">
+            削除する
+        </button>
+        <button @click="deleteIds = []" class="text-sm font-medium transition"
+                style="color:var(--text-muted);"
+                onmouseover="this.style.color='#C0392B';"
+                onmouseout="this.style.color='var(--text-muted)';">クリア</button>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── 業界定義 ─────────────────────────────────────────────────────
+const INDUSTRIES = [
+    {
+        key: '金融・会計',
+        patterns: /税務|会計|経理|財務|税理士|簿記|銀行|証券|投資|保険|ファンド|アセット|決算|仕訳|監査法人/,
+        color: '#D4A000', colorLight: '#FFFBE8'
+    },
+    {
+        key: 'IT・通信',
+        patterns: /エンジニア|プログラム|システム開発|ソフトウェア|webアプリ|クラウド|セキュリティ|インフラ|ネットワーク|デジタル|saas|api|データベース/,
+        color: '#0066CC', colorLight: '#EBF5FF'
+    },
+    {
+        key: '製造・メーカー',
+        patterns: /生産管理|購買|調達|品質管理|qms|ems|製造|電池|電子部品|機械設計|工場|ものづくり|oem|odm|サプライヤ|部品購買|量産/,
+        color: '#9A2020', colorLight: '#FFF0F0'
+    },
+    {
+        key: '商社・物流',
+        patterns: /商社|物流|倉庫|輸送|配送|scm|サプライチェーン|貿易|輸出|輸入|通関/,
+        color: '#7A5F00', colorLight: '#FFFAEB'
+    },
+    {
+        key: '人材・教育',
+        patterns: /人材|採用|リクルート|hr|ヒューマン|教育|学校|専門学校|研修|講師|キャリア|就職支援/,
+        color: '#C45D00', colorLight: '#FFF4EB'
+    },
+    {
+        key: '広告・マスコミ',
+        patterns: /広告|マーケティング|編集|制作|メディア|pr|宣伝|クリエイティブ|デザイン|コピー|ブランド|出版|映像/,
+        color: '#B0306A', colorLight: '#FFF0F5'
+    },
+    {
+        key: '不動産・建設',
+        patterns: /不動産|建設|建築|施工|設計|土木|マンション|住宅|建物管理|プロパティ/,
+        color: '#1A8C44', colorLight: '#EDFAF2'
+    },
+    {
+        key: 'コンサル・経営',
+        patterns: /コンサル|経営企画|戦略|事業企画|事業開発|bpr|業務改革|グローバル購買|ガバナンス|経営参謀/,
+        color: '#6025C0', colorLight: '#F3F0FF'
+    },
+    {
+        key: '医療・福祉',
+        patterns: /医療|病院|薬剤|介護|福祉|看護|クリニック|製薬|医薬/,
+        color: '#0D7A7A', colorLight: '#E8FAFA'
+    },
+];
+
+// 企業別ブランドカラー（既知企業）
+const BRAND_COLORS = {
+    'ファーストリテイリング': '#E6001A',
+    'ユニクロ':               '#E6001A',
+    'GMO':                    '#00A0A0',
+    'Amazon':                 '#7B2DBF',
+    'アマゾン':               '#7B2DBF',
+    'Google':                 '#4285F4',
+    'Microsoft':              '#00A4EF',
+    'Sony':                   '#0070D1',
+    'ソニー':                 '#0070D1',
+    'Toyota':                 '#CC0000',
+    'トヨタ':                 '#CC0000',
+    'Rakuten':                '#BF0000',
+    '楽天':                   '#BF0000',
+    'SoftBank':               '#CC0000',
+    'ソフトバンク':           '#CC0000',
+    'LINE':                   '#00C300',
+    'Mercari':                '#E2002D',
+    'メルカリ':               '#E2002D',
+};
+
+function getIndustryMeta(job) {
+    if (job.industry && job.industry.trim()) {
+        const ind = INDUSTRIES.find(i => i.key === job.industry.trim());
+        return ind || { key: 'その他', color: '#4F46E5', colorLight: '#EEF2FF' };
+    }
+    const text = [
+        job.job_title    || '',
+        job.company_name || '',
+        ...(job.skill_tags || []),
+        ...(job.benefit_tags || []),
+    ].join(' ').toLowerCase();
+
+    for (const ind of INDUSTRIES) {
+        if (ind.patterns.test(text)) return ind;
+    }
+    return { key: 'その他', color: '#4F46E5', colorLight: '#EEF2FF' };
+}
+
+function inferIndustry(job) {
+    return getIndustryMeta(job).key;
+}
+
+const SERVICE_LABELS = {
+    'agent_recommend':       'doda Agent',
+    'project_manager':       'doda 採用PJ',
+    'company_offer':         'doda オファー',
+    'rikunabi_offer':        'リクナビNEXT',
+    'mynavi_scout':          'マイナビ転職',
+    'directscout_recommend': 'リクルートDS',
+};
+
+function serviceLabel(job) {
+    return SERVICE_LABELS[job.category] || '';
+}
+
+function brandColor(job) {
+    const name = (job.company_name || '').trim();
+    for (const [k, v] of Object.entries(BRAND_COLORS)) {
+        if (name.includes(k)) return v;
+    }
+    return getIndustryMeta(job).color;
+}
+
+const ALL_TABS = [
+    { key: 'all', label: '全件' },
+    ...INDUSTRIES.map(i => ({ key: i.key, label: i.key })),
+    { key: 'その他', label: 'その他' },
+];
+
+function tabColor(key) {
+    const ind = INDUSTRIES.find(i => i.key === key);
+    if (ind) return ind.color;
+    if (key === 'all') return '#4F46E5';
+    return '#4F46E5';
+}
+function tabColorLight(key) {
+    const ind = INDUSTRIES.find(i => i.key === key);
+    if (ind) return ind.colorLight;
+    return '#EEF2FF';
+}
+
+// ── Alpine コンポーネント ─────────────────────────────────────────
+function dashboard() {
+    return {
+        jobs:        [],
+        selectedJob: null,
+        compareIds:  [],
+        deleteIds:   [],
+        deleteMode:  false,
+        sidebarOpen: true,
+        enriching:   false,
+        enrichResult: null,
+        enrichLog:   [],
+        scraping:     false,
+        scrapeResult: null,
+        scrapeErrorMsg: null,
+        scrapeLog:    [],
+        allSkills:   [],
+        activeTab:   'all',
+        filters: {
+            keyword:          '',
+            salary_min:       0,
+            holidays_min:     0,
+            overtime_max:     0,
+            remote:           false,
+            inexperienced_ok: false,
+            listing:          '',
+            english:          '',
+            skill:            '',
+        },
+
+        brandColor(job)     { return brandColor(job); },
+        serviceLabel(job)   { return serviceLabel(job); },
+        tabColor(key)       { return tabColor(key); },
+        tabColorLight(key)  { return tabColorLight(key); },
+
+        async init() {
+            await Promise.all([this.loadJobs(), this.loadSkills()]);
+        },
+
+        filteredJobs() {
+            const kw = (this.filters.keyword || '').trim().toLowerCase();
+            if (!kw) return this.jobs;
+            return this.jobs.filter(j =>
+                (j.job_title             || '').toLowerCase().includes(kw) ||
+                (j.company_name          || '').toLowerCase().includes(kw) ||
+                (j.requirements          || '').toLowerCase().includes(kw) ||
+                (j.preferred_requirements|| '').toLowerCase().includes(kw) ||
+                (j.skill_tags            || []).some(t => t.toLowerCase().includes(kw))
+            );
+        },
+
+        tabCount(key) {
+            const jobs = this.filteredJobs();
+            if (key === 'all') return jobs.length;
+            return jobs.filter(j => inferIndustry(j) === key).length;
+        },
+
+        activeTabs() {
+            return ALL_TABS.filter(t => this.tabCount(t.key) > 0);
+        },
+
+        tabJobs() {
+            const jobs = this.filteredJobs();
+            if (this.activeTab === 'all') return jobs;
+            return jobs.filter(j => inferIndustry(j) === this.activeTab);
+        },
+
+        inferIndustry(job) { return inferIndustry(job); },
+
+        async loadJobs() {
+            const p = new URLSearchParams();
+            if (this.filters.salary_min)       p.set('salary_min',       this.filters.salary_min);
+            if (this.filters.holidays_min)     p.set('holidays_min',     this.filters.holidays_min);
+            if (this.filters.overtime_max)     p.set('overtime_max',     this.filters.overtime_max);
+            if (this.filters.remote)           p.set('remote',           'true');
+            if (this.filters.inexperienced_ok) p.set('inexperienced_ok', 'true');
+            if (this.filters.listing)          p.set('listing',          this.filters.listing);
+            if (this.filters.english)          p.set('english',          this.filters.english);
+            if (this.filters.skill)            p.set('skill',            this.filters.skill);
+            const res = await fetch('/api/jobs?' + p);
+            this.jobs = await res.json();
+        },
+
+        async loadSkills() {
+            const res = await fetch('/api/skills');
+            this.allSkills = await res.json();
+        },
+
+        async applyFilters() {
+            await this.loadJobs();
+        },
+
+        resetFilters() {
+            this.filters = { keyword:'', salary_min:0, holidays_min:0, overtime_max:0,
+                             remote:false, inexperienced_ok:false, listing:'', english:'', skill:'' };
+            this.applyFilters();
+        },
+
+        async selectJob(job) {
+            if (this.selectedJob?.id === job.id) { this.selectedJob = null; return; }
+            this.selectedJob = job;
+            const res  = await fetch('/api/jobs/' + job.id);
+            const full = await res.json();
+            if (typeof full.metadata === 'string') {
+                try { full.metadata = JSON.parse(full.metadata); } catch {}
+            }
+            if (this.selectedJob?.id === full.id) this.selectedJob = full;
+        },
+
+        cardExcerpt(job) {
+            if (job.summary && job.summary.trim())
+                return job.summary.trim();
+            return '';
+        },
+
+        jobExcerpt(job) {
+            if (job.description && job.description.trim())
+                return job.description.slice(0, 400).trim();
+            const raw = (job.raw_text || '').replace(/\t/g, ' ');
+            const markers = ['仕事内容\n', '職務内容\n', '業務内容\n', '仕事の内容\n',
+                             '主な業務内容\n', '■職務内容\n', '仕事内容：\n'];
+            for (const m of markers) {
+                const idx = raw.indexOf(m);
+                if (idx !== -1)
+                    return raw.slice(idx + m.length, idx + m.length + 380).trim();
+            }
+            const stripped = raw.slice(150, 520).trim();
+            return stripped.length > 60 ? stripped : '';
+        },
+
+
+        addToCompare(id) {
+            if (!this.compareIds.includes(id)) this.compareIds.push(id);
+        },
+
+        goCompare() {
+            if (this.compareIds.length < 2) return;
+            window.location.href = '/compare?' + this.compareIds.map(id => 'id=' + id).join('&');
+        },
+
+        toggleSelect(id) {
+            const arr = this.deleteMode ? this.deleteIds : this.compareIds;
+            const idx = arr.indexOf(id);
+            if (idx === -1) arr.push(id);
+            else arr.splice(idx, 1);
+        },
+
+        toggleDeleteMode() {
+            this.deleteMode = !this.deleteMode;
+            if (this.deleteMode) this.compareIds = [];
+            else this.deleteIds = [];
+        },
+
+        async deleteSelected() {
+            if (!this.deleteIds.length) return;
+            if (!confirm(this.deleteIds.length + '件の求人を削除しますか？\nこの操作は元に戻せません。')) return;
+            const ids = [...this.deleteIds];
+            await fetch('/api/jobs', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids }),
+            });
+            this.jobs = this.jobs.filter(j => !ids.includes(j.id));
+            this.deleteIds = [];
+            if (this.selectedJob && ids.includes(this.selectedJob.id)) this.selectedJob = null;
+        },
+
+        async triggerScrape() {
+            if (this.scraping) return;
+            this.scraping = true;
+            this.scrapeResult = null;
+            this.scrapeErrorMsg = null;
+            this.scrapeLog = [];
+            try {
+                const res = await fetch('/api/scrape/trigger', { method: 'POST' });
+                const data = await res.json();
+                this.scrapeResult = data.status;
+                if (data.status === 'error') this.scrapeErrorMsg = data.message;
+                if (data.status === 'started') {
+                    // 3秒後に初回ログ取得
+                    setTimeout(() => this.loadScrapeLog(), 3000);
+                }
+            } catch {
+                this.scrapeResult = 'error';
+                this.scrapeErrorMsg = '通信エラー';
+            } finally {
+                this.scraping = false;
+            }
+        },
+
+        async loadScrapeLog() {
+            try {
+                const res = await fetch('/api/scrape/log');
+                const data = await res.json();
+                this.scrapeLog = data.lines || [];
+            } catch {}
+        },
+
+        async triggerEnrich(rerun = false) {
+            if (this.enriching) return;
+            this.enriching = true;
+            this.enrichResult = null;
+            this.enrichLog = [];
+            try {
+                const res = await fetch('/api/enrich/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rerun }),
+                });
+                const data = await res.json();
+                this.enrichResult = data.status;
+                if (data.status === 'started') {
+                    setTimeout(() => this.loadEnrichLog(), 3000);
+                }
+            } catch {
+                this.enrichResult = 'error';
+            } finally {
+                this.enriching = false;
+            }
+        },
+
+        async loadEnrichLog() {
+            try {
+                const res = await fetch('/api/enrich/log');
+                const data = await res.json();
+                this.enrichLog = data.lines || [];
+            } catch {}
+        },
+    };
+}
+</script>
+{% endblock %}

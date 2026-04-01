@@ -189,13 +189,22 @@ def _save_credentials(creds):
 
 def _get_valid_credentials():
     """有効な credentials を返す。期限切れなら更新。なければ None"""
-    creds = _load_credentials()
+    try:
+        creds = _load_credentials()
+    except Exception:
+        return None
     if creds is None:
         return None
-    if creds.expired and creds.refresh_token:
-        import google.auth.transport.requests
-        creds.refresh(google.auth.transport.requests.Request())
-        _save_credentials(creds)
+    if not creds.valid:
+        if creds.expired and creds.refresh_token:
+            try:
+                import google.auth.transport.requests
+                creds.refresh(google.auth.transport.requests.Request())
+                _save_credentials(creds)
+            except Exception:
+                return None
+        else:
+            return None
     return creds if creds.valid else None
 
 
@@ -407,9 +416,15 @@ def _get_redirect_uri() -> str:
 @app.route('/auth/login')
 def auth_login():
     """OAuth2 認証フロー開始"""
+    import secrets as _secrets, hashlib, base64
     creds_data = _read_credentials_json()
     if not creds_data:
         return jsonify({'error': 'credentials.json が見つかりません（auth/ フォルダまたは Secret Manager を確認）'}), 500
+
+    code_verifier = _secrets.token_urlsafe(96)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b'=').decode()
 
     flow = google_auth_oauthlib.flow.Flow.from_client_config(
         creds_data, scopes=SCOPES, redirect_uri=_get_redirect_uri()
@@ -417,9 +432,12 @@ def auth_login():
     auth_url, state = flow.authorization_url(
         access_type='offline',
         include_granted_scopes='true',
-        prompt='consent'
+        prompt='consent',
+        code_challenge=code_challenge,
+        code_challenge_method='S256',
     )
     session['oauth_state'] = state
+    session['code_verifier'] = code_verifier
     return redirect(auth_url)
 
 
@@ -433,7 +451,10 @@ def auth_callback():
         state=session.get('oauth_state'),
         redirect_uri=_get_redirect_uri()
     )
-    flow.fetch_token(authorization_response=request.url)
+    flow.fetch_token(
+        authorization_response=request.url,
+        code_verifier=session.get('code_verifier'),
+    )
     _save_credentials(flow.credentials)
     return redirect(url_for('index'))
 
@@ -493,12 +514,15 @@ def api_calendars():
     service = _build_calendar_service(creds)
     all_items = []
     page_token = None
-    while True:
-        result = service.calendarList().list(pageToken=page_token).execute()
-        all_items.extend(result.get('items', []))
-        page_token = result.get('nextPageToken')
-        if not page_token:
-            break
+    try:
+        while True:
+            result = service.calendarList().list(pageToken=page_token).execute()
+            all_items.extend(result.get('items', []))
+            page_token = result.get('nextPageToken')
+            if not page_token:
+                break
+    except Exception:
+        return jsonify({'error': 'unauthorized'}), 401
     calendars = [
         {
             'id': c['id'],

@@ -34,6 +34,7 @@ steps:
       - '--allow-unauthenticated'
       - '--port=8080'
       - '--timeout=60'
+      - '--update-env-vars=NEXTAUTH_URL=https://my-calendar-app-983922127476.asia-northeast1.run.app'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/my-calendar-app:latest'

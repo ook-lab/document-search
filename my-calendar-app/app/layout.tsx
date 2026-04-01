@@ -33,15 +33,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
               navigator.serviceWorker.register('/sw.js').catch(() => {});
-              // SWからのリロード要求を受け取る
-              navigator.serviceWorker.addEventListener('message', (e) => {
-                if (e.data && e.data.type === 'SW_UPDATED') {
+              // 新しいSWが制御を取得したら1回だけリロード（二重リロード防止）
+              let reloading = false;
+              navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!reloading) {
+                  reloading = true;
                   window.location.reload();
                 }
-              });
-              // 新しいSWが制御を取得したら自動リロード
-              navigator.serviceWorker.addEventListener('controllerchange', () => {
-                window.location.reload();
               });
             });
           }
