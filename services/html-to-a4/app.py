@@ -3,12 +3,12 @@ import os
 
 app = Flask(__name__)
 
-# 印刷時の「見切れ」「はみ出し」を一切許さない絶対的かつ汎用的なCSS
+# 印刷時の「見切れ」「はみ出し」を一層させ、機能を追加する統合注入用コード
 INJECTED_PRINT_CSS = """
 <style>
 @media print {
     @page { 
-        size: A4; 
+        size: A4 portrait; 
         margin: 15mm !important; 
     }
     html, body { 
@@ -19,14 +19,12 @@ INJECTED_PRINT_CSS = """
         background: transparent !important;
         overflow-x: hidden !important; 
     }
-    /* 全ての要素に強制的に適用し、独自のwidth指定（794pxなど）を無効化 */
     * { 
         box-sizing: border-box !important;
         max-width: 100% !important; 
         word-wrap: break-word !important; 
         overflow-wrap: break-word !important; 
     }
-    /* テーブル、画像、SVGの幅も強制的に収める */
     table {
         width: 100% !important;
         max-width: 100% !important;
@@ -37,8 +35,57 @@ INJECTED_PRINT_CSS = """
         max-width: 100% !important;
         height: auto !important;
     }
+
+    /* ▼ ご要望があった、特定クラスへの「強制的な改ページ」追加 ▼ */
+    .explanation-box, .guide-box {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
+
+    /* 印刷時にボタン類を非表示にする */
+    .a4-floating-print-btn, button, .edit-buttons { 
+        display: none !important; 
+    }
+}
+
+/* 画面プレビュー時のフローティングボタン装飾 */
+@media screen {
+    .a4-floating-print-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        padding: 16px 32px;
+        background-color: #e91e63;
+        color: white;
+        font-size: 18px;
+        font-weight: bold;
+        border: none;
+        border-radius: 50px;
+        cursor: pointer;
+        z-index: 2147483647; /* 確実に最前面へ */
+        box-shadow: 0 5px 15px rgba(233, 30, 99, 0.4);
+        transition: transform 0.2s, background-color 0.2s;
+    }
+    .a4-floating-print-btn:hover {
+        background-color: #d81b60;
+        transform: scale(1.05);
+    }
 }
 </style>
+
+<!-- どんなHTMLが来ても画面右下に「PDF化」ボタンを自動生成するスクリプト -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    if (!document.getElementById("a4-injected-print-btn")) {
+        var btn = document.createElement("button");
+        btn.id = "a4-injected-print-btn";
+        btn.className = "a4-floating-print-btn";
+        btn.innerText = "📄 A4でPDF化する";
+        btn.onclick = function() { window.print(); };
+        document.body.appendChild(btn);
+    }
+});
+</script>
 """
 
 @app.route('/', methods=['GET'])
