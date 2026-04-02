@@ -36,8 +36,8 @@ INJECTED_PRINT_CSS = """
         height: auto !important;
     }
 
-    /* ▼ ご要望があった、特定クラスへの「強制的な改ページ」追加 ▼ */
-    .explanation-box, .guide-box {
+    /* ▼ ご要望があった、特定クラスやIDへの「強制的な改ページ」追加 ▼ */
+    .explanation-box, .guide-box, #answer-sheet {
         page-break-before: always !important;
         break-before: page !important;
     }
