@@ -48,6 +48,7 @@ export const authOptions: NextAuthOptions = {
           ...token,
           accessToken: data.access_token,
           expiresAt:   Math.floor(Date.now() / 1000) + data.expires_in,
+          refreshToken: data.refresh_token ?? token.refreshToken,
         };
       } catch {
         return { ...token, error: "RefreshAccessTokenError" };

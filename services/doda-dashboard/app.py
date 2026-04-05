@@ -176,7 +176,7 @@ def api_enrich_trigger():
                 subprocess.run(
                     cmd, stdout=f, stderr=subprocess.STDOUT,
                     timeout=1800,
-                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8", "NODE_OPTIONS": "--no-warnings"},
                 )
         finally:
             _enrich_running = False
@@ -234,7 +234,7 @@ def api_scrape_trigger():
                     ["python", str(scraper_script)],
                     stdout=f, stderr=subprocess.STDOUT,
                     timeout=600,
-                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8", "NODE_OPTIONS": "--no-warnings"},
                 )
         finally:
             _scrape_running = False

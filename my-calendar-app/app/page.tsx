@@ -844,17 +844,29 @@ function TaskFormModal({
 
 // ── 認証ゲート ───────────────────────────────────────────────
 export default function Home() {
-  const { status } = useSession();
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (session?.error === "RefreshAccessTokenError") {
+      signIn("google");
+    }
+  }, [session]);
+
   if (status === "loading") {
     return <div className="min-h-screen flex items-center justify-center text-gray-400">読み込み中...</div>;
   }
-  if (status === "unauthenticated") {
+  if (status === "unauthenticated" || session?.error === "RefreshAccessTokenError") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white rounded-2xl shadow-lg p-10 flex flex-col items-center gap-5 max-w-sm w-full">
           <div className="text-4xl">📅</div>
           <h1 className="text-xl font-bold text-gray-800">Family Calendar</h1>
-          <p className="text-sm text-gray-500 text-center">Googleアカウントでログインしてください</p>
+          <p className="text-sm text-gray-500 text-center">
+            {session?.error === "RefreshAccessTokenError"
+              ? "セッションが切れました。再ログインしてください。"
+              : "Googleアカウントでログインしてください"
+            }
+          </p>
           <button onClick={() => signIn("google")}
             className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 text-white px-4 py-3 font-semibold hover:bg-blue-700 transition-colors">
             Googleでログイン
