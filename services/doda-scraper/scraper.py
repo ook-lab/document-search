@@ -379,9 +379,17 @@ async def main():
     db = get_db()
 
     async with async_playwright() as p:
-        print("Chrome (port 9222) に接続中...")
-        browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
-        context = browser.contexts[0]
+        # Chrome (port 9222) に接続を試みる。失敗した場合は新規にブラウザを起動する
+        try:
+            print("Chrome (port 9222) に接続中...")
+            browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+            print("既存の Chrome に接続しました。")
+        except Exception as e:
+            print(f"既存の Chrome に接続できませんでした ({e})。新規ブラウザを起動します...")
+            browser = await p.chromium.launch(headless=True)
+            print("新規ブラウザを起動しました。")
+
+        context = browser.contexts[0] if browser.contexts else await browser.new_context()
 
         # 既存タブがあればそれを使い、なければ新規作成
         page = context.pages[0] if context.pages else await context.new_page()
