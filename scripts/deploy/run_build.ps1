@@ -20,7 +20,21 @@ if ($env:PATH -notlike "*$gcloudPath*") {
     $env:PATH += ";$gcloudPath"
 }
 
-$subs = "_GOOGLE_AI_API_KEY=$env:GOOGLE_AI_API_KEY,_ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY,_OPENAI_API_KEY=$env:OPENAI_API_KEY,_SUPABASE_URL=$env:SUPABASE_URL,_SUPABASE_KEY=$env:SUPABASE_KEY,_SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY,_DOC_PROCESSOR_API_KEY=$env:DOC_PROCESSOR_API_KEY,_CALENDAR_SYNC_USER_ID=$env:CALENDAR_SYNC_USER_ID,_GOOGLE_CLIENT_ID=$env:GOOGLE_CLIENT_ID,_GOOGLE_CLIENT_SECRET=$env:GOOGLE_CLIENT_SECRET,_NEXTAUTH_URL=$env:NEXTAUTH_URL,_NEXTAUTH_SECRET=$env:NEXTAUTH_SECRET"
+# .env ファイルがあれば読み込む
+if (Test-Path ".env") {
+    Write-Host ".env から環境変数を読み込んでいます..."
+    Get-Content ".env" | ForEach-Object {
+        if ($_ -match "^\s*([^#\s=+]+)\s*=\s*(.*)") {
+            $name = $Matches[1].Trim()
+            $value = $Matches[2].Trim().Trim("'").Trim('"')
+            if ($name -and $value) {
+                [Environment]::SetEnvironmentVariable($name, $value, "Process")
+            }
+        }
+    }
+}
+
+$subs = "_GOOGLE_AI_API_KEY=$env:GOOGLE_AI_API_KEY,_ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY,_OPENAI_API_KEY=$env:OPENAI_API_KEY,_SUPABASE_URL=$env:SUPABASE_URL,_SUPABASE_KEY=$env:SUPABASE_KEY,_SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY,_DOC_PROCESSOR_API_KEY=$env:DOC_PROCESSOR_API_KEY,_CALENDAR_SYNC_USER_ID=$env:CALENDAR_SYNC_USER_ID,_GOOGLE_CLIENT_ID=$env:GOOGLE_CLIENT_ID,_GOOGLE_CLIENT_SECRET=$env:GOOGLE_CLIENT_SECRET,_NEXTAUTH_URL=$env:NEXTAUTH_URL,_NEXTAUTH_SECRET=$env:NEXTAUTH_SECRET,_DEFAULT_OWNER_ID=$env:DEFAULT_OWNER_ID,_WASEDA_PDF_FOLDER_ID=$env:WASEDA_PDF_FOLDER_ID,_GOOGLE_SERVICE_ACCOUNT_JSON=$env:GOOGLE_SERVICE_ACCOUNT_JSON,_WASEDA_LOGIN_ID=$env:WASEDA_LOGIN_ID,_WASEDA_PASSWORD=$env:WASEDA_PASSWORD"
 
 # my-calendar-app, portal-app は services/ 配下ではなくルート直下
 $rootServices = @("my-calendar-app", "portal-app")

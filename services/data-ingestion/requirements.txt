@@ -29,8 +29,8 @@ tenacity>=8.2.0
 jsonschema>=4.20.0
 pyyaml>=6.0
 
-# Streamlit
-streamlit>=1.29.0,<2.0.0
+# Playwright
+playwright
 
 # Web Server
 Flask==3.1.0

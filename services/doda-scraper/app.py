@@ -7,6 +7,7 @@ from pathlib import Path
 
 root_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root_dir))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
 load_dotenv(root_dir / '.env')

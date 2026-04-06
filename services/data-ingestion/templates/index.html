@@ -209,11 +209,15 @@
     <h2 id="modal-title">⚙ 設定</h2>
     <div class="form-group">
       <label>追加引数 (extra_args, スペース区切り)</label>
-      <input type="text" id="modal-extra-args" placeholder="例: --max-results 50">
+      <input type="text" id="modal-extra-args" placeholder="例: --browser --max-results 50">
+    </div>
+    <div class="form-group">
+      <label>メモ</label>
+      <textarea id="modal-note" placeholder="メモを入力"></textarea>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeSettings()">キャンセル</button>
-      <button class="btn-primary" onclick="saveSettings()">保存</button>
+      <button class="btn-primary" onclick="saveSettings()">保存して実行</button>
     </div>
   </div>
 </div>
@@ -330,9 +334,14 @@ function appendGroup(sb, group, label) {
     const div = document.createElement('div');
     div.className = `source-card ${state}`;
     div.id = `card-${key}`;
+    // 早稲田アカデミーは --browser ボタンを追加
+    const browserBtn = key === 'waseda'
+      ? `<button class="btn" style="background:#065f46;color:#6ee7b7;" id="btn-browser-${key}" onclick="runSource('${key}', ['--browser'])" ${state==='running'?'disabled':''}>🌐</button>`
+      : '';
     div.innerHTML = `
       <span class="card-name">${src.name}</span>
       <span class="status-badge badge-${state}" id="badge-${key}">${stateLabel(state)}</span>
+      ${browserBtn}
       <button class="btn btn-run" id="btn-run-${key}" onclick="runSource('${key}')" ${state==='running'?'disabled':''}>▶</button>
       <button class="btn btn-settings" onclick="openSettings('${key}')">⚙</button>
     `;
@@ -385,7 +394,7 @@ function setCardState(source, state) {
 
 // ========== 実行 ==========
 
-async function runSource(source) {
+async function runSource(source, forceArgs) {
   if (activeEventSource) {
     activeEventSource.close();
     activeEventSource = null;
@@ -394,12 +403,13 @@ async function runSource(source) {
   setCardState(source, 'running');
   clearLog();
   const srcName = SOURCES[source]?.name || source;
+  const modeLabel = forceArgs && forceArgs.includes('--browser') ? ' [🌐ブラウザ取得]' : '';
   document.getElementById('current-source-name').textContent =
-    source === 'gmail' ? `${srcName} [${gmailMailType}]` : srcName;
+    source === 'gmail' ? `${srcName} [${gmailMailType}]` : `${srcName}${modeLabel}`;
 
-  // extra_args（Gmail は --query label:ラベル名 と --max-results を付与）
-  let extra_args = [];
-  if (source === 'gmail') {
+  // extra_args: forceArgs が渡された場合は優先、なければソースごとに組み立てる
+  let extra_args = forceArgs || [];
+  if (!forceArgs && source === 'gmail') {
     const maxResults = document.getElementById('gmail-max-results')?.value || '50';
     const label = gmailSelectedLabel || gmailMailType;
     extra_args = ['--query', `label:${label}`, '--max-results', maxResults];
@@ -407,10 +417,14 @@ async function runSource(source) {
 
   let run_id;
   try {
+    // extra_args が空の場合はボディに含めない → サーバーが保存済み設定を使用する
+    const body = forceArgs || (source === 'gmail')
+      ? JSON.stringify({ extra_args })
+      : JSON.stringify({});
     const resp = await fetch(`/api/run/${source}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ extra_args }),
+      body,
     });
     const data = await resp.json();
     run_id = data.run_id;
@@ -533,7 +547,12 @@ async function saveSettings() {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ extra_args, note }),
   });
+  const src = currentSettingsSource;
   closeSettings();
+  // 保存後すぐに実行
+  if (extra_args.length > 0) {
+    await runSource(src);
+  }
 }
 
 document.getElementById('settings-modal').addEventListener('click', e => {

@@ -1,30 +1,27 @@
-# Python 3.12ベースイメージ
 FROM python:3.12-slim
 
-# 作業ディレクトリを /app に設定
 WORKDIR /app
 
-# 依存パッケージをインストール
-# services/data-ingestion/requirements.txt が個別にあるため、それを使用
+# 依存パッケージと Playwright 本体のインストールをまとめる
+# apt-get update してから playwright install --with-deps することで
+# システム環境に必要なライブラリを自動的に導入、最後に chromium を取得します
 COPY services/data-ingestion/requirements.txt /app/services/data-ingestion/requirements.txt
-RUN pip install --no-cache-dir -r /app/services/data-ingestion/requirements.txt
+RUN apt-get update && \
+    pip install --no-cache-dir -r /app/services/data-ingestion/requirements.txt && \
+    playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
 
 # 共通モジュール (shared パッケージ) をコピー
 COPY shared/ /app/shared/
 
 # スクリプト (scripts パッケージ) をコピー
-# data-ingestion から呼び出される scripts/processing/* が含まれる
 COPY scripts/ /app/scripts/
 
-# data-ingestion サービス本体をコピー（パッケージ名として有効なようにアンダースコアに変換）
-COPY services/data-ingestion/ /app/services/data_ingestion/
+# data-ingestion サービス本体をコピー
+COPY services/data-ingestion/ /app/services/data-ingestion/
 
-# Pythonパッケージとして認識させるための __init__.py を作成
-RUN touch services/__init__.py
-
-# PYTHONPATH を設定してどこからでも import を可能にする
 ENV PYTHONPATH=/app
 ENV PORT=8080
 
-# サーバーを起動 (gunicornを使用)
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 4 --timeout 300 services.data_ingestion.app:app
+# サーバーを起動
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 4 --timeout 300 --chdir services/data-ingestion app:app

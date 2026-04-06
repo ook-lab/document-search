@@ -124,25 +124,32 @@ def _save_run_log(run_id: str, source: str, status: str, log_output: str, error_
 
 def stream_log(run_id: str):
     """SSEジェネレータ。stdout行をyield"""
+    import time
     if run_id not in _log_buffers:
         yield f"data: {json.dumps({'line': 'run_id not found', 'ts': datetime.now(timezone.utc).isoformat()})}\n\n"
         yield f"data: {json.dumps({'done': True, 'status': 'error'})}\n\n"
         return
 
     sent = 0
+    last_heartbeat = time.time()
+
     while True:
         buf = _log_buffers.get(run_id, [])
         while sent < len(buf):
             yield f"data: {buf[sent]}\n\n"
             sent += 1
+            last_heartbeat = time.time()
 
         state = _run_states.get(run_id, {})
         if state.get('done'):
             yield f"data: {json.dumps({'done': True, 'status': state.get('status', 'unknown')})}\n\n"
             break
 
-        # まだ実行中 → 少し待つ
-        import time
+        # ハートビートを送る（15秒ごと）→ Cloud Runのアイドルタイムアウト防止
+        if time.time() - last_heartbeat > 15:
+            yield ": heartbeat\n\n"
+            last_heartbeat = time.time()
+
         time.sleep(0.2)
 
 
