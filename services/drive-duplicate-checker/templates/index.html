@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>重複整理 & フォルダ統合 Pro (Hybrid)</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        .agent-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #eee; margin-left:10px; }
+        .status-online { background: #e6f4ea; color: #1e8e3e; }
+        .status-offline { background: #fce8e6; color: #d93025; }
+        .pair-card { border: 1px solid #ccc; background: #fff; margin-bottom: 8px; border-radius: 4px; overflow: hidden; }
+        .pair-header { background: #f1f3f4; padding: 4px 10px; font-size: 11px; border-bottom: 1px solid #ddd; }
+        .pair-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+        .folder-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; }
+        .path { word-break: break-all; flex: 1; font-weight: bold; }
+        .stats { font-size: 11px; color: #d93025; font-weight: bold; background: #fff1f0; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <header id="header">
+            <div class="config-row">
+                <div style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
+                    <button @click="mode = 'file'" :class="{ 'btn-primary': mode === 'file' }" class="btn">ファイル重複</button>
+                    <button @click="mode = 'folder'" :class="{ 'btn-primary': mode === 'folder' }" class="btn">フォルダ統合</button>
+                </div>
+
+                <div v-if="mode === 'file'" style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+                    <button @click="scanType = 'local'" :class="{ 'btn-primary': scanType === 'local' }" class="btn">ローカル</button>
+                    <button @click="scanType = 'drive'" :class="{ 'btn-primary': scanType === 'drive' }" class="btn">Drive</button>
+                </div>
+
+                <div class="agent-status" :class="isAgentOnline ? 'status-online' : 'status-offline'">
+                    PC作業員: [[ isAgentOnline ? 'オンライン (' + agentPC + ')' : '待機中 (Agent未起動)' ]]
+                </div>
+
+                <button class="btn" @click="addFolder" style="background:#fff; font-weight:bold; margin-left:10px;">＋ フォルダ追加</button>
+                
+                <div class="target-container">
+                    <div v-for="(target, idx) in scanTargets" :key="idx" class="target-chip">
+                        <span>[[ target ]]</span>
+                        <button @click="removeTarget(idx)" style="background:none; border:none; cursor:pointer;">&times;</button>
+                    </div>
+                </div>
+
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn btn-primary" @click="startSearch" :disabled="isScanning || scanTargets.length === 0" style="padding:0 20px; height:32px;">
+                        [[ isScanning ? '実行中...' : '検索開始' ]]
+                    </button>
+                    <button v-if="isScanning" class="btn btn-danger" @click="stopSearch" style="height:32px;">中断</button>
+                    <button v-if="mode === 'file' && selectedIds.length > 0" class="btn btn-danger" @click="deleteSelected" style="height:32px;">
+                        [[ selectedIds.length ]] 件を整理
+                    </button>
+                </div>
+                
+                <div id="log-area" v-show="isScanning || scanLog">[[ scanLog ]]</div>
+            </div>
+        </header>
+
+        <div id="table-wrapper">
+            <!-- ファイル重複 -->
+            <table v-if="mode === 'file'" style="table-layout: fixed; width: 100%;">
+                <thead>
+                    <tr>
+                        <th style="width: 30px;"><input type="checkbox" @change="toggleAllFiles" :checked="isAllFilesSelected"></th>
+                        <th>ファイル名</th>
+                        <th style="width: 90px;">サイズ</th>
+                        <th>フルパス</th>
+                        <th style="width: 140px;">日時</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="file in flattenedFiles" :key="file.id" :class="file.setIndex % 2 === 0 ? 'set-even' : 'set-odd'">
+                        <td style="text-align:center;"><input type="checkbox" v-model="selectedIds" :value="file.id"></td>
+                        <td>[[ file.name ]]</td>
+                        <td style="text-align:right;">[[ formatSize(file.size) ]]</td>
+                        <td :title="file.path" style="font-size: 11px; color: #555;">[[ file.path || file.id ]]</td>
+                        <td style="font-size: 11px;">[[ formatDate(file.createdTime) ]]</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- フォルダ統合 -->
+            <div v-else style="padding: 10px; max-width: 1000px; margin: 0 auto;">
+                <div v-for="(c, idx) in folderCandidates" :key="idx" class="pair-card">
+                    <div class="pair-header">ペア #[[ idx + 1 ]] - 共通: [[ c.overlap ]] 件</div>
+                    <div class="pair-body">
+                        <div class="folder-row">
+                            <span style="font-weight:bold; color:var(--accent);">A:</span>
+                            <span class="path">[[ c.path_a ]]</span>
+                            <span class="stats">Aの [[ c.ratio_a ]]% がBに存在</span>
+                        </div>
+                        <div class="folder-row">
+                            <span style="font-weight:bold; color:var(--accent);">B:</span>
+                            <span class="path">[[ c.path_b ]]</span>
+                            <span class="stats">Bの [[ c.ratio_b ]]% がAに存在</span>
+                        </div>
+                        <div style="margin-top:8px; font-size:12px; color:#d93025; font-weight:bold;" v-if="c.ratio_a == 100">💡 Aの中身はすべてBに含まれています。マージ推奨。</div>
+                        <div class="merge-actions">
+                            <button class="btn btn-primary" @click="mergeFolders(c.path_a, c.path_b)">AをBへ</button>
+                            <button class="btn btn-primary" @click="mergeFolders(c.path_b, c.path_a)">BをAへ</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+        createApp({
+            delimiters: ['[[', ']]'],
+            setup() {
+                const mode = ref('file');
+                const scanType = ref('local');
+                const scanTargets = ref([]);
+                const sameFolderOnly = ref(false);
+                const duplicateSets = ref([]);
+                const folderCandidates = ref([]);
+                const isScanning = ref(false);
+                const scanLog = ref('');
+                const selectedIds = ref([]);
+                
+                // Agent管理
+                const isAgentOnline = ref(false);
+                const agentPC = ref('');
+                const agentBase = 'http://localhost:8082'; // ローカル作業員のアドレス
+
+                const checkAgent = async () => {
+                    try {
+                        const res = await (await fetch(`${agentBase}/api/health`)).json();
+                        if (res.success) { isAgentOnline.value = true; agentPC.value = res.pc; }
+                        else { isAgentOnline.value = false; }
+                    } catch { isAgentOnline.value = false; }
+                };
+                onMounted(() => { checkAgent(); setInterval(checkAgent, 5000); });
+
+                // API選択 (クラウドならAgent、ローカルなら自前)
+                const getApiUrl = (path) => {
+                    // もし現在のURLが 127.0.0.1 以外（つまりデプロイ先）なら、Agentを叩く
+                    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                        return `${agentBase}${path}`;
+                    }
+                    return path;
+                };
+
+                const addFolder = async () => {
+                    if (scanType.value === 'drive') { const id = prompt('Drive ID'); if(id) scanTargets.value.push(id); return; }
+                    const res = await (await fetch(getApiUrl('/api/select_folder'))).json();
+                    if (res.success && !scanTargets.value.includes(res.path)) scanTargets.value.push(res.path);
+                };
+
+                const startSearch = () => {
+                    isScanning.value = true; scanLog.value = '準備中...'; duplicateSets.value = []; folderCandidates.value = []; selectedIds.value = [];
+                    const eps = mode.value === 'file' ? `/api/scan_stream?type=${scanType.value}` : `/api/analyze_folders?`;
+                    const fullUrl = `${getApiUrl(eps)}&targets=${encodeURIComponent(JSON.stringify(scanTargets.value))}`;
+                    const es = new EventSource(fullUrl);
+                    es.onmessage = (e) => {
+                        const d = JSON.parse(e.data); if (d.log) scanLog.value = d.log;
+                        if (d.done) {
+                            if (mode.value === 'file') duplicateSets.value = d.results;
+                            else folderCandidates.value = d.results;
+                            isScanning.value = false; es.close(); scanLog.value = '完了';
+                        }
+                    };
+                    es.onerror = () => { isScanning.value = false; es.close(); scanLog.value = '中断'; };
+                };
+
+                const mergeFolders = async (src, dst) => {
+                    const res = await (await fetch(getApiUrl('/api/merge_folders'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, dst }) })).json();
+                    if (res.success) { folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src); scanLog.value = 'マージ完了'; }
+                };
+
+                const deleteSelected = async () => {
+                    const idsToMove = [...selectedIds.value];
+                    const res = await (await fetch(getApiUrl('/api/move_to_cleanup'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_ids: idsToMove }) })).json();
+                    if (res.success) {
+                        duplicateSets.value = duplicateSets.value.map(set => ({ ...set, files: set.files.filter(f => !idsToMove.includes(f.id)) })).filter(set => set.files.length > 1);
+                        selectedIds.value = []; scanLog.value = '整理完了';
+                    }
+                };
+
+                const flattenedFiles = computed(() => {
+                    const list = []; duplicateSets.value.forEach((set, setIndex) => { set.files.forEach(f => list.push({ ...f, setIndex })); });
+                    return list;
+                });
+                const isAllFilesSelected = computed(() => flattenedFiles.value.length > 0 && selectedIds.value.length === flattenedFiles.value.length);
+                const toggleAllFiles = () => selectedIds.value = isAllFilesSelected.value ? [] : flattenedFiles.value.map(f => f.id);
+                const removeTarget = (i) => scanTargets.value.splice(i, 1);
+                const formatSize = (b) => { if(!b) return '0 B'; const k=1024, i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k, i)).toFixed(2) + ' ' + ['B','KB','MB','GB'][i]; };
+                const formatDate = (v) => { const d = typeof v === 'number' ? new Date(v*1000) : new Date(v); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
+
+                return {
+                    mode, scanType, scanTargets, sameFolderOnly, duplicateSets, folderCandidates, isScanning, scanLog, selectedIds, isAgentOnline, agentPC,
+                    startSearch, mergeFolders, deleteSelected, addFolder, removeTarget, formatSize, formatDate, toggleAllFiles, isAllFilesSelected, flattenedFiles
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

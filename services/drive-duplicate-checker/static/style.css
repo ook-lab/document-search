@@ -1,0 +1,72 @@
+:root {
+    --bg-main: #ffffff;
+    --bg-header: #f1f3f4;
+    --text-main: #000000;
+    --border: #cccccc;
+    --set-gray: #f9f9f9;
+    --accent: #1a73e8;
+    --hover: #eef4ff;
+}
+
+body {
+    margin: 0; font-size: 13px; color: var(--text-main);
+    font-family: "BIZ UDPGothic", "Meiryo", sans-serif; /* 視認性の高いフォント */
+    overflow: hidden; height: 100vh; display: flex; flex-direction: column;
+}
+
+/* 高密度ヘッダー */
+#header {
+    background: var(--bg-header); padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+
+.config-row { display: flex; align-items: center; gap: 12px; }
+
+.btn {
+    padding: 2px 8px; font-size: 12px; height: 28px; line-height: 24px;
+    background: #fff; border: 1px solid var(--border); cursor: pointer; border-radius: 2px;
+}
+.btn-primary { background: var(--accent); color: #fff; border: none; }
+.btn-danger { background: #d93025; color: #fff; border: none; }
+
+.target-container { display: flex; gap: 4px; overflow-x: auto; flex: 1; align-items: center; }
+.target-chip { background: #fff; border: 1px solid var(--border); padding: 0 6px; font-size: 11px; display: flex; align-items: center; gap: 4px; border-radius: 2px; }
+
+/* ログを一行に固定 */
+#log-area { font-size: 11px; color: #1e8e3e; margin-left: auto; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* リサイズ可能なテーブル */
+#table-wrapper { flex: 1; overflow: auto; background: #fff; }
+
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+th {
+    background: #eee; color: #333; font-weight: normal; font-size: 12px;
+    padding: 4px 8px; border: 1px solid var(--border); text-align: left;
+    position: sticky; top: 0; z-index: 20;
+    overflow: hidden; white-space: nowrap;
+}
+
+/* カラムリサイズ用のハンドル */
+.resizer {
+    position: absolute; right: 0; top: 0; height: 100%; width: 5px;
+    cursor: col-resize; z-index: 30;
+}
+.resizer:hover { background: var(--accent); }
+
+td {
+    padding: 2px 8px; border: 1px solid var(--border); height: 22px; /* 極狭行間 */
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13px;
+}
+
+.set-even { background-color: #ffffff; }
+.set-odd { background-color: var(--set-gray); }
+
+tr:hover { background-color: var(--hover) !important; }
+
+/* プレビュー窓 */
+.preview-mini {
+    position: fixed; right: 10px; bottom: 10px; width: 450px; height: 300px;
+    background: white; border: 1px solid var(--accent); box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 100; border-radius: 4px; display: flex; flex-direction: column; resize: both; overflow: auto;
+}

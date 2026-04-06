@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>実行結果 📁</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #F8F9FA; padding: 40px; color: #202124; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { font-weight: 800; border-bottom: 2px solid #F1F3F4; padding-bottom: 20px; }
+        .result-item { padding: 15px; border-bottom: 1px solid #F1F3F4; display: flex; justify-content: space-between; align-items: center; }
+        .success { color: #34A853; font-weight: 600; }
+        .error { color: #EA4335; font-weight: 600; }
+        .btn-back { display: inline-block; margin-top: 30px; padding: 12px 24px; background: #4285F4; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; }
+        .action-details { font-size: 0.9rem; color: #5F6368; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>実行結果報告 📋</h1>
+        <div class="result-list">
+            {% for res in results %}
+                <div class="result-item">
+                    <div class="action-details">
+                        <strong>{{ res.action.upper() }}</strong>: 
+                        ID {{ res.file_id or res.name or '?' }}
+                    </div>
+                    <div class="{{ 'success' if 'SUCCESS' in res.status else 'error' }}">
+                        {{ res.status }}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <a href="/" class="btn-back">トップに戻る</a>
+    </div>
+</body>
+</html>

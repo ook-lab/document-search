@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drive Safety Exec 📁</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #4285F4; --danger: #EA4335; --bg: #F8F9FA; --radius: 12px; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 40px; }
+        header { text-align: center; margin-bottom: 40px; }
+        .main-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; max-width: 1300px; margin: 0 auto; }
+        .card { background: white; padding: 30px; border-radius: var(--radius); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+        .system-warning { background: #FEE7E6; border: 2px solid var(--danger); padding: 15px; border-radius: 8px; color: var(--danger); font-weight: bold; margin-bottom: 20px; text-align: center; }
+        .file-list { max-height: 500px; overflow-y: auto; border: 1px solid #E8EAED; border-radius: 8px; margin-top: 20px; }
+        .file-item { padding: 10px 15px; border-bottom: 1px solid #F1F3F4; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+        .file-id { font-family: monospace; color: #5F6368; background: #F1F3F4; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; }
+        textarea { width: 100%; height: 400px; padding: 15px; border: 1px solid #DADCE0; border-radius: 8px; font-family: monospace; font-size: 0.85rem; background: #F8F9FA; margin-bottom: 20px; box-sizing: border-box; }
+        .btn-run { width: 100%; padding: 15px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: 800; cursor: pointer; }
+        .btn-run:disabled { background: #BDC1C6; cursor: not-allowed; }
+        input[type="text"] { width: 100%; padding: 12px; border: 1px solid #DADCE0; border-radius: 8px; box-sizing: border-box; font-size: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Drive Management Safety Engine 🛡️</h1>
+            <p>整理したいフォルダの ID を正確に入力してください</p>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="system-warning">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="main-grid">
+            <!-- Left: Folder Input & ID Display -->
+            <div class="card">
+                <h2>📁 フォルダ: <span style="color: var(--primary);">{{ folder_name }}</span></h2>
+                <form action="/" method="GET">
+                    <label style="font-size: 0.8rem; color: #5F6368; display: block; margin-bottom: 5px;">整理対象フォルダの ID:</label>
+                    <input type="text" name="folder_id" value="{{ selected_folder_id }}" placeholder="例: 1abc..." required>
+                    <button type="submit" style="margin-top: 10px; padding: 8px 16px; border-radius: 6px; cursor: pointer;"> 表示する </button>
+                </form>
+
+                {% if is_system_folder %}
+                <div class="system-warning" style="margin-top: 20px;">
+                    ⚠️ 注意: このフォルダはシステム設定 ({{ system_folder_name }}) に含まれる重要な領域です。操作は推奨されません！
+                </div>
+                {% endif %}
+
+                {% if selected_folder_id %}
+                <div style="background: #FFF4E5; border: 1px solid #FFCC80; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 0.85rem;">
+                    <strong style="color: #E65100;">🛸 ブラックホール救出機能</strong><br>
+                    万が一「消えてしまった」ファイルがある場合、このボタンでシステムアカウントの隠しフォルダから、この場所に強制的に連れ戻します。<br>
+                    <form action="/rescue" method="POST" style="margin-top: 10px;">
+                        <input type="hidden" name="current_folder_id" value="{{ selected_folder_id }}">
+                        <button type="submit" style="background: #EF6C00; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">
+                            吸い込まれたファイルを救出する
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+
+                {% if selected_folder_id and files %}
+                <div class="file-list">
+                    {% for file in files %}
+                        <div class="file-item">
+                            <span>{% if file.mimeType == 'application/vnd.google-apps.folder' %}📁{% else %}📄{% endif %}</span>
+                            <span style="flex-grow: 1;">{{ file.name }}</span>
+                            <span class="file-id">{{ file.id[:8] }}...</span>
+                        </div>
+                    {% endfor %}
+                </div>
+                {% elif selected_folder_id %}
+                <p style="margin-top: 20px; color: #5F6368;">フォルダ内にファイルが見つかりません</p>
+                {% endif %}
+            </div>
+
+            <!-- Right: Paste & Execute -->
+            <div class="card">
+                <h2>🧠 実行指示 (JSON)</h2>
+                <form action="/execute" method="POST">
+                    <input type="hidden" name="current_folder_id" value="{{ selected_folder_id }}">
+                    <textarea name="instruction" placeholder='AIから受け取ったJSONをここに貼り付け...'></textarea>
+                    <button type="submit" class="btn-run" {% if is_system_folder %}disabled{% endif %}>
+                        {% if is_system_folder %}システムフォルダへの実行不可{% else %}🚀 指示を実行{% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

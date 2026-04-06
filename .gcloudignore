@@ -1,43 +1,26 @@
-# Python cache
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-env/
-
-# Secrets
-.env
-.env.*
-
-# Git
-.git/
+.gcloudignore
+.git
 .gitignore
-
-# Temporary / runtime
-.tmp.driveupload/
-tmpclaude-*/
-temp/
-cache/
-_runtime/
-debug_output/
-*.log
-logs/
-
-# Not needed for build
-supabase/
-frontend/
-kakeibo_ui/
-K_kakeibo/
-tests/
-docs/
 node_modules/
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Next.js build artifacts
-my-calendar-app/.next/
-my-calendar-app/node_modules/
-my-calendar-app/.env.local
+**/node_modules/
+venv/
+**/.venv/
+**/__pycache__/
+*.pyc
+.tmp/
+.gemini/
+_runtime/
+# 他の重いサービスを除外して高速化
+services/ai-cost-tracker/
+services/calendar-register/
+services/daily-report/
+services/data-ingestion/
+services/debug-pipeline/
+services/doc-processor/
+services/doc-review/
+services/doc-search/
+services/doda-dashboard/
+services/doda-scraper/
+services/kakeibo/
+services/kakeibo_view/
+services/pdf-splitter/

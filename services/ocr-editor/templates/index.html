@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI OCR Studio</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body class="light-mode">
+    <header>
+        <div class="logo">AI<span>OCR</span>Studio</div>
+        <div class="actions">
+            <select id="templateSelector">
+                {% for tid, tdata in templates.items() %}
+                <option value="{{ tid }}">{{ tdata.name }}</option>
+                {% endfor %}
+            </select>
+            <button id="editTemplateBtn" class="btn secondary">⚙️ テンプレート管理</button>
+            <input type="file" id="pdfUpload" accept="application/pdf" hidden>
+            <button id="uploadBtn" class="btn primary">PDFを選択</button>
+            <button id="savePdfBtn" class="btn success" disabled>検索可能PDFを保存</button>
+        </div>
+    </header>
+
+    <main>
+        <aside id="sidebar" class="hidden">
+            <h3>ページ一覧</h3>
+            <div id="pageList"></div>
+        </aside>
+
+        <section id="workspace">
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>AIが分析しています...</p>
+            </div>
+            
+            <div class="split-view">
+                <!-- Left Pane: Image -->
+                <div class="pane image-pane">
+                    <div class="pane-header">オリジナル画像 (PDFビュー)</div>
+                    <div class="image-viewport" id="imageViewport">
+                        <img id="pageImage" src="" alt="PDF Page">
+                        <svg id="svgOverlay" width="0" height="0"></svg>
+                    </div>
+                </div>
+
+                <!-- Right Pane: Editor -->
+                <div class="pane text-pane">
+                    <div class="pane-header">抽出・修正テキスト</div>
+                    <div id="textEditor" class="editor-content">
+                        <div class="placeholder">
+                            <p>PDFをアップロードして分析を開始してください</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Template Edit Modal -->
+    <div id="templateModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>テンプレート管理</h3>
+                <span class="close-btn" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>テンプレート名</label>
+                    <input type="text" id="tplName" placeholder="例: 請求書 (標準型)">
+                </div>
+                <div class="form-group">
+                    <label>AIプロンプト (抽出指示)</label>
+                    <textarea id="tplPrompt" rows="8" placeholder="例: 表形式で抽出し、金額、日付、提供会社名を取得してください。"></textarea>
+                </div>
+                <button id="saveTemplateBtn" class="btn primary full-width">保存する</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="hidden"></div>
+    <script src="{{ url_for('static', filename='js/editor.js') }}"></script>
+</body>
+</html>
