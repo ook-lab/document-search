@@ -32,8 +32,8 @@
                     <button @click="scanType = 'drive'" :class="{ 'btn-primary': scanType === 'drive' }" class="btn">Drive</button>
                 </div>
 
-                <div class="agent-status" :class="isAgentOnline ? 'status-online' : 'status-offline'">
-                    PC作業員: [[ isAgentOnline ? 'オンライン (' + agentPC + ')' : '待機中 (Agent未起動)' ]]
+                <div class="agent-status" :class="isAgentOnline ? 'status-online' : 'status-offline'" @click="checkAgent" style="cursor:pointer;" title="クリックして再接続テスト">
+                    PC作業員: [[ isAgentOnline ? 'オンライン (' + agentPC + ')' : '待機中 (Agent未起動)' ]] 🔄
                 </div>
 
                 <button class="btn" @click="addFolder" style="background:#fff; font-weight:bold; margin-left:10px;">＋ フォルダ追加</button>

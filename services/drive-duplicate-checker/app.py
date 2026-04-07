@@ -142,17 +142,30 @@ def api_analyze_folders():
 
 @app.route("/api/merge_folders", methods=["POST"])
 def api_merge_folders():
-    d = request.json; src, dst = d.get("src"), d.get("dst")
-    for item in os.listdir(src):
-        s = os.path.join(src, item); d_path = os.path.join(dst, item)
-        if os.path.isfile(s):
-            if os.path.exists(d_path):
-                n, e = os.path.splitext(item); c = 1
-                while os.path.exists(os.path.join(dst, f"{n} ({c}){e}")): c += 1
-                d_path = os.path.join(dst, f"{n} ({c}){e}")
-            shutil.move(s, d_path)
-    if not os.listdir(src): os.rmdir(src)
-    return jsonify({"success": True})
+    try:
+        d = request.json
+        src, dst = d.get("src"), d.get("dst")
+        if not src or not dst: return jsonify({"success": False, "error": "パスが未指定です。"})
+        if not os.path.exists(src): return jsonify({"success": False, "error": f"元フォルダが見つかりません: {src}"})
+        if not os.path.exists(dst): return jsonify({"success": False, "error": f"先フォルダが見つかりません: {dst}"})
+        
+        for item in os.listdir(src):
+            s = os.path.join(src, item); d_path = os.path.join(dst, item)
+            if os.path.isfile(s):
+                if os.path.exists(d_path):
+                    n, e = os.path.splitext(item); c = 1
+                    while os.path.exists(os.path.join(dst, f"{n} ({c}){e}")): c += 1
+                    d_path = os.path.join(dst, f"{n} ({c}){e}")
+                shutil.move(s, d_path)
+            elif os.path.isdir(s):
+                # 必要に応じてフォルダ移動も対応
+                shutil.move(s, dst)
+        
+        if not os.listdir(src): os.rmdir(src)
+        return jsonify({"success": True})
+    except Exception as e:
+        logger.error(f"マージ失敗: {e}")
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route("/api/move_to_cleanup", methods=["POST"])
 def api_move_to_cleanup():
