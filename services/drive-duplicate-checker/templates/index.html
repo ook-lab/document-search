@@ -169,8 +169,34 @@
                 };
 
                 const mergeFolders = async (src, dst) => {
-                    const res = await (await fetch(getApiUrl('/api/merge_folders'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, dst }) })).json();
-                    if (res.success) { folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src); scanLog.value = 'マージ完了'; }
+                    console.log('MERGE CLICKED:', src, '->', dst);
+                    scanLog.value = '準備中...';
+                    
+                    try {
+                        const url = getApiUrl('/api/merge_folders');
+                        console.log('FETCHING:', url);
+                        scanLog.value = `マージ送信中 (${dst}へ)...`;
+                        
+                        const res = await (await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ src, dst })
+                        })).json();
+                        
+                        console.log('MERGE RESPONSE:', res);
+                        
+                        if (res.success) {
+                            folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src);
+                            scanLog.value = 'マージ完了！（画面から消去しました）';
+                        } else {
+                            scanLog.value = 'マージ失敗: ' + (res.error || '不明なエラー');
+                            alert('失敗: ' + (res.error || '不明なエラー'));
+                        }
+                    } catch (err) {
+                        console.error('FETCH ERROR:', err);
+                        scanLog.value = '通信エラー: ' + err.message;
+                        alert('PC作業員（Agent）に接続できませんでした。\n\n理由: ' + err.message + '\n\n【解決策】\n・PCで app.py が動いていることを確認してください。\n・もしクラウドからアクセスしているなら、ブラウザで http://localhost:8082 を直接開くと100%解決します。');
+                    }
                 };
 
                 const deleteSelected = async () => {
