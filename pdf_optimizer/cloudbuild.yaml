@@ -1,0 +1,33 @@
+steps:
+  # 1. コンテナイメージのビルド (Artifact Registry を使用)
+  # ※ $PROJECT_ID や $LOCATION などの環境変数は Cloud Build 側で自動適用、またはトリガー設定で用意します。
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-optimizer:$COMMIT_SHA'
+      - '.'
+
+  # 2. コンテナイメージを Artifact Registry にプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-optimizer:$COMMIT_SHA'
+
+  # 3. Cloud Run へのデプロイ
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'pdf-optimizer'
+      - '--image'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-optimizer:$COMMIT_SHA'
+      - '--region'
+      - 'asia-northeast1' # デプロイ先のリージョン（必要に応じて変更してください）
+      - '--allow-unauthenticated' # 認証不要でインターネット公開する場合
+      - '--memory'
+      - '512Mi' # PyMuPDFがメモリを消費する可能性があるため少し余裕を持たせます
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-optimizer:$COMMIT_SHA'
