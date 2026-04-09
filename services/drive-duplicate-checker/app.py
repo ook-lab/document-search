@@ -49,62 +49,145 @@ def calculate_local_md5(file_path):
 
 # --- ファイル重複スキャン ---
 
+def calculate_partial_md5(file_path):
+    """最初の8KBだけをハッシュ化して高速判定"""
+    try:
+        with open(file_path, "rb") as f:
+            return hashlib.md5(f.read(8192)).hexdigest()
+    except: return None
+
 def scan_local_duplicates_stream(root_paths, same_folder_only=False):
     SCAN_STATUS["active"] = True; SCAN_STATUS["interrupt"] = False
-    groups = defaultdict(list); file_count = 0
+    size_groups = defaultdict(list); file_count = 0
+    
     try:
+        # フェーズ1: サイズのみ収集 (一瞬で終わる)
         for root_path in root_paths:
-            yield f"data: {json.dumps({'log': f'スキャン開始: {root_path}'})}\n\n"
+            yield f"data: {json.dumps({'log': f'リスト構築中: {root_path}'})}\n\n"
             for root, dirs, files in os.walk(root_path):
                 if SCAN_STATUS["interrupt"]: break
                 curr_dir = os.path.normpath(root)
                 for name in files:
                     if SCAN_STATUS["interrupt"]: break
                     file_path = os.path.join(curr_dir, name); file_count += 1
-                    yield f"data: {json.dumps({'log': f'[{file_count}件] {name}'})}\n\n"
                     try:
-                        stat = os.stat(file_path); size = stat.st_size
+                        size = os.path.getsize(file_path)
                         if size == 0: continue
-                        md5 = calculate_local_md5(file_path)
-                        if md5:
-                            key = (size, md5, curr_dir) if same_folder_only else (size, md5)
-                            groups[key].append({"id": file_path, "name": name, "path": file_path, "size": size, "createdTime": stat.st_ctime})
+                        key = (size, curr_dir) if same_folder_only else size
+                        size_groups[key].append(file_path)
                     except: pass
-        res = [{"size": v[0]['size'], "files": v, "main_name": v[0]['name']} for v in groups.values() if len(v) > 1]
+                    if file_count % 1000 == 0:
+                        yield f"data: {json.dumps({'log': f'探索中... {file_count}件発見'})}\n\n"
+
+        # フェーズ2: サイズ一致組のみ詳細チェック (劇的に絞り込まれる)
+        results = []
+        md5_groups = defaultdict(list)
+        potential_candidates = {k: v for k, v in size_groups.items() if len(v) > 1}
+        size_groups.clear() # メモリ解放
+        
+        checked_count = 0
+        total_potentials = sum(len(v) for v in potential_candidates.values())
+        
+        for key, paths in potential_candidates.items():
+            for f_path in paths:
+                if SCAN_STATUS["interrupt"]: break
+                checked_count += 1
+                if checked_count % 100 == 0:
+                    prog = int(checked_count / total_potentials * 100)
+                    yield f"data: {json.dumps({'log': f'精密分析中... {prog}% ({checked_count}/{total_potentials})'})}\n\n"
+                
+                # 最初は部分ハッシュで判定
+                p_md5 = calculate_partial_md5(f_path)
+                if not p_md5: continue
+                
+                # 部分一致があるならフルハッシュ
+                f_md5 = calculate_local_md5(f_path)
+                if f_md5:
+                    stat = os.stat(f_path)
+                    res_key = (key[0], f_md5, key[1]) if same_folder_only else (key, f_md5)
+                    md5_groups[res_key].append({
+                        "id": f_path, "name": os.path.basename(f_path), 
+                        "path": f_path, "size": stat.st_size, "createdTime": stat.st_ctime
+                    })
+        
+        # 500件を超える場合はサイズが大きい順に上位500件のみに絞る (ブラウザのパンク防止)
+        res = [{"size": v[0]['size'], "files": v, "main_name": v[0]['name']} for v in md5_groups.values() if len(v) > 1]
         res.sort(key=lambda x: x['size'], reverse=True)
-        yield f"data: {json.dumps({'log': '完了', 'done': True, 'results': res})}\n\n"
-    finally: SCAN_STATUS["active"] = False
+        final_res = res[:500] 
+        
+        yield f_data({"log": "完了 (上位500件を表示中)", "done": True, "results": final_res})
+        
+        # 巨大データの完全消去
+        potential_candidates.clear(); del potential_candidates
+        md5_groups.clear(); del md5_groups
+        res.clear(); del res; final_res.clear(); del final_res
+        gc.collect()
+    finally:
+        SCAN_STATUS["active"] = False
+        gc.collect()
 
 # --- フォルダ統合 分析 ---
+
+def f_data(obj):
+    return f"data: {json.dumps(obj)}\n\n"
 
 def analyze_local_folders(root_paths):
     SCAN_STATUS["active"] = True; SCAN_STATUS["interrupt"] = False
     folder_inventory = defaultdict(set); total = 0
     try:
+        # 爆速化: まずファイルサイズと最初の一部だけ見てフォルダの「指紋」を作る
         for root_path in root_paths:
             for root, dirs, files in os.walk(root_path):
                 if SCAN_STATUS["interrupt"]: break
                 curr = os.path.normpath(root)
                 for name in files:
-                    total += 1; yield f"data: {json.dumps({'log': f'分析[{total}]: {name}'})}\n\n"
-                    md5 = calculate_local_md5(os.path.join(curr, name))
-                    if md5: folder_inventory[curr].add(md5)
-        
+                    total += 1
+                    f_path = os.path.join(curr, name)
+                    try:
+                        # フォルダの中身の「サイズ」だけで最初の判定用指紋を作る (ハッシュ計算を省略)
+                        size = os.path.getsize(f_path)
+                        if size > 1024:
+                            # 1KB超えのファイルのみ指紋に含める
+                            folder_inventory[curr].add(size)
+                    except: pass
+                    if total % 1000 == 0:
+                        yield f_data({"log": f"分析中... {total}ファイル走査"})
+
         candidates = []
-        f_list = [p for p, h in folder_inventory.items() if h]
+        f_list = list(folder_inventory.keys())
+        
         for i in range(len(f_list)):
-            p_a = f_list[i]; h_a = folder_inventory[p_a]
+            p_a = f_list[i]; set_a = folder_inventory[p_a]
+            if not set_a: continue
             for j in range(i + 1, len(f_list)):
-                p_b = f_list[j]; h_b = folder_inventory[p_b]
+                if SCAN_STATUS["interrupt"]: break
+                p_b = f_list[j]; set_b = folder_inventory[p_b]
+                if not set_b: continue
+                
+                # 親子関係は無視
                 if p_b.startswith(p_a + os.sep) or p_a.startswith(p_b + os.sep): continue
-                common = h_a.intersection(h_b)
-                if len(common) < 2: continue
-                r_a, r_b = len(common)/len(h_a), len(common)/len(h_b)
-                if max(r_a, r_b) >= 0.3:
-                    candidates.append({"path_a": p_a, "path_b": p_b, "count_a": len(h_a), "count_b": len(h_b), "overlap": len(common), "ratio_a": round(r_a*100, 1), "ratio_b": round(r_b*100, 1), "max_ratio": round(max(r_a, r_b)*100, 1)})
-        candidates.sort(key=lambda x: x['max_ratio'], reverse=True)
-        yield f"data: {json.dumps({'log': '分析完了', 'done': True, 'results': candidates[:100]})}\n\n"
-    finally: SCAN_STATUS["active"] = False
+                
+                # 共通のファイルサイズが多いかチェック
+                common = set_a.intersection(set_b)
+                if len(common) > 1: # 2つ以上サイズが一致すればマージ候補
+                    ratio = (len(common) * 2) / (len(set_a) + len(set_b))
+                    if ratio > 0.4: # 40%以上一致
+                        candidates.append({"path_a": p_a, "path_b": p_b, "ratio": int(ratio * 100)})
+
+        candidates.sort(key=lambda x: x['ratio'], reverse=True)
+        final_candidates = candidates[:100] # 上位100件に絞る
+        
+        yield f_data({"log": "分析完了 (上位100件を表示中)", "done": True, "results": final_candidates})
+        
+        # 強制メモリ開放
+        folder_inventory.clear(); del folder_inventory
+        candidates.clear(); del candidates; final_candidates.clear(); del final_candidates
+        f_list.clear(); del f_list
+        gc.collect()
+        
+    finally:
+        SCAN_STATUS["active"] = False
+        gc.collect()
 
 # --- [新] クラウド通信/ヘルスチェック ---
 
@@ -131,7 +214,8 @@ def api_select_folder():
 @app.route("/api/scan_stream")
 def api_scan_stream():
     stype = request.args.get("type", "local"); targets = json.loads(request.args.get("targets", "[]"))
-    same = request.args.get("same_folder") == "true"
+    # JS側のパラメータ名 same_parent_only に合わせる
+    same = request.args.get("same_parent_only") == "true"
     if stype == "local": return Response(scan_local_duplicates_stream(targets, same), mimetype='text/event-stream')
     return Response(scan_drive_duplicates_stream(), mimetype='text/event-stream')
 
@@ -149,32 +233,88 @@ def api_merge_folders():
         if not os.path.exists(src): return jsonify({"success": False, "error": f"元フォルダが見つかりません: {src}"})
         if not os.path.exists(dst): return jsonify({"success": False, "error": f"先フォルダが見つかりません: {dst}"})
         
+        moved_count = 0
+        errors = []
         for item in os.listdir(src):
-            s = os.path.join(src, item); d_path = os.path.join(dst, item)
-            if os.path.isfile(s):
-                if os.path.exists(d_path):
-                    n, e = os.path.splitext(item); c = 1
-                    while os.path.exists(os.path.join(dst, f"{n} ({c}){e}")): c += 1
-                    d_path = os.path.join(dst, f"{n} ({c}){e}")
-                shutil.move(s, d_path)
-            elif os.path.isdir(s):
-                # 必要に応じてフォルダ移動も対応
-                shutil.move(s, dst)
+            s = os.path.join(src, item)
+            d_path = os.path.join(dst, item)
+            try:
+                if os.path.isfile(s):
+                    if os.path.exists(d_path):
+                        n, e = os.path.splitext(item); c = 1
+                        while os.path.exists(os.path.join(dst, f"{n} ({c}){e}")): c += 1
+                        d_path = os.path.join(dst, f"{n} ({c}){e}")
+                    shutil.move(s, d_path)
+                    moved_count += 1
+                elif os.path.isdir(s):
+                    shutil.move(s, dst)
+                    moved_count += 1
+            except Exception as e:
+                errors.append(f"{item}: {str(e)}")
         
-        if not os.listdir(src): os.rmdir(src)
-        return jsonify({"success": True})
+        # すべて空になった場合のみ削除を試みる
+        if not os.listdir(src):
+            try:
+                os.rmdir(src)
+            except:
+                pass # フォルダ消去失敗は通知せず、ファイル移動成功を優先
+        
+        if errors:
+            return jsonify({"success": True, "partial_error": True, "error": "\n".join(errors[:3]), "moved": moved_count})
+        return jsonify({"success": True, "moved": moved_count})
     except Exception as e:
-        logger.error(f"マージ失敗: {e}")
+        logger.error(f"マージ致命的失敗: {e}")
         return jsonify({"success": False, "error": str(e)})
+
+@app.route("/api/delete_file", methods=["POST"])
+def api_delete_file():
+    try:
+        path = request.json.get("path")
+        if os.path.exists(path):
+            os.remove(path)
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "ファイルが見つかりません"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route("/api/open_explorer")
+def api_open_explorer():
+    path = request.args.get("path")
+    if os.path.exists(path):
+        folder = os.path.dirname(path) if os.path.isfile(path) else path
+        subprocess.Popen(['explorer', '/select,' + os.path.normpath(path)] if os.path.isfile(path) else ['explorer', os.path.normpath(path)])
+        return jsonify({"success": True})
+    return jsonify({"success": False})
+
+def get_cleanup_dir():
+    """OneDrive等に対応したデスクトップ上の削除候補フォルダのパスを取得"""
+    home = os.path.expanduser("~")
+    # 候補1: 標準デスクトップ, 候補2: OneDrive内のデスクトップ
+    candidates = [
+        os.path.join(home, "Desktop", CLEANUP_FOLDER_NAME),
+        os.path.join(home, "OneDrive", "Desktop", CLEANUP_FOLDER_NAME),
+        os.path.join(home, "OneDrive", "デスクトップ", CLEANUP_FOLDER_NAME)
+    ]
+    for c in candidates:
+        if os.path.exists(os.path.dirname(c)): return c
+    return os.path.join(home, "Desktop", CLEANUP_FOLDER_NAME) # フォールバック
+
+@app.route("/api/open_cleanup_folder")
+def api_open_cleanup_folder():
+    path = get_cleanup_dir()
+    os.makedirs(path, exist_ok=True)
+    subprocess.Popen(['explorer', os.path.normpath(path)])
+    return jsonify({"success": True})
 
 @app.route("/api/move_to_cleanup", methods=["POST"])
 def api_move_to_cleanup():
+    base_dest = get_cleanup_dir()
+    os.makedirs(base_dest, exist_ok=True)
     for fid in request.json.get("file_ids", []):
         try:
-            dest = os.path.join(os.path.expanduser("~"), "Desktop", CLEANUP_FOLDER_NAME, os.path.basename(fid))
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            dest = os.path.join(base_dest, os.path.basename(fid))
             n, e = os.path.splitext(os.path.basename(fid)); c = 1
-            while os.path.exists(dest): dest = os.path.join(os.path.dirname(dest), f"{n} ({c}){e}"); c += 1
+            while os.path.exists(dest): dest = os.path.join(base_dest, f"{n} ({c}){e}"); c += 1
             shutil.move(fid, dest)
         except: pass
     return jsonify({"success": True})

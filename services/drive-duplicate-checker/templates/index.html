@@ -3,108 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>重複整理 & フォルダ統合 Pro (Hybrid)</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>重複整理 Pro (Ultra-Fast)</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
-        .agent-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: #eee; margin-left:10px; }
+        body { font-family: sans-serif; background: #fff; color: #000; height: 100vh; display: flex; flex-direction: column; overflow: hidden; margin: 0; font-size: 11px; }
+        .container { flex: 1; display: flex; flex-direction: column; width: 100%; overflow: hidden; }
+        .header-section { background: #f1f3f4; padding: 4px 10px; border-bottom: 2px solid #5f6368; flex-shrink: 0; z-index: 100; }
+        .excel-scroll-area { flex: 1; overflow: auto; background: #fff; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; line-height: 1.1; }
+        thead th { position: sticky; top: 0; background: #dadce0; color: #000; padding: 2px 5px; border: 1px solid #5f6368; z-index: 10; text-align: left; }
+        td { padding: 2px 6px; border: 1px solid #bdc1c6; word-break: break-all; vertical-align: middle; }
+        .set-group-top td { border-top: 2px solid #000 !important; }
+        .set-even { background: #ffffff; }
+        .set-odd { background: #f1f3f4; }
+        .set-even:hover, .set-odd:hover { background: #e8f0fe; }
+        .btn { border: 1px solid #747775; padding: 1px 6px; border-radius: 2px; cursor: pointer; background: #fff; font-size: 10px; line-height: 1; }
+        .btn-primary { background: #1a73e8; color: #fff; border-color: #1a73e8; font-weight: bold; }
+        .btn-danger { background: #d93025; color: #fff; border-color: #d93025; font-weight: bold; }
+        .agent-status { font-size: 10px; font-weight: bold; padding: 1px 6px; border-radius: 2px; border: 1px solid #ccc; }
         .status-online { background: #e6f4ea; color: #1e8e3e; }
         .status-offline { background: #fce8e6; color: #d93025; }
-        .pair-card { border: 1px solid #ccc; background: #fff; margin-bottom: 8px; border-radius: 4px; overflow: hidden; }
-        .pair-header { background: #f1f3f4; padding: 4px 10px; font-size: 11px; border-bottom: 1px solid #ddd; }
-        .pair-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-        .folder-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; }
-        .path { word-break: break-all; flex: 1; font-weight: bold; }
-        .stats { font-size: 11px; color: #d93025; font-weight: bold; background: #fff1f0; padding: 2px 6px; border-radius: 3px; }
+        .target-chip { background: #fff; border: 1px solid #bdc1c6; padding: 1px 5px; border-radius: 2px; font-size: 10px; display: flex; align-items: center; gap: 4px; }
+        .stats-badge { font-size: 9px; font-weight: 800; color: #000; background: #ffeb3b; padding: 0 4px; border-radius: 2px; margin-right:4px; }
+        .flex-row { display: flex; align-items: center; gap: 6px; }
+        [v-cloak] { display: none; }
     </style>
 </head>
 <body>
-    <div id="app" v-cloak>
-        <header id="header">
-            <div class="config-row">
-                <div style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
-                    <button @click="mode = 'file'" :class="{ 'btn-primary': mode === 'file' }" class="btn">ファイル重複</button>
-                    <button @click="mode = 'folder'" :class="{ 'btn-primary': mode === 'folder' }" class="btn">フォルダ統合</button>
-                </div>
-
-                <div v-if="mode === 'file'" style="display:flex; align-items:center; gap:8px; margin-left:10px;">
-                    <button @click="scanType = 'local'" :class="{ 'btn-primary': scanType === 'local' }" class="btn">ローカル</button>
-                    <button @click="scanType = 'drive'" :class="{ 'btn-primary': scanType === 'drive' }" class="btn">Drive</button>
-                </div>
-
-                <div class="agent-status" :class="isAgentOnline ? 'status-online' : 'status-offline'" @click="checkAgent" style="cursor:pointer;" title="クリックして再接続テスト">
-                    PC作業員: [[ isAgentOnline ? 'オンライン (' + agentPC + ')' : '待機中 (Agent未起動)' ]] 🔄
-                </div>
-
-                <button class="btn" @click="addFolder" style="background:#fff; font-weight:bold; margin-left:10px;">＋ フォルダ追加</button>
-                
-                <div class="target-container">
-                    <div v-for="(target, idx) in scanTargets" :key="idx" class="target-chip">
-                        <span>[[ target ]]</span>
-                        <button @click="removeTarget(idx)" style="background:none; border:none; cursor:pointer;">&times;</button>
+    <div id="app" v-cloak class="container">
+        <div class="header-section">
+            <div class="flex-row" style="justify-content:space-between;">
+                <div class="flex-row">
+                    <div class="flex-row" style="border:1px solid #94a3b8; border-radius:2px; overflow:hidden;">
+                        <button @click="mode = 'file'" :class="{ 'btn-primary': mode === 'file' }" class="btn">重複ファイル</button>
+                        <button @click="mode = 'folder'" :class="{ 'btn-primary': mode === 'folder' }" class="btn">フォルダ統合</button>
+                    </div>
+                    <div v-if="mode === 'file'" class="flex-row">
+                        <div class="flex-row" style="border:1px solid #ccc; border-radius:2px; overflow:hidden;">
+                            <button @click="scanType = 'local'" :class="{ 'btn-primary': scanType === 'local' }" class="btn">ローカル</button>
+                            <button @click="scanType = 'drive'" :class="{ 'btn-primary': scanType === 'drive' }" class="btn">Drive</button>
+                        </div>
+                        <label style="cursor:pointer;"><input type="checkbox" v-model="sameParentOnly"> 同一フォルダ内のみ</label>
+                    </div>
+                    <div class="agent-status" :class="isAgentOnline ? 'status-online' : 'status-offline'" @click="checkAgent">
+                        [[ isAgentOnline ? 'OK (' + agentPC + ')' : '待機中' ]]
                     </div>
                 </div>
-
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn btn-primary" @click="startSearch" :disabled="isScanning || scanTargets.length === 0" style="padding:0 20px; height:32px;">
+                <div class="flex-row">
+                    <div v-if="duplicateSets.length > 0" style="font-size:10px; background:#fff; border:1px solid #94a3b8; padding:2px 8px; border-radius:3px; color:#1e293b;">
+                        <b>[[ duplicateSets.length ]] セット</b> (計 [[ totalFileCount ]] ファイル) 表示中
+                    </div>
+                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketed" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fffbe6', fontWeight: 'bold' }">
+                        [[ isMarking ? '仕分け中...' : 'カッコ付きマーク' ]]
+                    </button>
+                    <button class="btn btn-primary" @click="startSearch" :disabled="isScanning || scanTargets.length === 0" style="padding:0 15px;">
                         [[ isScanning ? '実行中...' : '検索開始' ]]
                     </button>
-                    <button v-if="isScanning" class="btn btn-danger" @click="stopSearch" style="height:32px;">中断</button>
-                    <button v-if="mode === 'file' && selectedIds.length > 0" class="btn btn-danger" @click="deleteSelected" style="height:32px;">
-                        [[ selectedIds.length ]] 件を整理
-                    </button>
+                    <button v-if="isScanning" class="btn btn-danger" @click="stopSearch">中断</button>
+                    <div v-if="scanLog" style="font-size:10px; color:#1a73e8; font-weight:bold;">[[ scanLog ]]</div>
                 </div>
-                
-                <div id="log-area" v-show="isScanning || scanLog">[[ scanLog ]]</div>
             </div>
-        </header>
+            <div class="flex-row" style="margin-top:4px;">
+                <button class="btn" @click="addFolder" style="font-weight:bold;">＋ フォルダ追加</button>
+                <div v-for="(target, idx) in scanTargets" :key="idx" class="target-chip">[[ target ]] <button @click="removeTarget(idx)" style="border:none; background:none;">&times;</button></div>
+            </div>
+        </div>
 
-        <div id="table-wrapper">
-            <!-- ファイル重複 -->
-            <table v-if="mode === 'file'" style="table-layout: fixed; width: 100%;">
+        <div class="excel-scroll-area">
+            <table v-if="mode === 'file'">
                 <thead>
                     <tr>
-                        <th style="width: 30px;"><input type="checkbox" @change="toggleAllFiles" :checked="isAllFilesSelected"></th>
-                        <th>ファイル名</th>
-                        <th style="width: 90px;">サイズ</th>
-                        <th>フルパス</th>
-                        <th style="width: 140px;">日時</th>
+                        <th style="width: 25px; text-align:center;"><input type="checkbox" @change="toggleAllFiles" :checked="isAllSelected"></th>
+                        <th style="width: 20%;">ファイル名</th>
+                        <th style="width: 60px; text-align:center;">サイズ</th>
+                        <th style="width: 60%;">フルパス</th>
+                        <th style="width: 120px; text-align:center;">作成日時</th>
+                        <th style="width: 40px; text-align:center;">開く</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="file in flattenedFiles" :key="file.id" :class="file.setIndex % 2 === 0 ? 'set-even' : 'set-odd'">
-                        <td style="text-align:center;"><input type="checkbox" v-model="selectedIds" :value="file.id"></td>
-                        <td>[[ file.name ]]</td>
-                        <td style="text-align:right;">[[ formatSize(file.size) ]]</td>
-                        <td :title="file.path" style="font-size: 11px; color: #555;">[[ file.path || file.id ]]</td>
-                        <td style="font-size: 11px;">[[ formatDate(file.createdTime) ]]</td>
-                    </tr>
+                    <template v-for="(set, sIdx) in duplicateSets" :key="sIdx">
+                        <tr v-for="(f, fIdx) in set.files" :key="f.id" v-memo="[f.id, selectedSet.has(f.id)]" :class="[sIdx % 2 === 0 ? 'set-even' : 'set-odd', fIdx === 0 ? 'set-group-top' : '']">
+                            <td style="text-align:center;"><input type="checkbox" :checked="selectedSet.has(f.id)" @change="e => toggleSelect(f.id, e.target.checked)"></td>
+                            <td style="font-weight:bold;"><span v-if="fIdx === 0" class="stats-badge">#[[ sIdx + 1 ]]</span>[[ f.name ]]</td>
+                            <td style="text-align:right; font-family: monospace;">[[ formatSize(f.size) ]]</td>
+                            <td style="color:#222; font-size:10px;">[[ f.path ]]</td>
+                            <td style="color:#666; font-size:10px; text-align:center;">[[ formatDate(f.createdTime) ]]</td>
+                            <td style="text-align:center;"><button @click="openInExplorer(f.path)" class="btn">📂</button></td>
+                        </tr>
+                    </template>
                 </tbody>
             </table>
 
-            <!-- フォルダ統合 -->
-            <div v-else style="padding: 10px; max-width: 1000px; margin: 0 auto;">
-                <div v-for="(c, idx) in folderCandidates" :key="idx" class="pair-card">
-                    <div class="pair-header">ペア #[[ idx + 1 ]] - 共通: [[ c.overlap ]] 件</div>
-                    <div class="pair-body">
-                        <div class="folder-row">
-                            <span style="font-weight:bold; color:var(--accent);">A:</span>
-                            <span class="path">[[ c.path_a ]]</span>
-                            <span class="stats">Aの [[ c.ratio_a ]]% がBに存在</span>
-                        </div>
-                        <div class="folder-row">
-                            <span style="font-weight:bold; color:var(--accent);">B:</span>
-                            <span class="path">[[ c.path_b ]]</span>
-                            <span class="stats">Bの [[ c.ratio_b ]]% がAに存在</span>
-                        </div>
-                        <div style="margin-top:8px; font-size:12px; color:#d93025; font-weight:bold;" v-if="c.ratio_a == 100">💡 Aの中身はすべてBに含まれています。マージ推奨。</div>
-                        <div class="merge-actions">
-                            <button class="btn btn-primary" @click="mergeFolders(c.path_a, c.path_b)">AをBへ</button>
-                            <button class="btn btn-primary" @click="mergeFolders(c.path_b, c.path_a)">BをAへ</button>
-                        </div>
-                    </div>
-                </div>
+            <table v-if="mode === 'folder'">
+                <thead><tr><th style="width: 50px;">類似度</th><th style="width: 45%;">フォルダ A</th><th style="width: 45%;">フォルダ B</th><th style="width: 80px;">マージ</th></tr></thead>
+                <tbody>
+                    <tr v-for="(c, idx) in folderCandidates" :key="idx">
+                        <td style="text-align:center; font-weight:bold; background:#e8f0fe;">[[ c.ratio ]]%</td>
+                        <td>[A] [[ c.path_a ]] <button @click="openInExplorer(c.path_a)" class="btn">📂</button></td>
+                        <td>[B] [[ c.path_b ]] <button @click="openInExplorer(c.path_b)" class="btn">📂</button></td>
+                        <td style="text-align:center;"><button class="btn btn-primary" @click="mergeFolders(c.path_a, c.path_b)">A➔B</button> <button class="btn btn-primary" @click="mergeFolders(c.path_b, c.path_a)">B➔A</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div style="background:#333; color:#ccc; padding:2px 10px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+            <div class="flex-row">
+                <button class="btn" @click="openCleanupFolder" style="background:#444; color:#fff; border-color:#666; font-size:9px;">📁 削除候補フォルダを開く</button>
+                <span v-if="mode === 'file' && selectedSet.size > 0" style="color:#fff; font-weight:bold; margin-left:10px;">[[ selectedSet.size ]] 件 選択中</span>
             </div>
+            <button v-if="mode === 'file' && selectedSet.size > 0" class="btn btn-danger" @click="deleteSelected" style="height:20px; padding:0 15px; font-weight:bold;">削除候補へ移動（実行）</button>
         </div>
     </div>
 
@@ -116,111 +125,117 @@
                 const mode = ref('file');
                 const scanType = ref('local');
                 const scanTargets = ref([]);
-                const sameFolderOnly = ref(false);
+                const sameParentOnly = ref(false);
                 const duplicateSets = ref([]);
                 const folderCandidates = ref([]);
                 const isScanning = ref(false);
+                const isMarking = ref(false);
                 const scanLog = ref('');
-                const selectedIds = ref([]);
-                
-                // Agent管理
-                const isAgentOnline = ref(false);
+                const selectedSet = ref(new Set());
                 const agentPC = ref('');
-                const agentBase = 'http://localhost:8082'; // ローカル作業員のアドレス
+                const isAgentOnline = ref(false);
+                const agentBase = 'http://localhost:8082';
 
                 const checkAgent = async () => {
                     try {
                         const res = await (await fetch(`${agentBase}/api/health`)).json();
-                        if (res.success) { isAgentOnline.value = true; agentPC.value = res.pc; }
-                        else { isAgentOnline.value = false; }
+                        isAgentOnline.value = !!res.success; agentPC.value = res.pc || '';
                     } catch { isAgentOnline.value = false; }
                 };
                 onMounted(() => { checkAgent(); setInterval(checkAgent, 5000); });
 
-                // API選択 (クラウドならAgent、ローカルなら自前)
-                const getApiUrl = (path) => {
-                    // もし現在のURLが 127.0.0.1 以外（つまりデプロイ先）なら、Agentを叩く
-                    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                        return `${agentBase}${path}`;
-                    }
-                    return path;
-                };
+                const getApiUrl = (path) => (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? `${agentBase}${path}` : path);
 
-                const addFolder = async () => {
-                    if (scanType.value === 'drive') { const id = prompt('Drive ID'); if(id) scanTargets.value.push(id); return; }
-                    const res = await (await fetch(getApiUrl('/api/select_folder'))).json();
-                    if (res.success && !scanTargets.value.includes(res.path)) scanTargets.value.push(res.path);
+                const openCleanupFolder = () => fetch(getApiUrl('/api/open_cleanup_folder'));
+
+                const toggleSelect = (id, checked) => {
+                    const next = new Set(selectedSet.value);
+                    if(checked) next.add(id); else next.delete(id);
+                    selectedSet.value = next;
                 };
 
                 const startSearch = () => {
-                    isScanning.value = true; scanLog.value = '準備中...'; duplicateSets.value = []; folderCandidates.value = []; selectedIds.value = [];
-                    const eps = mode.value === 'file' ? `/api/scan_stream?type=${scanType.value}` : `/api/analyze_folders?`;
-                    const fullUrl = `${getApiUrl(eps)}&targets=${encodeURIComponent(JSON.stringify(scanTargets.value))}`;
-                    const es = new EventSource(fullUrl);
+                    isScanning.value = true; scanLog.value = '...'; duplicateSets.value = []; folderCandidates.value = []; selectedSet.value = new Set();
+                    const url = `${getApiUrl(mode.value==='file'?'/api/scan_stream?type='+scanType.value+'&same_parent_only='+sameParentOnly.value:'/api/analyze_folders?')}&targets=${encodeURIComponent(JSON.stringify(scanTargets.value))}`;
+                    const es = new EventSource(url);
                     es.onmessage = (e) => {
                         const d = JSON.parse(e.data); if (d.log) scanLog.value = d.log;
-                        if (d.done) {
-                            if (mode.value === 'file') duplicateSets.value = d.results;
-                            else folderCandidates.value = d.results;
-                            isScanning.value = false; es.close(); scanLog.value = '完了';
-                        }
+                        if (d.done) { if (mode.value==='file') duplicateSets.value = d.results; else folderCandidates.value = d.results; isScanning.value = false; es.close(); }
                     };
-                    es.onerror = () => { isScanning.value = false; es.close(); scanLog.value = '中断'; };
-                };
-
-                const mergeFolders = async (src, dst) => {
-                    console.log('MERGE CLICKED:', src, '->', dst);
-                    scanLog.value = '準備中...';
-                    
-                    try {
-                        const url = getApiUrl('/api/merge_folders');
-                        console.log('FETCHING:', url);
-                        scanLog.value = `マージ送信中 (${dst}へ)...`;
-                        
-                        const res = await (await fetch(url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ src, dst })
-                        })).json();
-                        
-                        console.log('MERGE RESPONSE:', res);
-                        
-                        if (res.success) {
-                            folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src);
-                            scanLog.value = 'マージ完了！（画面から消去しました）';
-                        } else {
-                            scanLog.value = 'マージ失敗: ' + (res.error || '不明なエラー');
-                            alert('失敗: ' + (res.error || '不明なエラー'));
-                        }
-                    } catch (err) {
-                        console.error('FETCH ERROR:', err);
-                        scanLog.value = '通信エラー: ' + err.message;
-                        alert('PC作業員（Agent）に接続できませんでした。\n\n理由: ' + err.message + '\n\n【解決策】\n・PCで app.py が動いていることを確認してください。\n・もしクラウドからアクセスしているなら、ブラウザで http://localhost:8082 を直接開くと100%解決します。');
-                    }
+                    es.onerror = () => { isScanning.value = false; es.close(); };
                 };
 
                 const deleteSelected = async () => {
-                    const idsToMove = [...selectedIds.value];
-                    const res = await (await fetch(getApiUrl('/api/move_to_cleanup'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_ids: idsToMove }) })).json();
-                    if (res.success) {
-                        duplicateSets.value = duplicateSets.value.map(set => ({ ...set, files: set.files.filter(f => !idsToMove.includes(f.id)) })).filter(set => set.files.length > 1);
-                        selectedIds.value = []; scanLog.value = '整理完了';
-                    }
+                    if(selectedSet.value.size===0 || !confirm('削除候補へ？')) return;
+                    const res = await (await fetch(getApiUrl('/api/move_to_cleanup'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_ids: Array.from(selectedSet.value) }) })).json();
+                    if (res.success) { duplicateSets.value = duplicateSets.value.map(s => ({...s, files: s.files.filter(f => !selectedSet.value.has(f.id))})).filter(s => s.files.length > 1); selectedSet.value = new Set(); }
                 };
 
-                const flattenedFiles = computed(() => {
-                    const list = []; duplicateSets.value.forEach((set, setIndex) => { set.files.forEach(f => list.push({ ...f, setIndex })); });
-                    return list;
+                const markBracketed = async () => {
+                    if (isMarking.value) return;
+                    isMarking.value = true;
+                    const next = new Set(selectedSet.value);
+                    let added = 0;
+                    const sets = duplicateSets.value;
+                    const total = sets.length;
+                    const bracketRegex = /(?:\s?\(\d+\))+$/;
+
+                    for (let i = 0; i < total; i++) {
+                        const set = sets[i];
+                        const files = set.files; if (files.length < 2) continue;
+
+                        // スペースの違いや全角カッコに左右されない「超・堅牢」ロジック
+                        const bracketRegex = /[\(（][\s\d]+[\)）]/g;
+                        // 判定用ルート名の作成（カッコ除去 + スペース完全排除）
+                        const getRoot = (name) => name.replace(bracketRegex, '').replace(/\s+/g, '').trim();
+                        // 世代（カッコの数）のカウント
+                        const countBrackets = (name) => (name.match(bracketRegex) || []).length;
+
+                        files.forEach(fA => {
+                            if (next.has(fA.id)) return;
+                            const rootA = getRoot(fA.name);
+                            const genA = countBrackets(fA.name);
+
+                            const hasParent = files.some(fB => {
+                                if (fA.id === fB.id) return false;
+                                if (rootA !== getRoot(fB.name)) return false;
+                                
+                                // 親（より世代が古いもの）がいれば、自分はコピー
+                                return countBrackets(fB.name) < genA;
+                            });
+
+                            if (hasParent) {
+                                next.add(fA.id);
+                                added++;
+                            }
+                        });
+
+                        if (i % 50 === 0 && i > 0) {
+                            scanLog.value = `解析中... ${Math.round((i/total)*100)}%`;
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+
+                    selectedSet.value = next;
+                    isMarking.value = false;
+                    scanLog.value = `完了: ${added}件を新しくマークしました`;
+                };
+
+                const totalFileCount = computed(() => {
+                    let t = 0; duplicateSets.value.forEach(s => t += s.files.length);
+                    return t;
                 });
-                const isAllFilesSelected = computed(() => flattenedFiles.value.length > 0 && selectedIds.value.length === flattenedFiles.value.length);
-                const toggleAllFiles = () => selectedIds.value = isAllFilesSelected.value ? [] : flattenedFiles.value.map(f => f.id);
-                const removeTarget = (i) => scanTargets.value.splice(i, 1);
-                const formatSize = (b) => { if(!b) return '0 B'; const k=1024, i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k, i)).toFixed(2) + ' ' + ['B','KB','MB','GB'][i]; };
-                const formatDate = (v) => { const d = typeof v === 'number' ? new Date(v*1000) : new Date(v); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); };
 
                 return {
-                    mode, scanType, scanTargets, sameFolderOnly, duplicateSets, folderCandidates, isScanning, scanLog, selectedIds, isAgentOnline, agentPC,
-                    startSearch, mergeFolders, deleteSelected, addFolder, removeTarget, formatSize, formatDate, toggleAllFiles, isAllFilesSelected, flattenedFiles
+                    mode, scanType, scanTargets, sameParentOnly, duplicateSets, folderCandidates, isScanning, isMarking, scanLog, selectedSet, isAgentOnline, agentPC,
+                    startSearch, deleteSelected, totalFileCount, openCleanupFolder, addFolder: async () => { if(scanType.value==='drive'){const id=prompt('ID'); if(id)scanTargets.value.push(id);}else{const res=await(await fetch(getApiUrl('/api/select_folder'))).json(); if(res.success)scanTargets.value.push(res.path);} },
+                    removeTarget: (i) => scanTargets.value.splice(i, 1), formatSize: (b) => { if(!b) return '0 B'; const k=1024, i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k, i)).toFixed(2) + ' ' + ['B','KB','MB','GB'][i]; },
+                    formatDate: (v) => { const d = new Date(v*1000); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); },
+                    openInExplorer: (path) => fetch(`${getApiUrl('/api/open_explorer')}?path=${encodeURIComponent(path)}`),
+                    toggleAllFiles: () => { if (selectedSet.value.size > 0) selectedSet.value = new Set(); else { const n = new Set(); duplicateSets.value.forEach(s => s.files.forEach(f => n.add(f.id))); selectedSet.value = n; } },
+                    isAllSelected: computed(() => { let t = 0; duplicateSets.value.forEach(s => t += s.files.length); return t > 0 && selectedSet.value.size === t; }),
+                    toggleSelect, mergeFolders: async (src, dst) => { const res = await (await fetch(getApiUrl('/api/merge_folders'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, dst }) })).json(); if(res.success) folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src); },
+                    markBracketed
                 };
             }
         }).mount('#app');
