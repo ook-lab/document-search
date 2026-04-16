@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI JSON PDF Embedder</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg-color: #f8fafc;
+            --surface: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --success: #059669;
+            --danger: #dc2626;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: var(--surface);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--primary);
+        }
+
+        #uploadView {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .upload-card {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 3rem;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8fafc;
+        }
+
+        .upload-area.dragover, .upload-area:hover {
+            border-color: var(--primary);
+            background: #eff6ff;
+        }
+
+        input[type="file"] { display: none; }
+
+        #workspaceView {
+            display: none;
+            flex: 1;
+            height: calc(100vh - 60px);
+            overflow: hidden;
+        }
+
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 120px 1fr 1fr;
+            height: 100%;
+            width: 100%;
+        }
+
+        .thumbnails {
+            background: #f1f5f9;
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 1rem 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .thumb-wrap {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .thumb-item {
+            width: 80px;
+            height: 110px;
+            background: white;
+            border: 2px solid transparent;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+            object-fit: cover;
+            display: block;
+        }
+
+        .thumb-wrap.active .thumb-item { border-color: var(--primary); }
+        .thumb-badge {
+            position: absolute;
+            top: -5px; right: -5px;
+            background: var(--success);
+            color: white;
+            font-size: 0.6rem;
+            padding: 2px 5px;
+            border-radius: 10px;
+            display: none;
+        }
+        .thumb-wrap.has-data .thumb-badge { display: block; }
+
+        .preview-pane {
+            background: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            overflow: auto;
+            border-right: 1px solid var(--border);
+            position: relative;
+        }
+
+        #mainPreviewImg {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            background: white;
+        }
+
+        .data-pane {
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .ai-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .data-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            background: #f8fafc;
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .meta-box {
+            background: white;
+            border: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+            position: relative;
+        }
+        
+        .meta-del-btn {
+            position: absolute;
+            top: 5px; right: 5px;
+            background: var(--danger); color: white;
+            border: none; border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem; padding: 2px 6px;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .meta-box:hover .meta-del-btn { opacity: 1; }
+
+        .meta-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            outline: none;
+            cursor: text;
+        }
+
+        .meta-value {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-main);
+            outline: none;
+            cursor: text;
+            min-height: 1.2rem;
+        }
+        
+        .meta-label:focus, .meta-value:focus, th.editable:focus, td.editable:focus {
+            background: #eff6ff;
+            outline: 1px solid var(--primary);
+        }
+
+        .data-body {
+            flex: 1;
+            overflow: auto;
+            padding: 1.5rem;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .data-table th, .data-table td {
+            border: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            text-align: left;
+            position: relative;
+        }
+
+        .data-table th {
+            background: #f1f5f9;
+            font-weight: 600;
+            color: var(--text-muted);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            outline: none;
+        }
+        
+        .col-del-btn {
+            display: inline-block;
+            margin-left: 8px;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .actions {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border);
+            background: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        button.btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        button.btn-primary:hover { background: var(--primary-hover); }
+        
+        button.btn-outline {
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .loader-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.8);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+        }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>JSON Sandwich Embedder</h1>
+        <div style="display:flex; gap: 1rem; align-items: center;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);" id="headerStatus">Waiting for upload...</span>
+            <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">
+                Download Final PDF
+            </button>
+        </div>
+    </header>
+
+    <!-- Upload View -->
+    <div id="uploadView">
+        <div class="upload-card">
+            <h2 style="margin-top:0">Upload Document</h2>
+            <p style="color:var(--text-muted); margin-bottom:2rem;">Upload a PDF to begin structural analysis.</p>
+            <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
+                <strong>Click or Drag & Drop</strong>
+                <input type="file" id="fileInput" accept="application/pdf">
+            </div>
+        </div>
+    </div>
+
+    <!-- Workspace View -->
+    <div id="workspaceView">
+        <div class="workspace-grid">
+            <!-- Left Thumbnails -->
+            <div class="thumbnails" id="thumbnailList"></div>
+
+            <!-- Middle Preview -->
+            <div class="preview-pane">
+                <img id="mainPreviewImg" src="" alt="Preview">
+            </div>
+
+            <!-- Right Data -->
+            <div class="data-pane" id="dataPane">
+                <div class="ai-overlay" id="aiOverlay">
+                    <h2 style="margin-top: 0;">No Structure Data</h2>
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">Extract tables and metadata from this page using Gemini AI.</p>
+                    <textarea id="customPrompt" rows="3" style="width: 80%; max-width: 400px; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;" placeholder="（任意）例: 列は「摘要, 単価, 数量, 金額」としてください"></textarea>
+                    <button class="btn-primary" id="extractAiBtn">🤖 AI 読み取り実行</button>
+                </div>
+                
+                <div class="data-header">
+                    <div style="margin-bottom: 1.5rem;">
+                        <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">ページタイトル (Page Title)</label>
+                        <input type="text" id="pageTitleInput" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem;" placeholder="タイトルを入力..." onblur="updatePageTitle(this.value)">
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                        <h3 style="margin:0; font-size:1rem; color:var(--primary);">Metadata Attributes</h3>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="tempSave()" title="現在の編集状態を記録します">💾 一時保存</button>
+                            <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="undoEdits()" title="最後の一時保存、または初期抽出状態に戻します">↩️ 元に戻す</button>
+                            <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="addMetadata()">+ Add Field</button>
+                        </div>
+                    </div>
+                    <div class="metadata-grid" id="metadataGrid"></div>
+                </div>
+
+                <div class="data-body">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                        <h3 style="margin:0; font-size:1rem; color:var(--primary);">Data Table</h3>
+                        <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="addRow()">+ Add Row</button>
+                    </div>
+                    <table class="data-table" id="dataTable">
+                        <thead>
+                            <tr id="tableHeaderRow"></tr>
+                        </thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loader-overlay" id="loaderOverlay">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem; font-weight: 600; color: var(--text-main);" id="loaderText">Processing...</p>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        
+        let appState = {
+            fileId: null,
+            safeFilename: null,
+            pages: [],      // array of { image_url, existing_data }
+            currentPage: 0
+        };
+
+        // UI Refs
+        const uploadView = document.getElementById('uploadView');
+        const workspaceView = document.getElementById('workspaceView');
+        const loaderOverlay = document.getElementById('loaderOverlay');
+        const loaderText = document.getElementById('loaderText');
+        const headerStatus = document.getElementById('headerStatus');
+        const saveBtn = document.getElementById('saveBtn');
+        const extractAiBtn = document.getElementById('extractAiBtn');
+        const aiOverlay = document.getElementById('aiOverlay');
+        const pageTitleInput = document.getElementById('pageTitleInput');
+        const metadataGrid = document.getElementById('metadataGrid');
+        const tableHeaderRow = document.getElementById('tableHeaderRow');
+        const tableBody = document.getElementById('tableBody');
+
+        // Drag/Drop logic
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }));
+        ['dragenter', 'dragover'].forEach(ev => dropZone.classList.add('dragover'));
+        ['dragleave', 'drop'].forEach(ev => dropZone.classList.remove('dragover'));
+        
+        dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+        fileInput.addEventListener('change', (e) => { if(e.target.files.length) handleFile(e.target.files[0]); });
+
+        async function handleFile(file) {
+            if(file.type !== 'application/pdf') return alert("Must upload a PDF.");
+            showLoader("Uploading & preparing pages...");
+            
+            const fd = new FormData();
+            fd.append('pdf_file', file);
+            
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: fd });
+                const json = await res.json();
+                if(!res.ok) throw new Error(json.error || 'Server error');
+                
+                appState.fileId = json.file_id;
+                appState.safeFilename = json.safe_filename;
+                appState.pages = json.pages.map(p => {
+                    // Create initial backup for undo
+                    if (p.existing_data) {
+                        p.backup_data = JSON.parse(JSON.stringify(p.existing_data));
+                    }
+                    return p;
+                });
+                
+                initWorkspace();
+            } catch(e) { alert(e.message); }
+            finally { hideLoader(); }
+        }
+
+        function initWorkspace() {
+            uploadView.style.display = 'none';
+            workspaceView.style.display = 'block';
+            saveBtn.style.display = 'block';
+            headerStatus.textContent = `File: ${appState.safeFilename}`;
+            
+            appState.currentPage = 0;
+            renderThumbnails();
+            loadActivePage();
+        }
+
+        function renderThumbnails() {
+            const list = document.getElementById('thumbnailList');
+            list.innerHTML = '';
+            appState.pages.forEach((p, idx) => {
+                const wrap = document.createElement('div');
+                wrap.className = `thumb-wrap ${idx === appState.currentPage ? 'active' : ''} ${p.existing_data ? 'has-data' : ''}`;
+                wrap.innerHTML = `
+                    <img class="thumb-item" src="${p.image_url}">
+                    <div class="thumb-badge">✓</div>
+                `;
+                wrap.onclick = () => {
+                    appState.currentPage = idx;
+                    document.querySelectorAll('.thumb-wrap').forEach(w => w.classList.remove('active'));
+                    wrap.classList.add('active');
+                    loadActivePage();
+                };
+                list.appendChild(wrap);
+            });
+        }
+
+        function loadActivePage() {
+            const p = appState.pages[appState.currentPage];
+            document.getElementById('mainPreviewImg').src = p.image_url;
+            
+            if(p.existing_data) {
+                aiOverlay.style.display = 'none';
+                renderData(p.existing_data);
+            } else {
+                aiOverlay.style.display = 'flex';
+                renderData({ metadata: [], table: { headers: [], rows: [] }}); // blank
+            }
+        }
+
+        extractAiBtn.onclick = async () => {
+            showLoader("Extracting Page " + (appState.currentPage + 1) + " via Gemini AI...");
+            try {
+                const customPromptText = document.getElementById('customPrompt').value || '';
+                const res = await fetch(`/extract_page/${appState.fileId}/${appState.currentPage}`, { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ custom_prompt: customPromptText })
+                });
+                const json = await res.json();
+                if(!res.ok) throw new Error(json.error);
+                
+                appState.pages[appState.currentPage].existing_data = json.json_extracted;
+                appState.pages[appState.currentPage].backup_data = JSON.parse(JSON.stringify(json.json_extracted));
+                renderThumbnails(); // update badge
+                loadActivePage();
+            } catch (e) { alert(e.message); }
+            finally { hideLoader(); }
+        };
+
+        saveBtn.onclick = async () => {
+            // Commit any active edits dynamically before save (handled by input events usually, but let's manual scan)
+            commitActiveEdits();
+            
+            showLoader("Generating Sandbox PDF...");
+            try {
+                // Collect only pages with data
+                const pagesData = {};
+                appState.pages.forEach((p, i) => {
+                    if(p.existing_data) pagesData[i] = p.existing_data;
+                });
+                
+                const res = await fetch('/save_pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_id: appState.fileId,
+                        safe_filename: appState.safeFilename,
+                        pages_data: pagesData
+                    })
+                });
+                const json = await res.json();
+                if(!res.ok) throw new Error(json.error);
+                
+                // create synthetic download
+                const a = document.createElement('a');
+                a.href = json.download_url;
+                a.download = true;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            } catch (e) { alert(e.message); }
+            finally { hideLoader(); }
+        }
+
+        // --- Editing Logic ---
+        function renderData(data) {
+            // ensure structure
+            if(!data.page_title) data.page_title = "";
+            if(!data.metadata) data.metadata = [];
+            if(!data.table) data.table = {headers: [], rows: []};
+            if(!data.table.headers) data.table.headers = [];
+            if(!data.table.rows) data.table.rows = [];
+
+            // Render Page Title
+            pageTitleInput.value = data.page_title || "";
+
+            // Render Metadata
+            metadataGrid.innerHTML = '';
+            data.metadata.forEach((item, index) => {
+                const box = document.createElement('div');
+                box.className = 'meta-box';
+                box.innerHTML = `
+                    <button class="meta-del-btn" onclick="deleteMetadata(${index})">X</button>
+                    <div class="meta-label editable" contenteditable="true" onblur="updateMetaLabel(${index}, this.innerText)">${item.label || item.tag || ''}</div>
+                    <div class="meta-value editable" contenteditable="true" onblur="updateMetaValue(${index}, this.innerText)">${item.value || ''}</div>
+                `;
+                metadataGrid.appendChild(box);
+            });
+
+            // Render Table
+            tableHeaderRow.innerHTML = '';
+            tableBody.innerHTML = '';
+
+            data.table.headers.forEach((h, colIndex) => {
+                const th = document.createElement('th');
+                th.innerHTML = `
+                    <span class="editable" contenteditable="true" onblur="updateTableHeader(${colIndex}, this.innerText)">${h.label || h.tag || ''}</span>
+                    <span class="col-del-btn" onclick="deleteColumn(${colIndex})" title="Delete Column">🗑️</span>
+                `;
+                tableHeaderRow.appendChild(th);
+            });
+
+            data.table.rows.forEach((row, rowIndex) => {
+                const tr = document.createElement('tr');
+                data.table.headers.forEach(h => {
+                    const td = document.createElement('td');
+                    td.className = 'editable';
+                    td.contentEditable = "true";
+                    td.innerText = row[h.tag] !== undefined && row[h.tag] !== null ? row[h.tag] : '';
+                    td.onblur = (e) => updateTableCell(rowIndex, h.tag, e.target.innerText);
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // Action Handlers
+        window.deleteMetadata = (index) => {
+            const data = appState.pages[appState.currentPage].existing_data;
+            data.metadata.splice(index, 1);
+            loadActivePage();
+        }
+        window.updateMetaLabel = (index, val) => {
+            appState.pages[appState.currentPage].existing_data.metadata[index].label = val;
+        }
+        window.updateMetaValue = (index, val) => {
+            appState.pages[appState.currentPage].existing_data.metadata[index].value = val;
+        }
+        window.addMetadata = () => {
+            const data = appState.pages[appState.currentPage].existing_data;
+            if(!data) return;
+            data.metadata.push({label: 'New Field', tag: 'new_field_' + Date.now(), value: 'New Value'});
+            loadActivePage();
+        }
+
+        window.deleteColumn = (colIndex) => {
+            const data = appState.pages[appState.currentPage].existing_data;
+            const tagToRemove = data.table.headers[colIndex].tag;
+            // remove from headers
+            data.table.headers.splice(colIndex, 1);
+            // remove from all rows
+            data.table.rows.forEach(r => delete r[tagToRemove]);
+            loadActivePage();
+        }
+        window.updateTableHeader = (colIndex, val) => {
+            appState.pages[appState.currentPage].existing_data.table.headers[colIndex].label = val;
+        }
+        window.updateTableCell = (rowIndex, tag, val) => {
+            appState.pages[appState.currentPage].existing_data.table.rows[rowIndex][tag] = val;
+        }
+        window.addRow = () => {
+            const data = appState.pages[appState.currentPage].existing_data;
+            if(!data) return;
+            const newRow = {};
+            data.table.headers.forEach(h => newRow[h.tag] = '');
+            data.table.rows.push(newRow);
+            loadActivePage();
+        }
+        
+        window.updatePageTitle = (val) => {
+            if (appState.pages[appState.currentPage].existing_data) {
+                appState.pages[appState.currentPage].existing_data.page_title = val;
+            }
+        }
+        
+        window.tempSave = () => {
+            commitActiveEdits();
+            const data = appState.pages[appState.currentPage].existing_data;
+            if (data) {
+                appState.pages[appState.currentPage].backup_data = JSON.parse(JSON.stringify(data));
+                alert("現在までの編集内容を「一時保存」しました。");
+            }
+        }
+        
+        window.undoEdits = () => {
+            const backup = appState.pages[appState.currentPage].backup_data;
+            if (backup) {
+                if (confirm("最後の一時保存（または抽出時）の状態にリセットします。よろしいですか？")) {
+                    appState.pages[appState.currentPage].existing_data = JSON.parse(JSON.stringify(backup));
+                    loadActivePage();
+                }
+            } else {
+                alert("元に戻せるデータがありません。");
+            }
+        }
+
+        // Commit active dom to state if downloading while element remains focused
+        function commitActiveEdits() {
+            if(document.activeElement && document.activeElement.classList.contains('editable')) {
+                document.activeElement.blur();
+            }
+        }
+
+        function showLoader(txt) { loaderText.textContent = txt; loaderOverlay.style.display = 'flex'; }
+        function hideLoader() { loaderOverlay.style.display = 'none'; }
+    </script>
+</body>
+</html>

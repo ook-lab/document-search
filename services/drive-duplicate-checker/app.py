@@ -73,7 +73,8 @@ def scan_local_duplicates_stream(root_paths, same_folder_only=False):
                     try:
                         size = os.path.getsize(file_path)
                         if size == 0: continue
-                        key = (size, curr_dir) if same_folder_only else size
+                        ext = os.path.splitext(name)[1].lower()
+                        key = (size, curr_dir, ext) if same_folder_only else (size, ext)
                         size_groups[key].append(file_path)
                     except: pass
                     if file_count % 1000 == 0:
@@ -104,7 +105,7 @@ def scan_local_duplicates_stream(root_paths, same_folder_only=False):
                 f_md5 = calculate_local_md5(f_path)
                 if f_md5:
                     stat = os.stat(f_path)
-                    res_key = (key[0], f_md5, key[1]) if same_folder_only else (key, f_md5)
+                    res_key = (key[0], f_md5, key[1], key[2]) if same_folder_only else (key[0], f_md5, key[1])
                     md5_groups[res_key].append({
                         "id": f_path, "name": os.path.basename(f_path), 
                         "path": f_path, "size": stat.st_size, "createdTime": stat.st_ctime
@@ -133,9 +134,10 @@ def f_data(obj):
 
 def analyze_local_folders(root_paths):
     SCAN_STATUS["active"] = True; SCAN_STATUS["interrupt"] = False
-    folder_inventory = defaultdict(set); total = 0
+    from collections import Counter
+    folder_inventory = defaultdict(Counter); total = 0
     try:
-        # 爆速化: まずファイルサイズと最初の一部だけ見てフォルダの「指紋」を作る
+        # 爆速化: ファイルサイズの分布をフォルダの「指紋」として記録
         for root_path in root_paths:
             for root, dirs, files in os.walk(root_path):
                 if SCAN_STATUS["interrupt"]: break
@@ -144,11 +146,13 @@ def analyze_local_folders(root_paths):
                     total += 1
                     f_path = os.path.join(curr, name)
                     try:
-                        # フォルダの中身の「サイズ」だけで最初の判定用指紋を作る (ハッシュ計算を省略)
+                        if name.lower() in ['.ds_store', 'thumbs.db', 'desktop.ini']: continue
                         size = os.path.getsize(f_path)
-                        if size > 1024:
-                            # 1KB超えのファイルのみ指紋に含める
-                            folder_inventory[curr].add(size)
+                        if size > 0: # 0バイトの空ファイルだけは無視
+                            # ファイル名は一切見ず、「サイズ」と「中身のハッシュ（先頭8KBのダイジェスト）」の両方を見る
+                            p_md5 = calculate_partial_md5(f_path)
+                            if p_md5:
+                                folder_inventory[curr][(size, p_md5)] += 1
                     except: pass
                     if total % 1000 == 0:
                         yield f_data({"log": f"分析中... {total}ファイル走査"})
@@ -157,27 +161,48 @@ def analyze_local_folders(root_paths):
         f_list = list(folder_inventory.keys())
         
         for i in range(len(f_list)):
-            p_a = f_list[i]; set_a = folder_inventory[p_a]
-            if not set_a: continue
+            p_a = f_list[i]; map_a = folder_inventory[p_a]
+            len_a = sum(map_a.values())
+            if len_a == 0: continue
+            
             for j in range(i + 1, len(f_list)):
                 if SCAN_STATUS["interrupt"]: break
-                p_b = f_list[j]; set_b = folder_inventory[p_b]
-                if not set_b: continue
+                p_b = f_list[j]; map_b = folder_inventory[p_b]
+                len_b = sum(map_b.values())
+                if len_b == 0: continue
                 
-                # 親子関係は無視
+                # 親子関係は無視（マージ先のループ防止）
                 if p_b.startswith(p_a + os.sep) or p_a.startswith(p_b + os.sep): continue
                 
-                # 共通のファイルサイズが多いかチェック
-                common = set_a.intersection(set_b)
-                if len(common) > 1: # 2つ以上サイズが一致すればマージ候補
-                    ratio = (len(common) * 2) / (len(set_a) + len(set_b))
-                    if ratio > 0.4: # 40%以上一致
-                        candidates.append({"path_a": p_a, "path_b": p_b, "ratio": int(ratio * 100)})
+                import re
+                # フォルダ名が「カッコ付き」かどうか等を確認（例: data と data (1)）
+                a_name = os.path.basename(p_a)
+                b_name = os.path.basename(p_b)
+                clean_a = re.sub(r'\s*[\(（][^\)）]*[\)）]\s*', '', a_name).strip().lower()
+                clean_b = re.sub(r'\s*[\(（][^\)）]*[\)）]\s*', '', b_name).strip().lower()
+                # 完全に同名、またはカッコを除けば同名になる場合はフラグを立てる
+                is_name_match = (clean_a == clean_b and clean_a != "")
 
-        candidates.sort(key=lambda x: x['ratio'], reverse=True)
-        final_candidates = candidates[:100] # 上位100件に絞る
+                # 「同じサイズかつ同じハッシュ値を持つファイルデータ」がそれぞれいくつあるかを交差チェック
+                common = map_a & map_b
+                common_count = sum(common.values())
+                
+                # 共通ファイルがあるか、またはカッコ違い同名フォルダの場合は候補に入れる（中身不一致でも）
+                if common_count > 0 or is_name_match:
+                    ratio = int((common_count / min(len_a, len_b)) * 100) if min(len_a, len_b) > 0 else 0
+                    candidates.append({
+                        "path_a": p_a, 
+                        "path_b": p_b, 
+                        "ratio": ratio, 
+                        "common": common_count,
+                        "name_match": is_name_match
+                    })
+
+        # ソート順: カッコ違い（または同名）ペアを最優先で上に表示し、次に共通ファイル数、割合の順
+        candidates.sort(key=lambda x: (x.get('name_match', False), x['common'], x['ratio']), reverse=True)
+        final_candidates = candidates[:150] # 上位150件に絞る
         
-        yield f_data({"log": "分析完了 (上位100件を表示中)", "done": True, "results": final_candidates})
+        yield f_data({"log": "分析完了 (上位150件を表示中)", "done": True, "results": final_candidates})
         
         # 強制メモリ開放
         folder_inventory.clear(); del folder_inventory
@@ -335,14 +360,25 @@ def scan_drive_duplicates_stream():
     try:
         while True:
             if SCAN_STATUS["interrupt"]: break
-            res = drive.service.files().list(q="trashed=false and mimeType != 'application/vnd.google-apps.folder'", fields='nextPageToken, files(id, name, size, md5Checksum, createdTime, webViewLink)', pageToken=pt).execute()
+            # Googleネイティブファイルを判別するため、mimeTypeも取得する
+            res = drive.service.files().list(q="trashed=false and mimeType != 'application/vnd.google-apps.folder'", fields='nextPageToken, files(id, name, mimeType, size, md5Checksum, createdTime, webViewLink)', pageToken=pt).execute()
             all_f.extend(res.get('files', [])); yield f"data: {json.dumps({'log': f'Drive取得中: {len(all_f)}'})}\n\n"; pt = res.get('nextPageToken')
             if not pt: break
         gr = defaultdict(list)
         for f in all_f:
-            s, m = f.get('size'), f.get('md5Checksum')
-            if s and m: gr[(s, m)].append(f)
-        yield f"data: {json.dumps({'log': '完了', 'done': True, 'results': [{'size': int(k[0]), 'files': v, 'main_name': v[0]['name']} for k, v in gr.items() if len(v) > 1]})}\n\n"
+            s, m, n = f.get('size'), f.get('md5Checksum'), f.get('name')
+            mime = f.get('mimeType', '')
+            if not n: continue
+            
+            if s and m: 
+                # 一般ファイル（PDF、Excelなど）はサイズ・ハッシュ・拡張子で厳密判定
+                ext = os.path.splitext(n)[1].lower()
+                gr[(s, m, ext)].append(f)
+            elif mime.startswith('application/vnd.google-apps.'):
+                # Googleスプレッドシート等のネイティブファイルは、ファイル名と種類で判定
+                gr[(0, mime, n.lower())].append(f)
+                
+        yield f"data: {json.dumps({'log': '完了', 'done': True, 'results': [{'size': int(k[0]) if k[0] else 0, 'files': v, 'main_name': v[0]['name']} for k, v in gr.items() if len(v) > 1]})}\n\n"
     finally: SCAN_STATUS["active"] = False
 
 if __name__ == "__main__":

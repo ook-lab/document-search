@@ -53,8 +53,17 @@
                     <div v-if="duplicateSets.length > 0" style="font-size:10px; background:#fff; border:1px solid #94a3b8; padding:2px 8px; border-radius:3px; color:#1e293b;">
                         <b>[[ duplicateSets.length ]] セット</b> (計 [[ totalFileCount ]] ファイル) 表示中
                     </div>
-                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketed" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fffbe6', fontWeight: 'bold' }">
+                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketed(false)" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fffbe6', fontWeight: 'bold' }">
                         [[ isMarking ? '仕分け中...' : 'カッコ付きマーク' ]]
+                    </button>
+                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketed(true)" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#e6f7ff', fontWeight: 'bold' }">
+                        [[ isMarking ? '仕分け中...' : 'カッコ(最小残し)' ]]
+                    </button>
+                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markParentFolders()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#f0fdf4', fontWeight: 'bold' }">
+                        [[ isMarking ? '仕分け中...' : '浅い階層をマーク' ]]
+                    </button>
+                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markOlderFiles()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fce8e6', fontWeight: 'bold', color: '#d93025' }">
+                        [[ isMarking ? '仕分け中...' : '古い物をマーク' ]]
                     </button>
                     <button class="btn btn-primary" @click="startSearch" :disabled="isScanning || scanTargets.length === 0" style="padding:0 15px;">
                         [[ isScanning ? '実行中...' : '検索開始' ]]
@@ -96,10 +105,14 @@
             </table>
 
             <table v-if="mode === 'folder'">
-                <thead><tr><th style="width: 50px;">類似度</th><th style="width: 45%;">フォルダ A</th><th style="width: 45%;">フォルダ B</th><th style="width: 80px;">マージ</th></tr></thead>
+                <thead><tr><th style="width: 65px;">判定理由</th><th style="width: 45%;">フォルダ A</th><th style="width: 45%;">フォルダ B</th><th style="width: 80px;">マージ</th></tr></thead>
                 <tbody>
                     <tr v-for="(c, idx) in folderCandidates" :key="idx">
-                        <td style="text-align:center; font-weight:bold; background:#e8f0fe;">[[ c.ratio ]]%</td>
+                        <td style="text-align:center; font-weight:bold; background:#e8f0fe; vertical-align: top; padding: 4px;">
+                            <div style="font-size:12px; margin-bottom:2px;">[[ c.ratio ]]%</div>
+                            <div v-if="c.name_match" style="font-size:9px; color:#b31412; background:#fce8e6; border:1px solid #fbd2ce; border-radius:3px; margin-bottom:2px; padding:1px;">名前類似</div>
+                            <div v-if="c.common > 0" style="font-size:9px; color:#0d652d; background:#e6f4ea; border:1px solid #ceead6; border-radius:3px; padding:1px;">内容[[ c.common ]]件</div>
+                        </td>
                         <td>[A] [[ c.path_a ]] <button @click="openInExplorer(c.path_a)" class="btn">📂</button></td>
                         <td>[B] [[ c.path_b ]] <button @click="openInExplorer(c.path_b)" class="btn">📂</button></td>
                         <td style="text-align:center;"><button class="btn btn-primary" @click="mergeFolders(c.path_a, c.path_b)">A➔B</button> <button class="btn btn-primary" @click="mergeFolders(c.path_b, c.path_a)">B➔A</button></td>
@@ -171,14 +184,13 @@
                     if (res.success) { duplicateSets.value = duplicateSets.value.map(s => ({...s, files: s.files.filter(f => !selectedSet.value.has(f.id))})).filter(s => s.files.length > 1); selectedSet.value = new Set(); }
                 };
 
-                const markBracketed = async () => {
+                const markBracketed = async (useMinNumber = false) => {
                     if (isMarking.value) return;
                     isMarking.value = true;
                     const next = new Set(selectedSet.value);
                     let added = 0;
                     const sets = duplicateSets.value;
                     const total = sets.length;
-                    const bracketRegex = /(?:\s?\(\d+\))+$/;
 
                     for (let i = 0; i < total; i++) {
                         const set = sets[i];
@@ -190,18 +202,39 @@
                         const getRoot = (name) => name.replace(bracketRegex, '').replace(/\s+/g, '').trim();
                         // 世代（カッコの数）のカウント
                         const countBrackets = (name) => (name.match(bracketRegex) || []).length;
+                        // カッコ内の数字配列を取得
+                        const getBracketNums = (name) => {
+                            const matches = name.match(bracketRegex);
+                            if (!matches) return [];
+                            return matches.map(m => {
+                                const d = m.match(/\d+/);
+                                return d ? parseInt(d[0], 10) : 0;
+                            });
+                        };
 
                         files.forEach(fA => {
                             if (next.has(fA.id)) return;
                             const rootA = getRoot(fA.name);
                             const genA = countBrackets(fA.name);
+                            const numsA = getBracketNums(fA.name);
 
                             const hasParent = files.some(fB => {
                                 if (fA.id === fB.id) return false;
                                 if (rootA !== getRoot(fB.name)) return false;
                                 
-                                // 親（より世代が古いもの）がいれば、自分はコピー
-                                return countBrackets(fB.name) < genA;
+                                if (useMinNumber) {
+                                    const numsB = getBracketNums(fB.name);
+                                    if (numsB.length < numsA.length) return true;
+                                    if (numsB.length > numsA.length) return false;
+                                    for (let j = 0; j < numsA.length; j++) {
+                                        if (numsB[j] < numsA[j]) return true;
+                                        if (numsB[j] > numsA[j]) return false;
+                                    }
+                                    return false;
+                                } else {
+                                    // 親（より世代が古いもの）がいれば、自分はコピー
+                                    return countBrackets(fB.name) < genA;
+                                }
                             });
 
                             if (hasParent) {
@@ -221,6 +254,86 @@
                     scanLog.value = `完了: ${added}件を新しくマークしました`;
                 };
 
+                const markOlderFiles = () => {
+                    if (isMarking.value) return;
+                    isMarking.value = true;
+                    scanLog.value = '解析中...';
+                    const next = new Set(selectedSet.value);
+                    let added = 0;
+                    const sets = duplicateSets.value;
+                    const getTime = (t) => t ? (typeof t === 'number' ? t : new Date(t).getTime()) : 0;
+
+                    for (let i = 0; i < sets.length; i++) {
+                        const files = sets[i].files;
+                        if (files.length < 2) continue;
+
+                        let newestIdx = 0;
+                        let maxTime = getTime(files[0].createdTime);
+                        for (let j = 1; j < files.length; j++) {
+                            const t = getTime(files[j].createdTime);
+                            if (t > maxTime) {
+                                maxTime = t;
+                                newestIdx = j;
+                            }
+                        }
+
+                        files.forEach((f, idx) => {
+                            if (idx !== newestIdx && !next.has(f.id)) {
+                                next.add(f.id);
+                                added++;
+                            }
+                        });
+                    }
+                    selectedSet.value = next;
+                    isMarking.value = false;
+                    scanLog.value = `完了: 古いファイル ${added}件 をマークしました`;
+                };
+
+                const markParentFolders = async () => {
+                    if (isMarking.value) return;
+                    isMarking.value = true;
+                    scanLog.value = '解析中...';
+                    const next = new Set(selectedSet.value);
+                    let added = 0;
+                    const sets = duplicateSets.value;
+                    const total = sets.length;
+
+                    for (let i = 0; i < total; i++) {
+                        const set = sets[i];
+                        const files = set.files; if (files.length < 2) continue;
+
+                        files.forEach(fA => {
+                            if (next.has(fA.id) || !fA.path) return;
+                            
+                            // fAのディレクトリパスを取得 (Windowsのバックスラッシュもスラッシュに統一し、末尾に必ずスラッシュを付ける)
+                            const dirA = (fA.path.replace(/\\/g, '/').substring(0, fA.path.replace(/\\/g, '/').lastIndexOf('/')) + '/').toLowerCase();
+                            
+                            const hasChild = files.some(fB => {
+                                if (fA.id === fB.id || !fB.path) return false;
+                                const dirB = (fB.path.replace(/\\/g, '/').substring(0, fB.path.replace(/\\/g, '/').lastIndexOf('/')) + '/').toLowerCase();
+                                
+                                // dirB が dirA より長く、かつ dirA で始まっていれば、dirBはdirAのサブディレクトリ (子フォルダ) にいると言える
+                                return dirB.length > dirA.length && dirB.startsWith(dirA);
+                            });
+
+                            // 子フォルダに同じファイルがあるなら、親フォルダ(浅い階層)の自分はコピー・不要とみなしてチェック
+                            if (hasChild) {
+                                next.add(fA.id);
+                                added++;
+                            }
+                        });
+
+                        if (i % 50 === 0 && i > 0) {
+                            scanLog.value = `解析中... ${Math.round((i/total)*100)}%`;
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+
+                    selectedSet.value = next;
+                    isMarking.value = false;
+                    scanLog.value = `完了: ${added}件の浅い階層のファイルをマークしました`;
+                };
+
                 const totalFileCount = computed(() => {
                     let t = 0; duplicateSets.value.forEach(s => t += s.files.length);
                     return t;
@@ -230,12 +343,12 @@
                     mode, scanType, scanTargets, sameParentOnly, duplicateSets, folderCandidates, isScanning, isMarking, scanLog, selectedSet, isAgentOnline, agentPC,
                     startSearch, deleteSelected, totalFileCount, openCleanupFolder, addFolder: async () => { if(scanType.value==='drive'){const id=prompt('ID'); if(id)scanTargets.value.push(id);}else{const res=await(await fetch(getApiUrl('/api/select_folder'))).json(); if(res.success)scanTargets.value.push(res.path);} },
                     removeTarget: (i) => scanTargets.value.splice(i, 1), formatSize: (b) => { if(!b) return '0 B'; const k=1024, i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k, i)).toFixed(2) + ' ' + ['B','KB','MB','GB'][i]; },
-                    formatDate: (v) => { const d = new Date(v*1000); return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); },
+                    formatDate: (v) => { if (!v) return ''; const d = typeof v === 'number' ? new Date(v*1000) : new Date(v); if (isNaN(d.getTime())) return v; return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); },
                     openInExplorer: (path) => fetch(`${getApiUrl('/api/open_explorer')}?path=${encodeURIComponent(path)}`),
                     toggleAllFiles: () => { if (selectedSet.value.size > 0) selectedSet.value = new Set(); else { const n = new Set(); duplicateSets.value.forEach(s => s.files.forEach(f => n.add(f.id))); selectedSet.value = n; } },
                     isAllSelected: computed(() => { let t = 0; duplicateSets.value.forEach(s => t += s.files.length); return t > 0 && selectedSet.value.size === t; }),
                     toggleSelect, mergeFolders: async (src, dst) => { const res = await (await fetch(getApiUrl('/api/merge_folders'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, dst }) })).json(); if(res.success) folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src); },
-                    markBracketed
+                    markBracketed, markParentFolders, markOlderFiles
                 };
             }
         }).mount('#app');

@@ -943,6 +943,7 @@ function CalendarApp() {
   const [cpSat,   setCpSat]   = useState(20);
   const [weekStartsMonday, setWeekStartsMonday]   = useState(false);
   const [use24h, setUse24h]                       = useState(true);
+  const [showDailyDetails, setShowDailyDetails]   = useState(true);
 
   const handleSync = async (boardId?: string) => {
     setSyncing(true);
@@ -1626,11 +1627,22 @@ function CalendarApp() {
   {/* 中央：年月（カレンダータブのみ） */}
   {activeTab === "calendar" && (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-      <span className="text-base font-bold text-gray-800">{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月</span>
+      <div className="flex items-center gap-4 pointer-events-auto">
+        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors">←</button>
+        <span className="text-base font-bold text-gray-800 w-24 text-center">{currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月</span>
+        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors">→</button>
+      </div>
     </div>
   )}
   {/* 右：アバター＋設定 */}
   <div className="flex items-center gap-1.5">
+    {activeTab === "calendar" && (
+      <button onClick={() => setShowDailyDetails(!showDailyDetails)}
+        className="hidden md:block rounded-xl border border-gray-200 px-3 py-1 text-xs font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+      >
+        {showDailyDetails ? "詳細を隠す" : "詳細を表示"}
+      </button>
+    )}
     {session?.user?.image && (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={session.user.image} alt="avatar" className="w-6 h-6 rounded-full border border-gray-200 flex-shrink-0" />
@@ -1900,7 +1912,7 @@ function CalendarApp() {
           </div>
         </section>
 
-        <section className="shrink-0 md:w-72 lg:w-96 bg-white md:rounded-2xl md:shadow-sm md:border p-3 md:p-4 md:overflow-y-auto md:self-stretch border-t">
+        <section className={`shrink-0 md:w-72 lg:w-96 bg-white md:rounded-2xl md:shadow-sm md:border p-3 md:p-4 md:overflow-y-auto md:self-stretch border-t ${!showDailyDetails ? "md:hidden" : ""}`}>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-bold text-gray-800">{formatDisplayDate(selectedDate)} の予定</h2>
             <button onClick={() => openCreate(selectedDate)}

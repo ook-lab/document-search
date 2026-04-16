@@ -1,7 +1,6 @@
 steps:
   # ============================================
-  # data-ingestion デプロイ設定
-  # ============================================
+  # data-ingestion ?E?E????E  # ============================================
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -28,8 +27,7 @@ steps:
       - '--timeout=600'
       - '--memory=2Gi'
       - '--cpu=2'
-      # 基本的な環境変数を設定
-      - '--set-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},DEFAULT_OWNER_ID=${_DEFAULT_OWNER_ID},WASEDA_PDF_FOLDER_ID=${_WASEDA_PDF_FOLDER_ID},GOOGLE_SERVICE_ACCOUNT_JSON=${_GOOGLE_SERVICE_ACCOUNT_JSON},WASEDA_LOGIN_ID=${_WASEDA_LOGIN_ID},WASEDA_PASSWORD=${_WASEDA_PASSWORD}'
+      # ???E????E??????E      - '--set-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},DEFAULT_OWNER_ID=${_DEFAULT_OWNER_ID},WASEDA_PDF_FOLDER_ID=${_WASEDA_PDF_FOLDER_ID},GOOGLE_SERVICE_ACCOUNT_JSON=${_GOOGLE_SERVICE_ACCOUNT_JSON},WASEDA_LOGIN_ID=${_WASEDA_LOGIN_ID},WASEDA_PASSWORD=${_WASEDA_PASSWORD}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/data-ingestion:${_TAG}'

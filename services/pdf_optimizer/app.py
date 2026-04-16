@@ -39,6 +39,47 @@ def serve_file(file_id):
         return send_file(filepath)
     return "Not found", 404
 
+@app.route('/analyze/<file_id>')
+def analyze_pdf(file_id):
+    filepath = os.path.join(UPLOAD_FOLDER, f"{file_id}.pdf")
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'File not found'}), 404
+        
+    try:
+        doc = fitz.open(filepath)
+        meta = doc.metadata
+        
+        pages_data = {}
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            # Get text from the page
+            blocks = page.get_text("dict").get("blocks", [])
+            for block in blocks:
+                if 'lines' not in block:
+                    continue
+                for line in block['lines']:
+                    for span in line['spans']:
+                        bbox = span['bbox']
+                        # Check if text is located at the top-left area (y0 < 50, x0 < 60)
+                        if bbox[0] < 60 and bbox[1] < 50:
+                            text = span['text'].strip()
+                            if text:
+                                pages_data[str(page_num)] = text
+                                break # Assume the first matching span is our label
+                    else:
+                        continue
+                    break # Break out of lines loop if label found
+                    
+        doc.close()
+        
+        return jsonify({
+            'metadata': meta,
+            'pages': pages_data
+        })
+    except Exception as e:
+        app.logger.error(f"Error analyzing PDF: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/process/<file_id>', methods=['POST'])
 def process_pdf(file_id):
     data = request.json

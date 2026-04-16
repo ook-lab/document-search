@@ -1,5 +1,5 @@
 steps:
-  # 1. 整理アプリのビルド (Googleの工場で軽量な箱にデプロイ)
+  # 1. ??E????????E(Google??????????E?E??)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -9,13 +9,13 @@ steps:
       - 'services/drive-duplicate-checker/Dockerfile'
       - '.'
 
-  # 2. 保存した箱を公式レポジトリへプッシュ
+  # 2. ???????E???????????
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/drive-checker:latest'
 
-  # 3. Cloud Runへのデプロイ実行 (最小スペック & ローカルパワー重視設計)
+  # 3. Cloud Run???E?E????E(?????? & ???????????E
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -25,9 +25,7 @@ steps:
       - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/drive-checker:latest'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
-      - '--cpu=0.08'  # [重要] 最小CPU設定
-      - '--memory=128Mi' # [重要] 最小メモリ設定
-      - '--set-env-vars=RUN_MODE=CLOUD'
+      - '--cpu=0.08'  # [??] ??CPU??E      - '--memory=128Mi' # [??] ???????E      - '--set-env-vars=RUN_MODE=CLOUD'
 
 options:
   logging: CLOUD_LOGGING_ONLY

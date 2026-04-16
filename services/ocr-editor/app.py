@@ -24,7 +24,7 @@ for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
 
 # Gemini Setup
 genai.configure(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-model_name = os.getenv("STAGE1_MODEL", "gemini-2.0-flash-lite-preview-02-05")
+model_name = os.getenv("STAGE1_MODEL", "gemini-2.5-flash-lite")
 model = genai.GenerativeModel(model_name)
 
 # Template Store (In-memory for prototype, could be JSON file)
@@ -34,11 +34,11 @@ if not os.path.exists(TEMPLATES_FILE):
         json.dump({
             "Standard": {
                 "name": "Standard OCR",
-                "prompt": "Extract all text and their bounding boxes. Focus on preserving layout."
+                "prompt": "Extract all text and their bounding boxes. Group related text, sentences, and paragraphs into single continuous blocks where appropriate. Do NOT extract character by character or separate small fragments unless they are independent. Focus on preserving the natural reading layout."
             },
             "Invoice": {
                 "name": "Invoice Parser",
-                "prompt": "Identify Invoice Number, Date, Vendor Name, Total Amount, and separate line items with their price and quantity. Provide coordinates for each detected text block."
+                "prompt": "Identify Invoice Number, Date, Vendor Name, Total Amount, and separate line items with their price and quantity. Group related fields. Provide coordinates for each detected text block."
             }
         }, f, indent=2, ensure_ascii=False)
 

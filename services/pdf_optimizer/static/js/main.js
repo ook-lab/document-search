@@ -4,6 +4,7 @@ let selectedPages = new Set();
 let lastSelectedIndex = -1;
 let pageLabels = {}; // Maps pageIndex (0-based) to label text
 let previewRenderTask = null;
+let currentZoom = 1.0;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Inject loading overlay
@@ -21,7 +22,30 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('file-input').addEventListener('change', handleFileUpload);
     document.getElementById('apply-tags-btn').addEventListener('click', applyTags);
     document.getElementById('process-download-btn').addEventListener('click', processAndDownload);
+    
+    // Zoom Controls
+    document.getElementById('zoom-in-btn').addEventListener('click', () => {
+        currentZoom += 0.2;
+        applyZoom();
+    });
+    
+    document.getElementById('zoom-out-btn').addEventListener('click', () => {
+        currentZoom = Math.max(0.2, currentZoom - 0.2);
+        applyZoom();
+    });
+    
+    document.getElementById('zoom-reset-btn').addEventListener('click', () => {
+        currentZoom = 1.0;
+        applyZoom();
+    });
 });
+
+function applyZoom() {
+    const canvas = document.getElementById('preview-canvas');
+    if (canvas) {
+        canvas.style.transform = `scale(${currentZoom})`;
+    }
+}
 
 function showLoading(text) {
     document.getElementById('loading-text').textContent = text;
@@ -52,9 +76,40 @@ async function handleFileUpload(e) {
         
         if (res.ok) {
             currentFileId = data.file_id;
-            // Update filename in meta title as default
             document.getElementById('meta-title').value = file.name.replace('.pdf', '');
             await loadPDF(`/files/${currentFileId}`);
+            
+            // Analyze existing PDF labels automatically
+            try {
+                showLoading('既存ラベルの解析中...');
+                const analyzeRes = await fetch(`/analyze/${currentFileId}`);
+                if (analyzeRes.ok) {
+                    const analyzeData = await analyzeRes.json();
+                    
+                    // Populate metadata if available
+                    if (analyzeData.metadata) {
+                        if (analyzeData.metadata.title) document.getElementById('meta-title').value = analyzeData.metadata.title;
+                        if (analyzeData.metadata.author) document.getElementById('meta-author').value = analyzeData.metadata.author;
+                        if (analyzeData.metadata.subject) document.getElementById('meta-subject').value = analyzeData.metadata.subject;
+                    }
+                    
+                    // Populate page labels
+                    if (analyzeData.pages) {
+                        for (const [pageIdxStr, text] of Object.entries(analyzeData.pages)) {
+                            const pageIdx = parseInt(pageIdxStr, 10);
+                            pageLabels[pageIdx] = text;
+                            const thumb = document.getElementById(`thumb-${pageIdx}`);
+                            if (thumb) {
+                                const badge = thumb.querySelector('.label-badge');
+                                badge.textContent = text;
+                                badge.style.display = 'block';
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Analysis failed", err);
+            }
         } else {
             alert("Error: " + data.error);
         }
@@ -162,6 +217,10 @@ async function renderPreview(index) {
         
         previewRenderTask = page.render({ canvasContext: ctx, viewport: viewport });
         await previewRenderTask.promise;
+        
+        // Reset zoom visual
+        currentZoom = 1.0;
+        applyZoom();
     } catch (err) {
         if (err.name !== 'RenderingCancelledException') {
             console.error("Error rendering preview", err);

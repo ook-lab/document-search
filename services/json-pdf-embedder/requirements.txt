@@ -1,0 +1,6 @@
+flask
+pymupdf
+google-genai
+python-dotenv
+werkzeug
+gunicorn

@@ -40,5 +40,6 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  substitutionOption: 'ALLOW_LOOSE'
 
 timeout: 600s

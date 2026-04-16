@@ -96,6 +96,7 @@ function updateSvgSize() {
     elements.svgOverlay.style.width = img.clientWidth + 'px';
     elements.svgOverlay.style.height = img.clientHeight + 'px';
     elements.svgOverlay.setAttribute('viewBox', `0 0 1000 1000`);
+    elements.svgOverlay.setAttribute('preserveAspectRatio', 'none');
 }
 
 async function runOcr(pageNum) {
