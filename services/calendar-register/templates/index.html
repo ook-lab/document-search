@@ -1088,8 +1088,9 @@ function renderPreview(events) {
     const allDay = !!(ev.all_day || !ev.start_time);
     return `
       <li class="event-item ${allDay ? 'all-day' : ''}" data-index="${i}">
-        <div class="ev-edit-row">
-          <input class="ev-input ev-input-title" type="text" value="${_esc(ev.title)}" placeholder="タイトル">
+        <div class="ev-edit-row" style="display: flex; gap: 8px;">
+          <input class="ev-input ev-input-title" type="text" value="${_esc(ev.title)}" placeholder="タイトル" style="flex:1;">
+          <button onclick="removePreviewEvent(this)" style="background:none; border:none; color:#d93025; font-size:16px; cursor:pointer; padding: 0 4px; line-height:1;" title="この予定を削除">✖</button>
         </div>
         <div class="ev-edit-row">
           <input class="ev-input ev-input-date" type="date" value="${ev.date || ''}">
@@ -1129,6 +1130,16 @@ function toggleAllDay(cb) {
     if (cb.checked) inp.value = '';
   });
   item.classList.toggle('all-day', cb.checked);
+}
+
+function removePreviewEvent(btn) {
+  btn.closest('.event-item').remove();
+  const remaining = document.querySelectorAll('#eventList .event-item').length;
+  document.getElementById('charCount').textContent = remaining + ' 件（解析後）';
+  if (remaining === 0) {
+    document.getElementById('btnRegister').disabled = true;
+    document.getElementById('previewPanel').style.display = 'none';
+  }
 }
 
 // ─── カレンダーに登録 ───
