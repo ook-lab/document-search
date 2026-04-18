@@ -1836,7 +1836,7 @@ function CalendarApp() {
                       const dow = day.getDay();
                       const allEvs = eventsByDate[key] ?? [];
                       const singleEvs = allEvs.filter(ev => !mdIds.has(ev.id));
-                      const maxSingle = Math.max(0, 3 - lanes.length);
+                      const maxSingle = Math.max(0, 10 - lanes.length);
                       const shownSingle = singleEvs.slice(0, maxSingle);
                       const hiddenCount = singleEvs.length - shownSingle.length;
                       return (
