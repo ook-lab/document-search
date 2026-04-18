@@ -1,5 +1,7 @@
 // GET /api/calendar/members
 // 環境変数から家族メンバー一覧を返す
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const members = [
     { key: "mama",  label: "ママ",   email: process.env.SHARE_MEMBER_MAMA },
