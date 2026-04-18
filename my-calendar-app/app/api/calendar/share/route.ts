@@ -23,7 +23,7 @@ async function findAclRuleId(calendarId: string, email: string): Promise<string 
 // カレンダーにACLを追加
 async function addAcl(calendarId: string, email: string): Promise<void> {
   const headers = await authHeaders();
-  const res = await fetch(`${BASE}/calendars/${encodeURIComponent(calendarId)}/acl?sendNotifications=false`, {
+  const res = await fetch(`${BASE}/calendars/${encodeURIComponent(calendarId)}/acl?sendNotifications=true`, {
     method: "POST",
     headers,
     body: JSON.stringify({ role: "writer", scope: { type: "user", value: email } }),
