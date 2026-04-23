@@ -1,0 +1,41 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-maker:${_TAG}'
+      - '-f'
+      - 'services/resume-maker/Dockerfile'
+      - '.'
+
+  # Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-maker:${_TAG}'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'resume-maker'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-maker:${_TAG}'
+      - '--region=asia-northeast1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--port=5055'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/resume-maker:${_TAG}'
+
+substitutions:
+  _TAG: 'latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

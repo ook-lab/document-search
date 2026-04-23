@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI JSON PDF Embedder</title>
+    <title>帳票データ（JSON）のPDF埋め込み</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -325,9 +325,11 @@
 <body>
 
     <header>
-        <h1>JSON Sandwich Embedder</h1>
+        <h1>帳票データ（JSON）のPDF埋め込み</h1>
         <div style="display:flex; gap: 1rem; align-items: center;">
             <span style="font-size: 0.85rem; color: var(--text-muted);" id="headerStatus">Waiting for upload...</span>
+            <input type="text" id="outputFilename" placeholder="保存ファイル名" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 200px;">
+            <button class="btn-outline" id="generateFilenameBtn" style="display:none; padding: 0.5rem; font-size: 0.85rem; background: white;">AI生成</button>
             <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">
                 Download Final PDF
             </button>
@@ -422,6 +424,8 @@
         const loaderOverlay = document.getElementById('loaderOverlay');
         const loaderText = document.getElementById('loaderText');
         const headerStatus = document.getElementById('headerStatus');
+        const outputFilename = document.getElementById('outputFilename');
+        const generateFilenameBtn = document.getElementById('generateFilenameBtn');
         const saveBtn = document.getElementById('saveBtn');
         const extractAiBtn = document.getElementById('extractAiBtn');
         const aiOverlay = document.getElementById('aiOverlay');
@@ -469,6 +473,8 @@
             uploadView.style.display = 'none';
             workspaceView.style.display = 'block';
             saveBtn.style.display = 'block';
+            outputFilename.style.display = 'block';
+            generateFilenameBtn.style.display = 'block';
             headerStatus.textContent = `File: ${appState.safeFilename}`;
             
             appState.currentPage = 0;
@@ -547,6 +553,7 @@
                     body: JSON.stringify({
                         file_id: appState.fileId,
                         safe_filename: appState.safeFilename,
+                        filename: outputFilename.value,
                         pages_data: pagesData
                     })
                 });
@@ -556,13 +563,47 @@
                 // create synthetic download
                 const a = document.createElement('a');
                 a.href = json.download_url;
-                a.download = true;
+                a.download = json.filename || 'embedded.pdf';
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
             } catch (e) { alert(e.message); }
             finally { hideLoader(); }
         }
+
+        generateFilenameBtn.onclick = async () => {
+            let allDataText = [];
+            appState.pages.forEach(p => {
+                if(p.existing_data) {
+                    allDataText.push(JSON.stringify(p.existing_data, null, 2));
+                }
+            });
+            const combinedText = allDataText.join("\n");
+            
+            if (!combinedText.trim()) {
+                alert("エラー: データがありません。先にAI読み取りを実行してください。");
+                return;
+            }
+
+            showLoader("AIがファイル名を生成中...");
+            try {
+                const res = await fetch('/generate_filename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: combinedText })
+                });
+                const json = await res.json();
+                
+                if(!res.ok) throw new Error(json.error);
+                
+                outputFilename.value = json.filename;
+                alert("ファイル名を生成しました！");
+            } catch (e) {
+                alert("ファイル名生成エラー: " + e.message);
+            } finally {
+                hideLoader();
+            }
+        };
 
         // --- Editing Logic ---
         function renderData(data) {

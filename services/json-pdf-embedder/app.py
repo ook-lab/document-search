@@ -195,10 +195,18 @@ def save_pdf():
         data = request.json
         file_id = data.get('file_id')
         safe_filename = data.get('safe_filename')
+        user_filename = data.get('filename')
         pages_data = data.get('pages_data', {}) # Dictionary mapping string(page_index) -> json_data
 
         input_filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
-        output_filename = f"embedded_{safe_filename}"
+        
+        if user_filename:
+            if not user_filename.lower().endswith('.pdf'):
+                user_filename += '.pdf'
+            output_filename = secure_filename(user_filename)
+        else:
+            output_filename = f"embedded_{safe_filename}"
+            
         output_filepath = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
 
         if not os.path.exists(input_filepath):
@@ -217,14 +225,15 @@ def save_pdf():
                 
                 # For simplicity, we just append it as invisible text at the top left.
                 rect = fitz.Rect(0, 0, page.rect.width, page.rect.height) 
-                page.insert_textbox(rect, payload, fontsize=6, render_mode=3)
+                page.insert_textbox(rect, payload, fontsize=6, fontname="cjk", render_mode=3)
 
         doc.save(output_filepath)
         doc.close()
 
         return jsonify({
             'success': True,
-            'download_url': f'/download/{output_filename}'
+            'download_url': f'/download/{output_filename}',
+            'filename': output_filename
         })
 
     except Exception as e:
@@ -237,6 +246,35 @@ def download_file(filename):
     if os.path.exists(filepath):
         return send_file(filepath, as_attachment=True)
     return "File not found", 404
+
+@app.route('/generate_filename', methods=['POST'])
+def generate_filename():
+    data = request.json
+    text = data.get('text', '')
+    
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+        
+    try:
+        prompt = (
+            "以下のデータから、この文書を表す簡潔なファイル名を生成してください。\n"
+            "形式の指定: 「文書の内容（社名など）_日付」の形式で生成してください。（例: 見積書_株式会社ABC_20231005）\n"
+            "日付が見つからない場合は、日付部分は省略可能です。\n"
+            "拡張子(.pdf)は含めないでください。\n"
+            "余計な説明は一切せず、ファイル名となる文字列のみを出力してください。\n\n"
+            f"データ:\n{text[:3000]}"
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash-lite',
+            contents=prompt
+        )
+        filename = response.text.strip().replace(' ', '_').replace('/', '').replace('\\', '')
+        
+        return jsonify({"filename": filename})
+    except Exception as e:
+        logging.error(f"Error generating filename: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5016)

@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI OCR Studio</title>
+    <title>検索できるPDFメーカー</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
 </head>
 <body class="light-mode">
     <header>
-        <div class="logo">AI<span>OCR</span>Studio</div>
+        <div class="logo" style="font-size: 1.2rem;">検索できる<span>PDF</span>メーカー</div>
         <div class="actions">
             <select id="templateSelector">
                 {% for tid, tdata in templates.items() %}
@@ -20,6 +20,8 @@
             <button id="editTemplateBtn" class="btn secondary">⚙️ テンプレート管理</button>
             <input type="file" id="pdfUpload" accept="application/pdf" hidden>
             <button id="uploadBtn" class="btn primary">PDFを選択</button>
+            <input type="text" id="outputFilename" placeholder="保存ファイル名" style="margin-left:10px; padding:6px; border:1px solid #ccc; border-radius:4px; min-width:200px;">
+            <button id="generateFilenameBtn" class="btn secondary" disabled>ファイル名AI生成</button>
             <button id="savePdfBtn" class="btn success" disabled>検索可能PDFを保存</button>
         </div>
     </header>

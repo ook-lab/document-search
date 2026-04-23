@@ -131,41 +131,57 @@ def run_ocr():
 
 @app.route('/save', methods=['POST'])
 def save_pdf():
-    data = request.json
-    pdf_id = data.get('pdf_id')
-    corrections = data.get('corrections', []) # List of {page_num, text, box_2d (normalized)}
-    
-    original_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf_id)
-    output_filename = f"searchable_{pdf_id}"
-    output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
-    
-    doc = fitz.open(original_path)
-    
-    for item in corrections:
-        page_num = item.get('page_num')
-        text = item.get('text')
-        box = item.get('box_2d') # [ymin, xmin, ymax, xmax]
+    try:
+        data = request.json
+        pdf_id = data.get('pdf_id')
+        corrections = data.get('corrections', []) # List of {page_num, text, box_2d (normalized)}
+        user_filename = data.get('filename')
         
-        page = doc.load_page(page_num)
-        p_width = page.rect.width
-        p_height = page.rect.height
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf_id)
         
-        # Convert normalized 0-1000 to PDF coordinates
-        ymin, xmin, ymax, xmax = box
-        y = (ymin / 1000.0) * p_height
-        x = (xmin / 1000.0) * p_width
+        # Ensure extension is .pdf
+        if user_filename:
+            if not user_filename.lower().endswith('.pdf'):
+                user_filename += '.pdf'
+            output_filename = secure_filename(user_filename)
+        else:
+            output_filename = f"searchable_{pdf_id}"
+            
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
-        # Determine font size based on box height if possible
-        box_h = ((ymax - ymin) / 1000.0) * p_height
-        fontsize = max(8, box_h * 0.8)
+        doc = fitz.open(original_path)
         
-        # render_mode=3 makes text invisible but searchable
-        page.insert_text((x, y + (fontsize * 0.8)), text, fontsize=fontsize, render_mode=3)
+        for item in corrections:
+            page_num = item.get('page_num')
+            text = item.get('text')
+            box = item.get('box_2d') # [ymin, xmin, ymax, xmax]
+            
+            page = doc.load_page(page_num)
+            p_width = page.rect.width
+            p_height = page.rect.height
+            
+            # Convert normalized 0-1000 to PDF coordinates
+            ymin, xmin, ymax, xmax = box
+            y = (ymin / 1000.0) * p_height
+            x = (xmin / 1000.0) * p_width
+            
+            # Determine font size based on box height if possible
+            box_h = ((ymax - ymin) / 1000.0) * p_height
+            fontsize = max(8, box_h * 0.8)
+            
+            # render_mode=3 makes text invisible but searchable. fontname="cjk" for Japanese.
+            page.insert_text((x, y + (fontsize * 0.8)), text, fontsize=fontsize, fontname="cjk", render_mode=3)
+            
+        doc.save(output_path)
+        doc.close()
         
-    doc.save(output_path)
-    doc.close()
-    
-    return jsonify({"download_url": url_for('download_file', filename=output_filename)})
+        return jsonify({
+            "download_url": url_for('download_file', filename=output_filename),
+            "filename": output_filename
+        })
+    except Exception as e:
+        print(f"Error saving PDF: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/download/<filename>')
 def download_file(filename):
@@ -184,6 +200,32 @@ def save_template():
         json.dump(templates, f, indent=2, ensure_ascii=False)
         
     return jsonify({"success": True})
+
+@app.route('/generate_filename', methods=['POST'])
+def generate_filename():
+    data = request.json
+    text = data.get('text', '')
+    
+    if not text:
+        return jsonify({"error": "No text provided"}), 400
+        
+    try:
+        prompt = (
+            "以下のテキストから、この文書を表す簡潔なファイル名を生成してください。\n"
+            "形式の指定: 「文書の内容（社名など）_日付」の形式で生成してください。（例: 見積書_株式会社ABC_20231005）\n"
+            "日付が見つからない場合は、日付部分は省略可能です。\n"
+            "拡張子(.pdf)は含めないでください。\n"
+            "余計な説明は一切せず、ファイル名となる文字列のみを出力してください。\n\n"
+            f"テキスト:\n{text[:3000]}"
+        )
+        
+        response = model.generate_content(prompt)
+        filename = response.text.strip().replace(' ', '_').replace('/', '').replace('\\', '')
+        
+        return jsonify({"filename": filename})
+    except Exception as e:
+        print(f"Error generating filename: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5003))

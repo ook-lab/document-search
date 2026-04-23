@@ -1,7 +1,6 @@
 FROM python:3.12-slim
 
-# WeasyPrint の依存システムライブラリをインストール
-# (Pango, Cairo, GDK-Pixbuf, libffi, shared-mime-info が必要)
+# WeasyPrint の依存システムライブラリ
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
@@ -14,15 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY services/html-to-a4/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# `html-to-a4` のファイルをコピー
-COPY services/html-to-a4/app.py .
-COPY services/html-to-a4/templates/ ./templates/
+COPY app.py .
+COPY templates/ ./templates/
 
-# ポート設定
-ENV PORT=5051
+ENV PORT=5055
 
-# Gunicornでアプリを起動
 CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app:app

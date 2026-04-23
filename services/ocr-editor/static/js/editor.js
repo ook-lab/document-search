@@ -1,7 +1,7 @@
 let currentPdfId = null;
 let currentPreviews = [];
 let currentPageNum = 0;
-let ocrData = []; 
+let allOcrData = {}; 
 
 const elements = {
     pdfUpload: document.getElementById('pdfUpload'),
@@ -20,13 +20,46 @@ const elements = {
     tplName: document.getElementById('tplName'),
     tplPrompt: document.getElementById('tplPrompt'),
     saveTemplateBtn: document.getElementById('saveTemplateBtn'),
-    closeModal: document.getElementById('closeModal')
+    closeModal: document.getElementById('closeModal'),
+    outputFilename: document.getElementById('outputFilename'),
+    generateFilenameBtn: document.getElementById('generateFilenameBtn')
 };
 
 // Event Listeners
 elements.uploadBtn.addEventListener('click', () => elements.pdfUpload.click());
 elements.pdfUpload.addEventListener('change', uploadPdf);
 elements.savePdfBtn.addEventListener('click', saveSearchablePdf);
+elements.generateFilenameBtn.addEventListener('click', async () => {
+    let allText = [];
+    for (let page in allOcrData) {
+        allOcrData[page].forEach(item => allText.push(item.text));
+    }
+    const combinedText = allText.join(" ");
+    
+    if (!combinedText.trim()) {
+        showNotification("エラー: テキストがありません。先に分析を実行してください。");
+        return;
+    }
+
+    showLoading(true, "AIがファイル名を生成中...");
+    try {
+        const response = await fetch('/generate_filename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: combinedText })
+        });
+        const data = await response.json();
+        
+        if (data.error) throw new Error(data.error);
+        
+        elements.outputFilename.value = data.filename;
+        showNotification("ファイル名を生成しました！");
+    } catch (err) {
+        showNotification("ファイル名生成エラー: " + err.message);
+    } finally {
+        showLoading(false);
+    }
+});
 elements.editTemplateBtn.addEventListener('click', () => {
     elements.modal.classList.remove('hidden');
     elements.tplName.value = elements.templateSelector.options[elements.templateSelector.selectedIndex].text;
@@ -80,15 +113,23 @@ async function loadPage(idx) {
     const page = currentPreviews[idx];
     elements.pageImage.src = page.url;
     
-    // Reset editor
-    elements.textEditor.innerHTML = '<div class="placeholder"><div style="text-align:center"><p>OCRを開始するにはボタンを押してください</p><br><button class="btn primary" id="runOcrBtn">分析実行</button></div></div>';
-    document.getElementById('runOcrBtn').onclick = () => runOcr(idx);
-
     elements.pageImage.onload = () => {
         updateSvgSize();
     };
 
     renderPageList();
+
+    if (allOcrData[idx] && allOcrData[idx].length > 0) {
+        // Data exists, render immediately
+        renderEditor();
+        renderOverlay();
+    } else {
+        // Reset editor
+        elements.textEditor.innerHTML = '<div class="placeholder"><div style="text-align:center"><p>OCRを開始するにはボタンを押してください</p><br><button class="btn primary" id="runOcrBtn">分析実行</button></div></div>';
+        elements.svgOverlay.innerHTML = '';
+        const runOcrBtn = document.getElementById('runOcrBtn');
+        if (runOcrBtn) runOcrBtn.onclick = () => runOcr(idx);
+    }
 }
 
 function updateSvgSize() {
@@ -115,10 +156,11 @@ async function runOcr(pageNum) {
         
         if (data.error) throw new Error(data.error);
 
-        ocrData = data;
+        allOcrData[pageNum] = data;
         renderEditor();
         renderOverlay();
         elements.savePdfBtn.disabled = false;
+        elements.generateFilenameBtn.disabled = false;
     } catch (err) {
         showNotification("OCRエラー: " + err.message);
     } finally {
@@ -128,7 +170,8 @@ async function runOcr(pageNum) {
 
 function renderEditor() {
     elements.textEditor.innerHTML = '';
-    ocrData.forEach((item, idx) => {
+    const currentData = allOcrData[currentPageNum] || [];
+    currentData.forEach((item, idx) => {
         const div = document.createElement('div');
         div.className = 'text-item';
         div.id = `text-item-${idx}`;
@@ -139,7 +182,7 @@ function renderEditor() {
         
         const textarea = div.querySelector('textarea');
         textarea.oninput = (e) => {
-            ocrData[idx].text = e.target.value;
+            allOcrData[currentPageNum][idx].text = e.target.value;
         };
         
         div.onmouseenter = () => highlightBound(idx, true);
@@ -151,7 +194,8 @@ function renderEditor() {
 
 function renderOverlay() {
     elements.svgOverlay.innerHTML = '';
-    ocrData.forEach((item, idx) => {
+    const currentData = allOcrData[currentPageNum] || [];
+    currentData.forEach((item, idx) => {
         const [ymin, xmin, ymax, xmax] = item.box_2d;
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         rect.setAttribute('x', xmin);
@@ -182,11 +226,17 @@ function highlightBound(idx, active) {
 
 async function saveSearchablePdf() {
     showLoading(true, "検索可能PDFを出力中...");
-    const corrections = ocrData.map(item => ({
-        page_num: currentPageNum,
-        text: item.text,
-        box_2d: item.box_2d
-    }));
+    
+    let corrections = [];
+    for (let page in allOcrData) {
+        allOcrData[page].forEach(item => {
+            corrections.push({
+                page_num: parseInt(page),
+                text: item.text,
+                box_2d: item.box_2d
+            });
+        });
+    }
 
     try {
         const response = await fetch('/save', {
@@ -194,15 +244,20 @@ async function saveSearchablePdf() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 pdf_id: currentPdfId,
-                corrections: corrections
+                corrections: corrections,
+                filename: elements.outputFilename.value
             })
         });
         const data = await response.json();
         
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
         if (data.download_url) {
             const link = document.createElement('a');
             link.href = data.download_url;
-            link.download = 'edited_searchable.pdf';
+            link.download = data.filename || 'edited_searchable.pdf';
             link.click();
             showNotification("保存しました！");
         }
