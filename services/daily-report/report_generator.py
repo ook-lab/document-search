@@ -255,13 +255,14 @@ class ReportGenerator:
             "summary": "この日の予定はありません",
         }
         try:
-            import google.generativeai as genai
+            import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             from shared.common.config.settings import settings
-            genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
-            model = genai.GenerativeModel(GEMINI_MODEL)
+            vertexai.init(location="asia-northeast1")
+            model = GenerativeModel(GEMINI_MODEL)
             resp  = model.generate_content(
                 prompt,
-                generation_config=genai.GenerationConfig(temperature=0.1),
+                generation_config=GenerationConfig(temperature=0.1),
             )
             text = resp.text.strip()
             # マークダウンコードブロックを除去

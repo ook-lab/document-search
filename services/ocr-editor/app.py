@@ -2,7 +2,8 @@ import os
 import json
 import uuid
 import fitz  # PyMuPDF
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
 from flask import Flask, render_template, request, jsonify, send_file, url_for
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -23,9 +24,9 @@ for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
         os.makedirs(folder)
 
 # Gemini Setup
-genai.configure(api_key=os.getenv("GOOGLE_AI_API_KEY"))
+vertexai.init(location="asia-northeast1")
 model_name = os.getenv("STAGE1_MODEL", "gemini-2.5-flash-lite")
-model = genai.GenerativeModel(model_name)
+model = GenerativeModel(model_name)
 
 # Template Store (In-memory for prototype, could be JSON file)
 TEMPLATES_FILE = os.path.join(os.path.dirname(__file__), 'templates.json')

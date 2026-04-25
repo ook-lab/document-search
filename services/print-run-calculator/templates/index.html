@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>部数会議用計算書 ジェネレーター</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Noto+Sans+JP:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-color: #F3F4F6;
+            --surface: #FFFFFF;
+            --text-main: #1F2937;
+            --text-light: #6B7280;
+            --border: #E5E7EB;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --transition: all 0.3s ease;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            padding: 2rem 1rem;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 2rem;
+            color: var(--primary);
+            text-align: center;
+        }
+
+        .nav-link {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: var(--text-main);
+            text-decoration: none;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            transition: var(--transition);
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background-color: #EEF2FF;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem 4rem;
+            overflow-y: auto;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: 1rem;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.875rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--text-main);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: span 2;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
+        }
+
+        input[type="text"], input[type="number"], select {
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: var(--transition);
+            background-color: #F9FAFB;
+        }
+
+        input[type="text"]:focus, input[type="number"]:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+            background-color: var(--surface);
+        }
+
+        button.btn-submit {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: var(--transition);
+            width: 100%;
+            margin-top: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.4);
+        }
+
+        button.btn-submit:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px -1px rgba(79, 70, 229, 0.4);
+        }
+
+        .section-title {
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border);
+            font-size: 1.25rem;
+            color: var(--text-main);
+            grid-column: span 2;
+        }
+
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <h2>BookCalc Pro</h2>
+        <a href="/" class="nav-link active">計算書作成</a>
+        <a href="/settings" class="nav-link">シリーズ規定値設定</a>
+    </aside>
+
+    <main class="main-content">
+        <div class="card" style="max-width: 1000px;">
+            <h1>部数会議用計算書 発行</h1>
+            <p style="color: var(--text-light); margin-bottom: 2rem;">シリーズを選択すると、マスターに登録されている「すべての数値」が読み込まれます。必要に応じて打ち換えて出力してください。</p>
+
+            <form action="/generate" method="POST">
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="series_id">シリーズ選択</label>
+                        <select id="series_id" name="series_id" required>
+                            <option value="">-- シリーズを選択してください --</option>
+                            {% for s in series_list %}
+                            <option value="{{ s.id }}">{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="出力ファイル名">出力ファイル名</label>
+                        <input type="text" id="出力ファイル名" name="出力ファイル名" placeholder="例: 白色光の影を浚う_部数計算" required>
+                    </div>
+
+                    <div class="section-title">数値項目（マスターから読み込み）</div>
+                </div>
+                
+                <div class="form-grid" id="dynamicInputs" style="margin-top: 1rem; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;">
+                    <!-- Javascript will inject number inputs here -->
+                </div>
+
+                <button type="submit" class="btn-submit">Excel計算書を生成・ダウンロード</button>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('series_id').addEventListener('change', function() {
+            const seriesId = this.value;
+            const container = document.getElementById('dynamicInputs');
+            container.innerHTML = '';
+            
+            if(!seriesId) return;
+
+            fetch(`/api/series/${seriesId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if(data.elements) {
+                        // Create a map for quick text lookup to find labels
+                        const textMap = {};
+                        data.elements.forEach(el => {
+                            if(el.type === 'text') textMap[el.coord] = el.value;
+                        });
+
+                        data.elements.forEach(el => {
+                            if(el.type === 'number' || el.type === 'variable') {
+                                const div = document.createElement('div');
+                                div.className = 'form-group';
+                                
+                                let labelText = el.type === 'variable' ? el.value : '';
+                                
+                                // Auto guess label by looking at the cell to the left (e.g. if coord is D1, look at C1, B1, A1)
+                                if (!labelText) {
+                                    const match = el.coord.match(/([A-Z]+)(\d+)/);
+                                    if(match) {
+                                        const col = match[1];
+                                        const row = match[2];
+                                        // Simple ASCII decrement for left cell
+                                        if(col.length === 1 && col > 'A') {
+                                            const leftCol = String.fromCharCode(col.charCodeAt(0) - 1);
+                                            labelText = textMap[leftCol + row] || '';
+                                            if(!labelText && col > 'B') {
+                                                const leftLeftCol = String.fromCharCode(col.charCodeAt(0) - 2);
+                                                labelText = textMap[leftLeftCol + row] || '';
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                const displayLabel = labelText ? `${labelText} (${el.coord})` : `セル ${el.coord}`;
+                                
+                                const val = el.value !== undefined && el.value !== null ? el.value : '';
+                                div.innerHTML = `
+                                    <label style="font-size:0.75rem; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${displayLabel}">${displayLabel}</label>
+                                    <input type="text" id="${el.coord}" name="${el.coord}" value="${val}">
+                                `;
+                                container.appendChild(div);
+                            }
+                        });
+                    }
+                })
+                .catch(err => console.error('Error fetching series data:', err));
+        });
+
+        // Trigger change on load in case browser restores selected option
+        window.addEventListener('load', () => {
+            const sel = document.getElementById('series_id');
+            if (sel && sel.value) {
+                sel.dispatchEvent(new Event('change'));
+            }
+        });
+    </script>
+</body>
+</html>

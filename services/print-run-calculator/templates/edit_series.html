@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>シリーズ要素の編集 - BookCalc Pro</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { font-size: 24px; margin-bottom: 20px; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background: #f8f9fa; position: sticky; top: 0; }
+        input, select { width: 100%; padding: 4px; box-sizing: border-box; }
+        .btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; text-decoration: none; }
+        .btn:hover { background: #0056b3; }
+        .btn-secondary { background: #6c757d; }
+        .controls { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .filter-group { display: flex; gap: 10px; align-items: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>シリーズ「{{ series.name }}」の全要素編集</h1>
+        <div class="controls">
+            <div class="filter-group">
+                <label>種類フィルター:</label>
+                <select id="typeFilter" onchange="filterTable()">
+                    <option value="">すべて</option>
+                    <option value="text">テキスト</option>
+                    <option value="number">固定数値</option>
+                    <option value="formula">計算式</option>
+                    <option value="variable">変数（画面入力）</option>
+                </select>
+            </div>
+            <div>
+                <button class="btn" onclick="saveElements()">保存</button>
+                <a href="{{ url_for('settings') }}" class="btn btn-secondary">戻る</a>
+            </div>
+        </div>
+
+        <div style="max-height: 600px; overflow-y: auto;">
+            <table id="elementsTable">
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">セル</th>
+                        <th style="width: 150px;">種類</th>
+                        <th>値 / 変数名（変数の場合、入力画面のラベル名）</th>
+                        <th style="width: 60px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="elementsBody">
+                    <!-- Javascript will populate this -->
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 10px;">
+            <button class="btn btn-secondary" onclick="addRow()">+ 新規セル追加</button>
+        </div>
+    </div>
+
+    <script>
+        let elements = {{ series.elements | tojson | safe }};
+        
+        function renderTable() {
+            const tbody = document.getElementById('elementsBody');
+            const filter = document.getElementById('typeFilter').value;
+            tbody.innerHTML = '';
+            
+            elements.forEach((el, index) => {
+                if(filter && el.type !== filter) return;
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><input type="text" value="${el.coord}" onchange="updateEl(${index}, 'coord', this.value)"></td>
+                    <td>
+                        <select onchange="updateEl(${index}, 'type', this.value)">
+                            <option value="text" ${el.type==='text'?'selected':''}>テキスト</option>
+                            <option value="number" ${el.type==='number'?'selected':''}>固定数値</option>
+                            <option value="formula" ${el.type==='formula'?'selected':''}>計算式</option>
+                            <option value="variable" ${el.type==='variable'?'selected':''}>変数（入力）</option>
+                        </select>
+                    </td>
+                    <td><input type="text" value="${escapeHtml(String(el.value || ''))}" onchange="updateEl(${index}, 'value', this.value)"></td>
+                    <td><button onclick="removeRow(${index})" style="color:red; cursor:pointer;">削除</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function escapeHtml(text) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+        }
+
+        function updateEl(index, key, val) {
+            elements[index][key] = val;
+            if(key === 'type' && val === 'number') {
+                elements[index].value = Number(elements[index].value);
+            }
+        }
+
+        function filterTable() {
+            renderTable();
+        }
+
+        function addRow() {
+            elements.unshift({coord: '', type: 'text', value: ''});
+            document.getElementById('typeFilter').value = '';
+            renderTable();
+        }
+
+        function removeRow(index) {
+            if(confirm("削除しますか？")) {
+                elements.splice(index, 1);
+                renderTable();
+            }
+        }
+
+        async function saveElements() {
+            try {
+                const res = await fetch(`/api/series/{{ series.id }}/elements`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(elements)
+                });
+                if(res.ok) {
+                    alert('保存しました！');
+                } else {
+                    alert('保存に失敗しました');
+                }
+            } catch(e) {
+                alert('エラーが発生しました');
+            }
+        }
+
+        window.onload = renderTable;
+    </script>
+</body>
+</html>

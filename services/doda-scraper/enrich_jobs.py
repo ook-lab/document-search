@@ -19,7 +19,8 @@ if hasattr(sys.stdout, 'buffer'):
 from datetime import datetime, timezone
 from pathlib import Path
 
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -28,18 +29,16 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env", override=False)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"]
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ["GOOGLE_AI_API_KEY"]
-
 RERUN  = "--rerun" in sys.argv
 LIMIT  = None
 for i, arg in enumerate(sys.argv):
     if arg == "--limit" and i + 1 < len(sys.argv):
         LIMIT = int(sys.argv[i + 1])
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel(
+vertexai.init(location="asia-northeast1")
+model = GenerativeModel(
     "gemini-2.5-flash-lite",
-    generation_config=genai.types.GenerationConfig(
+    generation_config=GenerationConfig(
         response_mime_type="application/json",
         temperature=0.0,
     ),

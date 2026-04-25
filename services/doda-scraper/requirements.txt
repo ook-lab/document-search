@@ -1,4 +1,4 @@
 playwright
 supabase
 python-dotenv
-google-generativeai
+google-cloud-aiplatform

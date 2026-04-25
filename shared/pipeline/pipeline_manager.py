@@ -210,8 +210,8 @@ class PipelineManager:
         self.stage_a = A3EntryPoint()
         self.stage_b = B1Controller()
         self.stage_d = D1Controller()
-        self.stage_e = E1Controller(gemini_api_key=gemini_key)
-        self.stage_f = F1Controller(gemini_api_key=gemini_key)
+        self.stage_e = E1Controller()
+        self.stage_f = F1Controller()
         self.stage_g = G1Controller(api_key=gemini_key)
 
         # Stage J-K: チャンキング＆埋め込み

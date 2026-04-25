@@ -42,7 +42,6 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 CREDENTIALS_FILE = Path(__file__).parent / 'auth' / 'credentials.json'
 TOKEN_FILE = Path(__file__).parent / 'auth' / 'token.json'
 
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_AI_API_KEY')
 GEMINI_MODEL = 'gemini-2.5-flash-lite'
 
 # Supabase
@@ -329,11 +328,10 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
             ...
         ]
     """
-    if not GEMINI_API_KEY:
-        raise RuntimeError('GEMINI_API_KEY が設定されていません')
 
+    import vertexai
     from google import genai
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(vertexai=True, location="asia-northeast1")
 
     today = datetime.now()
     preset_section = f"""
@@ -1006,11 +1004,10 @@ def api_assign():
         return jsonify({'error': '枠リストが空です'}), 400
     if not subject_text:
         return jsonify({'error': '科目リストが空です'}), 400
-    if not GEMINI_API_KEY:
-        return jsonify({'error': 'GEMINI_API_KEY が設定されていません'}), 500
 
+    import vertexai
     from google import genai
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    client = genai.Client(vertexai=True, location="asia-northeast1")
 
     def _slot_line(s):
         time_str = f'{s.get("start_time","") or "終日"}-{s.get("end_time","") or ""}'

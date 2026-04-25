@@ -53,7 +53,7 @@ class E1Controller:
       E40 は controller が明示実行（next_stage 連鎖は禁止）
     """
 
-    def __init__(self, gemini_api_key=None):
+    def __init__(self, ):
         self.scouter = E1OcrScouter()
         self.visualizer = E5TextBlockVisualizer()
 
@@ -160,7 +160,7 @@ class E1Controller:
         stage_d_result,
         stage_b_result=None,
         output_dir=None,
-        gemini_api_key=None,
+        
         log_dir=None,
         min_gemini_chars: int = 0,
         session_id=None,
@@ -200,7 +200,7 @@ class E1Controller:
         stage_d_result,
         stage_b_result=None,
         output_dir=None,
-        gemini_api_key=None,
+        
         min_gemini_chars: int = 0,
         session_id=None,
     ):

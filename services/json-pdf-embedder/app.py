@@ -7,6 +7,7 @@ from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
+import vertexai
 from google import genai
 from google.genai import types
 
@@ -23,8 +24,7 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 
-api_key = os.environ.get('GOOGLE_AI_API_KEY') or os.environ.get('GEMINI_API_KEY')
-client = genai.Client(api_key=api_key)
+client = genai.Client(vertexai=True, location="asia-northeast1")
 
 MARKER_START = "<<<JSON_SANDWICH_START>>>"
 MARKER_END = "<<<JSON_SANDWICH_END>>>"

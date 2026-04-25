@@ -47,10 +47,11 @@ class G17TableAIProcessor:
         self.model = None
 
         try:
-            import google.generativeai as genai
+            import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             if api_key:
-                genai.configure(api_key=api_key)
-                self.model = genai.GenerativeModel(model_name)
+                vertexai.init(location="asia-northeast1")
+                self.model = GenerativeModel(model_name)
                 logger.info(f"[G-17] モデル初期化: {model_name}")
             else:
                 logger.warning("[G-17] API key が設定されていません")

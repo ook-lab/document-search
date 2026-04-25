@@ -26,7 +26,6 @@ SECRET_CREDENTIALS = 'calendar-register-credentials'   # calendar-register „Å®ÂÖ
 SECRET_TOKEN       = 'gmail-cleaner-token'
 TOKEN_FILE         = Path(__file__).parent.parent / 'auth' / 'gmail_cleaner_token.json'
 
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_AI_API_KEY', '')
 GEMINI_MODEL   = 'gemini-2.5-flash-lite'
 
 SUPABASE_URL              = os.environ.get('SUPABASE_URL', '')
@@ -255,9 +254,10 @@ def api_analyze():
         if not mails:
             return jsonify({'success': True, 'results': []})
 
-        from google import genai
+        import vertexai
+    from google import genai
         today  = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = genai.Client(vertexai=True, location="asia-northeast1")
 
         all_results = []
         batch_size  = 20

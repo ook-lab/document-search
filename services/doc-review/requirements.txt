@@ -14,7 +14,8 @@ loguru>=0.7.0
 python-dotenv>=1.0.0
 
 # Google
-google-genai>=1.0.0
+google-genai
+google-cloud-aiplatform
 google-auth-oauthlib>=1.0.0
 google-api-python-client>=2.0.0
 google-cloud-secret-manager>=2.0.0

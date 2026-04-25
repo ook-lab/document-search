@@ -1,0 +1,3917 @@
+[
+    {
+        "coord": "B1",
+        "type": "text",
+        "value": "部数"
+    },
+    {
+        "coord": "D1",
+        "type": "number",
+        "value": 7500
+    },
+    {
+        "coord": "E1",
+        "type": "text",
+        "value": "部"
+    },
+    {
+        "coord": "F1",
+        "type": "text",
+        "value": "正味率"
+    },
+    {
+        "coord": "G1",
+        "type": "number",
+        "value": 0.69
+    },
+    {
+        "coord": "I1",
+        "type": "text",
+        "value": "本体価格"
+    },
+    {
+        "coord": "J1",
+        "type": "number",
+        "value": 1800
+    },
+    {
+        "coord": "L1",
+        "type": "text",
+        "value": "改装カバー"
+    },
+    {
+        "coord": "M1",
+        "type": "number",
+        "value": 2000
+    },
+    {
+        "coord": "N1",
+        "type": "text",
+        "value": "部"
+    },
+    {
+        "coord": "B2",
+        "type": "text",
+        "value": "契約部数"
+    },
+    {
+        "coord": "D2",
+        "type": "formula",
+        "value": "=D1"
+    },
+    {
+        "coord": "E2",
+        "type": "text",
+        "value": "部"
+    },
+    {
+        "coord": "F2",
+        "type": "text",
+        "value": "見積売上率"
+    },
+    {
+        "coord": "G2",
+        "type": "number",
+        "value": 0.7
+    },
+    {
+        "coord": "I2",
+        "type": "text",
+        "value": "他利益"
+    },
+    {
+        "coord": "J2",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "L2",
+        "type": "text",
+        "value": "改装帯"
+    },
+    {
+        "coord": "M2",
+        "type": "number",
+        "value": 2000
+    },
+    {
+        "coord": "N2",
+        "type": "text",
+        "value": "部"
+    },
+    {
+        "coord": "Q2",
+        "type": "text",
+        "value": "年"
+    },
+    {
+        "coord": "S2",
+        "type": "text",
+        "value": "月"
+    },
+    {
+        "coord": "V2",
+        "type": "text",
+        "value": "日　発売"
+    },
+    {
+        "coord": "A3",
+        "type": "text",
+        "value": "(新刊)"
+    },
+    {
+        "coord": "B3",
+        "type": "text",
+        "value": "版書名"
+    },
+    {
+        "coord": "D3",
+        "type": "text",
+        "value": "白色光の影を浚う"
+    },
+    {
+        "coord": "K3",
+        "type": "text",
+        "value": "字詰"
+    },
+    {
+        "coord": "M3",
+        "type": "text",
+        "value": "Ｗ　×"
+    },
+    {
+        "coord": "O3",
+        "type": "text",
+        "value": "Ｌ　×"
+    },
+    {
+        "coord": "P3",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "Q3",
+        "type": "text",
+        "value": "段組"
+    },
+    {
+        "coord": "R3",
+        "type": "text",
+        "value": "ハシラ"
+    },
+    {
+        "coord": "S3",
+        "type": "text",
+        "value": "あり"
+    },
+    {
+        "coord": "T3",
+        "type": "text",
+        "value": "口絵"
+    },
+    {
+        "coord": "U3",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "V3",
+        "type": "text",
+        "value": "頁＋  本文"
+    },
+    {
+        "coord": "X3",
+        "type": "number",
+        "value": 344
+    },
+    {
+        "coord": "Y3",
+        "type": "text",
+        "value": "頁"
+    },
+    {
+        "coord": "A4",
+        "type": "text",
+        "value": "製　　　　　　　　　　　　　版"
+    },
+    {
+        "coord": "H4",
+        "type": "text",
+        "value": "印　　　刷　　　加　　　工"
+    },
+    {
+        "coord": "O4",
+        "type": "text",
+        "value": "材　　　　　　　　　　　　　　　　　　料　"
+    },
+    {
+        "coord": "A5",
+        "type": "text",
+        "value": "種別色"
+    },
+    {
+        "coord": "B5",
+        "type": "text",
+        "value": "内訳"
+    },
+    {
+        "coord": "C5",
+        "type": "text",
+        "value": "色"
+    },
+    {
+        "coord": "D5",
+        "type": "text",
+        "value": "頁数"
+    },
+    {
+        "coord": "E5",
+        "type": "text",
+        "value": "数"
+    },
+    {
+        "coord": "F5",
+        "type": "text",
+        "value": "単価"
+    },
+    {
+        "coord": "G5",
+        "type": "text",
+        "value": "金額"
+    },
+    {
+        "coord": "H5",
+        "type": "text",
+        "value": "種別"
+    },
+    {
+        "coord": "I5",
+        "type": "text",
+        "value": "（裁）"
+    },
+    {
+        "coord": "J5",
+        "type": "text",
+        "value": "色"
+    },
+    {
+        "coord": "K5",
+        "type": "text",
+        "value": "数"
+    },
+    {
+        "coord": "L5",
+        "type": "text",
+        "value": "台数"
+    },
+    {
+        "coord": "M5",
+        "type": "text",
+        "value": "単価"
+    },
+    {
+        "coord": "N5",
+        "type": "text",
+        "value": "金額"
+    },
+    {
+        "coord": "O5",
+        "type": "text",
+        "value": "種別"
+    },
+    {
+        "coord": "P5",
+        "type": "text",
+        "value": "材料"
+    },
+    {
+        "coord": "Q5",
+        "type": "text",
+        "value": "部数"
+    },
+    {
+        "coord": "R5",
+        "type": "text",
+        "value": "数"
+    },
+    {
+        "coord": "S5",
+        "type": "text",
+        "value": "面付"
+    },
+    {
+        "coord": "T5",
+        "type": "text",
+        "value": "実用"
+    },
+    {
+        "coord": "U5",
+        "type": "text",
+        "value": "ヤレ枚"
+    },
+    {
+        "coord": "V5",
+        "type": "text",
+        "value": "ヤレ％"
+    },
+    {
+        "coord": "W5",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "X5",
+        "type": "text",
+        "value": "斤量"
+    },
+    {
+        "coord": "Y5",
+        "type": "text",
+        "value": "単価"
+    },
+    {
+        "coord": "Z5",
+        "type": "text",
+        "value": "金 額"
+    },
+    {
+        "coord": "B6",
+        "type": "text",
+        "value": "組版"
+    },
+    {
+        "coord": "D6",
+        "type": "formula",
+        "value": "=$X$3"
+    },
+    {
+        "coord": "E6",
+        "type": "number",
+        "value": 600
+    },
+    {
+        "coord": "F6",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "G6",
+        "type": "formula",
+        "value": "=INT(D6*E6*F6)"
+    },
+    {
+        "coord": "H6",
+        "type": "text",
+        "value": "本文（６４頁）　"
+    },
+    {
+        "coord": "I6",
+        "type": "formula",
+        "value": "=IF(L6>0,1,0)"
+    },
+    {
+        "coord": "J6",
+        "type": "formula",
+        "value": "=IF(L6>0,$C$12,0)"
+    },
+    {
+        "coord": "K6",
+        "type": "formula",
+        "value": "=IF(ISERROR((I6*T6)/L6),0,(I6*T6)/L6)"
+    },
+    {
+        "coord": "L6",
+        "type": "formula",
+        "value": "=IF(MOD($X$3/64,1)=0,$X$3/64,INT($X$3/64))"
+    },
+    {
+        "coord": "M6",
+        "type": "formula",
+        "value": "=tankas(K6)"
+    },
+    {
+        "coord": "N6",
+        "type": "formula",
+        "value": "=IF(M6>50,INT(J6*L6*M6),INT(J6*K6*L6*M6))"
+    },
+    {
+        "coord": "O6",
+        "type": "text",
+        "value": "本文用紙"
+    },
+    {
+        "coord": "Q6",
+        "type": "formula",
+        "value": "=IF(L6>0,$D$1,0)"
+    },
+    {
+        "coord": "R6",
+        "type": "number",
+        "value": 64
+    },
+    {
+        "coord": "S6",
+        "type": "number",
+        "value": 64
+    },
+    {
+        "coord": "T6",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($D$1*(R6/S6)),0,$D$1*(R6/S6)*$L$6))"
+    },
+    {
+        "coord": "U6",
+        "type": "formula",
+        "value": "=V6*100"
+    },
+    {
+        "coord": "V6",
+        "type": "formula",
+        "value": "=($A$14+$A$16)+1"
+    },
+    {
+        "coord": "W6",
+        "type": "formula",
+        "value": "=IF(T6>0,IF(Q6*V6/100>U6,T6*(1+V6/100),T6+U6*L6),0)"
+    },
+    {
+        "coord": "Z6",
+        "type": "formula",
+        "value": "=INT(W6*Y6)"
+    },
+    {
+        "coord": "B7",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C7",
+        "type": "formula",
+        "value": "=(A14+A16)/2"
+    },
+    {
+        "coord": "D7",
+        "type": "formula",
+        "value": "=$X$3"
+    },
+    {
+        "coord": "F7",
+        "type": "number",
+        "value": 500
+    },
+    {
+        "coord": "G7",
+        "type": "formula",
+        "value": "=INT(C7*D7*F7)"
+    },
+    {
+        "coord": "H7",
+        "type": "text",
+        "value": "本文（３２頁）　"
+    },
+    {
+        "coord": "I7",
+        "type": "formula",
+        "value": "=IF(L7>0,1,0)"
+    },
+    {
+        "coord": "J7",
+        "type": "formula",
+        "value": "=IF(L7>0,$C$12,0)"
+    },
+    {
+        "coord": "K7",
+        "type": "formula",
+        "value": "=IF(ISERROR((I7*T7)/L7),0,(I7*T7)/L7)"
+    },
+    {
+        "coord": "L7",
+        "type": "formula",
+        "value": "=IF(OR(MOD($X$3/64,1)=0.5,MOD($X$3/64,1)=0.625,MOD($X$3/64,1)=0.75,MOD($X$3/64,1)=0.875),1,0)"
+    },
+    {
+        "coord": "M7",
+        "type": "formula",
+        "value": "=tankas(K7)"
+    },
+    {
+        "coord": "N7",
+        "type": "formula",
+        "value": "=IF(M7>50,INT(J7*L7*M7),INT(J7*K7*L7*M7))"
+    },
+    {
+        "coord": "Q7",
+        "type": "formula",
+        "value": "=IF(L7>0,$D$1,0)"
+    },
+    {
+        "coord": "R7",
+        "type": "number",
+        "value": 32
+    },
+    {
+        "coord": "S7",
+        "type": "number",
+        "value": 64
+    },
+    {
+        "coord": "T7",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($D$1*(R7/S7)),0,$D$1*(R7/S7)*$L$7))"
+    },
+    {
+        "coord": "U7",
+        "type": "formula",
+        "value": "=V7*100"
+    },
+    {
+        "coord": "V7",
+        "type": "formula",
+        "value": "=($A$14+$A$16)+1"
+    },
+    {
+        "coord": "W7",
+        "type": "formula",
+        "value": "=IF(T7>0,IF(T7*V7/100>U7,T7*(1+V7/100),T7+U7),0)"
+    },
+    {
+        "coord": "Z7",
+        "type": "formula",
+        "value": "=INT(W7*Y7)"
+    },
+    {
+        "coord": "A8",
+        "type": "text",
+        "value": "本"
+    },
+    {
+        "coord": "B8",
+        "type": "text",
+        "value": "貼込"
+    },
+    {
+        "coord": "C8",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "D8",
+        "type": "formula",
+        "value": "=$W$3"
+    },
+    {
+        "coord": "G8",
+        "type": "formula",
+        "value": "=INT(C8*D8*F8)"
+    },
+    {
+        "coord": "H8",
+        "type": "text",
+        "value": "本文（１６頁）　"
+    },
+    {
+        "coord": "I8",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J8",
+        "type": "number",
+        "value": 2
+    },
+    {
+        "coord": "K8",
+        "type": "formula",
+        "value": "=IF(ISERROR((I8*T8)/L8),0,(I8*T8)/L8)"
+    },
+    {
+        "coord": "L8",
+        "type": "formula",
+        "value": "=IF(OR(MOD($X$3/64,1)=0.25,MOD($X$3/64,1)=0.375,MOD($X$3/64,1)=0.75,MOD($X$3/64,1)=0.875),1,0)"
+    },
+    {
+        "coord": "M8",
+        "type": "formula",
+        "value": "=tankas(K8)"
+    },
+    {
+        "coord": "N8",
+        "type": "formula",
+        "value": "=IF(M8>50,INT(J8*L8*M8),INT(J8*K8*L8*M8))"
+    },
+    {
+        "coord": "Q8",
+        "type": "formula",
+        "value": "=IF(L8>0,$D$1,0)"
+    },
+    {
+        "coord": "R8",
+        "type": "number",
+        "value": 16
+    },
+    {
+        "coord": "S8",
+        "type": "number",
+        "value": 64
+    },
+    {
+        "coord": "T8",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($D$1*(R8/S8)),0,$D$1*(R8/S8)*$L$8))"
+    },
+    {
+        "coord": "U8",
+        "type": "formula",
+        "value": "=V8*100"
+    },
+    {
+        "coord": "V8",
+        "type": "formula",
+        "value": "=($A$14+$A$16)+1"
+    },
+    {
+        "coord": "W8",
+        "type": "formula",
+        "value": "=IF(T8>0,IF(T8*V8/100>U8,T8*(1+V8/100),T8+U8),0)"
+    },
+    {
+        "coord": "Z8",
+        "type": "formula",
+        "value": "=INT(W8*Y8)"
+    },
+    {
+        "coord": "B9",
+        "type": "text",
+        "value": "写真別撮"
+    },
+    {
+        "coord": "E9",
+        "type": "number",
+        "value": 15
+    },
+    {
+        "coord": "F9",
+        "type": "number",
+        "value": 650
+    },
+    {
+        "coord": "G9",
+        "type": "formula",
+        "value": "=INT(E9*F9)"
+    },
+    {
+        "coord": "H9",
+        "type": "text",
+        "value": "本文（  ８頁）　"
+    },
+    {
+        "coord": "I9",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J9",
+        "type": "number",
+        "value": 2
+    },
+    {
+        "coord": "K9",
+        "type": "formula",
+        "value": "=IF(ISERROR((I9*T9)/L9),0,(I9*T9)/L9)"
+    },
+    {
+        "coord": "L9",
+        "type": "formula",
+        "value": "=IF(OR(MOD($X$3/64,1)=0.125,MOD($X$3/64,1)=0.375,MOD($X$3/64,1)=0.625,MOD($X$3/64,1)=0.875),1,0)"
+    },
+    {
+        "coord": "M9",
+        "type": "formula",
+        "value": "=tankas(K9)"
+    },
+    {
+        "coord": "N9",
+        "type": "formula",
+        "value": "=IF(M9>50,INT(J9*L9*M9),INT(J9*K9*L9*M9))"
+    },
+    {
+        "coord": "Q9",
+        "type": "formula",
+        "value": "=IF(L9>0,$D$1,0)"
+    },
+    {
+        "coord": "R9",
+        "type": "number",
+        "value": 8
+    },
+    {
+        "coord": "S9",
+        "type": "number",
+        "value": 64
+    },
+    {
+        "coord": "T9",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($D$1*(R9/S9)),0,$D$1*(R9/S9)*$L$9))"
+    },
+    {
+        "coord": "U9",
+        "type": "formula",
+        "value": "=V9*100"
+    },
+    {
+        "coord": "V9",
+        "type": "formula",
+        "value": "=($A$14+$A$16)+1"
+    },
+    {
+        "coord": "W9",
+        "type": "formula",
+        "value": "=IF(T9>0,IF(T9*V9/100>U9,T9*(1+V9/100),T9+U9),0)"
+    },
+    {
+        "coord": "Z9",
+        "type": "formula",
+        "value": "=INT(W9*Y9)"
+    },
+    {
+        "coord": "B10",
+        "type": "text",
+        "value": "凸版別撮"
+    },
+    {
+        "coord": "E10",
+        "type": "number",
+        "value": 25
+    },
+    {
+        "coord": "F10",
+        "type": "number",
+        "value": 600
+    },
+    {
+        "coord": "G10",
+        "type": "formula",
+        "value": "=INT(E10*F10)"
+    },
+    {
+        "coord": "B11",
+        "type": "text",
+        "value": "背丁入れ"
+    },
+    {
+        "coord": "E11",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "F11",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "G11",
+        "type": "formula",
+        "value": "=INT(E11*F11)"
+    },
+    {
+        "coord": "W11",
+        "type": "formula",
+        "value": "=ROUNDUP(SUM(W6:W9)/500,0)*500"
+    },
+    {
+        "coord": "X11",
+        "type": "number",
+        "value": 61
+    },
+    {
+        "coord": "Y11",
+        "type": "number",
+        "value": 134
+    },
+    {
+        "coord": "Z11",
+        "type": "formula",
+        "value": "=ROUND(W11*X11*Y11/1000,0)"
+    },
+    {
+        "coord": "B12",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C12",
+        "type": "formula",
+        "value": "=A14+A16"
+    },
+    {
+        "coord": "E12",
+        "type": "formula",
+        "value": "=(L6+L7+L8+L9)"
+    },
+    {
+        "coord": "F12",
+        "type": "number",
+        "value": 2300
+    },
+    {
+        "coord": "G12",
+        "type": "formula",
+        "value": "=INT(E12*F12*C12)"
+    },
+    {
+        "coord": "A13",
+        "type": "text",
+        "value": "文"
+    },
+    {
+        "coord": "B13",
+        "type": "text",
+        "value": "ゲラ代"
+    },
+    {
+        "coord": "E13",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "F13",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "G13",
+        "type": "formula",
+        "value": "=INT(F13*E13)"
+    },
+    {
+        "coord": "A14",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "B14",
+        "type": "text",
+        "value": "組替代"
+    },
+    {
+        "coord": "D14",
+        "type": "text",
+        "value": "本文組版代の"
+    },
+    {
+        "coord": "E14",
+        "type": "number",
+        "value": 20
+    },
+    {
+        "coord": "G14",
+        "type": "formula",
+        "value": "=INT(G6*(E14/100))"
+    },
+    {
+        "coord": "A15",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B15",
+        "type": "text",
+        "value": "その他"
+    },
+    {
+        "coord": "G15",
+        "type": "number",
+        "value": 50000
+    },
+    {
+        "coord": "A16",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "F16",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G16",
+        "type": "formula",
+        "value": "=INT(SUM(G6:G15))"
+    },
+    {
+        "coord": "H16",
+        "type": "text",
+        "value": "※本文、５０００枚以下は台計算"
+    },
+    {
+        "coord": "M16",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N16",
+        "type": "formula",
+        "value": "=INT(SUM(N6:N15))"
+    },
+    {
+        "coord": "Y16",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z16",
+        "type": "formula",
+        "value": "=INT(SUM(Z6:Z15))"
+    },
+    {
+        "coord": "A17",
+        "type": "formula",
+        "value": "=IF($U$3>0,\"口絵\",0)"
+    },
+    {
+        "coord": "B17",
+        "type": "formula",
+        "value": "=IF(A17=\"口絵\",\"製版\",0)"
+    },
+    {
+        "coord": "C17",
+        "type": "formula",
+        "value": "=(A19+A21)/2"
+    },
+    {
+        "coord": "D17",
+        "type": "formula",
+        "value": "=IF(H17=\"口絵（３２頁）\",32*L17,0)+IF(H18=\"口絵（１６頁）\",16*L18,0)+IF(H19=\"口絵（　８頁）\",8*L19,0)+IF(H20=\"口絵（　４頁）\",4*L20,0)+IF(H21=\"口絵（　２頁）\",2*L21,0)"
+    },
+    {
+        "coord": "F17",
+        "type": "formula",
+        "value": "=IF($A$17=\"口絵\",5000,0)"
+    },
+    {
+        "coord": "G17",
+        "type": "formula",
+        "value": "=C17*D17*F17"
+    },
+    {
+        "coord": "H17",
+        "type": "formula",
+        "value": "=IF(L17>0,\"口絵（３２頁）\",0)"
+    },
+    {
+        "coord": "I17",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J17",
+        "type": "formula",
+        "value": "=IF(L17>0,$A$19+$A$21,0)"
+    },
+    {
+        "coord": "K17",
+        "type": "formula",
+        "value": "=IF(ISERROR((I17*T17)/L17),0,(I17*T17)/L17)"
+    },
+    {
+        "coord": "L17",
+        "type": "formula",
+        "value": "=IF(MOD($U$3/32,1)=0,$U$3/32,INT($U$3/32))"
+    },
+    {
+        "coord": "M17",
+        "type": "formula",
+        "value": "=IF(L17>0,tanka(K17),0)"
+    },
+    {
+        "coord": "N17",
+        "type": "formula",
+        "value": "=IF(K17<=5000,INT(J17*L17*M17),INT(J17*K17*L17*M17))"
+    },
+    {
+        "coord": "O17",
+        "type": "formula",
+        "value": "=IF(L17>0,\"口絵 用紙\",0)"
+    },
+    {
+        "coord": "Q17",
+        "type": "formula",
+        "value": "=IF(L17>0,$D$1,0)"
+    },
+    {
+        "coord": "R17",
+        "type": "formula",
+        "value": "=IF(L17>0,32,0)"
+    },
+    {
+        "coord": "S17",
+        "type": "formula",
+        "value": "=IF(L17>0,32,0)"
+    },
+    {
+        "coord": "T17",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR(Q17*(R17/S17)),0,Q17*(R17/S17)*L17))"
+    },
+    {
+        "coord": "U17",
+        "type": "formula",
+        "value": "=V17*100"
+    },
+    {
+        "coord": "V17",
+        "type": "formula",
+        "value": "=(A19+A21)+1"
+    },
+    {
+        "coord": "W17",
+        "type": "formula",
+        "value": "=IF(T17>0,IF(Q17*V17/100>U17,T17*(1+V17/100),T17+U17*L17),0)"
+    },
+    {
+        "coord": "Z17",
+        "type": "formula",
+        "value": "=INT(W17*Y17)"
+    },
+    {
+        "coord": "B18",
+        "type": "formula",
+        "value": "=IF(A17=\"口絵\",\"刷版\",0)"
+    },
+    {
+        "coord": "C18",
+        "type": "formula",
+        "value": "=A19+A21"
+    },
+    {
+        "coord": "E18",
+        "type": "formula",
+        "value": "=L17+L18+L19+L20+L21"
+    },
+    {
+        "coord": "F18",
+        "type": "formula",
+        "value": "=IF($A$17=\"口絵\",3000,0)"
+    },
+    {
+        "coord": "G18",
+        "type": "formula",
+        "value": "=C18*F18*E18"
+    },
+    {
+        "coord": "H18",
+        "type": "formula",
+        "value": "=IF(L18>0,\"口絵（１６頁）\",0)"
+    },
+    {
+        "coord": "I18",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J18",
+        "type": "formula",
+        "value": "=IF(L18>0,$A$19+$A$21,0)"
+    },
+    {
+        "coord": "K18",
+        "type": "formula",
+        "value": "=IF(ISERROR((I18*T18)/L18),0,(I18*T18)/L18)"
+    },
+    {
+        "coord": "L18",
+        "type": "formula",
+        "value": "=IF(OR(MOD($U$3/32,1)=0.5,MOD($U$3/32,1)=0.625,MOD($U$3/32,1)=0.75,MOD($U$3/32,1)=0.875,MOD($U$3/32,1)=0.53125,MOD($U$3/32,1)=0.5625,MOD($U$3/32,1)=0.59375,MOD($U$3/32,1)=0.65625,MOD($U$3/32,1)=0.6875,MOD($U$3/32,1)=0.71875,MOD($U$3/32,1)=0.78125,MOD($U$3/32,1)=0.8125,MOD($U$3/32,1)=0.84375,MOD($U$3/32,1)=0.90625,MOD($U$3/32,1)=0.9375,MOD($U$3/32,1)=0.96875),1,0)"
+    },
+    {
+        "coord": "M18",
+        "type": "formula",
+        "value": "=IF(L18>0,tanka(K18),0)"
+    },
+    {
+        "coord": "N18",
+        "type": "formula",
+        "value": "=IF(K18<=5000,INT(J18*L18*M18),INT(J18*K18*L18*M18))"
+    },
+    {
+        "coord": "O18",
+        "type": "formula",
+        "value": "=IF(L18>0,\"口絵 用紙\",0)"
+    },
+    {
+        "coord": "Q18",
+        "type": "formula",
+        "value": "=IF(L18>0,$D$1,0)"
+    },
+    {
+        "coord": "R18",
+        "type": "formula",
+        "value": "=IF(L18>0,16,0)"
+    },
+    {
+        "coord": "S18",
+        "type": "formula",
+        "value": "=IF(L18>0,32,0)"
+    },
+    {
+        "coord": "T18",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR(Q18*(R18/S18)),0,Q18*(R18/S18)*L18))"
+    },
+    {
+        "coord": "U18",
+        "type": "formula",
+        "value": "=V18*100"
+    },
+    {
+        "coord": "V18",
+        "type": "formula",
+        "value": "=V17"
+    },
+    {
+        "coord": "W18",
+        "type": "formula",
+        "value": "=IF(T18>0,IF(T18*V18/100>U18,T18*(1+V18/100),T18+U18),0)"
+    },
+    {
+        "coord": "Z18",
+        "type": "formula",
+        "value": "=INT(W18*Y18)"
+    },
+    {
+        "coord": "A19",
+        "type": "formula",
+        "value": "=IF($A$17=\"口絵\",4,0)"
+    },
+    {
+        "coord": "B19",
+        "type": "formula",
+        "value": "=IF(A17=\"口絵\",\"分解代\",0)"
+    },
+    {
+        "coord": "F19",
+        "type": "formula",
+        "value": "=IF($A$17=\"口絵\",2500,0)"
+    },
+    {
+        "coord": "G19",
+        "type": "formula",
+        "value": "=E19*F19"
+    },
+    {
+        "coord": "H19",
+        "type": "formula",
+        "value": "=IF(L19>0,\"口絵（　８頁）\",0)"
+    },
+    {
+        "coord": "I19",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J19",
+        "type": "formula",
+        "value": "=IF(L19>0,$A$19+$A$21,0)"
+    },
+    {
+        "coord": "K19",
+        "type": "formula",
+        "value": "=IF(ISERROR((I19*T19)/L19),0,(I19*T19)/L19)"
+    },
+    {
+        "coord": "L19",
+        "type": "formula",
+        "value": "=IF(OR(MOD($U$3/32,1)=0.25,MOD($U$3/32,1)=0.375,MOD($U$3/32,1)=0.75,MOD($U$3/32,1)=0.875,MOD($U$3/32,1)=0.28125,MOD($U$3/32,1)=0.3125,MOD($U$3/32,1)=0.34375,MOD($U$3/32,1)=0.40625,MOD($U$3/32,1)=0.4375,MOD($U$3/32,1)=0.46875,MOD($U$3/32,1)=0.78125,MOD($U$3/32,1)=0.8125,MOD($U$3/32,1)=0.84375,MOD($U$3/32,1)=0.90625,MOD($U$3/32,1)=0.9375,MOD($U$3/32,1)=0.96875),1,0)"
+    },
+    {
+        "coord": "M19",
+        "type": "formula",
+        "value": "=IF(L19>0,tanka(K19),0)"
+    },
+    {
+        "coord": "N19",
+        "type": "formula",
+        "value": "=IF(K19<=5000,INT(J19*L19*M19),INT(J19*K19*L19*M19))"
+    },
+    {
+        "coord": "O19",
+        "type": "formula",
+        "value": "=IF(L19>0,\"口絵 用紙\",0)"
+    },
+    {
+        "coord": "Q19",
+        "type": "formula",
+        "value": "=IF(L19>0,$D$1,0)"
+    },
+    {
+        "coord": "R19",
+        "type": "formula",
+        "value": "=IF(L19>0,8,0)"
+    },
+    {
+        "coord": "S19",
+        "type": "formula",
+        "value": "=IF(L19>0,32,0)"
+    },
+    {
+        "coord": "T19",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR(Q19*(R19/S19)),0,Q19*(R19/S19)*L19))"
+    },
+    {
+        "coord": "U19",
+        "type": "formula",
+        "value": "=V19*100"
+    },
+    {
+        "coord": "V19",
+        "type": "formula",
+        "value": "=V18"
+    },
+    {
+        "coord": "W19",
+        "type": "formula",
+        "value": "=IF(T19>0,IF(T19*V19/100>U19,T19*(1+V19/100),T19+U19),0)"
+    },
+    {
+        "coord": "Z19",
+        "type": "formula",
+        "value": "=INT(W19*Y19)"
+    },
+    {
+        "coord": "A20",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B20",
+        "type": "formula",
+        "value": "=IF(A17=\"口絵\",\"訂正代\",0)"
+    },
+    {
+        "coord": "C20",
+        "type": "formula",
+        "value": "=IF($A$17=\"口絵\",(A19+A21)/2,0)"
+    },
+    {
+        "coord": "D20",
+        "type": "text",
+        "value": "製版単価の"
+    },
+    {
+        "coord": "E20",
+        "type": "number",
+        "value": 50
+    },
+    {
+        "coord": "F20",
+        "type": "formula",
+        "value": "=F17*E20*1/100"
+    },
+    {
+        "coord": "G20",
+        "type": "formula",
+        "value": "=C20*F20"
+    },
+    {
+        "coord": "H20",
+        "type": "formula",
+        "value": "=IF(L20>0,\"口絵（　４頁）\",0)"
+    },
+    {
+        "coord": "I20",
+        "type": "formula",
+        "value": "=IF(L20>0,1,0)"
+    },
+    {
+        "coord": "J20",
+        "type": "formula",
+        "value": "=IF(L20>0,$A$19+$A$21,0)"
+    },
+    {
+        "coord": "K20",
+        "type": "formula",
+        "value": "=IF(ISERROR((I20*T20)/L20),0,(I20*T20)/L20)"
+    },
+    {
+        "coord": "L20",
+        "type": "formula",
+        "value": "=IF(OR(MOD($U$3/32,1)=0.125,MOD($U$3/32,1)=0.375,MOD($U$3/32,1)=0.625,MOD($U$3/32,1)=0.875,MOD($U$3/32,1)=0.15625,MOD($U$3/32,1)=0.1875,MOD($U$3/32,1)=0.21875,MOD($U$3/32,1)=0.40625,MOD($U$3/32,1)=0.4375,MOD($U$3/32,1)=0.46875,MOD($U$3/32,1)=0.65625,MOD($U$3/32,1)=0.6875,MOD($U$3/32,1)=0.71875,MOD($U$3/32,1)=0.90625,MOD($U$3/32,1)=0.9375,MOD($U$3/32,1)=0.96875),1,0)"
+    },
+    {
+        "coord": "M20",
+        "type": "formula",
+        "value": "=IF(L20>0,tanka(K20),0)"
+    },
+    {
+        "coord": "N20",
+        "type": "formula",
+        "value": "=IF(K20<=5000,INT(J20*L20*M20),INT(J20*K20*L20*M20))"
+    },
+    {
+        "coord": "O20",
+        "type": "formula",
+        "value": "=IF(L20>0,\"口絵 用紙\",0)"
+    },
+    {
+        "coord": "Q20",
+        "type": "formula",
+        "value": "=IF(L20>0,$D$1,0)"
+    },
+    {
+        "coord": "R20",
+        "type": "formula",
+        "value": "=IF(L20>0,4,0)"
+    },
+    {
+        "coord": "S20",
+        "type": "formula",
+        "value": "=IF(L20>0,32,0)"
+    },
+    {
+        "coord": "T20",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR(Q20*(R20/S20)),0,Q20*(R20/S20)*L20))"
+    },
+    {
+        "coord": "U20",
+        "type": "formula",
+        "value": "=V20*100"
+    },
+    {
+        "coord": "V20",
+        "type": "formula",
+        "value": "=V19"
+    },
+    {
+        "coord": "W20",
+        "type": "formula",
+        "value": "=IF(T20>0,IF(T20*V20/100>U20,T20*(1+V20/100),T20+U20),0)"
+    },
+    {
+        "coord": "Z20",
+        "type": "formula",
+        "value": "=INT(W20*Y20)"
+    },
+    {
+        "coord": "A21",
+        "type": "formula",
+        "value": "=IF($A$17=\"口絵\",4,0)"
+    },
+    {
+        "coord": "H21",
+        "type": "formula",
+        "value": "=IF(L21>0,\"口絵（　２頁）\",0)"
+    },
+    {
+        "coord": "I21",
+        "type": "formula",
+        "value": "=IF(L21>0,1,0)"
+    },
+    {
+        "coord": "J21",
+        "type": "formula",
+        "value": "=IF(L21>0,$A$19+$A$21,0)"
+    },
+    {
+        "coord": "K21",
+        "type": "formula",
+        "value": "=IF(ISERROR((I21*T21)/L21),0,(I21*T21)/L21)"
+    },
+    {
+        "coord": "L21",
+        "type": "formula",
+        "value": "=IF(OR(MOD($U$3/32,1)=0.0625,MOD($U$3/32,1)=0.09375,MOD($U$3/32,1)=0.1875,MOD($U$3/32,1)=0.21875,MOD($U$3/32,1)=0.3125,MOD($U$3/32,1)=0.34375,MOD($U$3/32,1)=0.4375,MOD($U$3/32,1)=0.46875,MOD($U$3/32,1)=0.5625,MOD($U$3/32,1)=0.59375,MOD($U$3/32,1)=0.6875,MOD($U$3/32,1)=0.71875,MOD($U$3/32,1)=0.8125,MOD($U$3/32,1)=0.84375,MOD($U$3/32,1)=0.9375,MOD($U$3/32,1)=0.96875),1,0)"
+    },
+    {
+        "coord": "M21",
+        "type": "formula",
+        "value": "=IF(L21>0,tanka(K21),0)"
+    },
+    {
+        "coord": "N21",
+        "type": "formula",
+        "value": "=IF(K21<=5000,INT(J21*L21*M21),INT(J21*K21*L21*M21))"
+    },
+    {
+        "coord": "O21",
+        "type": "formula",
+        "value": "=IF(L21>0,\"口絵 用紙\",0)"
+    },
+    {
+        "coord": "Q21",
+        "type": "formula",
+        "value": "=IF(L21>0,$D$1,0)"
+    },
+    {
+        "coord": "R21",
+        "type": "formula",
+        "value": "=IF(L21>0,2,0)"
+    },
+    {
+        "coord": "S21",
+        "type": "formula",
+        "value": "=IF(L21>0,32,0)"
+    },
+    {
+        "coord": "T21",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR(Q21*(R21/S21)),0,Q21*(R21/S21)*L21))"
+    },
+    {
+        "coord": "U21",
+        "type": "formula",
+        "value": "=V21*100"
+    },
+    {
+        "coord": "V21",
+        "type": "formula",
+        "value": "=V20"
+    },
+    {
+        "coord": "W21",
+        "type": "formula",
+        "value": "=IF(T21>0,IF(T21*V21/100>U21,T21*(1+V21/100),T21+U21),0)"
+    },
+    {
+        "coord": "Z21",
+        "type": "formula",
+        "value": "=INT(W21*Y21)"
+    },
+    {
+        "coord": "W23",
+        "type": "formula",
+        "value": "=ROUNDUP(SUM(W17:W21)/250,0)*250"
+    },
+    {
+        "coord": "X23",
+        "type": "number",
+        "value": 75.5
+    },
+    {
+        "coord": "Y23",
+        "type": "number",
+        "value": 145
+    },
+    {
+        "coord": "Z23",
+        "type": "formula",
+        "value": "=ROUND(W23*X23*Y23/1000,0)"
+    },
+    {
+        "coord": "F24",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G24",
+        "type": "formula",
+        "value": "=G17+G18+G19+G20+G21+G23"
+    },
+    {
+        "coord": "H24",
+        "type": "text",
+        "value": "※口絵、５０００枚以下は台計算"
+    },
+    {
+        "coord": "M24",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N24",
+        "type": "formula",
+        "value": "=INT(N17+N18+N19+N20+N21+N23)"
+    },
+    {
+        "coord": "R24",
+        "type": "text",
+        "value": " "
+    },
+    {
+        "coord": "Y24",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z24",
+        "type": "formula",
+        "value": "=INT(SUM(Z17:Z23))"
+    },
+    {
+        "coord": "A25",
+        "type": "text",
+        "value": "カバー"
+    },
+    {
+        "coord": "B25",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C25",
+        "type": "formula",
+        "value": "=A27+A29"
+    },
+    {
+        "coord": "F25",
+        "type": "number",
+        "value": 5500
+    },
+    {
+        "coord": "G25",
+        "type": "formula",
+        "value": "=C25*F25"
+    },
+    {
+        "coord": "H25",
+        "type": "text",
+        "value": "カバー印刷"
+    },
+    {
+        "coord": "I25",
+        "type": "number",
+        "value": 2
+    },
+    {
+        "coord": "J25",
+        "type": "formula",
+        "value": "=(A27+A29)+1"
+    },
+    {
+        "coord": "K25",
+        "type": "formula",
+        "value": "=INT($T$25*$I$25)"
+    },
+    {
+        "coord": "M25",
+        "type": "formula",
+        "value": "=bhan(K25)"
+    },
+    {
+        "coord": "N25",
+        "type": "formula",
+        "value": "=IF(M25>50,INT(J25*M25),INT(J25*K25*M25))"
+    },
+    {
+        "coord": "O25",
+        "type": "text",
+        "value": "カバー用紙"
+    },
+    {
+        "coord": "Q25",
+        "type": "formula",
+        "value": "=$D$1+$M$1"
+    },
+    {
+        "coord": "R25",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "S25",
+        "type": "number",
+        "value": 8
+    },
+    {
+        "coord": "T25",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($Q$25*(R25/S25)),0,$Q$25*(R25/S25)))"
+    },
+    {
+        "coord": "U25",
+        "type": "formula",
+        "value": "=V25*100"
+    },
+    {
+        "coord": "V25",
+        "type": "formula",
+        "value": "=(A27+A29)+1"
+    },
+    {
+        "coord": "W25",
+        "type": "formula",
+        "value": "=IF(T25*V25/100>U25,T25*(1+V25/100),T25+U25)"
+    },
+    {
+        "coord": "X25",
+        "type": "number",
+        "value": 110
+    },
+    {
+        "coord": "Y25",
+        "type": "number",
+        "value": 140
+    },
+    {
+        "coord": "Z25",
+        "type": "formula",
+        "value": "=ROUND(W25*X25*Y25/1000,0)"
+    },
+    {
+        "coord": "B26",
+        "type": "text",
+        "value": "直し代"
+    },
+    {
+        "coord": "C26",
+        "type": "number",
+        "value": 5
+    },
+    {
+        "coord": "D26",
+        "type": "number",
+        "value": 50
+    },
+    {
+        "coord": "E26",
+        "type": "text",
+        "value": "％"
+    },
+    {
+        "coord": "F26",
+        "type": "number",
+        "value": 3750
+    },
+    {
+        "coord": "G26",
+        "type": "formula",
+        "value": "=C26*F26"
+    },
+    {
+        "coord": "H26",
+        "type": "text",
+        "value": "PP"
+    },
+    {
+        "coord": "K26",
+        "type": "formula",
+        "value": "=K25"
+    },
+    {
+        "coord": "M26",
+        "type": "number",
+        "value": 19
+    },
+    {
+        "coord": "N26",
+        "type": "formula",
+        "value": "=K26*M26"
+    },
+    {
+        "coord": "A27",
+        "type": "number",
+        "value": 4
+    },
+    {
+        "coord": "B27",
+        "type": "text",
+        "value": "分解代"
+    },
+    {
+        "coord": "G27",
+        "type": "formula",
+        "value": "=E27*F27"
+    },
+    {
+        "coord": "K27",
+        "type": "formula",
+        "value": "=Q25"
+    },
+    {
+        "coord": "N27",
+        "type": "formula",
+        "value": "=K27*M27"
+    },
+    {
+        "coord": "A28",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B28",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C28",
+        "type": "formula",
+        "value": "=A27+A29"
+    },
+    {
+        "coord": "F28",
+        "type": "number",
+        "value": 2500
+    },
+    {
+        "coord": "G28",
+        "type": "formula",
+        "value": "=C28*F28"
+    },
+    {
+        "coord": "N28",
+        "type": "number",
+        "value": 50000
+    },
+    {
+        "coord": "A29",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "F29",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G29",
+        "type": "formula",
+        "value": "=SUM(G25:G28)"
+    },
+    {
+        "coord": "H29",
+        "type": "text",
+        "value": "※カバー、５０００枚以下は台計算"
+    },
+    {
+        "coord": "M29",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N29",
+        "type": "formula",
+        "value": "=INT(SUM(N25:N28))"
+    },
+    {
+        "coord": "Y29",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z29",
+        "type": "formula",
+        "value": "=INT(SUM(Z25:Z28))"
+    },
+    {
+        "coord": "A30",
+        "type": "text",
+        "value": "帯"
+    },
+    {
+        "coord": "B30",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C30",
+        "type": "formula",
+        "value": "=A31+A33"
+    },
+    {
+        "coord": "F30",
+        "type": "number",
+        "value": 4400
+    },
+    {
+        "coord": "G30",
+        "type": "formula",
+        "value": "=C30*F30"
+    },
+    {
+        "coord": "H30",
+        "type": "text",
+        "value": "帯印刷スミ"
+    },
+    {
+        "coord": "I30",
+        "type": "number",
+        "value": 2
+    },
+    {
+        "coord": "J30",
+        "type": "formula",
+        "value": "=A31+A33-J31"
+    },
+    {
+        "coord": "K30",
+        "type": "formula",
+        "value": "=INT($T$30*$I$30)"
+    },
+    {
+        "coord": "M30",
+        "type": "formula",
+        "value": "=bhan(K30)"
+    },
+    {
+        "coord": "N30",
+        "type": "formula",
+        "value": "=IF($K$30<=5091,INT($J$30*$M$30),INT($J$30*$K$30*$M$30))"
+    },
+    {
+        "coord": "O30",
+        "type": "text",
+        "value": "帯　用　紙"
+    },
+    {
+        "coord": "Q30",
+        "type": "formula",
+        "value": "=+$D$1+$M$2"
+    },
+    {
+        "coord": "R30",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "S30",
+        "type": "number",
+        "value": 24
+    },
+    {
+        "coord": "T30",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($Q$30*(R30/S30)),0,$Q$30*(R30/S30)))"
+    },
+    {
+        "coord": "U30",
+        "type": "formula",
+        "value": "=V30*100"
+    },
+    {
+        "coord": "V30",
+        "type": "formula",
+        "value": "=(A31+A33)+1"
+    },
+    {
+        "coord": "W30",
+        "type": "formula",
+        "value": "=IF(T30*V30/100>U30,T30*(1+V30/100),T30+U30)"
+    },
+    {
+        "coord": "X30",
+        "type": "number",
+        "value": 100
+    },
+    {
+        "coord": "Y30",
+        "type": "number",
+        "value": 501
+    },
+    {
+        "coord": "Z30",
+        "type": "formula",
+        "value": "=ROUND(W30*X30*Y30/1000,0)"
+    },
+    {
+        "coord": "A31",
+        "type": "number",
+        "value": 2
+    },
+    {
+        "coord": "B31",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C31",
+        "type": "formula",
+        "value": "=A31+A33"
+    },
+    {
+        "coord": "F31",
+        "type": "number",
+        "value": 2000
+    },
+    {
+        "coord": "G31",
+        "type": "formula",
+        "value": "=C31*F31"
+    },
+    {
+        "coord": "H31",
+        "type": "text",
+        "value": "帯印刷ベタ"
+    },
+    {
+        "coord": "J31",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "K31",
+        "type": "formula",
+        "value": "=$K$30"
+    },
+    {
+        "coord": "M31",
+        "type": "formula",
+        "value": "=bhan(K31)"
+    },
+    {
+        "coord": "N31",
+        "type": "formula",
+        "value": "=IF($K$30<=5091,INT($J$31*$M$31),INT($J$31*$K$31*$M$31))"
+    },
+    {
+        "coord": "A32",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B32",
+        "type": "text",
+        "value": "版修正代"
+    },
+    {
+        "coord": "D32",
+        "type": "number",
+        "value": 12000
+    },
+    {
+        "coord": "E32",
+        "type": "text",
+        "value": "タチ代"
+    },
+    {
+        "coord": "N32",
+        "type": "formula",
+        "value": "=INT(K32*M32)"
+    },
+    {
+        "coord": "A33",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "F33",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G33",
+        "type": "formula",
+        "value": "=G30+G31+D32+F32"
+    },
+    {
+        "coord": "H33",
+        "type": "text",
+        "value": "※帯、４０９１枚以下は台計算"
+    },
+    {
+        "coord": "M33",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N33",
+        "type": "formula",
+        "value": "=INT(SUM(N30:N32))"
+    },
+    {
+        "coord": "Y33",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z33",
+        "type": "formula",
+        "value": "=INT(SUM(Z30:Z32))"
+    },
+    {
+        "coord": "A34",
+        "type": "text",
+        "value": "表紙"
+    },
+    {
+        "coord": "B34",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C34",
+        "type": "formula",
+        "value": "=$A$35+$A$37"
+    },
+    {
+        "coord": "F34",
+        "type": "number",
+        "value": 3500
+    },
+    {
+        "coord": "G34",
+        "type": "formula",
+        "value": "=C34*F34"
+    },
+    {
+        "coord": "H34",
+        "type": "text",
+        "value": "表紙印刷"
+    },
+    {
+        "coord": "I34",
+        "type": "number",
+        "value": 3
+    },
+    {
+        "coord": "J34",
+        "type": "formula",
+        "value": "=A35+A37"
+    },
+    {
+        "coord": "K34",
+        "type": "formula",
+        "value": "=INT($T$34*$I$34)"
+    },
+    {
+        "coord": "M34",
+        "type": "formula",
+        "value": "=bhan(K34)"
+    },
+    {
+        "coord": "N34",
+        "type": "formula",
+        "value": "=IF($K$34<=5000,INT($J$34*$M$34),INT($J$34*$M$34*$K$34))"
+    },
+    {
+        "coord": "O34",
+        "type": "text",
+        "value": "表紙用紙"
+    },
+    {
+        "coord": "Q34",
+        "type": "formula",
+        "value": "=$D$1"
+    },
+    {
+        "coord": "R34",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "S34",
+        "type": "number",
+        "value": 12
+    },
+    {
+        "coord": "T34",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($Q$34*(R34/S34)),0,$Q$34*(R34/S34)))"
+    },
+    {
+        "coord": "U34",
+        "type": "formula",
+        "value": "=V34*100"
+    },
+    {
+        "coord": "V34",
+        "type": "formula",
+        "value": "=(A35+A37)+1"
+    },
+    {
+        "coord": "W34",
+        "type": "formula",
+        "value": "=IF(T34*V34/100>U34,T34*(1+V34/100),T34+U34)"
+    },
+    {
+        "coord": "X34",
+        "type": "number",
+        "value": 210
+    },
+    {
+        "coord": "Y34",
+        "type": "number",
+        "value": 240
+    },
+    {
+        "coord": "Z34",
+        "type": "formula",
+        "value": "=ROUND(W34*X34*Y34/1000,0)"
+    },
+    {
+        "coord": "A35",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "B35",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C35",
+        "type": "formula",
+        "value": "=$A$35+$A$37"
+    },
+    {
+        "coord": "F35",
+        "type": "number",
+        "value": 2500
+    },
+    {
+        "coord": "G35",
+        "type": "formula",
+        "value": "=C35*F35"
+    },
+    {
+        "coord": "A36",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B36",
+        "type": "text",
+        "value": "訂　正　代"
+    },
+    {
+        "coord": "F36",
+        "type": "number",
+        "value": 2500
+    },
+    {
+        "coord": "A37",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "F37",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G37",
+        "type": "formula",
+        "value": "=G34+G35+D36+F36"
+    },
+    {
+        "coord": "M37",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N37",
+        "type": "formula",
+        "value": "=INT(SUM(N34:N36))"
+    },
+    {
+        "coord": "Y37",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z37",
+        "type": "formula",
+        "value": "=INT(SUM(Z34:Z36))"
+    },
+    {
+        "coord": "A38",
+        "type": "text",
+        "value": "扉"
+    },
+    {
+        "coord": "B38",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C38",
+        "type": "formula",
+        "value": "=$A$39+$A$41"
+    },
+    {
+        "coord": "F38",
+        "type": "number",
+        "value": 2500
+    },
+    {
+        "coord": "G38",
+        "type": "formula",
+        "value": "=C38*F38"
+    },
+    {
+        "coord": "H38",
+        "type": "text",
+        "value": "扉印刷"
+    },
+    {
+        "coord": "I38",
+        "type": "number",
+        "value": 2
+    },
+    {
+        "coord": "J38",
+        "type": "formula",
+        "value": "=A39+A41"
+    },
+    {
+        "coord": "K38",
+        "type": "formula",
+        "value": "=INT($T$34*$I$34)"
+    },
+    {
+        "coord": "M38",
+        "type": "formula",
+        "value": "=bhan(K38)"
+    },
+    {
+        "coord": "N38",
+        "type": "formula",
+        "value": "=IF($K$38<=5000,INT($J$38*$M$38),INT($J$38*$M$38*$K$38))"
+    },
+    {
+        "coord": "O38",
+        "type": "text",
+        "value": "扉用紙"
+    },
+    {
+        "coord": "Q38",
+        "type": "formula",
+        "value": "=$D$1"
+    },
+    {
+        "coord": "R38",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "S38",
+        "type": "number",
+        "value": 32
+    },
+    {
+        "coord": "T38",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($Q$38*(R38/S38)),0,$Q$38*(R38/S38)))"
+    },
+    {
+        "coord": "U38",
+        "type": "formula",
+        "value": "=V38*100"
+    },
+    {
+        "coord": "V38",
+        "type": "formula",
+        "value": "=(A39+A41)+1"
+    },
+    {
+        "coord": "W38",
+        "type": "formula",
+        "value": "=IF(T38*V38/100>U38,T38*(1+V38/100),T38+U38)"
+    },
+    {
+        "coord": "X38",
+        "type": "number",
+        "value": 108
+    },
+    {
+        "coord": "Y38",
+        "type": "number",
+        "value": 537
+    },
+    {
+        "coord": "Z38",
+        "type": "formula",
+        "value": "=ROUND(W38*X38*Y38/1000,0)"
+    },
+    {
+        "coord": "A39",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "B39",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C39",
+        "type": "formula",
+        "value": "=$A$39+$A$41"
+    },
+    {
+        "coord": "F39",
+        "type": "number",
+        "value": 2200
+    },
+    {
+        "coord": "G39",
+        "type": "formula",
+        "value": "=C39*F39"
+    },
+    {
+        "coord": "A40",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B40",
+        "type": "text",
+        "value": "訂　正　代"
+    },
+    {
+        "coord": "A41",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "F41",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G41",
+        "type": "formula",
+        "value": "=G38+G39+D40+F40"
+    },
+    {
+        "coord": "M41",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N41",
+        "type": "formula",
+        "value": "=INT(SUM(N38:N40))"
+    },
+    {
+        "coord": "Y41",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z41",
+        "type": "formula",
+        "value": "=INT(SUM(Z38:Z40))"
+    },
+    {
+        "coord": "A42",
+        "type": "text",
+        "value": "見返し"
+    },
+    {
+        "coord": "B42",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C42",
+        "type": "formula",
+        "value": "=$A$43+A45"
+    },
+    {
+        "coord": "F42",
+        "type": "number",
+        "value": 2500
+    },
+    {
+        "coord": "G42",
+        "type": "formula",
+        "value": "=C42*F42"
+    },
+    {
+        "coord": "H42",
+        "type": "text",
+        "value": "見返し印刷"
+    },
+    {
+        "coord": "I42",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J42",
+        "type": "formula",
+        "value": "=A43+A45"
+    },
+    {
+        "coord": "K42",
+        "type": "formula",
+        "value": "=INT($T$34*$I$34)"
+    },
+    {
+        "coord": "M42",
+        "type": "formula",
+        "value": "=bhan(K42)"
+    },
+    {
+        "coord": "N42",
+        "type": "formula",
+        "value": "=IF(J42>0,IF($K$42<=5000,INT($J$42*$M$42),INT($J$42*$M$42*$K$42)),0)"
+    },
+    {
+        "coord": "O42",
+        "type": "text",
+        "value": "見返し用紙"
+    },
+    {
+        "coord": "Q42",
+        "type": "formula",
+        "value": "=$D$1"
+    },
+    {
+        "coord": "R42",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "S42",
+        "type": "number",
+        "value": 8
+    },
+    {
+        "coord": "T42",
+        "type": "formula",
+        "value": "=INT(IF(ISERROR($Q$42*(R42/S42)),0,$Q$42*(R42/S42)))"
+    },
+    {
+        "coord": "U42",
+        "type": "formula",
+        "value": "=V42*100"
+    },
+    {
+        "coord": "V42",
+        "type": "formula",
+        "value": "=(A43+A45)+1"
+    },
+    {
+        "coord": "W42",
+        "type": "formula",
+        "value": "=IF(T42*V42/100>U42,T42*(1+V42/100),T42+U42)"
+    },
+    {
+        "coord": "X42",
+        "type": "number",
+        "value": 100
+    },
+    {
+        "coord": "Y42",
+        "type": "number",
+        "value": 533
+    },
+    {
+        "coord": "Z42",
+        "type": "formula",
+        "value": "=ROUND(W42*X42*Y42/1000,0)"
+    },
+    {
+        "coord": "B43",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C43",
+        "type": "formula",
+        "value": "=$A$43+A45"
+    },
+    {
+        "coord": "F43",
+        "type": "number",
+        "value": 2200
+    },
+    {
+        "coord": "G43",
+        "type": "formula",
+        "value": "=C43*F43"
+    },
+    {
+        "coord": "A44",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B44",
+        "type": "text",
+        "value": "訂　正　代"
+    },
+    {
+        "coord": "F45",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G45",
+        "type": "formula",
+        "value": "=G42+G43+D44+F44"
+    },
+    {
+        "coord": "M45",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N45",
+        "type": "formula",
+        "value": "=INT(SUM(N42:N44))"
+    },
+    {
+        "coord": "Y45",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z45",
+        "type": "formula",
+        "value": "=INT(SUM(Z42:Z44))"
+    },
+    {
+        "coord": "B46",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C46",
+        "type": "formula",
+        "value": "=$A$55+$A$57"
+    },
+    {
+        "coord": "G46",
+        "type": "formula",
+        "value": "=C46*F46"
+    },
+    {
+        "coord": "I46",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J46",
+        "type": "formula",
+        "value": "=A47+A49"
+    },
+    {
+        "coord": "B47",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C47",
+        "type": "formula",
+        "value": "=$A$55+$A$57"
+    },
+    {
+        "coord": "G47",
+        "type": "formula",
+        "value": "=C47*F47"
+    },
+    {
+        "coord": "A48",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B48",
+        "type": "text",
+        "value": "訂　正　代"
+    },
+    {
+        "coord": "F49",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G49",
+        "type": "formula",
+        "value": "=G46+G47+D48+F48"
+    },
+    {
+        "coord": "M49",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N49",
+        "type": "formula",
+        "value": "=N46+N47+K48+M48"
+    },
+    {
+        "coord": "Y49",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z49",
+        "type": "formula",
+        "value": "=INT(SUM(Z46:Z48))"
+    },
+    {
+        "coord": "B50",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C50",
+        "type": "formula",
+        "value": "=$A$55+$A$57"
+    },
+    {
+        "coord": "G50",
+        "type": "formula",
+        "value": "=C50*F50"
+    },
+    {
+        "coord": "I50",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J50",
+        "type": "formula",
+        "value": "=A51+A53"
+    },
+    {
+        "coord": "B51",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C51",
+        "type": "formula",
+        "value": "=$A$55+$A$57"
+    },
+    {
+        "coord": "G51",
+        "type": "formula",
+        "value": "=C51*F51"
+    },
+    {
+        "coord": "A52",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B52",
+        "type": "text",
+        "value": "訂　正　代"
+    },
+    {
+        "coord": "F53",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G53",
+        "type": "formula",
+        "value": "=G50+G51+D52+F52"
+    },
+    {
+        "coord": "M53",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N53",
+        "type": "formula",
+        "value": "=N50+N51+K52+M52"
+    },
+    {
+        "coord": "Y53",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z53",
+        "type": "formula",
+        "value": "=INT(SUM(Z50:Z52))"
+    },
+    {
+        "coord": "B54",
+        "type": "text",
+        "value": "製版"
+    },
+    {
+        "coord": "C54",
+        "type": "formula",
+        "value": "=$A$55+$A$57"
+    },
+    {
+        "coord": "G54",
+        "type": "formula",
+        "value": "=C54*F54"
+    },
+    {
+        "coord": "I54",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "J54",
+        "type": "formula",
+        "value": "=A55+A57"
+    },
+    {
+        "coord": "B55",
+        "type": "text",
+        "value": "刷版"
+    },
+    {
+        "coord": "C55",
+        "type": "formula",
+        "value": "=$A$55+$A$57"
+    },
+    {
+        "coord": "G55",
+        "type": "formula",
+        "value": "=C55*F55"
+    },
+    {
+        "coord": "A56",
+        "type": "text",
+        "value": "×"
+    },
+    {
+        "coord": "B56",
+        "type": "text",
+        "value": "訂　正　代"
+    },
+    {
+        "coord": "F57",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "G57",
+        "type": "formula",
+        "value": "=G54+G55+D56+F56"
+    },
+    {
+        "coord": "M57",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "N57",
+        "type": "formula",
+        "value": "=N54+N55+K56+M56"
+    },
+    {
+        "coord": "Y57",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "Z57",
+        "type": "formula",
+        "value": "=INT(SUM(Z54:Z56))"
+    },
+    {
+        "coord": "E58",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "F58",
+        "type": "formula",
+        "value": "=G58/$D$1"
+    },
+    {
+        "coord": "G58",
+        "type": "formula",
+        "value": "=G16+G24+G29+G33+G37+G41+G45+G49+G53+G57"
+    },
+    {
+        "coord": "H58",
+        "type": "text",
+        "value": "※口絵５７１５枚以下は台計算"
+    },
+    {
+        "coord": "L58",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "M58",
+        "type": "formula",
+        "value": "=N58/$D$1"
+    },
+    {
+        "coord": "N58",
+        "type": "formula",
+        "value": "=N16+N24+N29+N33+N37+N41+N45+N49+N53+N57"
+    },
+    {
+        "coord": "W58",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "Y58",
+        "type": "formula",
+        "value": "=Z58/$D$1"
+    },
+    {
+        "coord": "Z58",
+        "type": "formula",
+        "value": "=Z16+Z24+Z29+Z33+Z37+Z41+Z45+Z49+Z53+Z57"
+    },
+    {
+        "coord": "A59",
+        "type": "text",
+        "value": "製　　　　本　　　　費"
+    },
+    {
+        "coord": "F59",
+        "type": "text",
+        "value": "編　 集　 原　 価(印税)"
+    },
+    {
+        "coord": "I59",
+        "type": "text",
+        "value": "予　　　　　　　　　　　　　　　　算　　　　　　　　　　　　　　　　見　　　　　　　　　　　　　　　　積　　　　　　　　　　　　　　　　損　　　　　　　　　　　　　　　　益"
+    },
+    {
+        "coord": "A60",
+        "type": "text",
+        "value": "種    別"
+    },
+    {
+        "coord": "B60",
+        "type": "text",
+        "value": "折"
+    },
+    {
+        "coord": "C60",
+        "type": "text",
+        "value": "1折単価"
+    },
+    {
+        "coord": "D60",
+        "type": "text",
+        "value": "単価"
+    },
+    {
+        "coord": "E60",
+        "type": "text",
+        "value": "金　額"
+    },
+    {
+        "coord": "F60",
+        "type": "text",
+        "value": "税率"
+    },
+    {
+        "coord": "G60",
+        "type": "text",
+        "value": "上限部数"
+    },
+    {
+        "coord": "H60",
+        "type": "text",
+        "value": "金額"
+    },
+    {
+        "coord": "A61",
+        "type": "text",
+        "value": "本　文"
+    },
+    {
+        "coord": "B61",
+        "type": "formula",
+        "value": "=ROUNDUP(X3/16,0)"
+    },
+    {
+        "coord": "C61",
+        "type": "number",
+        "value": 0.9
+    },
+    {
+        "coord": "D61",
+        "type": "formula",
+        "value": "=ROUND(B61*C61,2)"
+    },
+    {
+        "coord": "E61",
+        "type": "formula",
+        "value": "=ROUND(D61*$D$1,2)"
+    },
+    {
+        "coord": "F61",
+        "type": "number",
+        "value": 0.1
+    },
+    {
+        "coord": "H61",
+        "type": "formula",
+        "value": "=IF(G61=\"\",F61*D1*J1,IF(G61>D1,F61*D1*J1,F61*G61*J1))"
+    },
+    {
+        "coord": "A62",
+        "type": "text",
+        "value": "口絵"
+    },
+    {
+        "coord": "B62",
+        "type": "formula",
+        "value": "=IF(OR($U$3=2,$U$3=4,$U$3=8),1,ROUNDUP($U$3/16,0))"
+    },
+    {
+        "coord": "C62",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "D62",
+        "type": "formula",
+        "value": "=ROUND(B62*C62,2)"
+    },
+    {
+        "coord": "E62",
+        "type": "formula",
+        "value": "=ROUND(D62*$D$1,2)"
+    },
+    {
+        "coord": "F62",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "H62",
+        "type": "formula",
+        "value": "=IF(G62=\"\",F62*($D$1-G61)*$J$1,IF(G61>$D$1,F62*($D$1-G61)*$J$1,F62*(G62-G61)*$J$1))"
+    },
+    {
+        "coord": "I62",
+        "type": "text",
+        "value": "(税込価格)"
+    },
+    {
+        "coord": "J62",
+        "type": "text",
+        "value": "正味本体価"
+    },
+    {
+        "coord": "K62",
+        "type": "text",
+        "value": "発行部数"
+    },
+    {
+        "coord": "L62",
+        "type": "text",
+        "value": "発行正味"
+    },
+    {
+        "coord": "M62",
+        "type": "text",
+        "value": "売上部数"
+    },
+    {
+        "coord": "N62",
+        "type": "text",
+        "value": "売上高"
+    },
+    {
+        "coord": "O62",
+        "type": "text",
+        "value": "他利益"
+    },
+    {
+        "coord": "P62",
+        "type": "text",
+        "value": "用紙費"
+    },
+    {
+        "coord": "Q62",
+        "type": "text",
+        "value": "制作費"
+    },
+    {
+        "coord": "R62",
+        "type": "text",
+        "value": "編集原価"
+    },
+    {
+        "coord": "S62",
+        "type": "text",
+        "value": "製造原価 計"
+    },
+    {
+        "coord": "T62",
+        "type": "text",
+        "value": "売上利益"
+    },
+    {
+        "coord": "U62",
+        "type": "text",
+        "value": "直接経費"
+    },
+    {
+        "coord": "W62",
+        "type": "text",
+        "value": "間接経費"
+    },
+    {
+        "coord": "X62",
+        "type": "text",
+        "value": "経費 計"
+    },
+    {
+        "coord": "Z62",
+        "type": "text",
+        "value": "営業利益"
+    },
+    {
+        "coord": "A63",
+        "type": "text",
+        "value": "見　返"
+    },
+    {
+        "coord": "D63",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "E63",
+        "type": "formula",
+        "value": "=ROUND(D63*$D$1,2)"
+    },
+    {
+        "coord": "F63",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "H63",
+        "type": "formula",
+        "value": "=IF(G63=\"\",F63*($D$1-G62)*$J$1,IF(G62>$D$1,F63*($D$1-G62)*$J$1,F63*(G63-G62)*$J$1))"
+    },
+    {
+        "coord": "I63",
+        "type": "text",
+        "value": "本体価格"
+    },
+    {
+        "coord": "A64",
+        "type": "text",
+        "value": "表　紙"
+    },
+    {
+        "coord": "D64",
+        "type": "number",
+        "value": 1.8
+    },
+    {
+        "coord": "E64",
+        "type": "formula",
+        "value": "=ROUND(D64*$D$1,2)"
+    },
+    {
+        "coord": "F64",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "H64",
+        "type": "formula",
+        "value": "=IF(G64=\"\",F64*($D$1-G63)*$J$1,IF(G63>$D$1,F64*($D$1-G63)*$J$1,F64*(G64-G63)*$J$1))"
+    },
+    {
+        "coord": "L64",
+        "type": "number",
+        "value": 1
+    },
+    {
+        "coord": "M64",
+        "type": "formula",
+        "value": "=$G$2"
+    },
+    {
+        "coord": "N64",
+        "type": "formula",
+        "value": "=$G$2"
+    },
+    {
+        "coord": "O64",
+        "type": "formula",
+        "value": "=O68/$L$68"
+    },
+    {
+        "coord": "P64",
+        "type": "formula",
+        "value": "=P68/$L$68"
+    },
+    {
+        "coord": "Q64",
+        "type": "formula",
+        "value": "=Q68/$L$68"
+    },
+    {
+        "coord": "R64",
+        "type": "formula",
+        "value": "=R68/$L$68"
+    },
+    {
+        "coord": "S64",
+        "type": "formula",
+        "value": "=S68/$L$68"
+    },
+    {
+        "coord": "T64",
+        "type": "formula",
+        "value": "=T68/$L$68"
+    },
+    {
+        "coord": "U64",
+        "type": "formula",
+        "value": "=U68/$L$68"
+    },
+    {
+        "coord": "W64",
+        "type": "formula",
+        "value": "=W68/$L$68"
+    },
+    {
+        "coord": "X64",
+        "type": "formula",
+        "value": "=X68/$L$68"
+    },
+    {
+        "coord": "Z64",
+        "type": "formula",
+        "value": "=Z68/$L$68"
+    },
+    {
+        "coord": "A65",
+        "type": "text",
+        "value": "スリップ"
+    },
+    {
+        "coord": "E65",
+        "type": "formula",
+        "value": "=ROUND(D65*$D$1,2)"
+    },
+    {
+        "coord": "F65",
+        "type": "text",
+        "value": "編　　 集　　 原　　 価"
+    },
+    {
+        "coord": "A66",
+        "type": "text",
+        "value": "カバー"
+    },
+    {
+        "coord": "D66",
+        "type": "number",
+        "value": 1.1
+    },
+    {
+        "coord": "E66",
+        "type": "formula",
+        "value": "=ROUND(D66*$D$1,2)"
+    },
+    {
+        "coord": "F66",
+        "type": "text",
+        "value": "印　税合計"
+    },
+    {
+        "coord": "H66",
+        "type": "formula",
+        "value": "=SUM(H61:H64)"
+    },
+    {
+        "coord": "K66",
+        "type": "formula",
+        "value": "=K68/$K$68"
+    },
+    {
+        "coord": "L66",
+        "type": "formula",
+        "value": "=L68/$K$68"
+    },
+    {
+        "coord": "M66",
+        "type": "formula",
+        "value": "=M68/$K$68"
+    },
+    {
+        "coord": "N66",
+        "type": "formula",
+        "value": "=N68/$K$68"
+    },
+    {
+        "coord": "O66",
+        "type": "formula",
+        "value": "=O68/$K$68"
+    },
+    {
+        "coord": "P66",
+        "type": "formula",
+        "value": "=P68/$K$68"
+    },
+    {
+        "coord": "Q66",
+        "type": "formula",
+        "value": "=Q68/$K$68"
+    },
+    {
+        "coord": "R66",
+        "type": "formula",
+        "value": "=R68/$K$68"
+    },
+    {
+        "coord": "S66",
+        "type": "formula",
+        "value": "=S68/$K$68"
+    },
+    {
+        "coord": "T66",
+        "type": "formula",
+        "value": "=T68/$K$68"
+    },
+    {
+        "coord": "U66",
+        "type": "formula",
+        "value": "=U68/$K$68"
+    },
+    {
+        "coord": "W66",
+        "type": "formula",
+        "value": "=W68/$K$68"
+    },
+    {
+        "coord": "X66",
+        "type": "formula",
+        "value": "=X68/$K$68"
+    },
+    {
+        "coord": "Z66",
+        "type": "formula",
+        "value": "=Z68/$K$68"
+    },
+    {
+        "coord": "A67",
+        "type": "text",
+        "value": "帯"
+    },
+    {
+        "coord": "D67",
+        "type": "number",
+        "value": 1.1
+    },
+    {
+        "coord": "E67",
+        "type": "formula",
+        "value": "=ROUND(D67*$D$1,2)"
+    },
+    {
+        "coord": "F67",
+        "type": "text",
+        "value": "稿画料 1点"
+    },
+    {
+        "coord": "G67",
+        "type": "number",
+        "value": 380000
+    },
+    {
+        "coord": "H67",
+        "type": "formula",
+        "value": "=G67"
+    },
+    {
+        "coord": "A68",
+        "type": "text",
+        "value": "投　込"
+    },
+    {
+        "coord": "E68",
+        "type": "formula",
+        "value": "=ROUND(D68*$D$1,2)"
+    },
+    {
+        "coord": "F68",
+        "type": "text",
+        "value": "編集費 1点"
+    },
+    {
+        "coord": "G68",
+        "type": "number",
+        "value": 220000
+    },
+    {
+        "coord": "H68",
+        "type": "formula",
+        "value": "=G68"
+    },
+    {
+        "coord": "I68",
+        "type": "formula",
+        "value": "=-I69*1.1"
+    },
+    {
+        "coord": "J68",
+        "type": "formula",
+        "value": "=I69*$G$1"
+    },
+    {
+        "coord": "K68",
+        "type": "formula",
+        "value": "=$D$1"
+    },
+    {
+        "coord": "L68",
+        "type": "formula",
+        "value": "=J68*K68"
+    },
+    {
+        "coord": "M68",
+        "type": "formula",
+        "value": "=K68*M64"
+    },
+    {
+        "coord": "N68",
+        "type": "formula",
+        "value": "=L68*N64"
+    },
+    {
+        "coord": "O68",
+        "type": "formula",
+        "value": "=$J$2"
+    },
+    {
+        "coord": "P68",
+        "type": "formula",
+        "value": "=Z58"
+    },
+    {
+        "coord": "Q68",
+        "type": "formula",
+        "value": "=G58+N58+E77+E80"
+    },
+    {
+        "coord": "R68",
+        "type": "formula",
+        "value": "=H70"
+    },
+    {
+        "coord": "S68",
+        "type": "formula",
+        "value": "=P68+Q68+R68"
+    },
+    {
+        "coord": "T68",
+        "type": "formula",
+        "value": "=N68+O68-S68"
+    },
+    {
+        "coord": "U68",
+        "type": "formula",
+        "value": "=H76"
+    },
+    {
+        "coord": "W68",
+        "type": "formula",
+        "value": "=H80"
+    },
+    {
+        "coord": "X68",
+        "type": "formula",
+        "value": "=U68+W68"
+    },
+    {
+        "coord": "Z68",
+        "type": "formula",
+        "value": "=T68-X68"
+    },
+    {
+        "coord": "A69",
+        "type": "text",
+        "value": "運　賃"
+    },
+    {
+        "coord": "D69",
+        "type": "number",
+        "value": 2.5
+    },
+    {
+        "coord": "E69",
+        "type": "formula",
+        "value": "=ROUND(D69*$D$1,2)"
+    },
+    {
+        "coord": "F69",
+        "type": "text",
+        "value": "付録他"
+    },
+    {
+        "coord": "H69",
+        "type": "formula",
+        "value": "=G69"
+    },
+    {
+        "coord": "I69",
+        "type": "formula",
+        "value": "=$J$1"
+    },
+    {
+        "coord": "A70",
+        "type": "text",
+        "value": "本　扉"
+    },
+    {
+        "coord": "D70",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "E70",
+        "type": "formula",
+        "value": "=ROUND(D70*$D$1,2)"
+    },
+    {
+        "coord": "F70",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "G70",
+        "type": "formula",
+        "value": "=H70/$D$1"
+    },
+    {
+        "coord": "H70",
+        "type": "formula",
+        "value": "=SUM(H66:H69)"
+    },
+    {
+        "coord": "I70",
+        "type": "text",
+        "value": "採　　　　　　　　算　　　　　　　　分　　　　　　　　岐　　　　　　　　点"
+    },
+    {
+        "coord": "Q70",
+        "type": "text",
+        "value": "限　　　　　界　　　　　利　　　　　益　　　　　分　　　　　岐　　　　　点"
+    },
+    {
+        "coord": "A71",
+        "type": "text",
+        "value": "背加工"
+    },
+    {
+        "coord": "E71",
+        "type": "formula",
+        "value": "=ROUND(D71*$D$1,2)"
+    },
+    {
+        "coord": "F71",
+        "type": "text",
+        "value": "直　　 接　　 経　　 費"
+    },
+    {
+        "coord": "A72",
+        "type": "text",
+        "value": "花切スピン"
+    },
+    {
+        "coord": "E72",
+        "type": "formula",
+        "value": "=ROUND(D72*$D$1,2)"
+    },
+    {
+        "coord": "F72",
+        "type": "text",
+        "value": "編集人件費 1点"
+    },
+    {
+        "coord": "G72",
+        "type": "number",
+        "value": 900000
+    },
+    {
+        "coord": "H72",
+        "type": "formula",
+        "value": "=G72"
+    },
+    {
+        "coord": "I72",
+        "type": "text",
+        "value": "予　算　見　積"
+    },
+    {
+        "coord": "K72",
+        "type": "text",
+        "value": "売上率"
+    },
+    {
+        "coord": "L72",
+        "type": "formula",
+        "value": "=$G$2"
+    },
+    {
+        "coord": "M72",
+        "type": "text",
+        "value": "売上部数"
+    },
+    {
+        "coord": "N72",
+        "type": "formula",
+        "value": "=M68"
+    },
+    {
+        "coord": "O72",
+        "type": "text",
+        "value": "売上高"
+    },
+    {
+        "coord": "P72",
+        "type": "formula",
+        "value": "=N68"
+    },
+    {
+        "coord": "Q72",
+        "type": "text",
+        "value": "予　算　見　積"
+    },
+    {
+        "coord": "S72",
+        "type": "text",
+        "value": "売上率"
+    },
+    {
+        "coord": "T72",
+        "type": "formula",
+        "value": "=$G$2"
+    },
+    {
+        "coord": "U72",
+        "type": "text",
+        "value": "売上部数"
+    },
+    {
+        "coord": "W72",
+        "type": "formula",
+        "value": "=M68"
+    },
+    {
+        "coord": "X72",
+        "type": "text",
+        "value": "売上高"
+    },
+    {
+        "coord": "Z72",
+        "type": "formula",
+        "value": "=N68"
+    },
+    {
+        "coord": "E73",
+        "type": "formula",
+        "value": "=ROUND(D73*$D$1,2)"
+    },
+    {
+        "coord": "F73",
+        "type": "text",
+        "value": "宣 伝 費 1点"
+    },
+    {
+        "coord": "G73",
+        "type": "number",
+        "value": 300000
+    },
+    {
+        "coord": "H73",
+        "type": "formula",
+        "value": "=G73"
+    },
+    {
+        "coord": "A74",
+        "type": "text",
+        "value": "割増％"
+    },
+    {
+        "coord": "B74",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "C74",
+        "type": "text",
+        "value": "%"
+    },
+    {
+        "coord": "D74",
+        "type": "formula",
+        "value": "=ROUND((D61+D62+D63+D64+D65+D66+D67+D68+D69+D70+D71+D72+D73)*$B$74*1/100,2)"
+    },
+    {
+        "coord": "E74",
+        "type": "formula",
+        "value": "=ROUND(D74*$D$1,2)"
+    },
+    {
+        "coord": "F74",
+        "type": "text",
+        "value": "販 売 費 1点"
+    },
+    {
+        "coord": "G74",
+        "type": "number",
+        "value": 500000
+    },
+    {
+        "coord": "H74",
+        "type": "formula",
+        "value": "=G74"
+    },
+    {
+        "coord": "I74",
+        "type": "text",
+        "value": "採　算　分　岐　点"
+    },
+    {
+        "coord": "K74",
+        "type": "text",
+        "value": "売上率"
+    },
+    {
+        "coord": "L74",
+        "type": "formula",
+        "value": "=((S68+X68)-O68)/L68"
+    },
+    {
+        "coord": "M74",
+        "type": "text",
+        "value": "売上部数"
+    },
+    {
+        "coord": "N74",
+        "type": "formula",
+        "value": "=K68*L74"
+    },
+    {
+        "coord": "O74",
+        "type": "text",
+        "value": "売上高"
+    },
+    {
+        "coord": "P74",
+        "type": "formula",
+        "value": "=L74*L68"
+    },
+    {
+        "coord": "Q74",
+        "type": "text",
+        "value": "限界利益分岐点"
+    },
+    {
+        "coord": "S74",
+        "type": "text",
+        "value": "売上率"
+    },
+    {
+        "coord": "T74",
+        "type": "formula",
+        "value": "=(S68-O68)/L68"
+    },
+    {
+        "coord": "U74",
+        "type": "text",
+        "value": "売上部数"
+    },
+    {
+        "coord": "W74",
+        "type": "formula",
+        "value": "=K68*T74"
+    },
+    {
+        "coord": "X74",
+        "type": "text",
+        "value": "売上高"
+    },
+    {
+        "coord": "Z74",
+        "type": "formula",
+        "value": "=W74*J68"
+    },
+    {
+        "coord": "A75",
+        "type": "text",
+        "value": "計"
+    },
+    {
+        "coord": "D75",
+        "type": "formula",
+        "value": "=SUM(D61:D74)"
+    },
+    {
+        "coord": "E75",
+        "type": "formula",
+        "value": "=IF(SUM(E61:E74)>42000,SUM(E61:E74),42000)"
+    },
+    {
+        "coord": "F75",
+        "type": "text",
+        "value": "倉 庫 費  %"
+    },
+    {
+        "coord": "G75",
+        "type": "number",
+        "value": 0.088
+    },
+    {
+        "coord": "H75",
+        "type": "formula",
+        "value": "=N68*G75*100%/$G$2"
+    },
+    {
+        "coord": "A76",
+        "type": "text",
+        "value": "改装"
+    },
+    {
+        "coord": "D76",
+        "type": "number",
+        "value": 1.1
+    },
+    {
+        "coord": "E76",
+        "type": "formula",
+        "value": "=$M$1*D76"
+    },
+    {
+        "coord": "F76",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "G76",
+        "type": "formula",
+        "value": "=H76/$D$1"
+    },
+    {
+        "coord": "H76",
+        "type": "formula",
+        "value": "=SUM(H72:H75)"
+    },
+    {
+        "coord": "I76",
+        "type": "text",
+        "value": "採　算　分　岐　点"
+    },
+    {
+        "coord": "K76",
+        "type": "formula",
+        "value": "=IF(L72>L74,\"超過売上率\",\"未達売上率\")"
+    },
+    {
+        "coord": "L76",
+        "type": "formula",
+        "value": "=L72-L74"
+    },
+    {
+        "coord": "M76",
+        "type": "formula",
+        "value": "=IF(N72>N74,\"超過売上数\",\"未達売上数\")"
+    },
+    {
+        "coord": "N76",
+        "type": "formula",
+        "value": "=N72-N74"
+    },
+    {
+        "coord": "O76",
+        "type": "formula",
+        "value": "=IF(P72>P74,\"超過売上高　(営業利益)\",\"未達売上高　(営業利益)\")"
+    },
+    {
+        "coord": "P76",
+        "type": "formula",
+        "value": "=P72-P74"
+    },
+    {
+        "coord": "Q76",
+        "type": "text",
+        "value": "限界利益分岐点"
+    },
+    {
+        "coord": "S76",
+        "type": "formula",
+        "value": "=IF(T72>T74,\"超過売上率\",\"未達売上率\")"
+    },
+    {
+        "coord": "T76",
+        "type": "formula",
+        "value": "=T72-T74"
+    },
+    {
+        "coord": "U76",
+        "type": "formula",
+        "value": "=IF(W72>W74,\"超過売上数\",\"未達売上数\")"
+    },
+    {
+        "coord": "W76",
+        "type": "formula",
+        "value": "=W72-W74"
+    },
+    {
+        "coord": "X76",
+        "type": "formula",
+        "value": "=IF(Z72>Z74,\"超過売上高　(限界利益)\",\"未達売上高　(限界利益)\")"
+    },
+    {
+        "coord": "Z76",
+        "type": "formula",
+        "value": "=Z72-Z74"
+    },
+    {
+        "coord": "A77",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "D77",
+        "type": "formula",
+        "value": "=D75+D76"
+    },
+    {
+        "coord": "E77",
+        "type": "formula",
+        "value": "=E75+E76"
+    },
+    {
+        "coord": "F77",
+        "type": "text",
+        "value": "間　　 接　　 経　　 費"
+    },
+    {
+        "coord": "A78",
+        "type": "text",
+        "value": "製　 本　 費　(改 装 費)"
+    },
+    {
+        "coord": "F78",
+        "type": "text",
+        "value": "間接人件費 1点"
+    },
+    {
+        "coord": "G78",
+        "type": "number",
+        "value": 1000000
+    },
+    {
+        "coord": "H78",
+        "type": "formula",
+        "value": "=G78"
+    },
+    {
+        "coord": "A79",
+        "type": "text",
+        "value": "昭図&製作改装費"
+    },
+    {
+        "coord": "D79",
+        "type": "number",
+        "value": 0
+    },
+    {
+        "coord": "E79",
+        "type": "formula",
+        "value": "=D79*$D$1"
+    },
+    {
+        "coord": "F79",
+        "type": "text",
+        "value": "そ の 他 1点"
+    },
+    {
+        "coord": "G79",
+        "type": "number",
+        "value": 1150000
+    },
+    {
+        "coord": "H79",
+        "type": "formula",
+        "value": "=G79"
+    },
+    {
+        "coord": "A80",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "D80",
+        "type": "formula",
+        "value": "=E80/$D$1"
+    },
+    {
+        "coord": "E80",
+        "type": "formula",
+        "value": "=SUM(E79)"
+    },
+    {
+        "coord": "F80",
+        "type": "text",
+        "value": "合計"
+    },
+    {
+        "coord": "G80",
+        "type": "formula",
+        "value": "=H80/$D$1"
+    },
+    {
+        "coord": "H80",
+        "type": "formula",
+        "value": "=SUM(H78:H79)"
+    }
+]

@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeout
 from supabase import create_client, Client
@@ -33,8 +34,6 @@ for i, arg in enumerate(sys.argv):
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"]
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ["GOOGLE_AI_API_KEY"]
-
 MAX_JOBS = LIMIT or 50  # 1カテゴリあたりの最大取得件数
 
 CATEGORIES = {
@@ -52,10 +51,10 @@ CATEGORIES = {
     },
 }
 
-genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel(
+vertexai.init(location="asia-northeast1")
+gemini_model = GenerativeModel(
     "gemini-2.5-flash-lite",
-    generation_config=genai.types.GenerationConfig(
+    generation_config=GenerationConfig(
         response_mime_type="application/json",
         temperature=0.0,
     ),

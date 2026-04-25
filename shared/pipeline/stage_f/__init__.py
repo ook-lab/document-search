@@ -22,7 +22,7 @@ from .f5_logical_table_joiner import F5LogicalTableJoiner
 class F1Controller:
     """Stage F チェーン（旧 Controller）"""
 
-    def __init__(self, gemini_api_key=None):
+    def __init__(self, ):
         """
         チェーン構築: F-1 Merger → F-3 Normalizer → F-5 Joiner
 

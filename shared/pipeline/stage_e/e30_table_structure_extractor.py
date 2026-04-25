@@ -14,7 +14,8 @@ from loguru import logger
 import json
 
 try:
-    import google.generativeai as genai
+    import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -47,8 +48,8 @@ class E30TableStructureExtractor:
             return
 
         if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(model_name)
+            vertexai.init(location="asia-northeast1")
+            self.model = GenerativeModel(model_name)
             logger.info(f"[E-30] モデル初期化: {model_name}")
         else:
             logger.warning("[E-30] API key が設定されていません")

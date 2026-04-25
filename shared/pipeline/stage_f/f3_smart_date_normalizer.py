@@ -17,7 +17,8 @@ import json
 from datetime import datetime
 
 try:
-    import google.generativeai as genai
+    import vertexai
+from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -50,8 +51,8 @@ class F3SmartDateNormalizer:
             return
 
         if api_key:
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel(model_name)
+            vertexai.init(location="asia-northeast1")
+            self.model = GenerativeModel(model_name)
         else:
             logger.warning("[F-3] API key が設定されていません")
             self.model = None
