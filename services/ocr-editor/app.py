@@ -24,7 +24,7 @@ for folder in [app.config['UPLOAD_FOLDER'], app.config['OUTPUT_FOLDER']]:
         os.makedirs(folder)
 
 # Gemini Setup
-vertexai.init(location="asia-northeast1")
+vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 model_name = os.getenv("STAGE1_MODEL", "gemini-2.5-flash-lite")
 model = GenerativeModel(model_name)
 

@@ -1,3 +1,4 @@
+import os
 """
 G-22: Text AI Processor（地の文のAI処理）
 
@@ -51,7 +52,7 @@ class G22TextAIProcessor:
             return
 
         if api_key:
-            vertexai.init(location="asia-northeast1")
+            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
             self.model = GenerativeModel(model_name)
             logger.info(f"[G-22] モデル初期化: {model_name}")
         else:

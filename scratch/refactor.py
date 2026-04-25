@@ -23,7 +23,7 @@ def refactor_file(file_path):
     # 2. Replace genai.configure(api_key=...)
     content = re.sub(
         r'genai\.configure\(api_key=.*?\)',
-        r'vertexai.init(location="asia-northeast1")',
+        r'vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))',
         content
     )
 
@@ -42,7 +42,7 @@ def refactor_file(file_path):
         content = content.replace('from google import genai', 'import vertexai\nfrom google import genai')
         content = re.sub(
             r'genai\.Client\(api_key=.*?\)',
-            r'genai.Client(vertexai=True, location="asia-northeast1")',
+            r'genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))',
             content
         )
 

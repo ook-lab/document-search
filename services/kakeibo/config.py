@@ -19,7 +19,7 @@ MONEYFORWARD_PROCESSED_ID = os.getenv("KAKEIBO_MONEYFORWARD_PROCESSED_ID")  # MF
 # EASY: flash-lite（低コスト・高速、きれいなレシート向け）
 # HARD: flash  （高精度、かすれ・複雑・手書きレシート向け）
 GEMINI_MODEL_EASY   = "gemini-2.5-flash-lite"
-GEMINI_MODEL_HARD   = "gemini-2.5-flash"
+GEMINI_MODEL_HARD   = "gemini-3.1-flash-lite-preview"
 GEMINI_TEMPERATURE  = 0.1
 
 # ── Supabase ─────────────────────────────────────────────

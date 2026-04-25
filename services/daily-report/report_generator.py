@@ -1,3 +1,4 @@
+import os
 """
 日次レポート生成エンジン（v2）
 
@@ -258,7 +259,7 @@ class ReportGenerator:
             import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             from shared.common.config.settings import settings
-            vertexai.init(location="asia-northeast1")
+            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
             model = GenerativeModel(GEMINI_MODEL)
             resp  = model.generate_content(
                 prompt,

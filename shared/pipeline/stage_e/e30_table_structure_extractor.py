@@ -1,3 +1,4 @@
+import os
 """
 E-30: Table Structure Extractor（表構造専用 - Gemini 2.5 Flash-lite）
 
@@ -48,7 +49,7 @@ class E30TableStructureExtractor:
             return
 
         if api_key:
-            vertexai.init(location="asia-northeast1")
+            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
             self.model = GenerativeModel(model_name)
             logger.info(f"[E-30] モデル初期化: {model_name}")
         else:

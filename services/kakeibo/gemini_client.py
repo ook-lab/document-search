@@ -44,7 +44,7 @@ class GeminiClient:
     """Gemini API クライアント（Kakeibo専用）"""
 
     def __init__(self):
-                        vertexai.init(location="asia-northeast1")
+                        vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 
     # ── レシート OCR（画像 → テキスト）────────────────────────
 
@@ -95,7 +95,7 @@ class GeminiClient:
     def call_model(
         self,
         prompt: str,
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "gemini-3.1-flash-lite-preview",
         max_output_tokens: int = 8192,
         **_kwargs,                # tier など余分なキーワードを無視
     ) -> Dict:

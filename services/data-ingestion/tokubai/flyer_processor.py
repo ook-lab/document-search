@@ -241,7 +241,7 @@ class FlyerProcessor:
                     'confidence': product.get('confidence', 0.5),
                     'metadata': {
                         'extraction_date': datetime.now().isoformat(),
-                        'extraction_model': 'gemini-2.5-pro-vision'
+                        'extraction_model': 'gemini-3.1-flash-lite-preview-vision'
                     }
                 }
 

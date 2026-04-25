@@ -24,7 +24,7 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
 logging.basicConfig(level=logging.INFO)
 
-client = genai.Client(vertexai=True, location="asia-northeast1")
+client = genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 
 MARKER_START = "<<<JSON_SANDWICH_START>>>"
 MARKER_END = "<<<JSON_SANDWICH_END>>>"

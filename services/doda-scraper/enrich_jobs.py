@@ -35,7 +35,7 @@ for i, arg in enumerate(sys.argv):
     if arg == "--limit" and i + 1 < len(sys.argv):
         LIMIT = int(sys.argv[i + 1])
 
-vertexai.init(location="asia-northeast1")
+vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 model = GenerativeModel(
     "gemini-2.5-flash-lite",
     generation_config=GenerationConfig(

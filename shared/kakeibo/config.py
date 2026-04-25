@@ -52,7 +52,7 @@ GEMINI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")  # 既存の.envに合わせる
 
 # 2つのモデルを使い分け
 GEMINI_MODEL_EASY = "gemini-2.5-flash-lite"  # 読みやすいレシート用（低コスト・高速）
-GEMINI_MODEL_HARD = "gemini-2.5-flash"       # 読みづらいレシート用（高精度）
+GEMINI_MODEL_HARD = "gemini-3.1-flash-lite-preview"       # 読みづらいレシート用（高精度）
 
 GEMINI_TEMPERATURE = 0.1  # 低めに設定（精度重視）
 

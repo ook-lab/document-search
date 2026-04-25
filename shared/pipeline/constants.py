@@ -24,7 +24,7 @@ CHUNK_SIZE_PAGES = 1
 # ============================================
 
 # F2: 構造解析 - Gemini 2.5 Flash
-F2_MODEL = "gemini-2.5-flash"
+F2_MODEL = "gemini-3.1-flash-lite-preview"
 F2_MAX_TOKENS = 65536
 F2_TEMPERATURE = 0.0
 

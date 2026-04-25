@@ -67,7 +67,7 @@ class QueryExpander:
             response = self.llm_client.call_model(
                 tier="utility",  # 軽量なタスク
                 prompt=prompt,
-                model_name="gemini-2.5-flash"  # 高速モデル
+                model_name="gemini-3.1-flash-lite-preview"  # 高速モデル
             )
 
             if not response.get('success'):

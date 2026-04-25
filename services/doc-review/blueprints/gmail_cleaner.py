@@ -257,7 +257,7 @@ def api_analyze():
         import vertexai
     from google import genai
         today  = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        client = genai.Client(vertexai=True, location="asia-northeast1")
+        client = genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 
         all_results = []
         batch_size  = 20

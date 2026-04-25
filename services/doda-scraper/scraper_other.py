@@ -51,7 +51,7 @@ CATEGORIES = {
     },
 }
 
-vertexai.init(location="asia-northeast1")
+vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 gemini_model = GenerativeModel(
     "gemini-2.5-flash-lite",
     generation_config=GenerationConfig(

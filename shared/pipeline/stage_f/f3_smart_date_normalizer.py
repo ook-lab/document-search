@@ -1,3 +1,4 @@
+import os
 """
 F-3: Smart Date/Time Normalizer（日付・時刻の正規化）
 
@@ -51,7 +52,7 @@ class F3SmartDateNormalizer:
             return
 
         if api_key:
-            vertexai.init(location="asia-northeast1")
+            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
             self.model = GenerativeModel(model_name)
         else:
             logger.warning("[F-3] API key が設定されていません")

@@ -185,7 +185,7 @@ class PDFProcessor:
             metadata['vision_corrected'] = len(vision_corrections) > 0
             metadata['vision_pages'] = len(vision_corrections)
             metadata['pdfplumber_model'] = 'pdfplumber'
-            metadata['vision_model'] = 'gemini-2.5-flash' if vision_corrections else None
+            metadata['vision_model'] = 'gemini-3.1-flash-lite-preview' if vision_corrections else None
             metadata['e3_chars'] = e3_total_chars
             metadata['vision_correction_chars'] = vision_total
             metadata['e5_chars'] = e5_total_chars
@@ -672,7 +672,7 @@ class PDFProcessor:
                     logger.info(f"[E-4] Vision差分検出: ページ {page_num + 1} (E-3: {e3_chars}文字)")
                     result = self.llm_client.transcribe_image(
                         image_path=tmp_path,
-                        model="gemini-2.5-flash",
+                        model="gemini-3.1-flash-lite-preview",
                         prompt=prompt
                     )
 

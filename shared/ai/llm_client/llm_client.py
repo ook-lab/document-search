@@ -32,7 +32,7 @@ class LLMClient:
         self.openai_api_key = settings.OPENAI_API_KEY
 
         # Gemini設定 (トップレベル関数のみ使用)
-        vertexai.init(location="asia-northeast1")
+        vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
         self.gemini_api_key = True # to bypass checks
 
         # Anthropic設定
@@ -749,7 +749,7 @@ class LLMClient:
         self,
         image_path: Path,
         prompt: str = "この画像内の表組みやリストを、Markdown形式で正確に書き起こしてください。",
-        model: str = "gemini-2.5-pro"
+        model: str = "gemini-3.1-flash-lite-preview"
     ) -> Dict[str, Any]:
         """
         画像ファイルをGemini Visionで文字起こし
@@ -757,13 +757,13 @@ class LLMClient:
         Args:
             image_path: 画像ファイルのパス（PNG, JPEG等）
             prompt: Geminiに送るプロンプト
-            model: 使用するGeminiモデル（デフォルト: gemini-2.5-pro）
+            model: 使用するGeminiモデル（デフォルト: gemini-3.1-flash-lite-preview）
 
         Returns:
             {"success": bool, "content": str, "model": str, "provider": str}
         """
         if not self.gemini_api_key:
-            return {"success": False, "error": "Gemini API key is missing", "model": "gemini-2.5-flash"}
+            return {"success": False, "error": "Gemini API key is missing", "model": "gemini-3.1-flash-lite-preview"}
 
         # 指定されたGeminiモデルを使用
         return self._call_gemini(

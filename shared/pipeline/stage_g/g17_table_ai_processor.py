@@ -1,3 +1,4 @@
+import os
 """
 G-17: Table AI Processor（表のAI処理）
 
@@ -50,7 +51,7 @@ class G17TableAIProcessor:
             import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             if api_key:
-                vertexai.init(location="asia-northeast1")
+                vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
                 self.model = GenerativeModel(model_name)
                 logger.info(f"[G-17] モデル初期化: {model_name}")
             else:
