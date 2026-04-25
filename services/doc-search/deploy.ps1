@@ -32,14 +32,14 @@ gcloud run deploy $SERVICE_NAME `
     --cpu 2 `
     --timeout 300 `
     --allow-unauthenticated `
-    --set-env-vars "GOOGLE_AI_API_KEY=$env:GOOGLE_AI_API_KEY" `
-    --set-env-vars "ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY" `
-    --set-env-vars "OPENAI_API_KEY=$env:OPENAI_API_KEY" `
-    --set-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
-    --set-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
-    --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
-    --set-env-vars "LOG_LEVEL=INFO" `
-    --set-env-vars "RERANK_ENABLED=true"
+    --update-env-vars "GOOGLE_AI_API_KEY=$env:GOOGLE_AI_API_KEY" `
+    --update-env-vars "ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY" `
+    --update-env-vars "OPENAI_API_KEY=$env:OPENAI_API_KEY" `
+    --update-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
+    --update-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
+    --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
+    --update-env-vars "LOG_LEVEL=INFO" `
+    --update-env-vars "RERANK_ENABLED=true"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "=== Deploy OK ==="

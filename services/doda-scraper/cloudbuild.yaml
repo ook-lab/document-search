@@ -1,6 +1,8 @@
 steps:
   # ============================================
-  # doda-scraper ?E?E????E  # ============================================
+  # ============================================
+  # doda-scraper
+  # ============================================
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
@@ -25,7 +27,8 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--timeout=600'
-      - '--memory=2Gi' # Playwright??????????????E      - '--set-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
+      - '--memory=2Gi'
+      - '--update-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doda-scraper:${_TAG}'
@@ -34,7 +37,8 @@ substitutions:
   _TAG: 'latest'
 
 options:
-  machineType: 'E2_HIGHCPU_8' # ??????????E  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
   substitutionOption: ALLOW_LOOSE
 
 timeout: 1800s

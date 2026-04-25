@@ -1,5 +1,6 @@
 steps:
-  # ???E????????????Epull?E??E??E????????E  - name: 'gcr.io/cloud-builders/docker'
+  # キャッシュ用イメージの取得
+  - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -39,7 +40,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=3600'
-      - '--set-env-vars=ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},DOC_PROCESSOR_API_KEY=${_DOC_PROCESSOR_API_KEY},LOG_LEVEL=INFO'
+      - '--update-env-vars=ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},DOC_PROCESSOR_API_KEY=${_DOC_PROCESSOR_API_KEY},LOG_LEVEL=INFO'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-processor:${_TAG}'

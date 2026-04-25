@@ -35,13 +35,13 @@ gcloud run deploy ${SERVICE_NAME} \
     --max-instances 10 \
     --concurrency 1 \
     --execution-environment gen1 \
-    --set-env-vars "GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}" \
-    --set-env-vars "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
-    --set-env-vars "OPENAI_API_KEY=${OPENAI_API_KEY:-}" \
-    --set-env-vars "SUPABASE_URL=${SUPABASE_URL:-}" \
-    --set-env-vars "SUPABASE_KEY=${SUPABASE_KEY:-}" \
-    --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}" \
-    --set-env-vars "DOC_PROCESSOR_API_KEY=${DOC_PROCESSOR_API_KEY:-}" \
-    --set-env-vars "LOG_LEVEL=${LOG_LEVEL:-INFO}"
+    --update-env-vars "GOOGLE_AI_API_KEY=${GOOGLE_AI_API_KEY:-}" \
+    --update-env-vars "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
+    --update-env-vars "OPENAI_API_KEY=${OPENAI_API_KEY:-}" \
+    --update-env-vars "SUPABASE_URL=${SUPABASE_URL:-}" \
+    --update-env-vars "SUPABASE_KEY=${SUPABASE_KEY:-}" \
+    --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}" \
+    --update-env-vars "DOC_PROCESSOR_API_KEY=${DOC_PROCESSOR_API_KEY:-}" \
+    --update-env-vars "LOG_LEVEL=${LOG_LEVEL:-INFO}"
 
 echo "✅ ${SERVICE_NAME} deployed!"

@@ -23,7 +23,7 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--timeout=300'
-      - '--set-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY}'
+      - '--update-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/daily-report:${_TAG}'

@@ -31,10 +31,10 @@ gcloud run deploy $SERVICE_NAME `
     --cpu 1 `
     --timeout 60 `
     --allow-unauthenticated `
-    --set-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
-    --set-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
-    --set-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
-    --set-env-vars "LOG_LEVEL=INFO"
+    --update-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
+    --update-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
+    --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
+    --update-env-vars "LOG_LEVEL=INFO"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "=== Deploy OK ==="

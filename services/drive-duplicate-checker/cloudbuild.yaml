@@ -25,7 +25,7 @@ steps:
       - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/drive-checker:latest'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
-      - '--cpu=0.08'  # [??] ??CPU??E      - '--memory=128Mi' # [??] ???????E      - '--set-env-vars=RUN_MODE=CLOUD'
+      - '--cpu=0.08'  # [??] ??CPU??E      - '--memory=128Mi' # [??] ???????E      - '--update-env-vars=RUN_MODE=CLOUD'
 
 options:
   logging: CLOUD_LOGGING_ONLY

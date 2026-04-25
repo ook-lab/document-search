@@ -34,7 +34,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=300'
-      - '--set-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},GCP_PROJECT_ID=$PROJECT_ID,GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},GMAIL_CLEANER_REDIRECT_URI=https://doc-review-983922127476.asia-northeast1.run.app/gmail-cleaner/auth/callback'
+      - '--update-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},GCP_PROJECT_ID=$PROJECT_ID,GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},GMAIL_CLEANER_REDIRECT_URI=https://doc-review-983922127476.asia-northeast1.run.app/gmail-cleaner/auth/callback'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-review:latest'
