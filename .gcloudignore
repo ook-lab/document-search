@@ -20,7 +20,7 @@ services/doc-processor/
 services/doc-review/
 services/doc-search/
 services/doda-dashboard/
-services/doda-scraper/
-services/kakeibo/
-services/kakeibo_view/
+# services/doda-scraper/
+# services/kakeibo/
+# services/kakeibo_view/
 services/pdf-splitter/

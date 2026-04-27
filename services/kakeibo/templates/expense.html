@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% set active = 'expense' %}
+{% block content %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+  <div class="month-nav">
+    <a href="/view/expense?month={{ prev_month }}">◀ 前月</a>
+    <span style="font-size:20px; font-weight:bold;">{{ year_month }}</span>
+    <a href="/view/expense?month={{ next_month }}">次月 ▶</a>
+  </div>
+  <form method="get" action="/view/expense" style="display:flex; gap:8px; align-items:center;">
+    <input type="month" name="month" value="{{ year_month }}" style="padding:4px 8px; border:1px solid #ccc; border-radius:4px;">
+    <button type="submit" style="padding:4px 12px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer;">移動</button>
+  </form>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-label">支出合計</div>
+    <div class="kpi-value expense" id="kpi-total">{{ "{:,}".format(total_expense) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">件数</div>
+    <div class="kpi-value" style="color:#555;" id="kpi-count">{{ expenses|length }}</div>
+  </div>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>カテゴリ別 <span style="font-size:12px; color:#888; font-weight:normal;">▶ で中分類・小分類・明細を展開</span></h2>
+    <table id="cat-table">
+      <thead>
+        <tr>
+          <th style="width:40px;"></th>
+          <th>カテゴリ</th>
+          <th class="amt">金額</th>
+          <th class="amt">構成比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for maj, maj_amt, mid_list in hierarchy_list %}
+        {% set maj_id = loop.index %}
+
+        {# 大分類行 #}
+        <tr class="row-major" onclick="toggleMajor({{ maj_id }})" style="cursor:pointer; font-weight:bold;">
+          <td style="text-align:center; color:#3498db; font-size:13px;">
+            <span id="icon-{{ maj_id }}">{% if mid_list %}▶{% endif %}</span>
+          </td>
+          <td>{{ maj }}</td>
+          <td class="amt neg" id="cat-amt-{{ maj_id }}">{{ "{:,}".format(maj_amt) }}</td>
+          <td class="amt" id="cat-pct-{{ maj_id }}">{% if total_expense != 0 %}{{ "%.1f"|format(maj_amt / total_expense * 100) }}%{% endif %}</td>
+        </tr>
+
+        {# 中分類行（初期非表示）#}
+        {% for mid, mid_amt, sml_list, direct_txs in mid_list %}
+        {% set mid_id = maj_id ~ '_' ~ loop.index %}
+        {% set expandable = sml_list or direct_txs %}
+        <tr class="row-mid row-mid-{{ maj_id }}" style="display:none; background:#f7f9fc;">
+          <td></td>
+          <td style="padding-left:20px; cursor:{% if expandable %}pointer{% else %}default{% endif %}; color:#555;"
+              onclick="{% if expandable %}toggleMid('{{ mid_id }}'){% endif %}">
+            {% if expandable %}<span id="icon-mid-{{ mid_id }}" style="color:#3498db; font-size:11px;">▶</span>{% else %}<span style="color:#ccc;">─</span>{% endif %}
+            {{ mid }}
+          </td>
+          <td class="amt neg" style="color:#555;">{{ "{:,}".format(mid_amt) }}</td>
+          <td class="amt" style="color:#aaa;">
+            {% if maj_amt != 0 %}{{ "%.1f"|format(mid_amt / maj_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+
+        {# 小分類行（初期非表示）#}
+        {% for sml, sml_amt, sml_txs in sml_list %}
+        {% set sml_id = mid_id ~ '_' ~ loop.index %}
+        <tr class="row-sml row-sml-{{ mid_id }} row-mid-{{ maj_id }}" style="display:none; background:#fafcff;">
+          <td></td>
+          <td style="padding-left:40px; font-size:12px; color:#777;
+                     cursor:{% if sml_txs %}pointer{% else %}default{% endif %};"
+              onclick="{% if sml_txs %}toggleSml('{{ sml_id }}'){% endif %}">
+            {% if sml_txs %}
+              <span id="icon-sml-{{ sml_id }}" style="color:#3498db; font-size:10px;">▶</span>
+            {% else %}
+              <span style="color:#ccc;">─</span>
+            {% endif %}
+            {{ sml }}
+          </td>
+          <td class="amt neg" style="font-size:12px; color:#777;">{{ "{:,}".format(sml_amt) }}</td>
+          <td class="amt" style="font-size:12px; color:#aaa;">
+            {% if mid_amt != 0 %}{{ "%.1f"|format(sml_amt / mid_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+        {# 個別明細行（初期非表示）#}
+        {% for tx in sml_txs %}
+        <tr class="row-tx row-tx-{{ sml_id }} row-sml-{{ mid_id }} row-mid-{{ maj_id }}" style="display:none; background:#edf2ff;">
+          <td></td>
+          <td style="padding-left:56px; font-size:11px; color:#999;">
+            <span style="color:#bbb; margin-right:6px;">{{ tx.date }}</span>{{ tx.content }}
+          </td>
+          <td class="amt neg" style="font-size:11px; color:#999;">{{ "{:,}".format(tx.amount) }}</td>
+          <td class="amt" style="font-size:11px; color:#ccc;">
+            {% if sml_amt != 0 %}{{ "%.1f"|format(tx.amount / sml_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+
+        {# 小分類未設定の取引を中分類の直下に表示 #}
+        {% for tx in direct_txs %}
+        <tr class="row-sml row-sml-{{ mid_id }} row-mid-{{ maj_id }}" style="display:none; background:#edf2ff;">
+          <td></td>
+          <td style="padding-left:40px; font-size:11px; color:#999;">
+            <span style="color:#bbb; margin-right:6px;">{{ tx.date }}</span>{{ tx.content }}
+          </td>
+          <td class="amt neg" style="font-size:11px; color:#999;">{{ "{:,}".format(tx.amount) }}</td>
+          <td class="amt" style="font-size:11px; color:#ccc;">
+            {% if mid_amt != 0 %}{{ "%.1f"|format(tx.amount / mid_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+
+        {% endfor %}
+
+        <tr style="font-weight:bold; background:#ecf0f1;">
+          <td></td>
+          <td>合計</td>
+          <td class="amt neg" id="cat-total-amt">{{ "{:,}".format(total_expense) }}</td>
+          <td class="amt">100%</td>
+        </tr>
+      </tbody>
+    </table>
+
+    {% if person_hierarchy %}
+    <h2 style="margin-top:20px;">人物別 <span style="font-size:12px; color:#888; font-weight:normal;">▶ でカテゴリを展開</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px;"></th>
+          <th>人物 / カテゴリ</th>
+          <th class="amt">金額</th>
+          <th class="amt">構成比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set p_total_all = person_hierarchy | sum(attribute=1) %}
+        {% for person, p_amt, cat_list in person_hierarchy %}
+        {% set pid = 'p' ~ loop.index %}
+
+        {# 人物行 #}
+        <tr onclick="toggleMajor('{{ pid }}')" style="cursor:pointer; font-weight:bold;">
+          <td style="text-align:center; color:#9966FF; font-size:13px;">
+            <span id="icon-{{ pid }}">{% if cat_list %}▶{% endif %}</span>
+          </td>
+          <td>{{ person }}</td>
+          <td class="amt neg">{{ "{:,}".format(p_amt) }}</td>
+          <td class="amt">{% if total_expense != 0 %}{{ "%.1f"|format(p_amt / total_expense * 100) }}%{% endif %}</td>
+        </tr>
+
+        {# カテゴリ行 #}
+        {% for maj, maj_amt, mid_list in cat_list %}
+        {% set cid = pid ~ '_' ~ loop.index %}
+        <tr class="row-mid row-mid-{{ pid }}" style="display:none; background:#f9f7ff;">
+          <td></td>
+          <td style="padding-left:20px; cursor:{% if mid_list|length > 1 or (mid_list|length == 1 and mid_list[0][0] != '（未設定）') %}pointer{% else %}default{% endif %}; color:#555;"
+              onclick="toggleMid('{{ cid }}')">
+            {% if mid_list|length > 1 or (mid_list and mid_list[0][0] != '（未設定）') %}
+              <span id="icon-mid-{{ cid }}" style="color:#9966FF; font-size:11px;">▶</span>
+            {% else %}
+              <span style="color:#ccc;">─</span>
+            {% endif %}
+            {{ maj }}
+          </td>
+          <td class="amt neg" style="color:#555;">{{ "{:,}".format(maj_amt) }}</td>
+          <td class="amt" style="color:#aaa;">
+            {% if p_amt != 0 %}{{ "%.1f"|format(maj_amt / p_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+
+        {# 中分類行 #}
+        {% for mid, mid_amt in mid_list %}
+        {% if mid != '（未設定）' %}
+        <tr class="row-sml row-sml-{{ cid }} row-mid-{{ pid }}" style="display:none; background:#fdf9ff;">
+          <td></td>
+          <td style="padding-left:40px; font-size:12px; color:#777;">{{ mid }}</td>
+          <td class="amt neg" style="font-size:12px; color:#777;">{{ "{:,}".format(mid_amt) }}</td>
+          <td class="amt" style="font-size:12px; color:#aaa;">
+            {% if maj_amt != 0 %}{{ "%.1f"|format(mid_amt / maj_amt * 100) }}%{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+        {% endfor %}
+
+        {% endfor %}
+
+        <tr style="font-weight:bold; background:#ecf0f1;">
+          <td></td><td>合計</td>
+          <td class="amt neg">{{ "{:,}".format(total_expense) }}</td>
+          <td class="amt">100%</td>
+        </tr>
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>支出グラフ（カテゴリ別）</h2>
+    <canvas id="catChart" height="300"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <h2>支出明細 <span style="font-size:12px; color:#888; font-weight:normal;">チェックで一時的に集計から除外（保存されません）</span></h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px; text-align:center;" title="集計対象外">除外</th>
+        <th>日付</th><th>内容</th><th>カテゴリ</th><th>人物</th>
+        <th>金融機関</th><th class="amt">金額</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in expenses %}
+      <tr id="row-{{ t.id }}" data-amount="{{ t.amount }}" data-cat="{{ t.category }}" data-catid="{{ loop.index0 }}">
+        <td style="text-align:center;">
+          <input type="checkbox" title="この行を集計から外して割合を確認"
+                 onchange="toggleViewExclude('{{ t.id }}', {{ t.amount }}, '{{ t.category }}', this)">
+        </td>
+        <td>{{ t.date }}</td>
+        <td>{{ t.content }}</td>
+        <td>{{ t.category }}</td>
+        <td>{{ t.cat_person or '' }}</td>
+        <td style="font-size:11px; color:#888;">{{ t.institution }}</td>
+        <td class="amt neg">{{ "{:,}".format(t.amount) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="color:#999; text-align:center;">データなし</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+// 大分類の展開/折りたたみ
+function toggleMajor(majId) {
+  const midRows = document.querySelectorAll(`.row-mid-${majId}`);
+  const icon    = document.getElementById(`icon-${majId}`);
+  const isOpen  = icon && icon.textContent === '▼';
+
+  midRows.forEach(row => {
+    if (isOpen) {
+      row.style.display = 'none';
+    } else {
+      // 小分類行・明細行は初期非表示
+      if (row.classList.contains('row-sml') || row.classList.contains('row-tx')) {
+        row.style.display = 'none';
+      } else {
+        row.style.display = '';
+      }
+    }
+  });
+
+  // 中分類・小分類アイコンをリセット
+  if (isOpen) {
+    document.querySelectorAll(`[id^="icon-mid-${majId}_"]`).forEach(ic => ic.textContent = '▶');
+    document.querySelectorAll(`[id^="icon-sml-${majId}_"]`).forEach(ic => ic.textContent = '▶');
+  }
+
+  if (icon) icon.textContent = isOpen ? '▶' : '▼';
+}
+
+// 中分類の展開/折りたたみ
+function toggleMid(midId) {
+  const smlRows = document.querySelectorAll(`.row-sml-${midId}`);
+  const icon    = document.getElementById(`icon-mid-${midId}`);
+  const isOpen  = icon && icon.textContent === '▼';
+
+  smlRows.forEach(row => {
+    if (isOpen) {
+      row.style.display = 'none';
+    } else {
+      // 明細行は小分類クリックで展開するので初期非表示
+      if (row.classList.contains('row-tx')) {
+        row.style.display = 'none';
+      } else {
+        row.style.display = '';
+      }
+    }
+  });
+
+  // 小分類アイコンをリセット
+  if (isOpen) {
+    document.querySelectorAll(`[id^="icon-sml-${midId}_"]`).forEach(ic => ic.textContent = '▶');
+  }
+
+  if (icon) icon.textContent = isOpen ? '▶' : '▼';
+}
+
+// 小分類の展開/折りたたみ（個別明細）
+function toggleSml(smlId) {
+  const txRows = document.querySelectorAll(`.row-tx-${smlId}`);
+  const icon   = document.getElementById(`icon-sml-${smlId}`);
+  const isOpen = icon && icon.textContent === '▼';
+
+  txRows.forEach(row => { row.style.display = isOpen ? 'none' : ''; });
+  if (icon) icon.textContent = isOpen ? '▶' : '▼';
+}
+
+// カテゴリ別の元金額マップ（サーバー計算値）
+const catBaseAmt = {};
+{% for maj, maj_amt, mid_list in hierarchy_list %}
+catBaseAmt[{{ loop.index }}] = { name: {{ maj | tojson }}, base: {{ maj_amt }} };
+{% endfor %}
+
+// 現在の除外済み金額を カテゴリ名 → 増減額 で管理
+const viewExcluded = {};  // { txId: {amount, cat} }
+
+function toggleViewExclude(txId, amount, cat, checkbox) {
+  const row = document.getElementById(`row-${txId}`);
+  const exclude = checkbox.checked;
+
+  // 行の見た目
+  row.style.opacity        = exclude ? '0.4' : '1';
+  row.style.textDecoration = exclude ? 'line-through' : '';
+
+  // 除外リストを更新
+  if (exclude) {
+    viewExcluded[txId] = { amount, cat };
+  } else {
+    delete viewExcluded[txId];
+  }
+
+  recompute();
+}
+
+function recompute() {
+  const baseTotal = {{ total_expense }};
+
+  // カテゴリ別除外額を集計
+  const catExcluded = {};
+  let totalExcluded = 0;
+  for (const { amount, cat } of Object.values(viewExcluded)) {
+    catExcluded[cat] = (catExcluded[cat] || 0) + amount;
+    totalExcluded += amount;
+  }
+
+  const newTotal = baseTotal - totalExcluded;
+
+  // KPI更新
+  document.getElementById('kpi-total').textContent = newTotal.toLocaleString();
+  document.getElementById('cat-total-amt').textContent = newTotal.toLocaleString();
+  const excludedCount = Object.keys(viewExcluded).length;
+  document.getElementById('kpi-count').textContent =
+    excludedCount > 0
+      ? `{{ expenses|length - 0 }} - ${excludedCount}`
+      : `{{ expenses|length }}`;
+
+  // カテゴリ行を更新
+  {% for maj, maj_amt, mid_list in hierarchy_list %}
+  {
+    const idx   = {{ loop.index }};
+    const name  = {{ maj | tojson }};
+    const base  = {{ maj_amt }};
+    const delta = catExcluded[name] || 0;
+    const newAmt = base - delta;
+    const pct    = newTotal !== 0 ? (newAmt / newTotal * 100).toFixed(1) + '%' : '';
+    document.getElementById(`cat-amt-${idx}`).textContent = newAmt.toLocaleString();
+    document.getElementById(`cat-pct-${idx}`).textContent = pct;
+  }
+  {% endfor %}
+}
+
+// グラフ
+const labels = {{ chart_labels | tojson }};
+const values = {{ chart_values | tojson }};
+const colors = {{ colors | tojson }};
+
+new Chart(document.getElementById('catChart'), {
+  type: 'bar',
+  data: {
+    labels,
+    datasets: [{ label: '支出', data: values, backgroundColor: colors }]
+  },
+  options: {
+    indexAxis: 'y',
+    plugins: { legend: { display: false } },
+    scales: { x: { ticks: { callback: v => v.toLocaleString() } } }
+  }
+});
+</script>
+{% endblock %}

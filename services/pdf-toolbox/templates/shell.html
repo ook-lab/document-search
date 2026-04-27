@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF ツールボックス</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface-2: #334155;
+            --text: #f1f5f9;
+            --text-muted: #94a3b8;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.3);
+            --accent-ocr: #f59e0b;
+            --accent-embed: #10b981;
+            --accent-split: #3b82f6;
+            --accent-opt: #ec4899;
+            --border: #334155;
+            --radius: 12px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ===== HEADER ===== */
+        header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            height: 56px;
+            z-index: 100;
+        }
+
+        .logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo-icon {
+            font-size: 1.4rem;
+        }
+
+        .logo span {
+            background: linear-gradient(135deg, var(--primary), #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* ===== TAB BAR ===== */
+        .tab-bar {
+            display: flex;
+            gap: 0.25rem;
+            height: 100%;
+            align-items: flex-end;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 0.6rem 1.25rem;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            border-radius: 2px 2px 0 0;
+        }
+
+        .tab-btn[data-tab="ocr"].active::after { background: var(--accent-ocr); }
+        .tab-btn[data-tab="embedder"].active::after { background: var(--accent-embed); }
+        .tab-btn[data-tab="splitter"].active::after { background: var(--accent-split); }
+        .tab-btn[data-tab="optimizer"].active::after { background: var(--accent-opt); }
+
+        .tab-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .tab-btn[data-tab="ocr"] .tab-dot { background: var(--accent-ocr); }
+        .tab-btn[data-tab="embedder"] .tab-dot { background: var(--accent-embed); }
+        .tab-btn[data-tab="splitter"] .tab-dot { background: var(--accent-split); }
+        .tab-btn[data-tab="optimizer"] .tab-dot { background: var(--accent-opt); }
+
+        /* ===== CONTENT ===== */
+        .tab-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .tab-content iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: none;
+            background: white;
+        }
+
+        .tab-content iframe.active {
+            display: block;
+        }
+
+        /* ===== WELCOME SCREEN ===== */
+        .welcome {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 2rem;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .welcome h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f1f5f9, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome p {
+            color: var(--text-muted);
+            max-width: 480px;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .tool-cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            max-width: 800px;
+            width: 100%;
+            padding: 0 2rem;
+        }
+
+        .tool-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            text-align: center;
+        }
+
+        .tool-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+            box-shadow: 0 8px 25px -5px var(--primary-glow);
+        }
+
+        .tool-card .icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+
+        .tool-card h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        .tool-card p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .tool-card:nth-child(1) { --card-accent: var(--accent-ocr); }
+        .tool-card:nth-child(2) { --card-accent: var(--accent-embed); }
+        .tool-card:nth-child(3) { --card-accent: var(--accent-split); }
+        .tool-card:nth-child(4) { --card-accent: var(--accent-opt); }
+
+        .tool-card:hover h3 { color: var(--card-accent); }
+
+        @media (max-width: 768px) {
+            .tool-cards { grid-template-columns: repeat(2, 1fr); }
+            .tab-btn { font-size: 0.75rem; padding: 0.5rem 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <span class="logo-icon">📄</span>
+            <span>PDF ツールボックス</span>
+        </div>
+        <nav class="tab-bar" id="tabBar">
+            <button class="tab-btn" data-tab="ocr"><span class="tab-dot"></span>OCR</button>
+            <button class="tab-btn" data-tab="embedder"><span class="tab-dot"></span>MD抽出</button>
+            <button class="tab-btn" data-tab="splitter"><span class="tab-dot"></span>分割</button>
+            <button class="tab-btn" data-tab="optimizer"><span class="tab-dot"></span>目次作成</button>
+        </nav>
+    </header>
+
+    <div class="tab-content" id="tabContent">
+        <!-- Welcome screen shown initially -->
+        <div class="welcome" id="welcomeScreen">
+            <h2>PDF ツールボックスへようこそ</h2>
+            <p>4つのPDFツールが1つに統合されました。上のタブまたは下のカードをクリックして開始してください。</p>
+            <div class="tool-cards">
+                <div class="tool-card" onclick="switchTab('ocr')">
+                    <span class="icon">🔍</span>
+                    <h3>OCR</h3>
+                    <p>スキャンPDFを検索可能にする</p>
+                </div>
+                <div class="tool-card" onclick="switchTab('embedder')">
+                    <span class="icon">📋</span>
+                    <h3>MD抽出</h3>
+                    <p>帳票からMarkdownを抽出&PDF埋め込み</p>
+                </div>
+                <div class="tool-card" onclick="switchTab('splitter')">
+                    <span class="icon">✂️</span>
+                    <h3>分割</h3>
+                    <p>見開きPDFを左右に分割</p>
+                </div>
+                <div class="tool-card" onclick="switchTab('optimizer')">
+                    <span class="icon">📑</span>
+                    <h3>目次作成</h3>
+                    <p>メタデータ編集&透明ラベル挿入</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Iframes loaded lazily -->
+        <iframe id="iframe-ocr" data-src="/ocr/"></iframe>
+        <iframe id="iframe-embedder" data-src="/embedder/"></iframe>
+        <iframe id="iframe-splitter" data-src="/splitter/"></iframe>
+        <iframe id="iframe-optimizer" data-src="/optimizer/"></iframe>
+    </div>
+
+    <script>
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const iframes = document.querySelectorAll('iframe');
+        const welcome = document.getElementById('welcomeScreen');
+
+        function switchTab(tabId) {
+            // Hide welcome
+            welcome.style.display = 'none';
+
+            // Update buttons
+            tabBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === tabId);
+            });
+
+            // Show target iframe, hide others
+            iframes.forEach(iframe => {
+                const isTarget = iframe.id === `iframe-${tabId}`;
+                iframe.classList.toggle('active', isTarget);
+
+                // Lazy load: set src on first activation
+                if (isTarget && !iframe.src) {
+                    iframe.src = iframe.dataset.src;
+                }
+            });
+        }
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        });
+    </script>
+</body>
+</html>

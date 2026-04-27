@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card">
+  <h2 style="margin-bottom:4px;">⚙ 集計設定</h2>
+  <p style="color:#888; font-size:13px; margin-top:0; margin-bottom:20px;">
+    チェックした大分類はすべての集計（支出・入出金・複数月・カテゴリ推移・人物別）から除外されます。
+  </p>
+
+  {% if all_cats %}
+  <div id="cat-list" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;">
+    {% for cat in all_cats %}
+    <label class="cat-chip {% if cat in excluded %}excluded{% endif %}" data-cat="{{ cat }}">
+      <input type="checkbox" value="{{ cat }}" {% if cat in excluded %}checked{% endif %} onchange="onToggle(this)">
+      {{ cat }}
+    </label>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="color:#999; margin-bottom:24px;">大分類データがまだありません。仕分けを進めてから再度確認してください。</p>
+  {% endif %}
+
+  <div style="display:flex; align-items:center; gap:16px;">
+    <button onclick="saveSettings()" id="save-btn"
+        style="padding:8px 28px; background:#2c3e50; color:white; border:none; border-radius:5px; cursor:pointer; font-size:14px; font-weight:bold;">
+      保存
+    </button>
+    <span id="save-msg" style="font-size:13px; color:#27ae60;"></span>
+  </div>
+</div>
+
+<style>
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1.5px solid #ddd;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  background: white;
+  transition: background .15s, border-color .15s;
+  user-select: none;
+}
+.cat-chip:hover { border-color: #aaa; background: #f5f5f5; }
+.cat-chip.excluded {
+  background: #fdecea;
+  border-color: #e57373;
+  color: #c62828;
+  text-decoration: line-through;
+}
+.cat-chip input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; accent-color: #e74c3c; }
+</style>
+
+<script>
+function onToggle(cb) {
+  const chip = cb.closest('.cat-chip');
+  chip.classList.toggle('excluded', cb.checked);
+}
+
+async function saveSettings() {
+  const excluded = [...document.querySelectorAll('#cat-list input:checked')].map(cb => cb.value);
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+
+  try {
+    const res  = await fetch('/view/api/settings/excluded_majors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excluded }),
+    });
+    const json = await res.json();
+    if (json.status === 'success') {
+      const msg = document.getElementById('save-msg');
+      msg.textContent = `✓ 保存しました（除外: ${excluded.length}件）`;
+      setTimeout(() => msg.textContent = '', 4000);
+    } else {
+      alert('エラー: ' + (json.message || ''));
+    }
+  } catch (e) {
+    alert('通信エラー');
+  }
+
+  btn.disabled = false;
+  btn.textContent = '保存';
+}
+</script>
+
+{% endblock %}

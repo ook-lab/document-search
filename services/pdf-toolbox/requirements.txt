@@ -1,0 +1,11 @@
+flask
+flask-cors
+pymupdf
+pypdf
+google-cloud-aiplatform
+google-genai
+python-dotenv
+pillow
+python-multipart
+werkzeug
+gunicorn

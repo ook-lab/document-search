@@ -1,0 +1,10 @@
+{
+  "Standard": {
+    "name": "Standard OCR",
+    "prompt": "Extract all text and their bounding boxes. Group related text, sentences, and paragraphs into single continuous blocks where appropriate. Do NOT extract character by character or separate small fragments unless they are independent. Focus on preserving the natural reading layout."
+  },
+  "Invoice": {
+    "name": "Invoice Parser",
+    "prompt": "Identify Invoice Number, Date, Vendor Name, Total Amount, and separate line items with their price and quantity. Group related fields. Provide coordinates for each detected text block."
+  }
+}

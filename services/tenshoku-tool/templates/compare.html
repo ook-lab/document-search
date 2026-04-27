@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}求人比較 | JobMetrics{% endblock %}
+{% block main_class %}p-6 max-w-7xl mx-auto{% endblock %}
+
+{% block content %}
+<div x-data="compare({{ ids | tojson }})" x-init="init()">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-bold" style="color:var(--text-primary);">求人比較</h1>
+            <p class="text-sm mt-0.5" style="color:var(--text-muted);">選択した求人を並べて比較します</p>
+        </div>
+        <a href="/" class="flex items-center gap-1.5 text-sm font-medium transition"
+           style="color:var(--text-secondary);"
+           onmouseover="this.style.color='var(--accent)'"
+           onmouseout="this.style.color='var(--text-secondary)'">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 16 16">
+                <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            ダッシュボードへ戻る
+        </a>
+    </div>
+
+    <template x-if="jobs.length === 0">
+        <div class="flex flex-col items-center justify-center py-40 text-center">
+            <div class="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+                 style="background: var(--accent-light);">
+                <svg class="w-7 h-7" fill="none" viewBox="0 0 24 24" style="color:#4F46E5;">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                </svg>
+            </div>
+            <p class="font-semibold" style="color:var(--text-secondary);">比較する求人が選択されていません</p>
+            <p class="text-sm mt-1" style="color:var(--text-muted);">ダッシュボードで求人を選択してください</p>
+            <a href="/" class="btn-primary mt-5 inline-block px-6 py-2.5">ダッシュボードへ</a>
+        </div>
+    </template>
+
+    <template x-if="jobs.length > 0">
+        <div class="space-y-5">
+
+            <!-- 給与グラフ -->
+            <div class="rounded-2xl p-6"
+                 style="background: var(--bg-surface); border: 1.5px solid var(--border-mid); box-shadow: 0 2px 12px rgba(60,80,180,0.07);">
+                <h2 class="text-sm font-bold mb-4" style="color:var(--text-primary);">給与内訳比較（固定残業代を除いた実質基本給）</h2>
+                <div class="h-64">
+                    <canvas id="salaryChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 比較テーブル -->
+            <div class="rounded-2xl overflow-hidden"
+                 style="background: var(--bg-surface); border: 1.5px solid var(--border-mid); box-shadow: 0 2px 12px rgba(60,80,180,0.07);">
+                <table class="w-full">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border-mid); background: var(--bg-elevated);">
+                            <th class="text-left px-5 py-4 text-xs font-bold uppercase tracking-wider w-36"
+                                style="color:var(--text-muted);">項目</th>
+                            <template x-for="job in jobs" :key="job.id">
+                                <th class="text-left px-5 py-4">
+                                    <!-- ブランドカラーライン -->
+                                    <div class="h-1 rounded-full mb-2" :style="'background:' + brandColor(job)"></div>
+                                    <a :href="job.url" target="_blank"
+                                       class="font-bold hover:underline transition text-sm"
+                                       :style="'color:' + brandColor(job)"
+                                       x-text="job.company_name"></a>
+                                    <p class="text-xs mt-0.5 font-normal" style="color:var(--text-muted); max-width:180px;" x-text="job.job_title"></p>
+                                </th>
+                            </template>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="row in compareRows" :key="row.label">
+                            <tr class="transition" style="border-bottom: 1px solid var(--border-subtle);"
+                                @mouseenter="$el.style.background='var(--bg-elevated)'"
+                                @mouseleave="$el.style.background='transparent'">
+                                <td class="px-5 py-3.5">
+                                    <span class="text-xs font-semibold" style="color:var(--text-muted);" x-text="row.label"></span>
+                                </td>
+                                <template x-for="job in jobs" :key="job.id">
+                                    <td class="px-5 py-3.5">
+                                        <span :class="row.highlight(job, jobs)"
+                                              class="text-sm font-bold transition-colors"
+                                              x-text="row.value(job)"></span>
+                                    </td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 企業別ブランドカラー（既知企業）
+const BRAND_COLORS_CMP = {
+    'ファーストリテイリング': '#E6001A',
+    'ユニクロ':               '#E6001A',
+    'GMO':                    '#00A0A0',
+    'Amazon':                 '#7B2DBF',
+    'アマゾン':               '#7B2DBF',
+    'Google':                 '#4285F4',
+    'Microsoft':              '#00A4EF',
+    'Sony':                   '#0070D1',
+    'ソニー':                 '#0070D1',
+    'Toyota':                 '#CC0000',
+    'トヨタ':                 '#CC0000',
+    'Rakuten':                '#BF0000',
+    '楽天':                   '#BF0000',
+    'SoftBank':               '#CC0000',
+    'ソフトバンク':           '#CC0000',
+    'LINE':                   '#00C300',
+    'Mercari':                '#E2002D',
+    'メルカリ':               '#E2002D',
+};
+
+const INDUSTRY_COLORS_CMP = [
+    { patterns: /税務|会計|経理|財務|税理士|銀行|証券|投資|保険|ファンド/, color: '#D4A000' },
+    { patterns: /エンジニア|プログラム|システム|ソフトウェア|クラウド|セキュリティ|デジタル|saas|api/, color: '#0066CC' },
+    { patterns: /生産管理|購買|調達|品質管理|製造|電子部品|工場|ものづくり|量産/, color: '#9A2020' },
+    { patterns: /商社|物流|倉庫|輸送|scm|貿易|輸出|輸入|通関/, color: '#7A5F00' },
+    { patterns: /人材|採用|リクルート|教育|研修|キャリア/, color: '#C45D00' },
+    { patterns: /広告|マーケティング|制作|メディア|クリエイティブ|デザイン/, color: '#B0306A' },
+    { patterns: /不動産|建設|建築|施工|設計|マンション|住宅/, color: '#1A8C44' },
+    { patterns: /コンサル|経営企画|戦略|事業企画|事業開発/, color: '#6025C0' },
+    { patterns: /医療|病院|薬剤|介護|福祉|製薬|医薬/, color: '#0D7A7A' },
+];
+
+function brandColorCmp(job) {
+    const name = (job.company_name || '').trim();
+    for (const [k, v] of Object.entries(BRAND_COLORS_CMP)) {
+        if (name.includes(k)) return v;
+    }
+    const text = [job.job_title||'', job.company_name||'', ...(job.skill_tags||[])].join(' ').toLowerCase();
+    for (const ind of INDUSTRY_COLORS_CMP) {
+        if (ind.patterns.test(text)) return ind.color;
+    }
+    return '#4F46E5';
+}
+
+function compare(ids) {
+    return {
+        ids,
+        jobs: [],
+        compareRows: [],
+
+        brandColor(job) { return brandColorCmp(job); },
+
+        async init() {
+            const results = await Promise.all(ids.map(id => fetch('/api/jobs/' + id).then(r => r.json())));
+            this.jobs = results.filter(j => j && j.id);
+            this.buildRows();
+            this.$nextTick(() => this.initChart());
+        },
+
+        buildRows() {
+            const fmt = (v, suffix='') => v != null ? v + suffix : '—';
+            const fmtMoney = v => v != null ? (v/10000).toFixed(0) + '万' : '—';
+            const winner = (jobs, key, higher=true) => {
+                const vals = jobs.map(j => j[key]).filter(v => v != null);
+                if (vals.length === 0) return null;
+                return higher ? Math.max(...vals) : Math.min(...vals);
+            };
+
+            this.compareRows = [
+                {
+                    label: '実質基本給（年）',
+                    value: j => fmtMoney(j.real_base_annual),
+                    highlight: (j, jobs) => {
+                        const w = winner(jobs, 'real_base_annual');
+                        return j.real_base_annual === w && w != null ? 'text-emerald-600' : 'text-gray-700';
+                    }
+                },
+                {
+                    label: '額面年収',
+                    value: j => fmtMoney(j.salary_average),
+                    highlight: () => 'text-gray-600',
+                },
+                {
+                    label: '固定残業代（月）',
+                    value: j => j.fixed_overtime_pay ? '+' + (j.fixed_overtime_pay/10000).toFixed(1) + '万 (' + j.fixed_overtime_hours + 'h)' : '—',
+                    highlight: (j, jobs) => {
+                        return (j.fixed_overtime_hours || 0) > 40 ? 'text-rose-600' : 'text-gray-600';
+                    }
+                },
+                {
+                    label: '年間休日',
+                    value: j => fmt(j.annual_holidays, '日'),
+                    highlight: (j, jobs) => {
+                        const w = winner(jobs, 'annual_holidays');
+                        return j.annual_holidays === w && w != null ? 'text-blue-600' : 'text-gray-600';
+                    }
+                },
+                {
+                    label: '月平均残業',
+                    value: j => fmt(j.avg_overtime_hours, 'h'),
+                    highlight: (j, jobs) => {
+                        const w = winner(jobs, 'avg_overtime_hours', false);
+                        return j.avg_overtime_hours === w && w != null ? 'text-emerald-600'
+                            : (j.avg_overtime_hours || 0) > 30 ? 'text-rose-600' : 'text-gray-600';
+                    }
+                },
+                {
+                    label: 'リモート',
+                    value: j => ({'full':'フルリモート','partial':'一部リモート','none':'出社のみ'})[j.remote_type] || '—',
+                    highlight: (j) => j.remote_type === 'full' ? 'text-teal-600' : 'text-gray-600',
+                },
+                {
+                    label: '英語',
+                    value: j => ({'none':'不要','daily':'日常会話','business':'ビジネス','native':'ネイティブ'})[j.english_level] || '—',
+                    highlight: () => 'text-gray-600',
+                },
+                {
+                    label: '企業フェーズ',
+                    value: j => ({'listed_prime':'東証プライム','listed_growth':'東証グロース','ipo_preparing':'上場準備中','unlisted':'非上場'})[j.listing_status] || '—',
+                    highlight: () => 'text-gray-600',
+                },
+                {
+                    label: 'フレックス',
+                    value: j => j.is_flex_time ? 'あり' : 'なし',
+                    highlight: (j) => j.is_flex_time ? 'text-teal-600' : 'text-gray-500',
+                },
+                {
+                    label: '管理監督者',
+                    value: j => j.is_managerial ? '対象' : '—',
+                    highlight: () => 'text-gray-600',
+                },
+            ];
+        },
+
+        initChart() {
+            const ctx = document.getElementById('salaryChart');
+            if (!ctx || this.jobs.length === 0) return;
+
+            const barColors = this.jobs.map(j => brandColorCmp(j));
+
+            new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: this.jobs.map(j => j.company_name),
+                    datasets: [
+                        {
+                            label: '実質基本給（年）',
+                            data: this.jobs.map(j => Math.round((j.real_base_annual || 0) / 10000)),
+                            backgroundColor: barColors.map(c => c + 'CC'),
+                            borderColor: barColors,
+                            borderWidth: 2,
+                            borderRadius: 6,
+                            stack: 'salary',
+                        },
+                        {
+                            label: '固定残業代（年換算）',
+                            data: this.jobs.map(j => Math.round(((j.fixed_overtime_pay || 0) * 12) / 10000)),
+                            backgroundColor: 'rgba(251,191,36,0.5)',
+                            borderColor: 'rgba(251,140,0,0.9)',
+                            borderWidth: 2,
+                            borderRadius: 6,
+                            stack: 'salary',
+                        },
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: { color: 'rgba(60,80,180,0.06)' },
+                            ticks: { color: '#4A5070', font: { family: 'Inter, Noto Sans JP, sans-serif', size: 12, weight: '600' } }
+                        },
+                        y: {
+                            stacked: true,
+                            grid: { color: 'rgba(60,80,180,0.06)' },
+                            ticks: { color: '#4A5070', font: { family: 'Inter, Noto Sans JP, sans-serif', size: 11 }, callback: v => v + '万' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#4A5070',
+                                font: { size: 12, family: 'Inter, Noto Sans JP, sans-serif', weight: '600' },
+                                usePointStyle: true,
+                                pointStyle: 'rect'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(255,255,255,0.97)',
+                            titleColor: '#1A1A3A',
+                            bodyColor: '#4A5070',
+                            borderColor: 'rgba(79,70,229,0.3)',
+                            borderWidth: 1,
+                            titleFont: { weight: '700' },
+                            callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw + '万' }
+                        }
+                    }
+                }
+            });
+        }
+    };
+}
+</script>
+{% endblock %}

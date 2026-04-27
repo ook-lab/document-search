@@ -1,0 +1,37 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: 'services/pdf-toolbox'
+    args: 
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-toolbox:latest'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    dir: 'services/pdf-toolbox'
+    args: 
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-toolbox:latest'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    dir: 'services/pdf-toolbox'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'pdf-toolbox'
+      - '--image'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-toolbox:latest'
+      - '--region'
+      - 'asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '1Gi'
+      - '--update-env-vars=GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY}'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-toolbox:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: 'ALLOW_LOOSE'

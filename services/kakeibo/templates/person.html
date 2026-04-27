@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+{% set active = 'person' %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+  <div class="month-nav">
+    <a href="/view/person?month={{ prev_month }}">◀ 前月</a>
+    <span style="font-size:20px; font-weight:bold;">{{ year_month }}</span>
+    <a href="/view/person?month={{ next_month }}">次月 ▶</a>
+  </div>
+  <form method="get" action="/view/person" style="display:flex; gap:8px; align-items:center;">
+    <input type="month" name="month" value="{{ year_month }}" style="padding:4px 8px; border:1px solid #ccc; border-radius:4px;">
+    <button type="submit" style="padding:4px 12px; background:#3498db; color:white; border:none; border-radius:4px; cursor:pointer;">移動</button>
+  </form>
+</div>
+
+<div class="two-col">
+  <div class="card">
+    <h2>人物別 支出合計</h2>
+    <table>
+      <thead><tr><th>人物</th><th class="amt">支出</th></tr></thead>
+      <tbody>
+        {% for p in persons %}
+        <tr>
+          <td>{{ p }}</td>
+          <td class="amt neg">{{ "{:,}".format(person_total[p]) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="2" style="color:#999; text-align:center;">データなし（cat_person が未設定の可能性）</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>人物別 グラフ</h2>
+    <canvas id="personChart" height="250"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <h2>人物×カテゴリ</h2>
+  <div style="overflow-x:auto;">
+    <table>
+      <thead>
+        <tr>
+          <th>人物</th>
+          {% for cat in all_cats %}<th class="amt">{{ cat }}</th>{% endfor %}
+          <th class="amt">合計</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in persons %}
+        <tr>
+          <td>{{ p }}</td>
+          {% for cat in all_cats %}
+            {% set amt = person_cat[p][cat] if p in person_cat and cat in person_cat[p] else 0 %}
+            <td class="amt {% if amt < 0 %}neg{% endif %}">{% if amt %}{{ "{:,}".format(amt) }}{% endif %}</td>
+          {% endfor %}
+          <td class="amt neg" style="font-weight:bold;">{{ "{:,}".format(person_total[p]) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const datasets = {{ chart_datasets | tojson }};
+const labels   = {{ chart_labels | tojson }};
+
+new Chart(document.getElementById('personChart'), {
+  type: 'bar',
+  data: { labels, datasets },
+  options: {
+    plugins: { legend: { position: 'bottom' } },
+    scales: {
+      x: { stacked: true },
+      y: { stacked: true, ticks: { callback: v => v.toLocaleString() } }
+    }
+  }
+});
+</script>
+{% endblock %}

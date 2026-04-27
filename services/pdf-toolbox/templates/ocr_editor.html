@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR - 検索できるPDFメーカー</title>
+    <link rel="stylesheet" href="/static/css/ocr_style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+</head>
+<body class="light-mode">
+    <header>
+        <div class="logo" style="font-size: 1.2rem;">検索できる<span>PDF</span>メーカー</div>
+        <div class="actions">
+            <select id="templateSelector">
+                {% for tid, tdata in templates.items() %}
+                <option value="{{ tid }}">{{ tdata.name }}</option>
+                {% endfor %}
+            </select>
+            <button id="editTemplateBtn" class="btn secondary">⚙️ テンプレート管理</button>
+            <input type="file" id="pdfUpload" accept="application/pdf" hidden>
+            <button id="uploadBtn" class="btn primary">PDFを選択</button>
+            <input type="text" id="outputFilename" placeholder="保存ファイル名" style="margin-left:10px; padding:6px; border:1px solid #ccc; border-radius:4px; min-width:200px;">
+            <button id="generateFilenameBtn" class="btn secondary" disabled>ファイル名AI生成</button>
+            <button id="savePdfBtn" class="btn success" disabled>検索可能PDFを保存</button>
+        </div>
+    </header>
+
+    <main>
+        <aside id="sidebar" class="hidden">
+            <h3>ページ一覧</h3>
+            <div id="pageList"></div>
+        </aside>
+
+        <section id="workspace">
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>AIが分析しています...</p>
+            </div>
+            
+            <div class="split-view">
+                <div class="pane image-pane">
+                    <div class="pane-header">オリジナル画像 (PDFビュー)</div>
+                    <div class="image-viewport" id="imageViewport">
+                        <img id="pageImage" src="" alt="PDF Page">
+                        <svg id="svgOverlay" width="0" height="0"></svg>
+                    </div>
+                </div>
+                <div class="pane text-pane">
+                    <div class="pane-header">抽出・修正テキスト</div>
+                    <div id="textEditor" class="editor-content">
+                        <div class="placeholder">
+                            <p>PDFをアップロードして分析を開始してください</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="templateModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>テンプレート管理</h3>
+                <span class="close-btn" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>テンプレート名</label>
+                    <input type="text" id="tplName" placeholder="例: 請求書 (標準型)">
+                </div>
+                <div class="form-group">
+                    <label>AIプロンプト (抽出指示)</label>
+                    <textarea id="tplPrompt" rows="8" placeholder="例: 表形式で抽出し、金額、日付、提供会社名を取得してください。"></textarea>
+                </div>
+                <button id="saveTemplateBtn" class="btn primary full-width">保存する</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="hidden"></div>
+    <script>
+    // All API calls prefixed with /ocr/
+    const API_PREFIX = '/ocr';
+
+    let currentPdfId = null;
+    let currentPreviews = [];
+    let currentPageNum = 0;
+    let allOcrData = {}; 
+
+    const elements = {
+        pdfUpload: document.getElementById('pdfUpload'),
+        uploadBtn: document.getElementById('uploadBtn'),
+        savePdfBtn: document.getElementById('savePdfBtn'),
+        templateSelector: document.getElementById('templateSelector'),
+        editTemplateBtn: document.getElementById('editTemplateBtn'),
+        pageImage: document.getElementById('pageImage'),
+        svgOverlay: document.getElementById('svgOverlay'),
+        textEditor: document.getElementById('textEditor'),
+        loading: document.getElementById('loading'),
+        notification: document.getElementById('notification'),
+        pageList: document.getElementById('pageList'),
+        sidebar: document.getElementById('sidebar'),
+        modal: document.getElementById('templateModal'),
+        tplName: document.getElementById('tplName'),
+        tplPrompt: document.getElementById('tplPrompt'),
+        saveTemplateBtn: document.getElementById('saveTemplateBtn'),
+        closeModal: document.getElementById('closeModal'),
+        outputFilename: document.getElementById('outputFilename'),
+        generateFilenameBtn: document.getElementById('generateFilenameBtn')
+    };
+
+    elements.uploadBtn.addEventListener('click', () => elements.pdfUpload.click());
+    elements.pdfUpload.addEventListener('change', uploadPdf);
+    elements.savePdfBtn.addEventListener('click', saveSearchablePdf);
+    elements.generateFilenameBtn.addEventListener('click', async () => {
+        let allText = [];
+        for (let page in allOcrData) {
+            allOcrData[page].forEach(item => allText.push(item.text));
+        }
+        const combinedText = allText.join(" ");
+        if (!combinedText.trim()) { showNotification("エラー: テキストがありません。"); return; }
+        showLoading(true, "AIがファイル名を生成中...");
+        try {
+            const response = await fetch(`${API_PREFIX}/generate_filename`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: combinedText })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            elements.outputFilename.value = data.filename;
+            showNotification("ファイル名を生成しました！");
+        } catch (err) { showNotification("エラー: " + err.message); }
+        finally { showLoading(false); }
+    });
+    elements.editTemplateBtn.addEventListener('click', () => {
+        elements.modal.classList.remove('hidden');
+        elements.tplName.value = elements.templateSelector.options[elements.templateSelector.selectedIndex].text;
+    });
+    elements.closeModal.addEventListener('click', () => elements.modal.classList.add('hidden'));
+
+    async function uploadPdf(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        showLoading(true, "PDFを処理中...");
+        try {
+            const response = await fetch(`${API_PREFIX}/upload`, { method: 'POST', body: formData });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            currentPdfId = data.pdf_id;
+            currentPreviews = data.previews;
+            renderPageList();
+            loadPage(0);
+            elements.sidebar.classList.remove('hidden');
+        } catch (err) { showNotification("エラー: " + err.message); }
+        finally { showLoading(false); }
+    }
+
+    function renderPageList() {
+        elements.pageList.innerHTML = '';
+        currentPreviews.forEach((prev, idx) => {
+            const div = document.createElement('div');
+            div.className = `page-item ${idx === currentPageNum ? 'active' : ''}`;
+            div.style.padding = '0.75rem'; div.style.cursor = 'pointer';
+            div.style.borderBottom = '1px solid #eee';
+            div.style.background = idx === currentPageNum ? '#f1f5f9' : 'transparent';
+            div.innerHTML = `<span style="font-size:0.9rem">Page ${idx + 1}</span>`;
+            div.onclick = () => loadPage(idx);
+            elements.pageList.appendChild(div);
+        });
+    }
+
+    async function loadPage(idx) {
+        currentPageNum = idx;
+        const page = currentPreviews[idx];
+        elements.pageImage.src = page.url;
+        elements.pageImage.onload = () => { updateSvgSize(); };
+        renderPageList();
+        if (allOcrData[idx] && allOcrData[idx].length > 0) {
+            renderEditor(); renderOverlay();
+        } else {
+            elements.textEditor.innerHTML = '<div class="placeholder"><div style="text-align:center"><p>OCRを開始するにはボタンを押してください</p><br><button class="btn primary" id="runOcrBtn">分析実行</button></div></div>';
+            elements.svgOverlay.innerHTML = '';
+            const runOcrBtn = document.getElementById('runOcrBtn');
+            if (runOcrBtn) runOcrBtn.onclick = () => runOcr(idx);
+        }
+    }
+
+    function updateSvgSize() {
+        const img = elements.pageImage;
+        elements.svgOverlay.style.width = img.clientWidth + 'px';
+        elements.svgOverlay.style.height = img.clientHeight + 'px';
+        elements.svgOverlay.setAttribute('viewBox', '0 0 1000 1000');
+        elements.svgOverlay.setAttribute('preserveAspectRatio', 'none');
+    }
+
+    async function runOcr(pageNum) {
+        showLoading(true, "AIが文字と位置を抽出しています...");
+        try {
+            const response = await fetch(`${API_PREFIX}/run_ocr`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pdf_id: currentPdfId, page_num: pageNum, template_id: elements.templateSelector.value })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            allOcrData[pageNum] = data;
+            renderEditor(); renderOverlay();
+            elements.savePdfBtn.disabled = false;
+            elements.generateFilenameBtn.disabled = false;
+        } catch (err) { showNotification("OCRエラー: " + err.message); }
+        finally { showLoading(false); }
+    }
+
+    function renderEditor() {
+        elements.textEditor.innerHTML = '';
+        const currentData = allOcrData[currentPageNum] || [];
+        currentData.forEach((item, idx) => {
+            const div = document.createElement('div');
+            div.className = 'text-item'; div.id = `text-item-${idx}`;
+            div.innerHTML = `<textarea rows="2">${item.text}</textarea><div class="meta">座標: [${item.box_2d.map(Math.round).join(', ')}]</div>`;
+            const textarea = div.querySelector('textarea');
+            textarea.oninput = (e) => { allOcrData[currentPageNum][idx].text = e.target.value; };
+            div.onmouseenter = () => highlightBound(idx, true);
+            div.onmouseleave = () => highlightBound(idx, false);
+            elements.textEditor.appendChild(div);
+        });
+    }
+
+    function renderOverlay() {
+        elements.svgOverlay.innerHTML = '';
+        const currentData = allOcrData[currentPageNum] || [];
+        currentData.forEach((item, idx) => {
+            const [ymin, xmin, ymax, xmax] = item.box_2d;
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute('x', xmin); rect.setAttribute('y', ymin);
+            rect.setAttribute('width', xmax - xmin); rect.setAttribute('height', ymax - ymin);
+            rect.setAttribute('class', 'rect-bound'); rect.id = `bound-${idx}`;
+            rect.style.pointerEvents = 'all';
+            rect.onmouseenter = () => { highlightBound(idx, true); document.getElementById(`text-item-${idx}`).scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+            rect.onmouseleave = () => highlightBound(idx, false);
+            elements.svgOverlay.appendChild(rect);
+        });
+    }
+
+    function highlightBound(idx, active) {
+        const bound = document.getElementById(`bound-${idx}`);
+        const editorItem = document.getElementById(`text-item-${idx}`);
+        if (bound) bound.classList.toggle('active', active);
+        if (editorItem) editorItem.style.background = active ? '#eff6ff' : '#fafafa';
+    }
+
+    async function saveSearchablePdf() {
+        showLoading(true, "検索可能PDFを出力中...");
+        let corrections = [];
+        for (let page in allOcrData) {
+            allOcrData[page].forEach(item => {
+                corrections.push({ page_num: parseInt(page), text: item.text, box_2d: item.box_2d });
+            });
+        }
+        try {
+            const response = await fetch(`${API_PREFIX}/save`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pdf_id: currentPdfId, corrections: corrections, filename: elements.outputFilename.value })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            if (data.download_url) {
+                const link = document.createElement('a');
+                link.href = data.download_url; link.download = data.filename || 'edited_searchable.pdf';
+                link.click(); showNotification("保存しました！");
+            }
+        } catch (err) { showNotification("保存エラー: " + err.message); }
+        finally { showLoading(false); }
+    }
+
+    elements.saveTemplateBtn.onclick = async () => {
+        const id = elements.templateSelector.value;
+        const name = elements.tplName.value;
+        const prompt = elements.tplPrompt.value;
+        const response = await fetch(`${API_PREFIX}/save_template`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, content: { name, prompt } })
+        });
+        if (response.ok) { showNotification("テンプレートを更新しました。"); elements.modal.classList.add('hidden'); location.reload(); }
+    };
+
+    function showLoading(show, message = "") {
+        elements.loading.classList.toggle('hidden', !show);
+        if (message) elements.loading.querySelector('p').innerText = message;
+    }
+    function showNotification(msg) {
+        elements.notification.innerText = msg;
+        elements.notification.classList.remove('hidden');
+        setTimeout(() => { elements.notification.classList.add('hidden'); }, 3000);
+    }
+    window.onresize = updateSvgSize;
+    </script>
+</body>
+</html>
