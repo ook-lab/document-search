@@ -31,7 +31,6 @@ class G22TextAIProcessor:
     def __init__(
         self,
         document_id=None,
-        api_key: Optional[str] = None,
         model_name: str = "gemini-2.5-flash-lite"
     ):
         """
@@ -39,24 +38,23 @@ class G22TextAIProcessor:
 
         Args:
             document_id: ドキュメントID（Supabase保存用）
-            api_key: Google AI API Key
             model_name: 使用するモデル名（gemini-2.5-flash-lite）
         """
         self.document_id = document_id
         self.model_name = model_name
-        self.api_key = api_key
 
         if not GENAI_AVAILABLE:
             logger.error("[G-22] google-generativeai が必要です")
             self.model = None
             return
 
-        if api_key:
+        # Vertex AI 初期化
+        try:
             vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
             self.model = GenerativeModel(model_name)
-            logger.info(f"[G-22] モデル初期化: {model_name}")
-        else:
-            logger.warning("[G-22] API key が設定されていません")
+            logger.info(f"[G-22] モデル初期化 (Vertex AI): {model_name}")
+        except Exception as e:
+            logger.error(f"[G-22] Vertex AI 初期化エラー: {e}")
             self.model = None
 
     def process(

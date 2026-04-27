@@ -41,21 +41,21 @@ from shared.common.database.client import DatabaseClient
 class G17TableAIProcessor:
     """G-17: Table AI Processor（AI分析・後段処理専用）"""
 
-    def __init__(self, document_id=None, api_key: Optional[str] = None, model_name: str = "gemini-2.5-flash-lite"):
+    def __init__(self, document_id=None, model_name: str = "gemini-2.5-flash-lite"):
         self.document_id = document_id
         self.model_name = model_name
-        self.api_key = api_key
         self.model = None
 
         try:
             import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
-            if api_key:
-                vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
-                self.model = GenerativeModel(model_name)
-                logger.info(f"[G-17] モデル初期化: {model_name}")
-            else:
-                logger.warning("[G-17] API key が設定されていません")
+            from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+            # Vertex AI 初期化
+            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+            self.model = GenerativeModel(model_name)
+            logger.info(f"[G-17] モデル初期化 (Vertex AI): {model_name}")
+        except Exception as e:
+            logger.error(f"[G-17] Vertex AI 初期化エラー: {e}")
+            self.model = None
         except ImportError:
             logger.warning("[G-17] google-generativeai がインストールされていません")
 

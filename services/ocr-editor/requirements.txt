@@ -1,7 +1,0 @@
-flask
-flask-cors
-pymupdf
-google-cloud-aiplatform
-python-dotenv
-pillow
-python-multipart

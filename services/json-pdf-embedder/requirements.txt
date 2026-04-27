@@ -1,7 +1,0 @@
-flask
-pymupdf
-google-genai
-google-cloud-aiplatform
-python-dotenv
-werkzeug
-gunicorn

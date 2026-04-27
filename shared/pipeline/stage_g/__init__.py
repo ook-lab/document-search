@@ -27,18 +27,18 @@ from .g22_text_ai_processor import G22TextAIProcessor
 class G1Controller:
     """Stage G チェーン（旧 Controller）"""
 
-    def __init__(self, document_id=None, api_key=None):
+    def __init__(self, document_id=None):
         """
         チェーン構築: G-3 → G-5 → (G-11 → G-13 → G-14 → G-17 & G-6 → G-21 → G-22)
 
         Args:
             document_id: ドキュメントID（Supabase保存用）
-            api_key: Google AI API Key
         """
         # ★チェーンパターン: 逆順で構築
-        text_ai_processor = G22TextAIProcessor(document_id=document_id, api_key=api_key)
+        text_ai_processor = G22TextAIProcessor(document_id=document_id)
         text_structurer = G21TextStructurer(document_id=document_id, next_stage=text_ai_processor)
-        table_ai_processor = G17TableAIProcessor(document_id=document_id, api_key=api_key)
+        # G-17 Table AI Processor（表のAI処理）
+        table_ai_processor = G17TableAIProcessor(document_id=document_id)
         table_reconstructor = G14TableReconstructor(next_stage=table_ai_processor)
         header_detector = G13RepeatingHeaderDetector(next_stage=table_reconstructor)
         table_structurer = G11TableStructurer(document_id=document_id, next_stage=header_detector)

@@ -1424,7 +1424,7 @@ def reprocess_g():
         ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
         ud = ud_result.data[0] if ud_result.data else {}
 
-        gemini_key = _os.getenv('GOOGLE_AI_API_KEY') or _os.getenv('GEMINI_API_KEY') or _os.getenv('GOOGLE_API_KEY')
+
 
         def _parse_json_col(val):
             if val is None:
@@ -1445,7 +1445,7 @@ def reprocess_g():
             articles = _parse_json_col(g21_raw) or []
 
             from shared.pipeline.stage_g.g22_text_ai_processor import G22TextAIProcessor
-            g22 = G22TextAIProcessor(document_id=doc_id, api_key=gemini_key)
+            g22 = G22TextAIProcessor(document_id=doc_id)
             g22_result = g22.process(articles)
 
             if not g22_result.get('success'):
@@ -1484,7 +1484,7 @@ def reprocess_g():
             g14_data = _parse_json_col(g14_raw) or []
 
             from shared.pipeline.stage_g.g17_table_ai_processor import G17TableAIProcessor
-            g17 = G17TableAIProcessor(document_id=doc_id, api_key=gemini_key)
+            g17 = G17TableAIProcessor(document_id=doc_id)
             g17_result = g17.process(g14_data)
 
             if not g17_result.get('success'):
