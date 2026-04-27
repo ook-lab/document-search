@@ -26,8 +26,8 @@ logging.basicConfig(level=logging.INFO)
 
 client = genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
 
-MARKER_START = "<<<JSON_SANDWICH_START>>>"
-MARKER_END = "<<<JSON_SANDWICH_END>>>"
+MARKER_START = "<<<MD_SANDWICH_START>>>"
+MARKER_END = "<<<MD_SANDWICH_END>>>"
 
 @app.route('/')
 def index():
@@ -73,26 +73,26 @@ def upload_pdf():
                     try:
                         start_idx = text.find(MARKER_START) + len(MARKER_START)
                         end_idx = text.find(MARKER_END)
-                        json_str = text[start_idx:end_idx]
-                        existing_json = json.loads(json_str)
+                        md_str = text[start_idx:end_idx]
+                        existing_data = {"markdown": md_str.strip()}
                     except Exception as e:
-                        logging.warning(f"Found markers on page {i} but failed to parse JSON: {e}")
+                        logging.warning(f"Found markers on page {i} but failed to parse MD: {e}")
                 else:
-                    # Fallback check for old format (without markers) if needed
-                    # Look for our known structure {"metadata": [...], "table": {...}}
+                    # Try old JSON format as fallback
                     try:
-                        match = re.search(r'\{"metadata":.*?\}', text, re.DOTALL)
-                        if match:
-                            parsed = json.loads(match.group(0))
-                            if 'metadata' in parsed and 'table' in parsed:
-                                existing_json = parsed
+                        old_start = "<<<JSON_SANDWICH_START>>>"
+                        old_end = "<<<JSON_SANDWICH_END>>>"
+                        if old_start in text and old_end in text:
+                            s_idx = text.find(old_start) + len(old_start)
+                            e_idx = text.find(old_end)
+                            existing_data = {"markdown": "```json\n" + text[s_idx:e_idx] + "\n```"}
                     except:
                         pass
                 
                 pages_info.append({
                     'page_index': i,
                     'image_url': f"/static/uploads/{img_name}",
-                    'existing_data': existing_json
+                    'existing_data': existing_data
                 })
             
             doc.close()
@@ -128,61 +128,38 @@ def extract_page(file_id, page_index):
         prompt = """
         You are an expert OCR and data extraction system.
         Extract data from this scanned document (e.g. invoice, estimate, receipt).
-        Return strictly a valid JSON object with the following structure:
-        {
-           "metadata": [
-               // Put any non-tabular fields here. 
-               // 'label' MUST be a logical, short Japanese name inferred for this field (e.g., "宛名", "住所", "発行日", "電話番号"). Do NOT duplicate the value into the label.
-               // 'tag' MUST be an English identifier (e.g., "address", "issue_date").
-               // 'value' MUST be the exact printed text. **SPECIAL RULE**: If the value contains a Japanese era date (e.g., 令和, 平成), you MUST calculate and append the Gregorian year in parentheses, like this: "令和3年10月6日(2021年10月6日)".
-           ],
-           "table": {
-               "headers": [
-                   // Define the table columns EXACTLY in the order they appear from left to right on the document.
-                   // 'label' must be the exact Japanese text from the document header. 'tag' is an English identifier.
-               ],
-               "rows": [
-                   // Put the tabular data here. Keys must exactly match the 'tag' strings defined in headers.
-                   // Values must be exactly as written on the document.
-               ]
-           }
-        }
-        Do not include Markdown markup (like ```json), just the raw JSON text.
-        If there is no table, table.headers and table.rows can be empty lists.
-        CRITICAL: 'label' and 'value' fields MUST NOT be translated to English. Keep the original Japanese text intact.
-        CRITICAL: If Japanese words have wide kerning/spaces between characters (e.g., "摘    要", "単    価", "金    額"), you MUST join them together as a single word (e.g., "摘要", "単価", "金額"). Do NOT split them into separate columns or fields.
+        Return the extracted data as clean, well-structured Markdown.
+        For key-value pairs (like metadata, dates, addresses), use bullet points or bold text.
+        For tabular data, use Markdown tables.
+        CRITICAL: Do not translate any Japanese text to English. Keep the original text intact.
+        CRITICAL: If Japanese words have wide kerning/spaces between characters (e.g., "摘    要"), you MUST join them together as a single word (e.g., "摘要").
         """
         
         if custom_instructions:
-            prompt += f"\n\nADDITIONAL USER INSTRUCTIONS (CRITICAL PRIORITY):\n{custom_instructions}\nEnsure you strictly follow the above additional instructions regarding column definitions or layout."
+            prompt += f"\n\nADDITIONAL USER INSTRUCTIONS (CRITICAL PRIORITY):\n{custom_instructions}\nEnsure you strictly follow the above additional instructions regarding formatting or layout."
 
         response = client.models.generate_content(
             model='gemini-2.5-flash-lite',
             contents=[uploaded_file, prompt],
             config=types.GenerateContentConfig(
-                response_mime_type="application/json",
+                response_mime_type="text/plain",
             ),
         )
         
-        json_result = response.text
+        text_result = response.text
         client.files.delete(name=uploaded_file.name)
+        
+        # Remove markdown code block fences if Gemini adds them to plain text
+        import re
+        match = re.search(r'```(?:markdown|md)?\n(.*?)```', text_result, re.DOTALL)
+        if match:
+            text_result = match.group(1).strip()
+        else:
+            text_result = text_result.strip()
 
-        try:
-            parsed_json = json.loads(json_result)
-        except Exception as e:
-            try:
-                import re
-                match = re.search(r'```(?:json)?\n(.*?)\n```', json_result, re.DOTALL)
-                if match:
-                    parsed_json = json.loads(match.group(1))
-                else:
-                    raise e
-            except Exception as ex:
-                return jsonify({'error': 'Gemini returned invalid JSON', 'raw': json_result}), 500
-                
         return jsonify({
             'success': True,
-            'json_extracted': parsed_json
+            'json_extracted': {"markdown": text_result}
         })
 
     except Exception as e:
@@ -196,7 +173,7 @@ def save_pdf():
         file_id = data.get('file_id')
         safe_filename = data.get('safe_filename')
         user_filename = data.get('filename')
-        pages_data = data.get('pages_data', {}) # Dictionary mapping string(page_index) -> json_data
+        pages_data = data.get('pages_data', {}) # Dictionary mapping string(page_index) -> data
 
         input_filepath = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
         
@@ -214,14 +191,13 @@ def save_pdf():
 
         doc = fitz.open(input_filepath)
 
-        for str_idx, page_json in pages_data.items():
+        for str_idx, page_data in pages_data.items():
             page_idx = int(str_idx)
             if page_idx < len(doc):
                 page = doc[page_idx]
                 
-                # Format the json and wrap with markers
-                formatted_json_str = json.dumps(page_json, ensure_ascii=False)
-                payload = f"{MARKER_START}{formatted_json_str}{MARKER_END}"
+                md_content = page_data.get('markdown', '')
+                payload = f"{MARKER_START}\n{md_content}\n{MARKER_END}"
                 
                 # For simplicity, we just append it as invisible text at the top left.
                 rect = fitz.Rect(0, 0, page.rect.width, page.rect.height) 
@@ -230,10 +206,20 @@ def save_pdf():
         doc.save(output_filepath)
         doc.close()
 
+        # Additionally save an MD file
+        md_filename = output_filename.replace('.pdf', '.md')
+        md_filepath = os.path.join(app.config['OUTPUT_FOLDER'], md_filename)
+        with open(md_filepath, 'w', encoding='utf-8') as f:
+            for str_idx, page_data in sorted(pages_data.items(), key=lambda x: int(x[0])):
+                f.write(f"## Page {int(str_idx) + 1}\n\n")
+                f.write(page_data.get('markdown', '') + "\n\n")
+
         return jsonify({
             'success': True,
             'download_url': f'/download/{output_filename}',
-            'filename': output_filename
+            'download_md_url': f'/download/{md_filename}',
+            'filename': output_filename,
+            'md_filename': md_filename
         })
 
     except Exception as e:

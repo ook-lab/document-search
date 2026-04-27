@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>帳票データ（JSON）のPDF埋め込み</title>
+    <title>帳票データからMarkdown抽出＆PDF埋め込み</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -325,7 +325,7 @@
 <body>
 
     <header>
-        <h1>帳票データ（JSON）のPDF埋め込み</h1>
+        <h1>帳票データからMarkdown抽出＆PDF埋め込み</h1>
         <div style="display:flex; gap: 1rem; align-items: center;">
             <span style="font-size: 0.85rem; color: var(--text-muted);" id="headerStatus">Waiting for upload...</span>
             <input type="text" id="outputFilename" placeholder="保存ファイル名" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 200px;">
@@ -364,38 +364,23 @@
             <div class="data-pane" id="dataPane">
                 <div class="ai-overlay" id="aiOverlay">
                     <h2 style="margin-top: 0;">No Structure Data</h2>
-                    <p style="color: var(--text-muted); margin-bottom: 1rem;">Extract tables and metadata from this page using Gemini AI.</p>
-                    <textarea id="customPrompt" rows="3" style="width: 80%; max-width: 400px; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;" placeholder="（任意）例: 列は「摘要, 単価, 数量, 金額」としてください"></textarea>
+                    <p style="color: var(--text-muted); margin-bottom: 1rem;">Extract text and tables from this page using Gemini AI.</p>
+                    <textarea id="customPrompt" rows="3" style="width: 80%; max-width: 400px; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;" placeholder="（任意）例: 特定の項目だけ抽出してください"></textarea>
                     <button class="btn-primary" id="extractAiBtn">🤖 AI 読み取り実行</button>
                 </div>
                 
                 <div class="data-header">
-                    <div style="margin-bottom: 1.5rem;">
-                        <label style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">ページタイトル (Page Title)</label>
-                        <input type="text" id="pageTitleInput" style="width: 100%; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem;" placeholder="タイトルを入力..." onblur="updatePageTitle(this.value)">
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                        <h3 style="margin:0; font-size:1rem; color:var(--primary);">Metadata Attributes</h3>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0; font-size:1rem; color:var(--primary);">Markdown Data</h3>
                         <div style="display: flex; gap: 0.5rem;">
                             <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="tempSave()" title="現在の編集状態を記録します">💾 一時保存</button>
                             <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="undoEdits()" title="最後の一時保存、または初期抽出状態に戻します">↩️ 元に戻す</button>
-                            <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="addMetadata()">+ Add Field</button>
                         </div>
                     </div>
-                    <div class="metadata-grid" id="metadataGrid"></div>
                 </div>
 
-                <div class="data-body">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                        <h3 style="margin:0; font-size:1rem; color:var(--primary);">Data Table</h3>
-                        <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="addRow()">+ Add Row</button>
-                    </div>
-                    <table class="data-table" id="dataTable">
-                        <thead>
-                            <tr id="tableHeaderRow"></tr>
-                        </thead>
-                        <tbody id="tableBody"></tbody>
-                    </table>
+                <div class="data-body" style="display: flex; flex-direction: column; height: 100%;">
+                    <textarea id="markdownEditor" style="flex: 1; width: 100%; resize: none; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; font-family: monospace; font-size: 0.9rem;" onblur="updateMarkdown(this.value)"></textarea>
                 </div>
             </div>
         </div>
@@ -429,10 +414,7 @@
         const saveBtn = document.getElementById('saveBtn');
         const extractAiBtn = document.getElementById('extractAiBtn');
         const aiOverlay = document.getElementById('aiOverlay');
-        const pageTitleInput = document.getElementById('pageTitleInput');
-        const metadataGrid = document.getElementById('metadataGrid');
-        const tableHeaderRow = document.getElementById('tableHeaderRow');
-        const tableBody = document.getElementById('tableBody');
+        const markdownEditor = document.getElementById('markdownEditor');
 
         // Drag/Drop logic
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }));
@@ -511,7 +493,7 @@
                 renderData(p.existing_data);
             } else {
                 aiOverlay.style.display = 'flex';
-                renderData({ metadata: [], table: { headers: [], rows: [] }}); // blank
+                renderData({ markdown: "" }); // blank
             }
         }
 
@@ -560,13 +542,25 @@
                 const json = await res.json();
                 if(!res.ok) throw new Error(json.error);
                 
-                // create synthetic download
+                // create synthetic download for PDF
                 const a = document.createElement('a');
                 a.href = json.download_url;
                 a.download = json.filename || 'embedded.pdf';
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
+
+                // create synthetic download for MD
+                if(json.download_md_url) {
+                    setTimeout(() => {
+                        const a2 = document.createElement('a');
+                        a2.href = json.download_md_url;
+                        a2.download = json.md_filename || 'extracted.md';
+                        document.body.appendChild(a2);
+                        a2.click();
+                        a2.remove();
+                    }, 500);
+                }
             } catch (e) { alert(e.message); }
             finally { hideLoader(); }
         }
@@ -574,11 +568,11 @@
         generateFilenameBtn.onclick = async () => {
             let allDataText = [];
             appState.pages.forEach(p => {
-                if(p.existing_data) {
-                    allDataText.push(JSON.stringify(p.existing_data, null, 2));
+                if(p.existing_data && p.existing_data.markdown) {
+                    allDataText.push(p.existing_data.markdown);
                 }
             });
-            const combinedText = allDataText.join("\n");
+            const combinedText = allDataText.join("\n\n");
             
             if (!combinedText.trim()) {
                 alert("エラー: データがありません。先にAI読み取りを実行してください。");
@@ -607,104 +601,18 @@
 
         // --- Editing Logic ---
         function renderData(data) {
-            // ensure structure
-            if(!data.page_title) data.page_title = "";
-            if(!data.metadata) data.metadata = [];
-            if(!data.table) data.table = {headers: [], rows: []};
-            if(!data.table.headers) data.table.headers = [];
-            if(!data.table.rows) data.table.rows = [];
-
-            // Render Page Title
-            pageTitleInput.value = data.page_title || "";
-
-            // Render Metadata
-            metadataGrid.innerHTML = '';
-            data.metadata.forEach((item, index) => {
-                const box = document.createElement('div');
-                box.className = 'meta-box';
-                box.innerHTML = `
-                    <button class="meta-del-btn" onclick="deleteMetadata(${index})">X</button>
-                    <div class="meta-label editable" contenteditable="true" onblur="updateMetaLabel(${index}, this.innerText)">${item.label || item.tag || ''}</div>
-                    <div class="meta-value editable" contenteditable="true" onblur="updateMetaValue(${index}, this.innerText)">${item.value || ''}</div>
-                `;
-                metadataGrid.appendChild(box);
-            });
-
-            // Render Table
-            tableHeaderRow.innerHTML = '';
-            tableBody.innerHTML = '';
-
-            data.table.headers.forEach((h, colIndex) => {
-                const th = document.createElement('th');
-                th.innerHTML = `
-                    <span class="editable" contenteditable="true" onblur="updateTableHeader(${colIndex}, this.innerText)">${h.label || h.tag || ''}</span>
-                    <span class="col-del-btn" onclick="deleteColumn(${colIndex})" title="Delete Column">🗑️</span>
-                `;
-                tableHeaderRow.appendChild(th);
-            });
-
-            data.table.rows.forEach((row, rowIndex) => {
-                const tr = document.createElement('tr');
-                data.table.headers.forEach(h => {
-                    const td = document.createElement('td');
-                    td.className = 'editable';
-                    td.contentEditable = "true";
-                    td.innerText = row[h.tag] !== undefined && row[h.tag] !== null ? row[h.tag] : '';
-                    td.onblur = (e) => updateTableCell(rowIndex, h.tag, e.target.innerText);
-                    tr.appendChild(td);
-                });
-                tableBody.appendChild(tr);
-            });
+            if(!data.markdown) data.markdown = "";
+            markdownEditor.value = data.markdown;
         }
 
-        // Action Handlers
-        window.deleteMetadata = (index) => {
-            const data = appState.pages[appState.currentPage].existing_data;
-            data.metadata.splice(index, 1);
-            loadActivePage();
-        }
-        window.updateMetaLabel = (index, val) => {
-            appState.pages[appState.currentPage].existing_data.metadata[index].label = val;
-        }
-        window.updateMetaValue = (index, val) => {
-            appState.pages[appState.currentPage].existing_data.metadata[index].value = val;
-        }
-        window.addMetadata = () => {
-            const data = appState.pages[appState.currentPage].existing_data;
-            if(!data) return;
-            data.metadata.push({label: 'New Field', tag: 'new_field_' + Date.now(), value: 'New Value'});
-            loadActivePage();
-        }
-
-        window.deleteColumn = (colIndex) => {
-            const data = appState.pages[appState.currentPage].existing_data;
-            const tagToRemove = data.table.headers[colIndex].tag;
-            // remove from headers
-            data.table.headers.splice(colIndex, 1);
-            // remove from all rows
-            data.table.rows.forEach(r => delete r[tagToRemove]);
-            loadActivePage();
-        }
-        window.updateTableHeader = (colIndex, val) => {
-            appState.pages[appState.currentPage].existing_data.table.headers[colIndex].label = val;
-        }
-        window.updateTableCell = (rowIndex, tag, val) => {
-            appState.pages[appState.currentPage].existing_data.table.rows[rowIndex][tag] = val;
-        }
-        window.addRow = () => {
-            const data = appState.pages[appState.currentPage].existing_data;
-            if(!data) return;
-            const newRow = {};
-            data.table.headers.forEach(h => newRow[h.tag] = '');
-            data.table.rows.push(newRow);
-            loadActivePage();
-        }
-        
-        window.updatePageTitle = (val) => {
+        window.updateMarkdown = (val) => {
             if (appState.pages[appState.currentPage].existing_data) {
-                appState.pages[appState.currentPage].existing_data.page_title = val;
+                appState.pages[appState.currentPage].existing_data.markdown = val;
+            } else {
+                appState.pages[appState.currentPage].existing_data = { markdown: val };
             }
         }
+        
         
         window.tempSave = () => {
             commitActiveEdits();
@@ -729,7 +637,8 @@
 
         // Commit active dom to state if downloading while element remains focused
         function commitActiveEdits() {
-            if(document.activeElement && document.activeElement.classList.contains('editable')) {
+            if(document.activeElement && document.activeElement.id === 'markdownEditor') {
+                updateMarkdown(markdownEditor.value);
                 document.activeElement.blur();
             }
         }
