@@ -203,10 +203,10 @@
             </div>
             <!-- ログ表示 -->
             <div x-show="scrapeLog.length > 0"
-                 class="rounded-lg p-2 text-xs font-mono overflow-y-auto max-h-40 space-y-0.5"
-                 style="background:#0A0A0A; color:#A8FF78;">
+                 class="rounded-lg p-3 text-xs font-mono overflow-y-auto max-h-40 space-y-1"
+                 style="background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border-mid);">
                 <template x-for="(line, i) in scrapeLog" :key="i">
-                    <div x-text="line" class="leading-relaxed whitespace-pre-wrap break-all"></div>
+                    <div x-text="line" class="leading-relaxed whitespace-pre-wrap break-all border-b border-slate-200 pb-1"></div>
                 </template>
             </div>
 
@@ -240,10 +240,10 @@
                 </template>
             </div>
             <div x-show="enrichLog.length > 0"
-                 class="rounded-lg p-2 text-xs font-mono overflow-y-auto max-h-40 space-y-0.5"
-                 style="background:#0A0A0A; color:#A8FF78;">
+                 class="rounded-lg p-3 text-xs font-mono overflow-y-auto max-h-40 space-y-1"
+                 style="background: #f1f5f9; color: var(--text-secondary); border: 1px solid var(--border-mid);">
                 <template x-for="(line, i) in enrichLog" :key="i">
-                    <div x-text="line" class="leading-relaxed whitespace-pre-wrap break-all"></div>
+                    <div x-text="line" class="leading-relaxed whitespace-pre-wrap break-all border-b border-slate-200 pb-1"></div>
                 </template>
             </div>
 

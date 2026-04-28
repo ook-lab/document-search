@@ -12,13 +12,13 @@
 
   <style>
     :root {
-      --bg: #0d1117;
-      --panel: #161b22;
-      --bar: #1c2128;
-      --border: #30363d;
-      --accent: #7c3aed;
-      --fg: #e6edf3;
-      --muted: #7d8590;
+      --bg: #ffffff;
+      --panel: #f8fafc;
+      --bar: #f1f5f9;
+      --border: #e2e8f0;
+      --accent: #6366f1;
+      --fg: #1e293b;
+      --muted: #64748b;
       --mono: 'JetBrains Mono', monospace;
       --sans: 'Inter', sans-serif;
     }
@@ -35,7 +35,7 @@
     .brand svg { color: var(--accent); }
     
     #filename {
-      background: var(--bg); border: 1px solid var(--border); color: var(--fg);
+      background: #ffffff; border: 1px solid var(--border); color: var(--fg);
       padding: 8px 12px; border-radius: 6px; font-family: var(--mono); font-size: 14px; width: 240px;
     }
     .spacer { flex: 1; }
@@ -45,18 +45,19 @@
       cursor: pointer; border: none; transition: 0.2s; display: flex; align-items: center; gap: 8px;
     }
     .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-    .btn-ghost:hover { background: var(--panel); color: var(--fg); }
-    .btn-primary { background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(124,58,237,0.3); }
-    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn-ghost:hover { background: #fff; color: var(--fg); border-color: var(--muted); }
+    .btn-primary { background: var(--accent); color: white; box-shadow: 0 2px 6px rgba(99,102,241,0.2); }
+    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
     .btn-primary:active { transform: translateY(0); }
 
     /* EDITOR AREA */
-    #editor-container { flex: 1; position: relative; overflow: hidden; }
-    .CodeMirror { height: 100% !important; font-family: var(--mono) !important; font-size: 14px !important; }
+    #editor-container { flex: 1; position: relative; overflow: hidden; border-top: 1px solid var(--border); }
+    .CodeMirror { height: 100% !important; font-family: var(--mono) !important; font-size: 14px !important; background: #fff !important; color: #1a1a1a !important; }
+    .CodeMirror-gutters { background: #f8fafc !important; border-right: 1px solid var(--border) !important; }
 
     /* OVERLAY */
     #overlay {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+      display: none; position: fixed; inset: 0; background: rgba(255,255,255,0.9);
       z-index: 1000; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
     }
     #overlay.show { display: flex; }
@@ -86,7 +87,7 @@
 
 <div id="overlay">
   <div class="spinner"></div>
-  <div style="font-weight: 600;">PDFを生成しています...</div>
+  <div style="font-weight: 600; color: var(--fg);">PDFを生成しています...</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
@@ -98,7 +99,7 @@
 <script>
   const editor = CodeMirror.fromTextArea(document.getElementById('editor-ta'), {
     mode: 'htmlmixed',
-    theme: 'dracula',
+    theme: 'default', // 明るいテーマに変更
     lineNumbers: true,
     lineWrapping: true,
     tabSize: 2

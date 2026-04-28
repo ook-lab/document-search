@@ -7,18 +7,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0f172a;
-            --surface: #1e293b;
-            --surface-2: #334155;
-            --text: #f1f5f9;
-            --text-muted: #94a3b8;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface-2: #f1f5f9;
+            --text: #1e293b;
+            --text-muted: #64748b;
             --primary: #6366f1;
-            --primary-glow: rgba(99, 102, 241, 0.3);
+            --primary-glow: rgba(99, 102, 241, 0.15);
             --accent-ocr: #f59e0b;
             --accent-embed: #10b981;
             --accent-split: #3b82f6;
             --accent-opt: #ec4899;
-            --border: #334155;
+            --border: #e2e8f0;
             --radius: 12px;
         }
 
@@ -42,8 +42,9 @@
             display: flex;
             align-items: center;
             gap: 2rem;
-            height: 56px;
+            height: 60px;
             z-index: 100;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
 
         .logo {
@@ -54,6 +55,7 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            color: var(--text);
         }
 
         .logo-icon {
@@ -61,7 +63,7 @@
         }
 
         .logo span {
-            background: linear-gradient(135deg, var(--primary), #a78bfa);
+            background: linear-gradient(135deg, var(--primary), #818cf8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -69,7 +71,7 @@
         /* ===== TAB BAR ===== */
         .tab-bar {
             display: flex;
-            gap: 0.25rem;
+            gap: 0.5rem;
             height: 100%;
             align-items: flex-end;
         }
@@ -90,32 +92,31 @@
             gap: 0.5rem;
             position: relative;
             white-space: nowrap;
+            border: 1px solid transparent;
+            border-bottom: none;
         }
 
         .tab-btn:hover {
-            color: var(--text);
-            background: rgba(255, 255, 255, 0.05);
+            color: var(--primary);
+            background: var(--surface-2);
         }
 
         .tab-btn.active {
-            color: var(--text);
+            color: var(--primary);
             background: var(--bg);
+            border-color: var(--border);
         }
 
         .tab-btn.active::after {
             content: '';
             position: absolute;
-            bottom: 0;
+            bottom: -1px;
             left: 0;
             right: 0;
             height: 2px;
-            border-radius: 2px 2px 0 0;
+            background: var(--bg);
+            z-index: 2;
         }
-
-        .tab-btn[data-tab="ocr"].active::after { background: var(--accent-ocr); }
-        .tab-btn[data-tab="embedder"].active::after { background: var(--accent-embed); }
-        .tab-btn[data-tab="splitter"].active::after { background: var(--accent-split); }
-        .tab-btn[data-tab="optimizer"].active::after { background: var(--accent-opt); }
 
         .tab-dot {
             width: 8px;
@@ -157,6 +158,7 @@
             height: 100%;
             gap: 2rem;
             animation: fadeIn 0.5s ease;
+            background: #fff;
         }
 
         @keyframes fadeIn {
@@ -166,11 +168,9 @@
 
         .welcome h2 {
             font-family: 'Outfit', sans-serif;
-            font-size: 2rem;
+            font-size: 2.2rem;
             font-weight: 700;
-            background: linear-gradient(135deg, #f1f5f9, #94a3b8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: var(--text);
         }
 
         .welcome p {
@@ -183,8 +183,8 @@
         .tool-cards {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 1rem;
-            max-width: 800px;
+            gap: 1.5rem;
+            max-width: 900px;
             width: 100%;
             padding: 0 2rem;
         }
@@ -195,14 +195,15 @@
             border-radius: var(--radius);
             padding: 1.5rem;
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
         .tool-card:hover {
             transform: translateY(-4px);
             border-color: var(--primary);
-            box-shadow: 0 8px 25px -5px var(--primary-glow);
+            box-shadow: 0 10px 20px -5px var(--primary-glow);
         }
 
         .tool-card .icon {
@@ -212,15 +213,16 @@
         }
 
         .tool-card h3 {
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             font-weight: 600;
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.5rem;
+            color: var(--text);
         }
 
         .tool-card p {
-            font-size: 0.75rem;
+            font-size: 0.8rem;
             color: var(--text-muted);
-            line-height: 1.4;
+            line-height: 1.5;
         }
 
         .tool-card:nth-child(1) { --card-accent: var(--accent-ocr); }
@@ -228,7 +230,7 @@
         .tool-card:nth-child(3) { --card-accent: var(--accent-split); }
         .tool-card:nth-child(4) { --card-accent: var(--accent-opt); }
 
-        .tool-card:hover h3 { color: var(--card-accent); }
+        .tool-card:hover h3 { color: var(--primary); }
 
         @media (max-width: 768px) {
             .tool-cards { grid-template-columns: repeat(2, 1fr); }
