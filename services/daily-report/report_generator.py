@@ -259,7 +259,10 @@ class ReportGenerator:
             import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             from shared.common.config.settings import settings
-            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+            vertexai.init(
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+            )
             model = GenerativeModel(GEMINI_MODEL)
             resp  = model.generate_content(
                 prompt,

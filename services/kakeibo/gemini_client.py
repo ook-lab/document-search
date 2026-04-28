@@ -44,7 +44,10 @@ class GeminiClient:
     """Gemini API クライアント（Kakeibo専用）"""
 
     def __init__(self):
-                        vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+                        vertexai.init(
+                            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+                        )
 
     # ── レシート OCR（画像 → テキスト）────────────────────────
 

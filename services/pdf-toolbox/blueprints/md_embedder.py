@@ -133,20 +133,22 @@ def extract_page(file_id, page_index):
         image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
 
         prompt = """
-        You are an expert OCR and data extraction system.
-        Extract data from this scanned document (e.g. invoice, estimate, receipt).
-        Return the extracted data as clean, well-structured Markdown.
-        For key-value pairs (like metadata, dates, addresses), use bullet points or bold text.
-        For tabular data, use Markdown tables.
-        CRITICAL: Do not translate any Japanese text to English. Keep the original text intact.
-        CRITICAL: If Japanese words have wide kerning/spaces between characters (e.g., "摘    要"), you MUST join them together as a single word (e.g., "摘要").
+        あなたは高度なOCRおよびデータ抽出システムです。
+        提供された画像（請求書、見積書、領収書など）からすべての情報を抽出し、クリーンで構造化されたMarkdown形式で返してください。
+
+        【抽出ルール】
+        1. **表データ (Tabular Data)**: 文書内に表がある場合は、必ずMarkdownのテーブル形式（|---|）を使用して抽出してください。
+        2. **項目 (Key-Value)**: 日付、住所、社名、合計金額などの項目は、箇条書きまたは太字を使用して整理してください。
+        3. **言語**: 日本語を英語に翻訳しないでください。元の言語のまま抽出してください。
+        4. **文字の結合**: 「摘    要」のように文字間に不自然なスペースがある場合は、結合して「摘要」として抽出してください。
+        5. **出力形式**: 余計な説明は省き、Markdownデータのみを出力してください。
         """
         
         if custom_instructions:
-            prompt += f"\n\nADDITIONAL USER INSTRUCTIONS (CRITICAL PRIORITY):\n{custom_instructions}\nEnsure you strictly follow the above additional instructions regarding formatting or layout."
+            prompt += f"\n\n【追加のユーザー指示】\n{custom_instructions}\n上記指示に従ってフォーマットを調整してください。"
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
             contents=[image_part, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="text/plain",
@@ -155,9 +157,10 @@ def extract_page(file_id, page_index):
         
         text_result = response.text
         
-        match = re.search(r'```(?:markdown|md)?\n(.*?)```', text_result, re.DOTALL)
-        if match:
-            text_result = match.group(1).strip()
+        # More robust extraction for multiple or varying code blocks
+        matches = re.findall(r'```(?:markdown|md)?\s*\n?(.*?)```', text_result, re.DOTALL)
+        if matches:
+            text_result = "\n\n".join(m.strip() for m in matches)
         else:
             text_result = text_result.strip()
 
@@ -257,7 +260,7 @@ def generate_filename():
         
         client = get_client()
         response = client.models.generate_content(
-            model='gemini-2.5-flash-lite',
+            model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
             contents=prompt
         )
         filename = response.text.strip().replace(' ', '_').replace('/', '').replace('\\', '')

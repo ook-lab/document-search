@@ -51,7 +51,10 @@ CATEGORIES = {
     },
 }
 
-vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+vertexai.init(
+    project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+    location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+)
 gemini_model = GenerativeModel(
     "gemini-2.5-flash-lite",
     generation_config=GenerationConfig(

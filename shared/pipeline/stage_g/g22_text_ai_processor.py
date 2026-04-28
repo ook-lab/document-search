@@ -48,9 +48,11 @@ class G22TextAIProcessor:
             self.model = None
             return
 
-        # Vertex AI 初期化
         try:
-            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+            vertexai.init(
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+            )
             self.model = GenerativeModel(model_name)
             logger.info(f"[G-22] モデル初期化 (Vertex AI): {model_name}")
         except Exception as e:

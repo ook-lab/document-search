@@ -52,7 +52,10 @@ class F3SmartDateNormalizer:
             return
 
         if api_key:
-            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+            vertexai.init(
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+            )
             self.model = GenerativeModel(model_name)
         else:
             logger.warning("[F-3] API key が設定されていません")

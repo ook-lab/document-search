@@ -2,24 +2,25 @@ import os
 import json
 import uuid
 import fitz  # PyMuPDF
-import vertexai
-from vertexai.generative_models import GenerativeModel
 from flask import Blueprint, render_template, request, jsonify, send_file, url_for, current_app
 from werkzeug.utils import secure_filename
-from PIL import Image
+from google import genai
+from google.genai import types
 
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
-# Gemini Setup (lazy init)
-_model = None
+# Gemini Client (lazy init)
+_client = None
 
-def get_model():
-    global _model
-    if _model is None:
-        vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
-        model_name = os.getenv("STAGE1_MODEL", "gemini-2.5-flash-lite")
-        _model = GenerativeModel(model_name)
-    return _model
+def get_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(
+            vertexai=True,
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+        )
+    return _client
 
 # Template Store
 TEMPLATES_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates.json')
@@ -95,36 +96,53 @@ def upload_file():
 
 @ocr_bp.route('/run_ocr', methods=['POST'])
 def run_ocr():
-    data = request.json
-    pdf_id = data.get('pdf_id')
-    page_num = data.get('page_num', 0)
-    template_id = data.get('template_id', 'Standard')
-    
-    img_path = os.path.abspath(os.path.join(current_app.config['STATIC_FOLDER'], 'previews', pdf_id, f"page_{page_num}.png"))
-    
-    templates = load_templates()
-    template_prompt = templates.get(template_id, templates['Standard'])['prompt']
-    
-    full_prompt = (
-        "Perform OCR on this image. "
-        f"{template_prompt} "
-        "Return a JSON array of objects. Each object MUST have: "
-        "- 'text': The extracted text content. "
-        "- 'box_2d': [ymin, xmin, ymax, xmax] in normalized 0-1000 format. "
-        "Return ONLY the raw JSON array."
-    )
-    
-    img = Image.open(img_path)
-    model = get_model()
-    response = model.generate_content([full_prompt, img])
-    
     try:
-        text_content = response.text.replace('```json', '').replace('```', '').strip()
-        ocr_results = json.loads(text_content)
+        data = request.json
+        pdf_id = data.get('pdf_id')
+        page_num = data.get('page_num', 0)
+        template_id = data.get('template_id', 'Standard')
+        
+        img_path = os.path.abspath(os.path.join(current_app.config['STATIC_FOLDER'], 'previews', pdf_id, f"page_{page_num}.png"))
+        
+        if not os.path.exists(img_path):
+            return jsonify({"error": "Image not found"}), 404
+
+        templates = load_templates()
+        template_prompt = templates.get(template_id, templates['Standard'])['prompt']
+        
+        full_prompt = (
+            "Perform OCR on this image. "
+            f"{template_prompt} "
+            "Return a JSON array of objects. Each object MUST have: "
+            "- 'text': The extracted text content. "
+            "- 'box_2d': [ymin, xmin, ymax, xmax] in normalized 0-1000 format. "
+            "Return ONLY the raw JSON array."
+        )
+        
+        client = get_client()
+        with open(img_path, "rb") as f:
+            img_bytes = f.read()
+        
+        image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+
+        response = client.models.generate_content(
+            model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
+            contents=[image_part, full_prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            )
+        )
+        
+        ocr_results = response.parsed
+        if not ocr_results:
+            # Fallback for plain text response
+            text_content = response.text.replace('```json', '').replace('```', '').strip()
+            ocr_results = json.loads(text_content)
+            
         return jsonify(ocr_results)
     except Exception as e:
-        current_app.logger.error(f"Error parsing Gemini response: {e}")
-        return jsonify({"error": "Failed to parse AI response", "raw": response.text}), 500
+        current_app.logger.error(f"Error in OCR: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @ocr_bp.route('/save', methods=['POST'])
 def save_pdf():
@@ -212,8 +230,11 @@ def generate_filename():
             f"テキスト:\n{text[:3000]}"
         )
         
-        model = get_model()
-        response = model.generate_content(prompt)
+        client = get_client()
+        response = client.models.generate_content(
+            model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
+            contents=prompt
+        )
         filename = response.text.strip().replace(' ', '_').replace('/', '').replace('\\', '')
         
         return jsonify({"filename": filename})

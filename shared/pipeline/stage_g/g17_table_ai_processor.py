@@ -50,7 +50,10 @@ class G17TableAIProcessor:
             import vertexai
             from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             # Vertex AI 初期化
-            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+            vertexai.init(
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+            )
             self.model = GenerativeModel(model_name)
             logger.info(f"[G-17] モデル初期化 (Vertex AI): {model_name}")
         except Exception as e:

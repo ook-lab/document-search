@@ -57,7 +57,10 @@ class E21ContextExtractor:
             return
 
         if api_key:
-            vertexai.init(location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+            vertexai.init(
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+            )
             self.model = GenerativeModel(model_name)
             logger.info(f"[E-21] モデル初期化: {model_name}")
         else:

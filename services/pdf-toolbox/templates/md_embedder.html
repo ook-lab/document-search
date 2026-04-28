@@ -71,7 +71,10 @@
                 </div>
                 <div class="data-header">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h3 style="margin:0; font-size:1rem; color:var(--primary);">Markdown Data</h3>
+                        <div class="edit-tabs">
+                            <button class="tab-btn active" onclick="setEditMode('visual')">Visual Editor</button>
+                            <button class="tab-btn" onclick="setEditMode('raw')">Raw MD</button>
+                        </div>
                         <div style="display: flex; gap: 0.5rem;">
                             <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="tempSave()">💾 一時保存</button>
                             <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="undoEdits()">↩️ 元に戻す</button>
@@ -79,7 +82,13 @@
                     </div>
                 </div>
                 <div class="data-body">
-                    <textarea id="markdownEditor" style="flex: 1; width: 100%; resize: none; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; font-family: monospace; font-size: 0.9rem;" onblur="updateMarkdown(this.value)"></textarea>
+                    <div id="visualEditor" class="editor-pane active">
+                        <!-- Rendered tables and text sections will go here -->
+                        <div id="tableContainer"></div>
+                    </div>
+                    <div id="rawEditor" class="editor-pane">
+                        <textarea id="markdownEditor" style="width: 100%; height: 100%; resize: none; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; font-family: monospace; font-size: 0.9rem;" onblur="updateMarkdownFromRaw(this.value)"></textarea>
+                    </div>
                 </div>
             </div>
         </div>
@@ -88,11 +97,31 @@
         <div class="spinner"></div>
         <p style="margin-top: 1rem; font-weight: 600;" id="loaderText">Processing...</p>
     </div>
+
+    <style>
+        .edit-tabs { display: flex; gap: 0.5rem; }
+        .edit-tabs .tab-btn { background: #f1f5f9; border: 1px solid var(--border); padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; }
+        .edit-tabs .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+        .editor-pane { display: none; height: 100%; overflow-y: auto; }
+        .editor-pane.active { display: block; }
+        
+        /* Table Editor Styles */
+        .editable-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; background: white; font-size: 0.85rem; }
+        .editable-table th, .editable-table td { border: 1px solid var(--border); padding: 0.5rem; text-align: left; }
+        .editable-table th { background: #f8fafc; font-weight: 600; }
+        .editable-table input { width: 100%; border: none; background: transparent; font-family: inherit; font-size: inherit; outline: none; padding: 2px; }
+        .editable-table input:focus { background: #eff6ff; }
+        .text-section { margin-bottom: 1.5rem; }
+        .text-section textarea { width: 100%; border: 1px solid #eee; border-radius: 4px; padding: 0.5rem; font-family: inherit; resize: vertical; }
+        .table-actions { display: flex; gap: 0.5rem; margin-top: -1.5rem; margin-bottom: 1.5rem; justify-content: flex-end; }
+    </style>
+
     <script>
         const API = '/embedder';
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        let appState = { fileId: null, safeFilename: null, pages: [], currentPage: 0 };
+        let appState = { fileId: null, safeFilename: null, pages: [], currentPage: 0, editMode: 'visual' };
+        
         const uploadView = document.getElementById('uploadView');
         const workspaceView = document.getElementById('workspaceView');
         const loaderOverlay = document.getElementById('loaderOverlay');
@@ -104,6 +133,7 @@
         const extractAiBtn = document.getElementById('extractAiBtn');
         const aiOverlay = document.getElementById('aiOverlay');
         const markdownEditor = document.getElementById('markdownEditor');
+        const tableContainer = document.getElementById('tableContainer');
 
         ['dragenter','dragover','dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }));
         dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
@@ -136,7 +166,7 @@
                 const wrap = document.createElement('div');
                 wrap.className = `thumb-wrap ${idx === appState.currentPage ? 'active' : ''} ${p.existing_data ? 'has-data' : ''}`;
                 wrap.innerHTML = `<img class="thumb-item" src="${p.image_url}"><div class="thumb-badge">✓</div>`;
-                wrap.onclick = () => { appState.currentPage = idx; document.querySelectorAll('.thumb-wrap').forEach(w => w.classList.remove('active')); wrap.classList.add('active'); loadActivePage(); };
+                wrap.onclick = () => { if(appState.editMode === 'visual') syncVisualToAppState(); appState.currentPage = idx; document.querySelectorAll('.thumb-wrap').forEach(w => w.classList.remove('active')); wrap.classList.add('active'); loadActivePage(); };
                 list.appendChild(wrap);
             });
         }
@@ -146,6 +176,19 @@
             document.getElementById('mainPreviewImg').src = p.image_url;
             if(p.existing_data) { aiOverlay.style.display = 'none'; renderData(p.existing_data); }
             else { aiOverlay.style.display = 'flex'; renderData({ markdown: "" }); }
+        }
+
+        function setEditMode(mode) {
+            if (mode === appState.editMode) return;
+            if (appState.editMode === 'visual') syncVisualToAppState();
+            else syncRawToAppState();
+            
+            appState.editMode = mode;
+            document.querySelectorAll('.edit-tabs .tab-btn').forEach(btn => btn.classList.toggle('active', btn.textContent.toLowerCase().includes(mode)));
+            document.getElementById('visualEditor').classList.toggle('active', mode === 'visual');
+            document.getElementById('rawEditor').classList.toggle('active', mode === 'raw');
+            
+            loadActivePage();
         }
 
         extractAiBtn.onclick = async () => {
@@ -165,7 +208,8 @@
         };
 
         saveBtn.onclick = async () => {
-            commitActiveEdits(); showLoader("Generating Sandwich PDF...");
+            if(appState.editMode === 'visual') syncVisualToAppState(); else syncRawToAppState();
+            showLoader("Generating Sandwich PDF...");
             try {
                 const pagesData = {};
                 appState.pages.forEach((p, i) => { if(p.existing_data) pagesData[i] = p.existing_data; });
@@ -194,11 +238,158 @@
             } catch (e) { alert("エラー: " + e.message); } finally { hideLoader(); }
         };
 
-        function renderData(data) { if(!data.markdown) data.markdown = ""; markdownEditor.value = data.markdown; }
-        window.updateMarkdown = (val) => { if (appState.pages[appState.currentPage].existing_data) appState.pages[appState.currentPage].existing_data.markdown = val; else appState.pages[appState.currentPage].existing_data = { markdown: val }; };
-        window.tempSave = () => { commitActiveEdits(); const data = appState.pages[appState.currentPage].existing_data; if (data) { appState.pages[appState.currentPage].backup_data = JSON.parse(JSON.stringify(data)); alert("一時保存しました。"); } };
+        // --- Data Handling & Sync ---
+
+        function renderData(data) {
+            const md = data.markdown || "";
+            markdownEditor.value = md;
+            if (appState.editMode === 'visual') {
+                renderVisualEditor(md);
+            }
+        }
+
+        function renderVisualEditor(md) {
+            tableContainer.innerHTML = '';
+            // Split MD by potential table markers
+            const sections = splitMarkdown(md);
+            
+            sections.forEach((section, sIdx) => {
+                if (section.type === 'table') {
+                    const tableObj = parseMdTable(section.content);
+                    const tableEl = createEditableTable(tableObj, sIdx);
+                    tableContainer.appendChild(tableEl);
+                } else if (section.content.trim()) {
+                    const textDiv = document.createElement('div');
+                    textDiv.className = 'text-section';
+                    textDiv.innerHTML = `<textarea data-index="${sIdx}">${section.content}</textarea>`;
+                    tableContainer.appendChild(textDiv);
+                }
+            });
+        }
+
+        function splitMarkdown(md) {
+            const lines = md.split('\n');
+            const sections = [];
+            let currentContent = [];
+            let inTable = false;
+
+            lines.forEach((line) => {
+                const isTableLine = line.trim().startsWith('|') && line.trim().endsWith('|');
+                if (isTableLine) {
+                    if (!inTable) {
+                        if (currentContent.length) sections.push({ type: 'text', content: currentContent.join('\n') });
+                        currentContent = [];
+                        inTable = true;
+                    }
+                    currentContent.push(line);
+                } else {
+                    if (inTable) {
+                        sections.push({ type: 'table', content: currentContent.join('\n') });
+                        currentContent = [];
+                        inTable = false;
+                    }
+                    currentContent.push(line);
+                }
+            });
+            if (currentContent.length) sections.push({ type: inTable ? 'table' : 'text', content: currentContent.join('\n') });
+            return sections;
+        }
+
+        function parseMdTable(md) {
+            const lines = md.trim().split('\n').filter(l => l.includes('|'));
+            if (lines.length < 2) return { headers: [], rows: [] };
+            
+            const parseLine = (l) => l.split('|').map(s => s.trim()).filter((s, i, arr) => i > 0 && i < arr.length - 1);
+            const headers = parseLine(lines[0]);
+            const rows = lines.slice(2).map(parseLine); // Skip separator line at [1]
+            return { headers, rows };
+        }
+
+        function createEditableTable(tableObj, sIdx) {
+            const wrapper = document.createElement('div');
+            const table = document.createElement('table');
+            table.className = 'editable-table';
+            table.dataset.index = sIdx;
+            
+            const thead = document.createElement('thead');
+            const hRow = document.createElement('tr');
+            tableObj.headers.forEach(h => {
+                const th = document.createElement('th');
+                th.innerHTML = `<input value="${h}">`;
+                hRow.appendChild(th);
+            });
+            thead.appendChild(hRow);
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            tableObj.rows.forEach(r => {
+                const tr = document.createElement('tr');
+                r.forEach(cell => {
+                    const td = document.createElement('td');
+                    td.innerHTML = `<input value="${cell}">`;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            wrapper.appendChild(table);
+            
+            const actions = document.createElement('div');
+            actions.className = 'table-actions';
+            actions.innerHTML = `<button class="btn-outline" style="font-size:0.6rem" onclick="addRow(${sIdx})">+ 行追加</button>`;
+            wrapper.appendChild(actions);
+
+            return wrapper;
+        }
+
+        window.addRow = (sIdx) => {
+            const table = document.querySelector(`.editable-table[data-index="${sIdx}"]`);
+            if (!table) return;
+            const rowCount = table.rows[0].cells.length;
+            const newRow = table.querySelector('tbody').insertRow();
+            for (let i = 0; i < rowCount; i++) {
+                const cell = newRow.insertCell();
+                cell.innerHTML = `<input value="">`;
+            }
+        };
+
+        function syncVisualToAppState() {
+            const sections = [];
+            const children = tableContainer.children;
+            for (let child of children) {
+                if (child.querySelector('.editable-table')) {
+                    const table = child.querySelector('.editable-table');
+                    const headers = Array.from(table.querySelectorAll('thead th input')).map(i => i.value);
+                    const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => 
+                        Array.from(tr.querySelectorAll('td input')).map(i => i.value)
+                    );
+                    let mdTable = '| ' + headers.join(' | ') + ' |\n';
+                    mdTable += '| ' + headers.map(() => '---').join(' | ') + ' |\n';
+                    rows.forEach(r => { mdTable += '| ' + r.join(' | ') + ' |\n'; });
+                    sections.push(mdTable);
+                } else if (child.querySelector('textarea')) {
+                    sections.push(child.querySelector('textarea').value);
+                }
+            }
+            const md = sections.join('\n');
+            if (appState.pages[appState.currentPage]) {
+                if (!appState.pages[appState.currentPage].existing_data) appState.pages[appState.currentPage].existing_data = { markdown: "" };
+                appState.pages[appState.currentPage].existing_data.markdown = md;
+                markdownEditor.value = md;
+            }
+        }
+
+        function syncRawToAppState() {
+            const md = markdownEditor.value;
+            if (appState.pages[appState.currentPage]) {
+                if (!appState.pages[appState.currentPage].existing_data) appState.pages[appState.currentPage].existing_data = { markdown: "" };
+                appState.pages[appState.currentPage].existing_data.markdown = md;
+            }
+        }
+
+        window.updateMarkdownFromRaw = (val) => { syncRawToAppState(); };
+        window.tempSave = () => { if(appState.editMode === 'visual') syncVisualToAppState(); else syncRawToAppState(); const data = appState.pages[appState.currentPage].existing_data; if (data) { appState.pages[appState.currentPage].backup_data = JSON.parse(JSON.stringify(data)); alert("一時保存しました。"); } };
         window.undoEdits = () => { const backup = appState.pages[appState.currentPage].backup_data; if (backup) { if (confirm("リセットしますか？")) { appState.pages[appState.currentPage].existing_data = JSON.parse(JSON.stringify(backup)); loadActivePage(); } } else { alert("元に戻せるデータがありません。"); } };
-        function commitActiveEdits() { if(document.activeElement && document.activeElement.id === 'markdownEditor') { updateMarkdown(markdownEditor.value); document.activeElement.blur(); } }
         function showLoader(txt) { loaderText.textContent = txt; loaderOverlay.style.display = 'flex'; }
         function hideLoader() { loaderOverlay.style.display = 'none'; }
     </script>
