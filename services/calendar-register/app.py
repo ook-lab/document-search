@@ -331,7 +331,11 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
 
     import vertexai
     from google import genai
-    client = genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+    client = genai.Client(
+        vertexai=True, 
+        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+        location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+    )
 
     today = datetime.now()
     preset_section = f"""
@@ -1007,7 +1011,11 @@ def api_assign():
 
     import vertexai
     from google import genai
-    client = genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+    client = genai.Client(
+        vertexai=True, 
+        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+        location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+    )
 
     def _slot_line(s):
         time_str = f'{s.get("start_time","") or "終日"}-{s.get("end_time","") or ""}'

@@ -17,11 +17,11 @@ def process_file(file_path):
 
     original_content = content
     
-    # 1. Replace gemini-3.1-flash-lite-preview (but NOT gemini-2.5-flash-lite) with gemini-3.1-flash-lite-preview
-    content = re.sub(r'gemini-2\.5-flash(?!-lite)', 'gemini-3.1-flash-lite-preview', content)
+    # 1. Replace gemini-2.5-flash-lite (but NOT gemini-2.5-flash-lite) with gemini-2.5-flash-lite
+    content = re.sub(r'gemini-2\.5-flash(?!-lite)', 'gemini-2.5-flash-lite', content)
     
-    # 2. Replace gemini-3.1-flash-lite-preview with gemini-3.1-flash-lite-preview
-    content = content.replace('gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite-preview')
+    # 2. Replace gemini-2.5-flash-lite with gemini-2.5-flash-lite
+    content = content.replace('gemini-2.5-flash-lite', 'gemini-2.5-flash-lite')
     
     # 3. Replace location="asia-northeast1" for vertexai and genai.Client
     # Only replace if it's part of an init or Client call

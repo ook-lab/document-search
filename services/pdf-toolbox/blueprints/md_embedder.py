@@ -16,7 +16,12 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        _client = genai.Client(vertexai=True, location=os.environ.get("VERTEX_AI_REGION", "us-central1"))
+        # Use Vertex AI as per user's migration goal
+        _client = genai.Client(
+            vertexai=True, 
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+        )
     return _client
 
 MARKER_START = "<<<MD_SANDWICH_START>>>"
@@ -122,7 +127,10 @@ def extract_page(file_id, page_index):
             return jsonify({'error': 'Image for this page not found on server'}), 404
 
         client = get_client()
-        uploaded_file = client.files.upload(file=img_path)
+        with open(img_path, "rb") as f:
+            img_bytes = f.read()
+        
+        image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
 
         prompt = """
         You are an expert OCR and data extraction system.
@@ -139,14 +147,13 @@ def extract_page(file_id, page_index):
 
         response = client.models.generate_content(
             model='gemini-2.5-flash-lite',
-            contents=[uploaded_file, prompt],
+            contents=[image_part, prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="text/plain",
             ),
         )
         
         text_result = response.text
-        client.files.delete(name=uploaded_file.name)
         
         match = re.search(r'```(?:markdown|md)?\n(.*?)```', text_result, re.DOTALL)
         if match:

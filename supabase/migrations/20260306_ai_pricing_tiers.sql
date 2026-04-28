@@ -30,7 +30,7 @@ INSERT INTO ai_model_pricing (model, source_type, prompt_tier, input_price_per_1
   ('gemini-2.5-flash-lite',       'all', 'all',      0.075,  0.30,  0.0,  'Gemini 2.5 Flash-Lite'),
   ('gemini-2.5-pro',              'all', 'standard', 1.25,  10.00,  3.50, 'Gemini 2.5 Pro (≤200K)'),
   ('gemini-2.5-pro',              'all', 'large',    2.50,  15.00,  3.50, 'Gemini 2.5 Pro (>200K)'),
-  ('gemini-3.1-flash-lite-preview','all','all',      0.10,   0.40,  0.0,  'Gemini 3.1 Flash-Lite'),
+  ('gemini-2.5-flash-lite','all','all',      0.10,   0.40,  0.0,  'Gemini 3.1 Flash-Lite'),
   ('gemini-3-flash-preview',      'all', 'all',      0.10,   0.40,  0.0,  'Gemini 3 Flash Preview'),
   ('gemini-3.1-pro-preview',      'all', 'standard', 1.25,  10.00,  3.50, 'Gemini 3.1 Pro Preview (≤200K)'),
   ('gemini-3.1-pro-preview',      'all', 'large',    2.50,  15.00,  3.50, 'Gemini 3.1 Pro Preview (>200K)'),

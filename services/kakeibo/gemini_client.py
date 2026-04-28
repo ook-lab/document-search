@@ -95,7 +95,7 @@ class GeminiClient:
     def call_model(
         self,
         prompt: str,
-        model_name: str = "gemini-3.1-flash-lite-preview",
+        model_name: str = "gemini-2.5-flash-lite",
         max_output_tokens: int = 8192,
         **_kwargs,                # tier など余分なキーワードを無視
     ) -> Dict:

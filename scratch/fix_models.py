@@ -19,7 +19,7 @@ def process_file(file_path):
     
     # Replace model names
     content = content.replace('gemini-2.0-flash-lite-preview-02-05', 'gemini-2.0-flash-lite-preview-02-05')
-    content = content.replace('gemini-3.1-flash-lite-preview', 'gemini-3.1-flash-lite-preview')
+    content = content.replace('gemini-2.5-flash-lite', 'gemini-2.5-flash-lite')
     
     # Replace regions for vertexai init and genai Client
     content = re.sub(r'vertexai\.init\(\s*location=[\'\"]asia-northeast1[\'\"]\s*\)', 'vertexai.init(location=\"us-central1\")', content)

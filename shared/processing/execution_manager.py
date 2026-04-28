@@ -18,7 +18,7 @@ Phase 5: Non-Destructive Execution
         document_id=doc_id,
         owner_id=owner_id,
         input_text=combined_text,
-        model_version="gemini-3.1-flash-lite-preview"
+        model_version="gemini-2.5-flash-lite"
     )
 
     # 2. 処理実行

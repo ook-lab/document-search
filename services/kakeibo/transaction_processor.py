@@ -63,7 +63,7 @@ class TransactionProcessor:
         ocr_result: Dict,
         file_name: str,
         drive_file_id: str,
-        model_name: str = "gemini-3.1-flash-lite-preview",
+        model_name: str = "gemini-2.5-flash-lite",
         source_folder: str = "INBOX",
         existing_receipt_id: str = None,
     ) -> Dict:
@@ -535,7 +535,7 @@ class TransactionProcessor:
 
     def _extract_general_name_with_ai(self, product_name: str) -> Optional[Dict]:
         prompt = f"Product: {product_name}\nExtract general name and keywords in JSON format: {{\"general_name\": \"...\", \"keywords\": [...]}}"
-        response = self.gemini.call_model(prompt=prompt, model_name="gemini-3.1-flash-lite-preview", max_output_tokens=256)
+        response = self.gemini.call_model(prompt=prompt, model_name="gemini-2.5-flash-lite", max_output_tokens=256)
         content = response["content"].strip()
         if content.startswith("```"):
             content = content.split("```")[1]

@@ -21,7 +21,7 @@ class ModelTier:
     # G_cloud_run で tier="ui_response" として使用
     UI_RESPONSE_GENERATOR = {
         "provider": AIProvider.GEMINI,
-        "model": "gemini-3.1-flash-lite-preview",
+        "model": "gemini-2.5-flash-lite",
         "description": "100万トークンコンテキスト、高速で安定した対話応答",
         "temperature": 0.7,
         "max_tokens": 65536,  # Gemini 2.5 Flashの最大出力トークン数
@@ -85,7 +85,7 @@ class ResearchFlow:
         },
         # 3段Flash締め: Evidence抽出→論点整理→回答生成（最終のみFlash）
         "compress-3step": {
-            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview"],
+            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash-lite"],
             "description": "3段: Evidence抽出(Lite) → 論点整理(Lite) → 最終回答(Flash)",
             "rounds": 3,
         },

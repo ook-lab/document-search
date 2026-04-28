@@ -37,7 +37,7 @@ class TransactionProcessor:
         ocr_result: Dict,
         file_name: str,
         drive_file_id: str,
-        model_name: str = "gemini-3.1-flash-lite-preview",
+        model_name: str = "gemini-2.5-flash-lite",
         source_folder: str = "INBOX"
     ) -> Dict:
         """
@@ -875,7 +875,7 @@ keywords: ["豚ひき肉", "日本ハム", "200g"]
             response = self.llm_client.call_model(
                 tier="stageh_extraction",
                 prompt=prompt,
-                model_name="gemini-3.1-flash-lite-preview",
+                model_name="gemini-2.5-flash-lite",
                 max_output_tokens=8192
             )
 
