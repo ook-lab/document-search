@@ -55,7 +55,8 @@ def run():
         target_dir = None
         for svc, path in service_map.items():
             if svc in name.lower():
-                target_dir = [f"{path}", "shared/**"]
+                # 個別ビルド化のため shared/** は含めない
+                target_dir = [path]
                 break
         
         if target_dir:

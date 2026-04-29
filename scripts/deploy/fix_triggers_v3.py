@@ -61,7 +61,9 @@ def run():
             with open(tmp_file, 'r', encoding='utf-8') as f:
                 cfg = yaml.safe_load(f)
             
-            cfg['includedFiles'] = [target_path, 'shared/**']
+            # 個別ビルド化のため、対象サービス配下のみを監視する。
+            # shared/** を含めると全サービス連鎖ビルドの原因になる。
+            cfg['includedFiles'] = [target_path]
             
             with open(tmp_file, 'w', encoding='utf-8') as f:
                 yaml.dump(cfg, f)

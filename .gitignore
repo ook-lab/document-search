@@ -51,6 +51,9 @@ __pycache__/
 # Snapshots and temporary files
 PROJECT_SNAPSHOT*
 tmpclaude-*
+triggers.json
+tmp_*_trigger.json
+tmp_trigger.yaml
 
 .tmp.driveupload/
 

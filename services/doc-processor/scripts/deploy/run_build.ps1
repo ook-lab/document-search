@@ -1,6 +1,6 @@
 param(
-    [string]$Service = ""  # 例: "doc-processor", "doc-search", "doc-review", "calendar-register", "kakeibo", "daily-report"
-                           # 省略時は全サービスをビルド（my-calendar-app は除く）
+    [string]$Service = "", # 例: "doc-processor", "doc-search", "doc-review", "calendar-register", "kakeibo", "daily-report"
+    [switch]$All           # 明示時のみ cloudbuild.yaml（全体ビルド）を実行
 )
 
 Set-Location "C:\Users\ookub\document-management-system"
@@ -39,9 +39,14 @@ $subs = "_GOOGLE_AI_API_KEY=$env:GOOGLE_AI_API_KEY,_ANTHROPIC_API_KEY=$env:ANTHR
 # my-calendar-app, portal-app は services/ 配下ではなくルート直下
 $rootServices = @("my-calendar-app", "portal-app")
 
-if ($Service -eq "") {
+if ($Service -eq "" -and -not $All) {
+    Write-Host "エラー: 個別ビルド対象を指定してください。"
+    Write-Host "例) .\scripts\deploy\run_build.ps1 -Service doc-processor"
+    Write-Host "全体ビルドが必要な場合のみ -All を付けてください。"
+    exit 1
+} elseif ($All) {
     $config = "cloudbuild.yaml"
-    Write-Host "全サービスをビルド・デプロイします..."
+    Write-Host "全体ビルドを実行します（-All 指定）..."
 } elseif ($rootServices -contains $Service) {
     $config = "$Service/cloudbuild.yaml"
     Write-Host "$Service のみをビルド・デプロイします..."

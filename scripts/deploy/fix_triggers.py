@@ -33,7 +33,12 @@ def fix_triggers():
         'daily-report': 'services/daily-report/**',
         'ai-cost-tracker': 'services/ai-cost-tracker/**',
         'my-calendar-app': 'my-calendar-app/**',
-        'portal-app': 'portal-app/**'
+        'portal-app': 'portal-app/**',
+        'doc-review': 'services/doc-review/**',
+        'doc-search': 'services/doc-search/**',
+        'data-ingestion': 'services/data-ingestion/**',
+        'tenshoku-tool': 'services/tenshoku-tool/**',
+        'drive-checker': 'services/drive-duplicate-checker/**'
     }
 
     for t in triggers:
@@ -42,8 +47,8 @@ def fix_triggers():
         
         target_dir = None
         for svc, path in service_map.items():
-            if svc in name:
-                target_dir = f"{path},shared/**"
+            if svc in name.lower():
+                target_dir = path
                 break
         
         if target_dir:
