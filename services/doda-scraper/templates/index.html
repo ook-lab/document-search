@@ -6,48 +6,49 @@
 <title>Doda Scraper 管理画面</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-  header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 16px; font-weight: 600; color: #fbbf24; }
+  body { font-family: 'Segoe UI', 'Inter', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
+  header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 16px; font-weight: 700; color: #d97706; }
 
   .layout { display: grid; grid-template-columns: 350px 1fr; height: calc(100vh - 53px); }
 
   /* === サイドバー === */
-  .sidebar { background: #13151f; border-right: 1px solid #2d3148; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+  .sidebar { background: #ffffff; border-right: 1px solid #e2e8f0; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
   .script-card {
-    background: #1a1d27; border: 1px solid #2d3148; border-radius: 10px;
+    background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px;
     padding: 16px; display: flex; flex-direction: column; gap: 10px;
     transition: border-color 0.2s;
   }
   .script-card.running { border-color: #fbbf24; }
-  .script-card h3 { font-size: 14px; color: #fff; }
-  .script-card p { font-size: 11px; color: #9ca3af; line-height: 1.4; }
+  .script-card h3 { font-size: 14px; color: #1e293b; font-weight: 700; }
+  .script-card p { font-size: 11px; color: #64748b; line-height: 1.4; }
   
   .btn-run {
-    width: 100%; padding: 8px; background: #fbbf24; color: #000; border: none;
+    width: 100%; padding: 8px; background: #fbbf24; color: #92400e; border: none;
     border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, transform 0.1s;
   }
-  .btn-run:hover:not(:disabled) { opacity: 0.8; }
+  .btn-run:hover:not(:disabled) { background: #f59e0b; transform: translateY(-1px); }
+  .btn-run:active:not(:disabled) { transform: translateY(0); }
   .btn-run:disabled { opacity: 0.3; cursor: not-allowed; }
 
   .form-group { display: flex; flex-direction: column; gap: 4px; }
-  .form-group label { font-size: 10px; color: #4b5563; text-transform: uppercase; }
+  .form-group label { font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 700; }
   .form-group input {
-    background: #0d1117; border: 1px solid #374151; border-radius: 4px;
-    padding: 6px 8px; color: #e2e8f0; font-size: 12px;
+    background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px;
+    padding: 6px 8px; color: #1e293b; font-size: 12px;
   }
 
   /* === メインパネル === */
-  .main { display: flex; flex-direction: column; overflow: hidden; background: #0d1117; }
-  .log-header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 8px 16px; font-size: 12px; color: #6b7280; }
-  .log-panel { flex: 1; overflow-y: auto; padding: 16px; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.5; }
+  .main { display: flex; flex-direction: column; overflow: hidden; background: #f8fafc; }
+  .log-header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; font-size: 12px; color: #64748b; font-weight: 600; }
+  .log-panel { flex: 1; overflow-y: auto; padding: 16px; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.5; background: #ffffff; }
   .log-line { margin-bottom: 2px; white-space: pre-wrap; word-break: break-all; }
-  .log-ts { color: #374151; margin-right: 8px; }
-  .log-text { color: #9ca3af; }
-  .log-err { color: #f87171; }
-  .log-success { color: #34d399; font-weight: bold; }
-  .placeholder { color: #374151; text-align: center; margin-top: 100px; font-size: 14px; }
+  .log-ts { color: #94a3b8; margin-right: 8px; }
+  .log-text { color: #334155; }
+  .log-err { color: #e11d48; background: #fff1f2; padding: 2px 4px; border-radius: 4px; }
+  .log-success { color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 4px; border-radius: 4px; }
+  .placeholder { color: #94a3b8; text-align: center; margin-top: 100px; font-size: 14px; }
 </style>
 </head>
 <body>

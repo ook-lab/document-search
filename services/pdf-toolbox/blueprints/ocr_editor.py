@@ -117,7 +117,8 @@ def run_ocr():
             "- 'text': The extracted text content. "
             "- 'box_2d': [ymin, xmin, ymax, xmax] in normalized 0-1000 format. "
             "Return ONLY the raw JSON array."
-        )
+        # モデルの取得（リクエストから、なければ環境変数のデフォルト）
+        selected_model = data.get('model') or os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite")
         
         client = get_client()
         with open(img_path, "rb") as f:
@@ -125,8 +126,10 @@ def run_ocr():
         
         image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
 
+        current_app.logger.info(f"Running OCR with model: {selected_model}")
+        
         response = client.models.generate_content(
-            model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
+            model=selected_model,
             contents=[image_part, full_prompt],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",

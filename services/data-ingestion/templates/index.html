@@ -6,44 +6,45 @@
 <title>Data Ingestion 管理画面</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-  header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 16px; font-weight: 600; color: #a5b4fc; }
+  body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
+  header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 16px; font-weight: 700; color: #4f46e5; }
 
   .layout { display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 53px); }
 
   /* === サイドバー === */
-  .sidebar { background: #13151f; border-right: 1px solid #2d3148; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
+  .sidebar { background: #ffffff; border-right: 1px solid #e2e8f0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
 
   /* Gmail フィーチャードカード */
   .gmail-card {
-    background: linear-gradient(135deg, #1e1b4b 0%, #1a1d27 100%);
-    border: 1px solid #4f46e5;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    border: 1px solid #4338ca;
     border-radius: 10px;
     padding: 14px;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
   }
   .gmail-card .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .gmail-card .card-icon { font-size: 20px; }
-  .gmail-card .card-title { font-size: 15px; font-weight: 700; color: #c7d2fe; }
+  .gmail-card .card-title { font-size: 15px; font-weight: 700; color: #ffffff; }
   .gmail-card .status-badge { margin-left: auto; }
 
   .mail-type-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
   .mail-type-btn {
     padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
-    border: 1px solid #4f46e5; background: transparent; color: #a5b4fc; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.1); color: #e0e7ff; cursor: pointer;
     transition: all 0.15s;
   }
-  .mail-type-btn.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-  .mail-type-btn:hover:not(.active) { background: #1e1b4b; }
+  .mail-type-btn.active { background: #ffffff; color: #4338ca; border-color: #ffffff; }
+  .mail-type-btn:hover:not(.active) { background: rgba(255, 255, 255, 0.2); }
 
   .gmail-actions { display: flex; gap: 6px; }
 
   /* グループラベル */
-  .group-label { font-size: 11px; font-weight: 700; color: #4b5563; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 4px; margin-bottom: -8px; }
+  .group-label { font-size: 11px; font-weight: 800; color: #94a3b8; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 4px; margin-bottom: -8px; }
 
   /* 通常ソースカード */
   .source-card {
-    background: #1a1d27; border: 1px solid #2d3148; border-radius: 8px;
+    background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px;
     padding: 10px 12px; display: flex; align-items: center; gap: 8px;
     transition: border-color 0.2s;
   }
@@ -60,52 +61,52 @@
   .btn-run-lg   { background: #6366f1; color: #fff; padding: 7px 18px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; }
   .btn-run-lg:hover:not(:disabled) { background: #4f46e5; }
   .btn-run-lg:disabled { opacity: 0.35; cursor: not-allowed; }
-  .btn-settings { background: #1f2937; color: #6b7280; border: 1px solid #374151; }
+  .btn-settings { background: #ffffff; color: #64748b; border: 1px solid #e2e8f0; }
 
   /* バッジ */
-  .status-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; }
-  .badge-idle    { background: #1f2937; color: #6b7280; }
-  .badge-running { background: #78350f; color: #fcd34d; animation: pulse 1.5s infinite; }
-  .badge-success { background: #064e3b; color: #6ee7b7; }
-  .badge-error   { background: #7f1d1d; color: #fca5a5; }
+  .status-badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; font-weight: 700; }
+  .badge-idle    { background: #e2e8f0; color: #64748b; }
+  .badge-running { background: #fef3c7; color: #92400e; animation: pulse 1.5s infinite; }
+  .badge-success { background: #dcfce7; color: #166534; }
+  .badge-error   { background: #fee2e2; color: #991b1b; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
   /* === メインパネル === */
-  .main { display: flex; flex-direction: column; overflow: hidden; }
-  .log-header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 8px 16px; font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 8px; }
-  .log-header .source-name { color: #a5b4fc; font-weight: 600; }
-  .log-panel { flex: 1; overflow-y: auto; padding: 14px 16px; background: #0d1117; font-family: 'Consolas', monospace; font-size: 12.5px; }
+  .main { display: flex; flex-direction: column; overflow: hidden; background: #f8fafc; }
+  .log-header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 8px 16px; font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 8px; }
+  .log-header .source-name { color: #4f46e5; font-weight: 700; }
+  .log-panel { flex: 1; overflow-y: auto; padding: 14px 16px; background: #ffffff; font-family: 'Consolas', monospace; font-size: 12.5px; }
   .log-line { margin: 1px 0; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
-  .log-ts   { color: #374151; margin-right: 8px; }
-  .log-text { color: #9ca3af; }
-  .log-info { color: #d1d5db; }
-  .log-warn { color: #fbbf24; }
-  .log-err  { color: #f87171; }
-  .log-placeholder { color: #374151; text-align: center; padding-top: 80px; font-size: 14px; }
+  .log-ts   { color: #94a3b8; margin-right: 8px; }
+  .log-text { color: #334155; }
+  .log-info { color: #1e293b; }
+  .log-warn { color: #d97706; }
+  .log-err  { color: #dc2626; background: #fef2f2; border-radius: 3px; padding: 0 4px; }
+  .log-placeholder { color: #94a3b8; text-align: center; padding-top: 80px; font-size: 14px; }
 
   /* === 実行履歴 === */
-  .history-panel { height: 220px; border-top: 1px solid #2d3148; overflow-y: auto; background: #0f1117; }
-  .history-header { padding: 8px 14px; font-size: 12px; font-weight: 600; color: #6b7280; border-bottom: 1px solid #1f2937; position: sticky; top: 0; background: #0f1117; }
+  .history-panel { height: 220px; border-top: 1px solid #e2e8f0; overflow-y: auto; background: #ffffff; }
+  .history-header { padding: 8px 14px; font-size: 12px; font-weight: 700; color: #64748b; border-bottom: 1px solid #f1f5f9; position: sticky; top: 0; background: #f8fafc; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { padding: 6px 12px; text-align: left; color: #4b5563; font-weight: 500; position: sticky; top: 29px; background: #0f1117; border-bottom: 1px solid #1f2937; }
-  td { padding: 6px 12px; border-bottom: 1px solid #1a1d27; color: #9ca3af; }
-  tr:hover td { background: #13151f; }
+  th { padding: 6px 12px; text-align: left; color: #94a3b8; font-weight: 700; position: sticky; top: 29px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+  td { padding: 6px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+  tr:hover td { background: #f8fafc; }
 
   /* === 設定モーダル === */
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 100; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: #1a1d27; border: 1px solid #374151; border-radius: 12px; padding: 22px; width: 440px; max-width: 90vw; }
-  .modal h2 { font-size: 15px; margin-bottom: 16px; color: #a5b4fc; }
+  .modal { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px; width: 440px; max-width: 90vw; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
+  .modal h2 { font-size: 15px; margin-bottom: 16px; color: #1e293b; font-weight: 700; }
   .form-group { margin-bottom: 14px; }
-  .form-group label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .form-group label { display: block; font-size: 11px; color: #64748b; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
   .form-group input, .form-group textarea {
-    width: 100%; background: #0d1117; border: 1px solid #374151; border-radius: 6px;
-    padding: 8px 10px; color: #e2e8f0; font-size: 13px; font-family: monospace;
+    width: 100%; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+    padding: 8px 10px; color: #1e293b; font-size: 13px; font-family: 'Inter', monospace;
   }
   .form-group textarea { height: 70px; resize: vertical; }
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-  .btn-primary { background: #6366f1; color: #fff; padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; }
-  .btn-cancel  { background: #1f2937; color: #9ca3af; padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; }
+  .btn-primary { background: #4f46e5; color: #fff; padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .btn-cancel  { background: #f1f5f9; color: #64748b; padding: 7px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; }
 
   /* === ファイル取り込みボタン === */
   .btn-file-upload {
@@ -116,28 +117,28 @@
   .btn-file-upload:hover { background: #065f46; }
 
   /* === アップロードモーダル === */
-  .upload-modal { background: #1a1d27; border: 1px solid #374151; border-radius: 12px; width: 420px; max-width: 90vw; overflow: hidden; }
+  .upload-modal { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; width: 420px; max-width: 90vw; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); }
   .upload-modal-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; border-bottom: 1px solid #2d3148;
-    font-size: 14px; font-weight: 600; color: #a5b4fc;
+    padding: 14px 18px; border-bottom: 1px solid #f1f5f9;
+    font-size: 14px; font-weight: 700; color: #1e293b;
   }
-  .upload-modal-header button { background: none; border: none; color: #6b7280; font-size: 16px; cursor: pointer; line-height: 1; }
-  .upload-modal-header button:hover { color: #e2e8f0; }
+  .upload-modal-header button { background: none; border: none; color: #94a3b8; font-size: 16px; cursor: pointer; line-height: 1; }
+  .upload-modal-header button:hover { color: #1e293b; }
   .upload-modal-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }
-  .upload-field-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
+  .upload-field-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; font-weight: 700; }
   .upload-input {
-    width: 100%; background: #0d1117; border: 1px solid #374151; border-radius: 6px;
-    padding: 7px 10px; color: #e2e8f0; font-size: 13px;
+    width: 100%; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
+    padding: 7px 10px; color: #1e293b; font-size: 13px;
   }
-  .upload-input:focus { outline: none; border-color: #6366f1; }
+  .upload-input:focus { outline: none; border-color: #4f46e5; }
   .btn-upload-submit {
-    width: 100%; padding: 9px; background: #6366f1; border: none; border-radius: 6px;
-    color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 4px;
+    width: 100%; padding: 9px; background: #4f46e5; border: none; border-radius: 6px;
+    color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 4px;
   }
-  .btn-upload-submit:hover:not(:disabled) { background: #4f46e5; }
+  .btn-upload-submit:hover:not(:disabled) { background: #4338ca; }
   .btn-upload-submit:disabled { opacity: 0.4; cursor: not-allowed; }
-  #upload-status { font-size: 12px; color: #9ca3af; min-height: 18px; text-align: center; }
+  #upload-status { font-size: 12px; color: #64748b; min-height: 18px; text-align: center; }
 </style>
 </head>
 <body>

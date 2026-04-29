@@ -181,10 +181,18 @@
         if (allOcrData[idx] && allOcrData[idx].length > 0) {
             renderEditor(); renderOverlay();
         } else {
-            elements.textEditor.innerHTML = '<div class="placeholder"><div style="text-align:center"><p>OCRを開始するにはボタンを押してください</p><br><button class="btn primary" id="runOcrBtn">分析実行</button></div></div>';
+            elements.textEditor.innerHTML = `
+                <div class="placeholder">
+                    <div style="text-align:center">
+                        <p style="margin-bottom:1.5rem">分析に使用するモデルを選択してください</p>
+                        <div style="display:flex; flex-direction:column; gap:1rem; align-items:center;">
+                            <button class="btn indigo" onclick="runOcr(${idx}, 'gemini-3.1-flash-lite-preview')" style="width:280px">Gemini 3.1 Flash-Lite (Pre)</button>
+                            <button class="btn primary" onclick="runOcr(${idx}, 'gemini-2.5-flash')" style="width:280px">Gemini 2.5 Flash</button>
+                            <button class="btn cyan" onclick="runOcr(${idx}, 'gemini-2.5-flash-lite')" style="width:280px">Gemini 2.5 Flash-Lite</button>
+                        </div>
+                    </div>
+                </div>`;
             elements.svgOverlay.innerHTML = '';
-            const runOcrBtn = document.getElementById('runOcrBtn');
-            if (runOcrBtn) runOcrBtn.onclick = () => runOcr(idx);
         }
     }
 
@@ -196,12 +204,17 @@
         elements.svgOverlay.setAttribute('preserveAspectRatio', 'none');
     }
 
-    async function runOcr(pageNum) {
-        showLoading(true, "AIが文字と位置を抽出しています...");
+    async function runOcr(pageNum, modelName) {
+        showLoading(true, `AI (${modelName}) が分析中...`);
         try {
             const response = await fetch(`${API_PREFIX}/run_ocr`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pdf_id: currentPdfId, page_num: pageNum, template_id: elements.templateSelector.value })
+                body: JSON.stringify({ 
+                    pdf_id: currentPdfId, 
+                    page_num: pageNum, 
+                    template_id: elements.templateSelector.value,
+                    model: modelName
+                })
             });
             const data = await response.json();
             if (data.error) throw new Error(data.error);

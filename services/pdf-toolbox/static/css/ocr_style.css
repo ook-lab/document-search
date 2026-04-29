@@ -79,6 +79,10 @@ select {
 .btn.primary:hover { background: var(--primary-hover); }
 .btn.success { background: var(--success); color: white; }
 .btn.success:hover { background: var(--success-hover); }
+.btn.indigo { background: #4f46e5; color: white; }
+.btn.indigo:hover { background: #4338ca; }
+.btn.cyan { background: #0891b2; color: white; }
+.btn.cyan:hover { background: #0e7490; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 main {
