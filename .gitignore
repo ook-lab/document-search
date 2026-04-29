@@ -1,3 +1,6 @@
+# Cursor MCP（PAT やカスタム URL を入れる場合はコミットしない）
+.cursor/mcp.json
+
 # Environment
 .env
 .env.bak

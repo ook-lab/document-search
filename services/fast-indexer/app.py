@@ -8,6 +8,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+from fast_index_scope import FAST_INDEX_RAW_TABLES
+from fast_index_queries import fetch_pending_fast_index_docs
+
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,30 +31,23 @@ def index():
     if not DatabaseClientClass:
         return "System Configuration Error: Missing dependencies.", 500
 
+    pending_docs = []
+    list_error = None
     try:
         db = DatabaseClientClass(use_service_role=True)
-        # PDF埋め込み済み & 未完了
-        res_embedded = db.client.table('pipeline_meta') \
-            .select('id, raw_id, raw_table, source, person, created_at') \
-            .eq('text_embedded', True) \
-            .neq('processing_status', 'completed') \
-            .execute()
-        
-        # テキストオンリー (ファイルなし & Gmail以外)
-        res_text_only = db.client.table('pipeline_meta') \
-            .select('id, raw_id, raw_table, source, person, created_at') \
-            .is_('drive_file_id', 'null') \
-            .neq('source', 'gmail') \
-            .neq('processing_status', 'completed') \
-            .execute()
-            
-        docs_map = {d['id']: d for d in (res_embedded.data or []) + (res_text_only.data or [])}
-        pending_docs = sorted(docs_map.values(), key=lambda x: x['created_at'], reverse=True)
+        raw_tables = list(FAST_INDEX_RAW_TABLES)
+        pending_docs, list_error = fetch_pending_fast_index_docs(db.client, raw_tables)
+        if list_error:
+            logger.error("fast-index 一覧: %s", list_error)
     except Exception as e:
         logger.error(f"Failed to fetch pending docs: {e}")
-        pending_docs = []
+        list_error = str(e)
 
-    return render_template('fast_index.html', docs=pending_docs)
+    return render_template(
+        'fast_index.html',
+        docs=pending_docs,
+        list_error=list_error,
+    )
 
 def _run_fast_index():
     data = request.get_json(silent=True) or {}
@@ -64,12 +60,11 @@ def _run_fast_index():
         return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
 
     indexer = FastIndexerClass()
-    success = indexer.process_document(pipeline_id)
-    
+    success, err_msg = indexer.process_document(pipeline_id)
+
     if success:
         return jsonify({'success': True})
-    else:
-        return jsonify({'success': False, 'error': 'Processing failed'})
+    return jsonify({'success': False, 'error': err_msg or 'Processing failed'})
 
 @app.route('/process', methods=['POST'])
 @app.route('/internal/fast_index', methods=['POST'])

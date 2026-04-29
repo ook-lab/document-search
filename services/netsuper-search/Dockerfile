@@ -4,12 +4,11 @@ FROM python:3.12-slim
 # 作業ディレクトリ
 WORKDIR /app
 
-# 依存パッケージをインストール
-COPY requirements.txt .
+# ビルドコンテキストはリポジトリルート前提（netsuper-search 単体ディレクトリではない）
+COPY services/netsuper-search/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# プロジェクトファイルをコピー
-COPY app.py .
+COPY services/netsuper-search/app.py .
 
 # ポート設定
 ENV PORT=8080

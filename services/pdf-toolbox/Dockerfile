@@ -8,13 +8,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# 依存関係
-COPY requirements.txt .
+# cloudbuild のコンテキストはリポジトリルートのため、パスを明示する
+COPY services/pdf-toolbox/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 共有ライブラリとソースコード
 COPY shared ./shared
-COPY . .
+COPY services/pdf-toolbox/ ./
 
 ENV PYTHONPATH=/app
 ENV PORT=8080

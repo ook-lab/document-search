@@ -3,9 +3,11 @@ import logging
 from flask import Flask
 from dotenv import load_dotenv
 
-# Load environment variables
-root_env = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
-load_dotenv(root_env)
+# Load environment variables（サービス直下 → リポジトリルートの順）
+_service_dir = os.path.dirname(os.path.abspath(__file__))
+_repo_root = os.path.dirname(os.path.dirname(_service_dir))
+load_dotenv(os.path.join(_service_dir, ".env"))
+load_dotenv(os.path.join(_repo_root, ".env"))
 
 logging.basicConfig(level=logging.INFO)
 

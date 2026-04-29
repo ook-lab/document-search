@@ -3,18 +3,16 @@ FROM asia-northeast1-docker.pkg.dev/consummate-yew-479020-u2/cloud-run-source-de
 
 WORKDIR /app
 
-# 依存関係
-COPY requirements.txt .
+# ビルドコンテキストはリポジトリルート（cloudbuild の `.`）前提
+COPY services/doc-processor/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 共有モジュールとスクリプト（ディレクトリ内にコピー済み）
 COPY shared/ ./shared/
 COPY scripts/ ./scripts/
 
-# doc-processorサービス本体
-COPY app.py ./services/doc_processor/
-COPY templates/ ./services/doc_processor/templates/
-COPY start.sh .
+COPY services/doc-processor/app.py ./services/doc_processor/app.py
+COPY services/doc-processor/templates/ ./services/doc_processor/templates/
+COPY services/doc-processor/start.sh ./start.sh
 
 # Pythonパッケージとして認識させるための __init__.py
 RUN touch ./services/__init__.py ./services/doc_processor/__init__.py

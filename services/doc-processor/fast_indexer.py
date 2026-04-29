@@ -5,7 +5,6 @@ import fitz  # PyMuPDF
 from typing import List, Dict, Any
 from datetime import datetime, timezone
 from shared.common.database.client import DatabaseClient
-from shared.common.utils.chunking import TextChunker
 from shared.common.processing.metadata_chunker import MetadataChunker
 from google import genai
 
@@ -37,6 +36,18 @@ class FastIndexer:
             drive_file_id = pm.get('drive_file_id')
             raw_table = pm.get('raw_table')
             raw_id = pm.get('raw_id')
+            if not raw_table or not raw_id:
+                raise ValueError("pipeline_meta missing raw_table or raw_id")
+
+            def _unified_row():
+                return (
+                    self.db.client.table('09_unified_documents')
+                    .select('id, body')
+                    .eq('raw_id', raw_id)
+                    .eq('raw_table', raw_table)
+                    .limit(1)
+                    .execute()
+                )
 
             if not drive_file_id:
                 # 取得を試みる
@@ -64,8 +75,8 @@ class FastIndexer:
             else:
                 # テキストオンリーの処理
                 logger.info(f"Text-only processing for {pipeline_id}")
-                # 09_unified_documents または raw からテキスト取得
-                ud_data = self.db.client.table('09_unified_documents').select('body').eq('raw_id', raw_id).execute().data
+                # 09_unified_documents（raw と 1:1 の統合行）または raw からテキスト取得
+                ud_data = _unified_row().data or []
                 if ud_data and ud_data[0].get('body'):
                     full_markdown = ud_data[0]['body']
                 else:
@@ -77,13 +88,22 @@ class FastIndexer:
             if not full_markdown:
                 raise ValueError("No content found to index.")
 
+            ud_after = _unified_row().data or []
+            if not ud_after:
+                raise ValueError(
+                    f"No 09_unified_documents row for raw_id={raw_id} raw_table={raw_table}; "
+                    "run full pipeline through G31 first."
+                )
+            unified_doc_id = ud_after[0]['id']
+
             # 4. メタデータ簡易生成 (要約、タグ、日付)
             metadata_summary = self._generate_metadata_summary(full_markdown)
 
-            # 5. 09_unified_documents の body を更新
+            # 5. 09_unified_documents の body を更新（統合行を raw で一意に特定）
             self.db.client.table('09_unified_documents') \
                 .update({'body': full_markdown}) \
-                .eq('raw_id', pm['raw_id']) \
+                .eq('raw_id', raw_id) \
+                .eq('raw_table', raw_table) \
                 .execute()
 
             # 6. MetadataChunker によるチャンク分割 (doc-processor 仕様)
@@ -99,8 +119,8 @@ class FastIndexer:
             chunker = MetadataChunker()
             chunk_dicts = chunker.create_metadata_chunks(document_data)
             
-            # 7. ベクトル化 & 保存
-            self._vectorize_and_store(pm, chunk_dicts)
+            # 7. ベクトル化 & 保存（10_ix_search_index.doc_id は 09_unified_documents.id と一致させる）
+            self._vectorize_and_store(unified_doc_id, pm, chunk_dicts)
 
             # 8. ステータス完了
             self.db.client.table('pipeline_meta') \
@@ -187,12 +207,12 @@ class FastIndexer:
                 blocks.append({'title': title, 'content': content})
         return blocks
 
-    def _vectorize_and_store(self, pm: Dict, chunk_dicts: List[Dict[str, Any]]):
+    def _vectorize_and_store(self, unified_doc_id: str, pm: Dict, chunk_dicts: List[Dict[str, Any]]):
         from openai import OpenAI
         oa_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         
         # 既存削除
-        self.db.client.table('10_ix_search_index').delete().eq('doc_id', pm['id']).execute()
+        self.db.client.table('10_ix_search_index').delete().eq('doc_id', unified_doc_id).execute()
 
         for chunk_data in chunk_dicts:
             chunk_text = chunk_data["chunk_text"]
@@ -208,7 +228,7 @@ class FastIndexer:
             embedding = res.data[0].embedding
             
             self.db.client.table('10_ix_search_index').insert({
-                'doc_id': pm['id'],
+                'doc_id': unified_doc_id,
                 'person': pm.get('person'),
                 'source': pm.get('source'),
                 'category': pm.get('raw_table'),

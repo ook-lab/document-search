@@ -33,6 +33,12 @@ python -m pytest tests/ -v
 .\scripts\deploy\run_build.ps1
 ```
 
+### Cloud Run / Docker ビルド
+
+`services/<name>/cloudbuild.yaml` の `docker build` は多くが **リポジトリルートをコンテキスト**（`-f services/<name>/Dockerfile` と `.`）とする。各 `Dockerfile` の `COPY` は **`services/<name>/...`** と **`shared/...`** をルート相対で書く（サービス単体ディレクトリだけがコンテキストではない）。
+
+ルートの **`.gcloudignore`** で `services/<name>/` を丸ごと除外しないこと（`gcloud builds submit` の tarball に `COPY` 元が含まれなくなる）。
+
 ## アーキテクチャ
 
 ### 絶対ルール

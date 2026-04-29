@@ -10,15 +10,11 @@ venv/
 .tmp/
 .gemini/
 _runtime/
-# 他の重いサービスを除外して高速化
-services/ai-cost-tracker/
-services/calendar-register/
-services/daily-report/
-services/data-ingestion/
-services/debug-pipeline/
-services/doc-processor/
-services/doc-review/
-services/doc-search/
+# 各サービスの cloudbuild はリポジトリルートがコンテキストのため、
+# services/<name>/ を丸ごと除外すると Dockerfile の COPY が必ず失敗する。
+# 重いのは主に doc-processor 配下の shared/scripts 複製（ルートの shared/scripts を使う）
+services/doc-processor/shared/
+services/doc-processor/scripts/
 services/doda-dashboard/
 # services/doda-scraper/
 # services/kakeibo/
