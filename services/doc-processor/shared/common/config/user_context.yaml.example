@@ -1,0 +1,105 @@
+# ユーザー前提情報設定ファイル（テンプレート）
+# 検索時のコンテキストとして使用される情報を管理します
+#
+# 使い方:
+# 1. このファイルを user_context.yaml という名前でコピーしてください
+# 2. 以下の内容を編集して、お子さんの情報を入力してください
+# 3. 詳細な使い方は docs/USER_CONTEXT_GUIDE.md を参照してください
+
+---
+
+# 子供の情報リスト（複数の子供を登録可能）
+children:
+  - name: "太郎"  # 子供の名前
+    aliases: ["たろう", "タロウ", "たろちゃん", "太郎君"]  # 別名・愛称・呼び方のバリエーション（省略可）
+    birth_date: "2015-04-01"  # 生年月日（YYYY-MM-DD形式）
+    grade: 5  # 学年
+
+    # 学校情報
+    school:
+      name: "○○小学校"  # 学校名
+      class: "5年1組"  # クラス
+
+      # 学校の授業時間割
+      schedule:
+        monday:
+          - time: "08:30-09:15"
+            subject: "国語"
+          - time: "09:25-10:10"
+            subject: "算数"
+          # 他の授業を追加してください
+
+        tuesday:
+          - time: "08:30-09:15"
+            subject: "算数"
+          # 他の授業を追加してください
+
+        wednesday:
+          - time: "08:30-09:15"
+            subject: "国語"
+          # 他の授業を追加してください
+
+        thursday:
+          - time: "08:30-09:15"
+            subject: "算数"
+          # 他の授業を追加してください
+
+        friday:
+          - time: "08:30-09:15"
+            subject: "国語"
+          # 他の授業を追加してください
+
+    # 塾情報
+    cram_school:
+      name: "○○塾"  # 塾の名前
+
+      # 塾の授業スケジュール
+      schedule:
+        monday:
+          - time: "17:00-19:00"
+            subject: "算数"
+
+        wednesday:
+          - time: "17:00-19:00"
+            subject: "国語"
+
+        saturday:
+          - time: "13:00-15:00"
+            subject: "算数"
+
+  # 2人目の子供を追加する場合は、以下のコメントを解除して編集してください
+  # - name: "花子"
+  #   birth_date: "2017-08-15"
+  #   grade: 3
+  #
+  #   school:
+  #     name: "○○小学校"
+  #     class: "3年2組"
+  #     schedule:
+  #       monday:
+  #         - time: "08:30-09:15"
+  #           subject: "国語"
+  #
+  #   cram_school:
+  #     name: "△△塾"
+  #     schedule:
+  #       tuesday:
+  #         - time: "16:00-17:30"
+  #           subject: "算数"
+
+# その他の設定
+settings:
+  # デフォルトの検索フィルタ
+  default_filters:
+    workspaces: []  # 例: ["学校連絡", "塾"]
+    doc_types: []   # 例: ["newsletter", "schedule"]
+
+  # 検索結果の優先度設定
+  search_preferences:
+    prioritize_recent: true  # 最新の文書を優先
+    max_results: 5  # 検索結果の最大件数
+
+  # 通知設定（将来の拡張用）
+  notifications:
+    enabled: false
+    remind_before_minutes: 30  # 授業前の通知時間（分）

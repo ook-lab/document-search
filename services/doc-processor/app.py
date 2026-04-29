@@ -14,13 +14,19 @@ Flask Web Application - Document Processing System
 import os
 import sys
 import subprocess
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 from pathlib import Path
 from functools import wraps
 
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from loguru import logger
+from shared.pipeline.pipeline_manager import PipelineManager
+
+# ロガー設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # パス設定（Docker/ローカル両対応）
 _file_dir = Path(__file__).resolve().parent
@@ -253,6 +259,7 @@ def search_documents():
     - category: 絞り込み（省略時は全体）
     - classification: origin_app（省略時は全体）
     - status: 処理ステータス（省略時は全体）
+    - text_embedded: 'true' でテキスト埋め込み済みのみ、'false' で未埋め込みのみ
     - q: キーワード（09_unified_documents.title の部分一致）
     - limit: 取得件数上限（デフォルト100、最大500）
     """
@@ -263,6 +270,7 @@ def search_documents():
         category       = request.args.get('category', '')
         classification = request.args.get('classification', '')
         status         = request.args.get('status', '')
+        text_embedded  = request.args.get('text_embedded', '')  # 'true' / 'false' / ''
         q              = request.args.get('q', '').strip()
         limit          = min(int(request.args.get('limit', 100)), 500)
 
@@ -281,7 +289,8 @@ def search_documents():
         # pipeline_meta を検索
         query = db.client.table('pipeline_meta').select(
             'id, raw_id, raw_table, person, source, '
-            'origin_app, processing_status, attempt_count, created_at, updated_at'
+            'origin_app, processing_status, attempt_count, created_at, updated_at, '
+            'text_embedded, text_embedded_at, drive_file_id'
         )
 
         if person and person != 'all':
@@ -297,6 +306,10 @@ def search_documents():
                 query = query.eq('origin_app', classification)
         if status and status != 'all':
             query = query.eq('processing_status', status)
+        if text_embedded == 'true':
+            query = query.eq('text_embedded', True)
+        elif text_embedded == 'false':
+            query = query.eq('text_embedded', False)
         if raw_id_filter is not None:
             query = query.in_('raw_id', raw_id_filter)
 
@@ -320,6 +333,9 @@ def search_documents():
                 'attempt_count':     r.get('attempt_count', 0),
                 'created_at':        r.get('created_at'),
                 'updated_at':        r.get('updated_at'),
+                'text_embedded':     r.get('text_embedded', False),
+                'text_embedded_at':  r.get('text_embedded_at'),
+                'drive_file_id':     r.get('drive_file_id'),
             })
 
         return jsonify({'success': True, 'documents': documents, 'count': len(documents)})
@@ -327,6 +343,57 @@ def search_documents():
     except Exception as e:
         logger.error(f"ドキュメント検索エラー: {e}")
         return safe_error_response(e)
+
+@app.route('/internal/fast_index', methods=['POST'])
+def fast_index():
+    """軽量版高速インデックス実行"""
+    try:
+        data = request.json
+        pipeline_id = data.get('pipeline_id')
+        if not pipeline_id:
+            return jsonify({'error': 'Missing pipeline_id'}), 400
+            
+        indexer = FastIndexer()
+        success = indexer.process_document(pipeline_id)
+        
+        if success:
+            return jsonify({'success': True, 'message': f'Document {pipeline_id} indexed successfully'})
+        else:
+            return jsonify({'error': 'Indexing failed'}), 500
+    except Exception as e:
+        logger.error(f"Fast index API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/fast-index-ui')
+def fast_index_ui():
+    """軽量版プロセッサー専用画面"""
+    # 1. text_embedded=True のもの (PDF埋め込み済み)
+    # 2. drive_file_id が NULL で、Gmail 以外のもの (テキストオンリー)
+    db = DatabaseClient(use_service_role=True)
+    try:
+        # PDF埋め込み済み
+        res_embedded = db.client.table('pipeline_meta') \
+            .select('id, raw_id, raw_table, source, person, created_at') \
+            .eq('text_embedded', True) \
+            .neq('processing_status', 'completed') \
+            .execute()
+        
+        # テキストオンリー (ファイルなし & Gmail以外)
+        res_text_only = db.client.table('pipeline_meta') \
+            .select('id, raw_id, raw_table, source, person, created_at') \
+            .is_('drive_file_id', 'null') \
+            .neq('source', 'gmail') \
+            .neq('processing_status', 'completed') \
+            .execute()
+            
+        # マージ
+        docs_map = {d['id']: d for d in (res_embedded.data or []) + (res_text_only.data or [])}
+        pending_docs = sorted(docs_map.values(), key=lambda x: x['created_at'], reverse=True)
+    except Exception as e:
+        logger.error(f"Failed to fetch pending docs: {e}")
+        pending_docs = []
+
+    return render_template('fast_index.html', docs=pending_docs)
 
 
 # ========== 処理監視ダッシュボード ==========

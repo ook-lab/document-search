@@ -1,0 +1,15 @@
+{
+  "doc_type": "flyer",
+  "schemas": {
+    "price_list": {
+      "required_columns": ["商品", "価格"],
+      "alt_columns": [["品名", "金額"], ["メニュー", "値段"]],
+      "table_type": "price"
+    },
+    "schedule": {
+      "required_columns": ["日時", "内容"],
+      "alt_columns": [["時間", "プログラム"]],
+      "table_type": "schedule"
+    }
+  }
+}

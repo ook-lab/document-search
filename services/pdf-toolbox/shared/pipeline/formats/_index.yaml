@@ -1,0 +1,40 @@
+# =============================================================================
+# FORMAT INDEX - フォーマット定義インデックス
+# =============================================================================
+# 目的: 全フォーマットの一覧管理、有効/無効制御、優先度設定
+# 用途: loader.py がこのファイルを読み込み、enabled=true のフォーマットだけロードする
+# =============================================================================
+
+version: "1.0"
+description: "帳票フォーマット定義インデックス（20帳票対応）"
+
+# -----------------------------------------------------------------------------
+# フォーマット一覧
+# - format_id: 一意識別子（ファイル名と一致）
+# - enabled: true=有効, false=無効（開発中/廃止）
+# - priority: 数値が大きいほど優先（同時マッチ時の決定順）
+# - description: 人間可読な説明
+# - file: 定義ファイル名（省略時は {format_id}.yaml）
+# -----------------------------------------------------------------------------
+formats:
+  - format_id: hensachi_Aline80_boys_v1
+    enabled: true
+    priority: 100
+    description: "合不合判定テスト Aライン80 偏差値一覧 男子"
+    file: hensachi_Aline80_boys_v1.yaml
+
+  # --- 以下、追加予定のフォーマット（テンプレート） ---
+  # - format_id: hensachi_Aline80_girls_v1
+  #   enabled: false
+  #   priority: 100
+  #   description: "合不合判定テスト Aライン80 偏差値一覧 女子"
+  #
+  # - format_id: schedule_weekly_v1
+  #   enabled: false
+  #   priority: 90
+  #   description: "週間スケジュール表"
+  #
+  # - format_id: ranking_exam_v1
+  #   enabled: false
+  #   priority: 90
+  #   description: "試験順位表"

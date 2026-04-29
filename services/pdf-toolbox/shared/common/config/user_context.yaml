@@ -1,0 +1,110 @@
+# ユーザー前提情報設定ファイル（最新版）
+# ご家族の最新プロフィールと所属を反映しました
+
+# 家族構成
+family:
+  father:
+    name: "yoshinori"
+    display_name: "宜紀"
+    full_name: "大久保 宜紀"
+    aliases: ["オオクボ ヨシノリ", "芳紀"]
+    birth_date: "1974-09-10"
+
+  mother:
+    name: "kayako"
+    display_name: "香屋子"
+    full_name: "大久保 香屋子"
+    aliases: ["オオクボ カヤコ", "カヤコ"]
+    birth_date: "1978-04-24"
+
+  children_list:
+    - name: "ema"
+      display_name: "絵麻"
+      full_name: "大久保 絵麻"
+      aliases: ["エマ", "えまちゃん"]
+    - name: "ikuya"
+      display_name: "育哉"
+      full_name: "大久保 育哉"
+      aliases: ["イクヤ", "いくちゃん"]
+
+# 組織情報（代表的な所属）
+organizations:
+  schools:
+    ema: "東洋英和女学院中学部"
+    ikuya: "洗足学園小学校"
+  cram_schools:
+    ikuya: "早稲田アカデミー 武蔵小杉校"
+
+# 認証・メール設定
+auth:
+  default_email: "ookubo.y@workspace-o.com"
+
+# ワークスペース定義
+workspaces:
+  children:
+    - person: "ema"
+      categories:
+        - id: "SCHOOL"
+          display_name: "学校関連（東洋英和）"
+          labels: ["学校", "東洋英和", "SCHOOL"]
+        - id: "MAIL"
+          display_name: "メール"
+          labels: ["MAIL"]
+
+    - person: "ikuya"
+      categories:
+        - id: "SCHOOL"
+          display_name: "学校関連（洗足）"
+          labels: ["学校", "洗足", "SCHOOL"]
+        - id: "JUKU"
+          display_name: "塾関連（早稲アカ）"
+          labels: ["塾", "早稲アカ", "早稲田アカデミー", "JUKU"]
+        - id: "MAIL"
+          display_name: "メール"
+          labels: ["MAIL"]
+
+  family_shared:
+    - id: "HOME_LIVING"
+      display_name: "家庭・生活関連"
+      labels: ["HOME", "家庭"]
+    - id: "HOME_COOKING"
+      display_name: "料理・レシピ関連"
+      labels: ["COOKING", "料理"]
+
+  personal:
+    - person: "yoshinori"
+      id: "PRIVATE_FOLDER"
+      display_name: "個人フォルダ"
+      labels: ["PRIVATE"]
+
+  general:
+    - id: "BUSINESS_WORK"
+      display_name: "仕事全般"
+      labels: ["WORK", "仕事"]
+    - id: "WORK_MAIL"
+      display_name: "仕事メール"
+      labels: ["WORK_MAIL"]
+
+# 子供ごとの詳細情報
+children:
+  - name: "絵麻"
+    id: "ema"
+    birth_date: "2012-07-14"
+    school:
+      name: "東洋英和女学院中学部"
+    cram_school:
+      name: "未設定"
+
+  - name: "育哉"
+    id: "ikuya"
+    birth_date: "2014-08-24"
+    school:
+      name: "洗足学園小学校"
+    cram_school:
+      name: "早稲田アカデミー 武蔵小杉校"
+
+# システム設定
+settings:
+  search_preferences:
+    prioritize_recent: true
+    max_results: 5

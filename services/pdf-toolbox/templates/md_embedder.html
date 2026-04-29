@@ -7,6 +7,15 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root { --primary: #4f46e5; --primary-hover: #4338ca; --bg-color: #f8fafc; --surface: #ffffff; --text-main: #0f172a; --text-muted: #64748b; --border: #e2e8f0; --success: #059669; --danger: #dc2626; }
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+        .modal-content { background-color: var(--surface); margin: 5% auto; padding: 20px; border-radius: 12px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .drive-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.2s; }
+        .drive-item:hover { background: var(--bg-color); }
+        .drive-item-icon { font-size: 1.2rem; margin-right: 12px; }
+        .drive-item-name { flex-grow: 1; font-weight: 500; }
+        .drive-breadcrumb { margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted); }
+        .drive-breadcrumb span { cursor: pointer; color: var(--primary); font-weight: 600; }
+        .drive-breadcrumb span:hover { text-decoration: underline; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         header { background: var(--surface); padding: 1rem 2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 10; }
         h1 { font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--primary); }
@@ -44,17 +53,24 @@
             <span style="font-size: 0.85rem; color: var(--text-muted);" id="headerStatus">Waiting for upload...</span>
             <input type="text" id="outputFilename" placeholder="保存ファイル名" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 200px;">
             <button class="btn-outline" id="generateFilenameBtn" style="display:none; padding: 0.5rem; font-size: 0.85rem; background: white;">AI生成</button>
+            <input type="text" id="driveFileId" placeholder="Google Drive ID (上書き用)" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 180px;">
             <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">Download Final PDF</button>
+            <button class="btn-primary" id="driveOverwriteBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem; background: #059669;">ドライブ上書き</button>
         </div>
     </header>
     <div id="uploadView">
         <div class="upload-card">
             <h2 style="margin-top:0">Upload Document</h2>
             <p style="color:var(--text-muted); margin-bottom:2rem;">Upload a PDF to begin structural analysis.</p>
-            <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
-                <strong>Click or Drag & Drop</strong>
-                <input type="file" id="fileInput" accept="application/pdf">
+            <div class="upload-area" id="dropZone">
+                <p>PDFをドラッグ＆ドロップ、またはクリックして選択</p>
+                <input type="file" id="fileInput" accept="application/pdf" style="display: none;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 1rem;">または</p>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
+                    <input type="text" id="initialDriveId" placeholder="Google Drive File ID" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; width: 250px;">
+                    <button class="btn-outline" id="browseDriveBtn" style="padding: 0.5rem 1rem; background: white;">ブラウズ</button>
+                    <button class="btn-primary" id="loadFromDriveBtn" style="padding: 0.5rem 1rem;">読込</button>
+                </div>
             </div>
         </div>
     </div>
@@ -67,7 +83,11 @@
                     <h2 style="margin-top: 0;">No Structure Data</h2>
                     <p style="color: var(--text-muted); margin-bottom: 1rem;">Extract text and tables using Gemini AI.</p>
                     <textarea id="customPrompt" rows="3" style="width: 80%; max-width: 400px; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;" placeholder="（任意）例: 特定の項目だけ抽出"></textarea>
-                    <button class="btn-primary" id="extractAiBtn">🤖 AI 読み取り実行</button>
+                    <div style="display:flex; flex-direction:column; gap:0.75rem; align-items:center; width: 100%;">
+                        <button class="btn-primary" style="width: 280px; background: #4338ca;" onclick="runAiExtraction('gemini-3.1-flash-lite-preview')">Gemini 3.1 Flash-Lite (Pre)</button>
+                        <button class="btn-primary" style="width: 280px;" onclick="runAiExtraction('gemini-2.5-flash')">Gemini 2.5 Flash</button>
+                        <button class="btn-primary" style="width: 280px; background: #0891b2;" onclick="runAiExtraction('gemini-2.5-flash-lite')">Gemini 2.5 Flash-Lite</button>
+                    </div>
                 </div>
                 <div class="data-header">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -75,7 +95,12 @@
                             <button class="tab-btn active" onclick="setEditMode('visual')">Visual Editor</button>
                             <button class="tab-btn" onclick="setEditMode('raw')">Raw MD</button>
                         </div>
-                        <div style="display: flex; gap: 0.5rem;">
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">AI再抽出:</span>
+                            <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: #4338ca;" onclick="runAiExtraction('gemini-3.1-flash-lite-preview')">3.1 Flash-Lite</button>
+                            <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="runAiExtraction('gemini-2.5-flash')">2.5 Flash</button>
+                            <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: #0891b2;" onclick="runAiExtraction('gemini-2.5-flash-lite')">2.5 Lite</button>
+                            <div style="width: 1px; height: 20px; background: var(--border); margin: 0 0.5rem;"></div>
                             <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="tempSave()">💾 一時保存</button>
                             <button class="btn-outline" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="undoEdits()">↩️ 元に戻す</button>
                         </div>
@@ -130,13 +155,13 @@
         const outputFilename = document.getElementById('outputFilename');
         const generateFilenameBtn = document.getElementById('generateFilenameBtn');
         const saveBtn = document.getElementById('saveBtn');
-        const extractAiBtn = document.getElementById('extractAiBtn');
         const aiOverlay = document.getElementById('aiOverlay');
         const markdownEditor = document.getElementById('markdownEditor');
         const tableContainer = document.getElementById('tableContainer');
 
         ['dragenter','dragover','dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); }));
         dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+        dropZone.addEventListener('click', (e) => { if (e.target !== document.getElementById('initialDriveId') && e.target !== document.getElementById('loadFromDriveBtn')) fileInput.click(); });
         fileInput.addEventListener('change', (e) => { if(e.target.files.length) handleFile(e.target.files[0]); });
 
         async function handleFile(file) {
@@ -155,8 +180,15 @@
 
         function initWorkspace() {
             uploadView.style.display = 'none'; workspaceView.style.display = 'block';
-            saveBtn.style.display = 'block'; outputFilename.style.display = 'block'; generateFilenameBtn.style.display = 'block';
             headerStatus.textContent = `File: ${appState.safeFilename}`;
+            outputFilename.value = `extracted_${appState.safeFilename}`;
+            saveBtn.style.display = 'block';
+            driveOverwriteBtn.style.display = 'block';
+            driveFileId.style.display = 'block';
+            // If we have a drive_file_id, pre-fill it
+            if (appState.driveFileId) {
+                driveFileId.value = appState.driveFileId;
+            }
             appState.currentPage = 0; renderThumbnails(); loadActivePage();
         }
 
@@ -191,19 +223,44 @@
             loadActivePage();
         }
 
-        extractAiBtn.onclick = async () => {
-            showLoader("Extracting Page " + (appState.currentPage + 1) + " via Gemini AI...");
+        window.runAiExtraction = async (modelName) => {
+            const model = modelName || 'gemini-2.5-flash-lite';
+            showLoader(`Extracting Page ${appState.currentPage + 1} via ${model}...`);
             try {
                 const customPromptText = document.getElementById('customPrompt').value || '';
                 const res = await fetch(`${API}/extract_page/${appState.fileId}/${appState.currentPage}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ custom_prompt: customPromptText })
+                    body: JSON.stringify({ 
+                        custom_prompt: customPromptText,
+                        model: model
+                    })
                 });
                 const json = await res.json();
                 if(!res.ok) throw new Error(json.error);
                 appState.pages[appState.currentPage].existing_data = json.json_extracted;
                 appState.pages[appState.currentPage].backup_data = JSON.parse(JSON.stringify(json.json_extracted));
                 renderThumbnails(); loadActivePage();
+            } catch (e) { alert(e.message); } finally { hideLoader(); }
+        };
+
+        loadFromDriveBtn.onclick = async () => {
+            const driveId = initialDriveId.value.trim();
+            if (!driveId) return alert("Google Drive File IDを入力してください。");
+            
+            showLoader("Googleドライブからファイルを読込中...");
+            try {
+                const res = await fetch(`${API}/load_from_drive`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive_file_id: driveId })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error);
+                
+                appState.fileId = json.file_id;
+                appState.safeFilename = json.safe_filename;
+                appState.pages = json.previews.map(p => ({ ...p, existing_data: null }));
+                appState.driveFileId = json.drive_file_id; // Store it
+                initWorkspace();
             } catch (e) { alert(e.message); } finally { hideLoader(); }
         };
 
@@ -221,6 +278,36 @@
                 if(!res.ok) throw new Error(json.error);
                 const a = document.createElement('a'); a.href = json.download_url; a.download = json.filename || 'embedded.pdf'; document.body.appendChild(a); a.click(); a.remove();
                 if(json.download_md_url) { setTimeout(() => { const a2 = document.createElement('a'); a2.href = json.download_md_url; a2.download = json.md_filename || 'extracted.md'; document.body.appendChild(a2); a2.click(); a2.remove(); }, 500); }
+            } catch (e) { alert(e.message); } finally { hideLoader(); }
+        };
+
+        driveOverwriteBtn.onclick = async () => {
+            const driveId = driveFileId.value.trim();
+            if (!driveId) return alert("Google Drive File IDを入力してください。");
+            
+            if(appState.editMode === 'visual') syncVisualToAppState(); else syncRawToAppState();
+            
+            showLoader("PDFを生成してドライブを更新中...");
+            try {
+                // First save the PDF to the server outputs folder
+                const pagesData = {};
+                appState.pages.forEach((p, i) => { if(p.existing_data) pagesData[i] = p.existing_data; });
+                const saveRes = await fetch(`${API}/save_pdf`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ file_id: appState.fileId, safe_filename: appState.safeFilename, filename: outputFilename.value, pages_data: pagesData })
+                });
+                const saveJson = await saveRes.json();
+                if(!saveRes.ok) throw new Error(saveJson.error);
+                
+                // Then trigger the drive update
+                const driveRes = await fetch(`${API}/save_to_drive`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive_file_id: driveId, filename: saveJson.filename })
+                });
+                const driveJson = await driveRes.json();
+                if(!driveRes.ok) throw new Error(driveJson.error);
+                
+                alert("Googleドライブのファイルを上書き保存しました！");
             } catch (e) { alert(e.message); } finally { hideLoader(); }
         };
 
@@ -392,6 +479,111 @@
         window.undoEdits = () => { const backup = appState.pages[appState.currentPage].backup_data; if (backup) { if (confirm("リセットしますか？")) { appState.pages[appState.currentPage].existing_data = JSON.parse(JSON.stringify(backup)); loadActivePage(); } } else { alert("元に戻せるデータがありません。"); } };
         function showLoader(txt) { loaderText.textContent = txt; loaderOverlay.style.display = 'flex'; }
         function hideLoader() { loaderOverlay.style.display = 'none'; }
+
+        // Drive Browser Logic
+        const driveModal = document.getElementById('driveModal');
+        const driveList = document.getElementById('driveList');
+        const driveBreadcrumb = document.getElementById('driveBreadcrumb');
+        const browseDriveBtn = document.getElementById('browseDriveBtn');
+        const initialDriveId = document.getElementById('initialDriveId');
+
+        appState.driveHistory = [{id: 'root', name: 'My Drive'}];
+
+        function openDriveModal() {
+            driveModal.style.display = 'block';
+            loadDriveFolder('root', 'My Drive', true);
+        }
+
+        function closeDriveModal() {
+            driveModal.style.display = 'none';
+        }
+
+        window.onclick = (event) => { if (event.target == driveModal) closeDriveModal(); };
+
+        async function loadDriveFolder(id, name, isInitial = false) {
+            if (isInitial) {
+                appState.driveHistory = [{id: 'root', name: 'My Drive'}];
+            } else {
+                const idx = appState.driveHistory.findIndex(h => h.id === id);
+                if (idx !== -1) {
+                    appState.driveHistory = appState.driveHistory.slice(0, idx + 1);
+                } else {
+                    appState.driveHistory.push({id, name});
+                }
+            }
+            
+            renderDriveBreadcrumb();
+            driveList.innerHTML = '<p style="text-align:center; color:var(--text-muted);">読み込み中...</p>';
+            
+            try {
+                const res = await fetch(`${API}/list_drive_files`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder_id: id })
+                });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error);
+                
+                driveList.innerHTML = '';
+                if (json.files.length === 0) {
+                    driveList.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding: 20px;">このフォルダは空です。</p>';
+                }
+                
+                json.files.forEach(f => {
+                    const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
+                    if (!isFolder && f.mimeType !== 'application/pdf') return; 
+                    
+                    const item = document.createElement('div');
+                    item.className = 'drive-item';
+                    item.innerHTML = `
+                        <span class="drive-item-icon">${isFolder ? '📁' : '📄'}</span>
+                        <span class="drive-item-name">${f.name}</span>
+                    `;
+                    item.onclick = () => {
+                        if (isFolder) {
+                            loadDriveFolder(f.id, f.name);
+                        } else {
+                            initialDriveId.value = f.id;
+                            closeDriveModal();
+                            loadFromDriveBtn.click();
+                        }
+                    };
+                    driveList.appendChild(item);
+                });
+            } catch (e) {
+                driveList.innerHTML = `<p style="color:red; text-align:center;">エラー: ${e.message}</p>`;
+            }
+        }
+
+        function renderDriveBreadcrumb() {
+            driveBreadcrumb.innerHTML = '';
+            appState.driveHistory.forEach((h, i) => {
+                const span = document.createElement('span');
+                span.textContent = h.name;
+                span.onclick = () => loadDriveFolder(h.id, h.name);
+                driveBreadcrumb.appendChild(span);
+                if (i < appState.driveHistory.length - 1) {
+                    const sep = document.createElement('span');
+                    sep.textContent = ' > ';
+                    sep.style.color = 'var(--text-muted)';
+                    sep.style.cursor = 'default';
+                    driveBreadcrumb.appendChild(sep);
+                }
+            });
+        }
+
+        browseDriveBtn.onclick = openDriveModal;
+
     </script>
+    <!-- Drive Browser Modal -->
+    <div id="driveModal" class="modal">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin:0">Google Drive Browser</h3>
+                <button class="btn-outline" onclick="closeDriveModal()" style="padding: 0.2rem 0.5rem;">✕</button>
+            </div>
+            <div id="driveBreadcrumb" class="drive-breadcrumb"></div>
+            <div id="driveList"></div>
+        </div>
+    </div>
 </body>
 </html>

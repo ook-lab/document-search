@@ -1,0 +1,28 @@
+{
+  "description": "Build and deploy to Cloud Run service kakeibo-ui on push to \"^main$\"",
+  "filename": "services/kakeibo/cloudbuild.yaml",
+  "github": {
+    "name": "document-management-system",
+    "owner": "ook-lab",
+    "push": {
+      "branch": "^main$"
+    }
+  },
+  "includeBuildLogs": "INCLUDE_BUILD_LOGS_WITH_STATUS",
+  "includedFiles": [
+    "services/kakeibo/**"
+  ],
+  "name": "kakeibo-ui",
+  "serviceAccount": "projects/consummate-yew-479020-u2/serviceAccounts/document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com",
+  "substitutions": {
+    "_SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhqa2NndWx4ZGR0d2xsamhib2NiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM4MzU1NzMsImV4cCI6MjA3OTQxMTU3M30.AbyKuq4W8ynonsDgbjckPMtpmAUbialsGFPYmCMCWRk",
+    "_SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhqa2NndWx4ZGR0d2xsamhib2NiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzgzNTU3MywiZXhwIjoyMDc5NDExNTczfQ.u3NCUzE1Sz_gsu1EDCndlDwFNBVa45-UQdkdWlOa6g8",
+    "_SUPABASE_URL": "https://hjkcgulxddtwlljhbocb.supabase.co",
+    "_DEFAULT_OWNER_ID": "d1b18b1c-a4dc-4b2e-97af-5153a85e685c"
+  },
+  "tags": [
+    "gcp-cloud-build-deploy-cloud-run",
+    "gcp-cloud-build-deploy-cloud-run-managed",
+    "kakeibo-ui"
+  ]
+}

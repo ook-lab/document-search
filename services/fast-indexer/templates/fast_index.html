@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高速インデックス (軽量版) | Workspace-O</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 32px;
+            margin: 0;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f1f5f9;
+            text-align: left;
+            padding: 16px;
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        td {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            background: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .empty-state {
+            padding: 60px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>⚡ 高速インデックス</h1>
+                <div class="subtitle">テキスト埋め込み済みドキュメントの即時ベクトル化 (軽量版プロセッサー)</div>
+            </div>
+            <div style="font-size: 14px; color: var(--success); font-weight: 600;">
+                {{ docs|length }} 件の待機中
+            </div>
+        </header>
+
+        <div class="card">
+            {% if docs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>登録日</th>
+                        <th>ソース / 対象者</th>
+                        <th>アクション</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in docs %}
+                    <tr id="row-{{ doc.id }}">
+                        <td>{{ doc.created_at[:10] }}</td>
+                        <td>
+                            <strong>{{ doc.source }}</strong><br>
+                            <span style="font-size: 12px; color: var(--text-muted);">{{ doc.person }}</span>
+                        </td>
+                        <td>
+                            <button class="btn" onclick="runFastIndex('{{ doc.id }}')">実行</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div style="font-size: 40px; margin-bottom: 16px;">✨</div>
+                処理待ちのドキュメントはありません。
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        async function runFastIndex(id) {
+            const btn = document.querySelector(`#row-${id} .btn`);
+            const originalText = btn.innerText;
+            btn.innerText = '処理中...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pipeline_id: id })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    btn.innerText = '完了';
+                    btn.style.background = 'var(--success)';
+                    setTimeout(() => {
+                        document.getElementById(`row-${id}`).style.opacity = '0.3';
+                    }, 1000);
+                } else {
+                    alert('エラー: ' + data.error);
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信エラーが発生しました');
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

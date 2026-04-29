@@ -47,7 +47,15 @@
                     </div>
                 </div>
                 <div class="pane text-pane">
-                    <div class="pane-header">抽出・修正テキスト</div>
+                    <div class="pane-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>抽出・修正テキスト</span>
+                        <div style="display: flex; gap: 0.4rem; align-items: center;">
+                            <span style="font-size: 0.7rem; color: #666;">AI再分析:</span>
+                            <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: #4338ca; color: white;" onclick="runOcr(currentPageNum, 'gemini-3.1-flash-lite-preview')">3.1 Flash-Lite</button>
+                            <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: var(--primary-color); color: white;" onclick="runOcr(currentPageNum, 'gemini-2.5-flash')">2.5 Flash</button>
+                            <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: #0891b2; color: white;" onclick="runOcr(currentPageNum, 'gemini-2.5-flash-lite')">2.5 Lite</button>
+                        </div>
+                    </div>
                     <div id="textEditor" class="editor-content">
                         <div class="placeholder">
                             <p>PDFをアップロードして分析を開始してください</p>
@@ -115,8 +123,10 @@
     elements.savePdfBtn.addEventListener('click', saveSearchablePdf);
     elements.generateFilenameBtn.addEventListener('click', async () => {
         let allText = [];
-        for (let page in allOcrData) {
-            allOcrData[page].forEach(item => allText.push(item.text));
+        for (let pageIdx in allOcrData) {
+            const pageData = allOcrData[pageIdx];
+            const rawData = pageData.raw || (Array.isArray(pageData) ? pageData : []);
+            rawData.forEach(item => allText.push(item.text));
         }
         const combinedText = allText.join(" ");
         if (!combinedText.trim()) { showNotification("エラー: テキストがありません。"); return; }
@@ -178,7 +188,7 @@
         elements.pageImage.src = page.url;
         elements.pageImage.onload = () => { updateSvgSize(); };
         renderPageList();
-        if (allOcrData[idx] && allOcrData[idx].length > 0) {
+        if (allOcrData[idx] && (allOcrData[idx].grid || allOcrData[idx].raw || allOcrData[idx].length > 0)) {
             renderEditor(); renderOverlay();
         } else {
             elements.textEditor.innerHTML = `
@@ -204,7 +214,7 @@
         elements.svgOverlay.setAttribute('preserveAspectRatio', 'none');
     }
 
-    async function runOcr(pageNum, modelName) {
+    window.runOcr = async (pageNum, modelName) => {
         showLoading(true, `AI (${modelName}) が分析中...`);
         try {
             const response = await fetch(`${API_PREFIX}/run_ocr`, {
@@ -227,24 +237,56 @@
     }
 
     function renderEditor() {
-        elements.textEditor.innerHTML = '';
-        const currentData = allOcrData[currentPageNum] || [];
-        currentData.forEach((item, idx) => {
-            const div = document.createElement('div');
-            div.className = 'text-item'; div.id = `text-item-${idx}`;
-            div.innerHTML = `<textarea rows="2">${item.text}</textarea><div class="meta">座標: [${item.box_2d.map(Math.round).join(', ')}]</div>`;
-            const textarea = div.querySelector('textarea');
-            textarea.oninput = (e) => { allOcrData[currentPageNum][idx].text = e.target.value; };
-            div.onmouseenter = () => highlightBound(idx, true);
-            div.onmouseleave = () => highlightBound(idx, false);
-            elements.textEditor.appendChild(div);
+        const pageData = allOcrData[currentPageNum];
+        if (!pageData) return;
+
+        // 1. グリッド表示 (物理的な表の再構成)
+        let html = '';
+        if (pageData.grid && pageData.grid.length > 0) {
+            html += '<div style="margin-bottom:1.5rem"><h4>再構成された表 (Python Logic)</h4>';
+            html += '<div class="table-container" style="overflow-x:auto; margin-top:0.5rem">';
+            html += '<table style="width:100%; border-collapse:collapse; background:white; border:1px solid #e2e8f0; font-size:0.9rem">';
+            pageData.grid.forEach((row, rIdx) => {
+                html += '<tr>';
+                row.forEach((cell, cIdx) => {
+                    html += `<td style="border:1px solid #e2e8f0; padding:4px"><textarea style="width:100%; border:none; outline:none; resize:none; min-width:80px" rows="1" onchange="updateGridCell(${currentPageNum}, ${rIdx}, ${cIdx}, this.value)">${cell}</textarea></td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</table></div></div>';
+        }
+
+        // 2. 元のテキストアイテム表示 (座標修正用)
+        html += '<h4>抽出アイテム (座標確認用)</h4>';
+        const rawData = pageData.raw || (Array.isArray(pageData) ? pageData : []);
+        rawData.forEach((item, idx) => {
+            html += `
+                <div class="text-item" id="text-item-${idx}" onmouseenter="highlightBound(${idx}, true)" onmouseleave="highlightBound(${idx}, false)">
+                    <textarea rows="2" oninput="updateRawText(${currentPageNum}, ${idx}, this.value)">${item.text}</textarea>
+                    <div class="meta">座標: [${item.box_2d.map(Math.round).join(', ')}]</div>
+                </div>`;
         });
+        elements.textEditor.innerHTML = html;
     }
+
+    window.updateGridCell = (pIdx, rIdx, cIdx, val) => {
+        allOcrData[pIdx].grid[rIdx][cIdx] = val;
+    };
+
+    window.updateRawText = (pIdx, itemIdx, val) => {
+        if (allOcrData[pIdx].raw) {
+            allOcrData[pIdx].raw[itemIdx].text = val;
+        } else {
+            allOcrData[pIdx][itemIdx].text = val;
+        }
+    };
 
     function renderOverlay() {
         elements.svgOverlay.innerHTML = '';
-        const currentData = allOcrData[currentPageNum] || [];
-        currentData.forEach((item, idx) => {
+        const pageData = allOcrData[currentPageNum];
+        if (!pageData) return;
+        const rawData = pageData.raw || (Array.isArray(pageData) ? pageData : []);
+        rawData.forEach((item, idx) => {
             const [ymin, xmin, ymax, xmax] = item.box_2d;
             const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
             rect.setAttribute('x', xmin); rect.setAttribute('y', ymin);
@@ -267,9 +309,11 @@
     async function saveSearchablePdf() {
         showLoading(true, "検索可能PDFを出力中...");
         let corrections = [];
-        for (let page in allOcrData) {
-            allOcrData[page].forEach(item => {
-                corrections.push({ page_num: parseInt(page), text: item.text, box_2d: item.box_2d });
+        for (let pageIdx in allOcrData) {
+            const pageData = allOcrData[pageIdx];
+            const rawData = pageData.raw || (Array.isArray(pageData) ? pageData : []);
+            rawData.forEach(item => {
+                corrections.push({ page_num: parseInt(pageIdx), text: item.text, box_2d: item.box_2d });
             });
         }
         try {

@@ -1,0 +1,11 @@
+flask
+flask-cors
+requests
+supabase
+python-dotenv
+google-cloud-aiplatform
+google-genai
+google-generativeai
+openai
+loguru
+gunicorn

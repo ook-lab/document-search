@@ -2,6 +2,11 @@ import os
 import json
 import uuid
 import fitz  # PyMuPDF
+import io
+import re
+import traceback
+import requests
+import base64
 from flask import Blueprint, render_template, request, jsonify, send_file, url_for, current_app
 from werkzeug.utils import secure_filename
 from google import genai
@@ -10,17 +15,9 @@ from google.genai import types
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
 # Gemini Client (lazy init)
-_client = None
-
 def get_client():
-    global _client
-    if _client is None:
-        _client = genai.Client(
-            vertexai=True,
-            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-        )
-    return _client
+    # MANDATORY: Only direct AI Studio API allowed. Fallback is PROHIBITED.
+    return "AI_STUDIO_DIRECT"
 
 # Template Store
 TEMPLATES_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates.json')
@@ -111,39 +108,93 @@ def run_ocr():
         template_prompt = templates.get(template_id, templates['Standard'])['prompt']
         
         full_prompt = (
-            "Perform OCR on this image. "
+            "Perform OCR on this image. Extract EVERY piece of text, including document titles, headers, footers, and all surrounding text outside of tables. "
             f"{template_prompt} "
             "Return a JSON array of objects. Each object MUST have: "
             "- 'text': The extracted text content. "
             "- 'box_2d': [ymin, xmin, ymax, xmax] in normalized 0-1000 format. "
+            "IMPORTANT: Do not skip the main title at the top. "
             "Return ONLY the raw JSON array."
-        # モデルの取得（リクエストから、なければ環境変数のデフォルト）
+        )
+        
         selected_model = data.get('model') or os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite")
         
-        client = get_client()
         with open(img_path, "rb") as f:
-            img_bytes = f.read()
-        
-        image_part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+            img_byte_arr = f.read()
 
         current_app.logger.info(f"Running OCR with model: {selected_model}")
         
-        response = client.models.generate_content(
-            model=selected_model,
-            contents=[image_part, full_prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            )
-        )
+        # Direct REST API call to Google AI Studio ONLY. NO FALLBACK.
+        api_key = "AIzaSyDiVwSXMSzwtCI02lhIbkw6_04LleMvz2Q"
+        # Note: For structured output with direct API, we use response_mime_type in generationConfig
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         
-        ocr_results = response.parsed
-        if not ocr_results:
-            # Fallback for plain text response
-            text_content = response.text.replace('```json', '').replace('```', '').strip()
-            ocr_results = json.loads(text_content)
-            
-        return jsonify(ocr_results)
+        img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
+        
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": full_prompt},
+                    {"inline_data": {"mime_type": "image/png", "data": img_base64}}
+                ]
+            }],
+            "generationConfig": {
+                "response_mime_type": "application/json"
+            }
+        }
+        
+        resp = requests.post(url, json=payload)
+        if resp.status_code != 200:
+            raise Exception(f"Gemini API Error ({resp.status_code}): {resp.text}")
+        
+        res_json = resp.json()
+        response_text = res_json['candidates'][0]['content']['parts'][0]['text']
+        ocr_results = json.loads(response_text.replace('```json', '').replace('```', '').strip())
+
+        # --- 物理的なグリッド再構成ロジック ---
+        rows = []
+        for item in sorted(ocr_results, key=lambda x: x['box_2d'][0]):
+            y_min = item['box_2d'][0]
+            added = False
+            for row in rows:
+                if abs(row['y_avg'] - y_min) < 10:
+                    row['items'].append(item)
+                    row['y_avg'] = sum(i['box_2d'][0] for i in row['items']) / len(row['items'])
+                    added = True
+                    break
+            if not added:
+                rows.append({'y_avg': y_min, 'items': [item]})
+
+        # 2. X座標による列の特定
+        all_items = [i for r in rows for i in r['items']]
+        col_threshold = 20 # 許容範囲
+        cols = []
+        for item in sorted(all_items, key=lambda x: x['box_2d'][1]):
+            x_min = item['box_2d'][1]
+            if not any(abs(c - x_min) < col_threshold for c in cols):
+                cols.append(x_min)
+        cols.sort()
+
+        # 3. 2次元配列へのマッピング
+        grid = []
+        for row in rows:
+            grid_row = [""] * len(cols)
+            for item in row['items']:
+                # 最も近い列インデックスを探す
+                x_min = item['box_2d'][1]
+                col_idx = min(range(len(cols)), key=lambda i: abs(cols[i] - x_min))
+                grid_row[col_idx] = item['text']
+            grid.append(grid_row)
+
+        return jsonify({
+            "raw": ocr_results,
+            "grid": grid,
+            "model_used": selected_model
+        })
     except Exception as e:
+        import traceback
+        print("Detailed OCR Error Traceback:")
+        traceback.print_exc()
         current_app.logger.error(f"Error in OCR: {e}")
         return jsonify({"error": str(e)}), 500
 
