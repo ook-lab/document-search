@@ -48,11 +48,8 @@ def fix_triggers():
         
         if target_dir:
             print(f"Updating trigger [{name}] -> monitoring only: {target_dir}")
-            subprocess.run([
-                'gcloud', 'beta', 'builds', 'triggers', 'update', name,
-                '--region=asia-northeast1',
-                f'--included-files={target_dir}'
-            ], shell=True)
+            # GitHubトリガー専用のコマンド形式に修正
+            subprocess.run(f'gcloud builds triggers update github {name} --region=asia-northeast1 --included-files="{target_dir}"', shell=True)
         else:
             print(f"Skipping trigger [{name}] (no mapping found or already filtered)")
 
