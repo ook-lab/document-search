@@ -7,12 +7,6 @@ PROJECT_ID = "consummate-yew-479020-u2"
 REGION = "asia-northeast1"
 REPO_OWNER = "ook-lab"
 REPO_NAME = "document-management-system"
-SERVICE_ACCOUNT = (
-    f"projects/{PROJECT_ID}/serviceAccounts/"
-    f"document-management-system@{PROJECT_ID}.iam.gserviceaccount.com"
-)
-
-
 def load_env(path: Path) -> dict[str, str]:
     env: dict[str, str] = {}
     if not path.exists():
@@ -24,6 +18,26 @@ def load_env(path: Path) -> dict[str, str]:
         k, v = line.split("=", 1)
         env[k.strip()] = v.strip().strip('"').strip("'")
     return env
+
+
+def cloudbuild_substitutions_from_dotenv(env: dict[str, str]) -> dict[str, str]:
+    """
+    .env の実キー → cloudbuild.yaml の ${_NAME} と一致する substitution 名。
+    （.env に _SUPABASE_URL は無いため、従来スクリプトでは substitutions が空になりがち）
+    """
+    out: dict[str, str] = {}
+    if v := env.get("SUPABASE_URL"):
+        out["_SUPABASE_URL"] = v
+    if v := env.get("SUPABASE_KEY"):
+        out["_SUPABASE_KEY"] = v
+    if v := env.get("SUPABASE_SERVICE_ROLE_KEY"):
+        out["_SUPABASE_SERVICE_ROLE_KEY"] = v
+    if v := env.get("OPENAI_API_KEY"):
+        out["_OPENAI_API_KEY"] = v
+    gem = env.get("GOOGLE_AI_API_KEY") or env.get("GOOGLE_API_KEY")
+    if gem:
+        out["_GOOGLE_AI_API_KEY"] = gem
+    return out
 
 
 def run_gcloud(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -60,7 +74,9 @@ def build_trigger_payload(
             "push": {"branch": "^main$"},
         },
         "includedFiles": [included],
-        "serviceAccount": SERVICE_ACCOUNT,
+        # トリガーに build 用 serviceAccount を付けると、GCP 側で logs_bucket /
+        # defaultLogsBucketBehavior / CLOUD_LOGGING_ONLY 等の組み合わせが必須になる。
+        # 既定の Cloud Build SA で十分なら付けない（コンソールで付けた場合は cloudbuild と整合させる）。
     }
     if substitutions:
         payload["substitutions"] = substitutions
@@ -87,32 +103,20 @@ def main() -> None:
     env = load_env(Path(".env"))
     existing_filenames = list_trigger_filenames()
 
+    subs_common = cloudbuild_substitutions_from_dotenv(env)
+
     candidates = [
         (
             "doda-scraper",
             "services/doda-scraper/cloudbuild.yaml",
             "services/doda-scraper/**",
-            {
-                k: env[k]
-                for k in ["_SUPABASE_URL", "_SUPABASE_SERVICE_ROLE_KEY"]
-                if k in env
-            },
+            {k: subs_common[k] for k in ("_SUPABASE_URL", "_SUPABASE_SERVICE_ROLE_KEY") if k in subs_common},
         ),
         (
             "fast-indexer",
             "services/fast-indexer/cloudbuild.yaml",
             "services/fast-indexer/**",
-            {
-                k: env[k]
-                for k in [
-                    "_GOOGLE_API_KEY",
-                    "_OPENAI_API_KEY",
-                    "_SUPABASE_URL",
-                    "_SUPABASE_KEY",
-                    "_SUPABASE_SERVICE_ROLE_KEY",
-                ]
-                if k in env
-            },
+            subs_common,
         ),
     ]
 

@@ -123,7 +123,7 @@
 
         {% if list_error %}
         <div class="card" style="margin-bottom: 20px; border-color: #fecaca; background: #fef2f2; color: #991b1b; padding: 16px 20px; font-size: 14px;">
-            <strong>一覧の取得エラー</strong>（DB に fast-index 用カラムが無い場合は Supabase マイグレーションを適用してください）<br>
+            <strong>一覧の取得エラー</strong>（Cloud Run の環境変数・Supabase マイグレーションを確認）<br>
             <code style="font-size: 12px; word-break: break-all;">{{ list_error }}</code>
         </div>
         {% endif %}

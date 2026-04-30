@@ -39,6 +39,8 @@ python -m pytest tests/ -v
 
 ルートの **`.gcloudignore`** で `services/<name>/` を丸ごと除外しないこと（`gcloud builds submit` の tarball に `COPY` 元が含まれなくなる）。
 
+Cloud Build トリガーに **ビルド用カスタムサービスアカウント** を付けると、**`logsBucket` / `defaultLogsBucketBehavior` / `logging: CLOUD_LOGGING_ONLY`（または NONE）** のいずれかが必須。`scripts/deploy/create_missing_triggers.py` は既定の Cloud Build SA のため `serviceAccount` を付けない。コンソールでカスタム SA を付けたら `services/fast-indexer/cloudbuild.yaml` の `options.logging` 等と整合させる。
+
 ## アーキテクチャ
 
 ### 絶対ルール
