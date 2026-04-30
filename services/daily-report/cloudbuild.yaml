@@ -22,7 +22,10 @@ steps:
       - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/daily-report:${_TAG}'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=us-central1'
       - '--timeout=300'
+      - '--remove-env-vars=SUPABASE_URL,SUPABASE_KEY,SUPABASE_SERVICE_ROLE_KEY,OPENAI_API_KEY'
       - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest'
 
 images:

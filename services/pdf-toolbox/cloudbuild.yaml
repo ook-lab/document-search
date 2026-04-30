@@ -25,9 +25,11 @@ steps:
       - '--region'
       - 'asia-northeast1'
       - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--memory'
       - '1Gi'
-      - '--update-env-vars=VERTEX_AI_REGION=${_VERTEX_AI_REGION}'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=${_VERTEX_AI_REGION}'
+      - '--remove-env-vars=GOOGLE_AI_API_KEY'
       - '--set-secrets=GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest'
 
 images:

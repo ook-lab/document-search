@@ -1,5 +1,5 @@
 steps:
-  # ???E????????????Epull?E??E??E????????E
+  # キャッシュ用に既存イメージを pull（失敗しても続行）
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -32,6 +32,10 @@ steps:
       - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doc-search:latest'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--remove-env-vars=SUPABASE_URL,SUPABASE_KEY,SUPABASE_SERVICE_ROLE_KEY,OPENAI_API_KEY,GOOGLE_AI_API_KEY'
+      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest'
       - '--timeout=300'
 
 images:
@@ -39,5 +43,6 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
 
 timeout: 1800s

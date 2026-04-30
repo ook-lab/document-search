@@ -1,5 +1,5 @@
 steps:
-  # ???E????????????Epull?E??E??E????????E
+  # キャッシュ用に既存イメージを pull（失敗しても続行）
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -33,7 +33,9 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
       - '--timeout=60'
+      - '--remove-env-vars=SUPABASE_URL,SUPABASE_KEY,SUPABASE_SERVICE_ROLE_KEY'
       - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
 
 images:

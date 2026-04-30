@@ -21,8 +21,10 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars'
-      - 'FAST_INDEX_PDF_TOOLBOX_BASE=${_FAST_INDEX_PDF_TOOLBOX_BASE}'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=us-central1,FAST_INDEX_PDF_TOOLBOX_BASE=${_FAST_INDEX_PDF_TOOLBOX_BASE}'
+      - '--remove-env-vars=GOOGLE_AI_API_KEY,OPENAI_API_KEY,SUPABASE_URL,SUPABASE_KEY,SUPABASE_SERVICE_ROLE_KEY'
       - '--set-secrets'
       - 'GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
 
@@ -30,7 +32,7 @@ images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/rag-prepare'
 
 substitutions:
-  _FAST_INDEX_PDF_TOOLBOX_BASE: 'https://pdf-toolbox-983922127476.asia-northeast1.run.app'
+  _FAST_INDEX_PDF_TOOLBOX_BASE: 'https://pdf-toolbox-ocdx2fd4ia-an.a.run.app'
 
 # 明示 build service account 利用時の (c)。main に無いと Cloud Build が毎回失敗する。
 options:

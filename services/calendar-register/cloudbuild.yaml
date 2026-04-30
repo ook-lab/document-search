@@ -1,5 +1,5 @@
 steps:
-  # ???E????????????Epull?E??E??E????????E
+  # キャッシュ用に既存イメージを pull（失敗しても続行）
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
@@ -33,11 +33,15 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=60'
-      - '--update-env-vars=GCP_PROJECT_ID=$PROJECT_ID,OAUTH_REDIRECT_URI=https://calendar-register-983922127476.asia-northeast1.run.app/auth/callback,CALENDAR_SYNC_USER_ID=${_CALENDAR_SYNC_USER_ID}'
+      - '--update-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,OAUTH_REDIRECT_URI=https://calendar-register-983922127476.asia-northeast1.run.app/auth/callback,CALENDAR_SYNC_USER_ID=${_CALENDAR_SYNC_USER_ID}'
+      - '--remove-env-vars=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY'
       - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/calendar-register:latest'
+
+substitutions:
+  _CALENDAR_SYNC_USER_ID: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
