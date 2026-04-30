@@ -39,6 +39,7 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--memory=1Gi'
       - '--timeout=3600'
       - '--update-env-vars=LOG_LEVEL=INFO,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=${_VERTEX_AI_REGION},FAST_INDEX_PDF_TOOLBOX_BASE=${_FAST_INDEX_PDF_TOOLBOX_BASE}'
       - '--remove-env-vars=OPENAI_API_KEY,SUPABASE_URL,SUPABASE_KEY,SUPABASE_SERVICE_ROLE_KEY'

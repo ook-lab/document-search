@@ -255,7 +255,7 @@ def api_analyze():
             return jsonify({'success': True, 'results': []})
 
         import vertexai
-    from google import genai
+        from google import genai
         today  = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         client = genai.Client(
             vertexai=True, 

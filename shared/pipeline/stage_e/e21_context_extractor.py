@@ -26,7 +26,7 @@ from .coordinate_matcher import CoordinateMatcher
 
 try:
     import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+    from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -178,9 +178,8 @@ class E21ContextExtractor:
             # Gemini に送信
             logger.info("[E-21] Gemini API 呼び出し開始...")
             try:
-                import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
-                gen_config = genai_mod.GenerationConfig(max_output_tokens=8192)
+                from vertexai.generative_models import GenerationConfig
+                gen_config = GenerationConfig(max_output_tokens=8192)
             except Exception:
                 gen_config = None
             response = self.model.generate_content(
