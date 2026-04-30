@@ -56,6 +56,8 @@ PROJECT_SNAPSHOT*
 tmpclaude-*
 triggers.json
 tmp_*_trigger.json
+tmp_*_trigger.yaml
+tmp_export_*.yaml
 tmp_trigger.yaml
 
 .tmp.driveupload/

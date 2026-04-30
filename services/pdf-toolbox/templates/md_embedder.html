@@ -145,7 +145,8 @@
         const API = '/embedder';
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        let appState = { fileId: null, safeFilename: null, pages: [], currentPage: 0, editMode: 'visual' };
+        const driveFileIdInput = document.getElementById('driveFileId');
+        let appState = { fileId: null, safeFilename: null, pages: [], currentPage: 0, editMode: 'visual', pipelineMetaId: null, driveFileId: null };
         
         const uploadView = document.getElementById('uploadView');
         const workspaceView = document.getElementById('workspaceView');
@@ -184,10 +185,9 @@
             outputFilename.value = `extracted_${appState.safeFilename}`;
             saveBtn.style.display = 'block';
             driveOverwriteBtn.style.display = 'block';
-            driveFileId.style.display = 'block';
-            // If we have a drive_file_id, pre-fill it
+            driveFileIdInput.style.display = 'block';
             if (appState.driveFileId) {
-                driveFileId.value = appState.driveFileId;
+                driveFileIdInput.value = appState.driveFileId;
             }
             appState.currentPage = 0; renderThumbnails(); loadActivePage();
         }
@@ -243,25 +243,47 @@
             } catch (e) { alert(e.message); } finally { hideLoader(); }
         };
 
-        loadFromDriveBtn.onclick = async () => {
-            const driveId = initialDriveId.value.trim();
-            if (!driveId) return alert("Google Drive File IDを入力してください。");
-            
-            showLoader("Googleドライブからファイルを読込中...");
+        function mapUploadPages(json) {
+            return (json.pages || []).map(p => {
+                const pg = {
+                    page_index: p.page_index,
+                    image_url: p.image_url,
+                    existing_data: p.existing_data || null,
+                };
+                if (p.existing_data) pg.backup_data = JSON.parse(JSON.stringify(p.existing_data));
+                return pg;
+            });
+        }
+
+        async function loadPdfFromDriveId(driveId) {
+            const id = (driveId || '').trim();
+            if (!id) {
+                alert('Google Drive File IDを入力してください。');
+                return;
+            }
+            showLoader('Googleドライブからファイルを読込中...');
             try {
                 const res = await fetch(`${API}/load_from_drive`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drive_file_id: driveId })
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive_file_id: id }),
                 });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json.error);
-                
                 appState.fileId = json.file_id;
                 appState.safeFilename = json.safe_filename;
-                appState.pages = json.previews.map(p => ({ ...p, existing_data: null }));
-                appState.driveFileId = json.drive_file_id; // Store it
+                appState.pages = mapUploadPages(json);
+                appState.driveFileId = json.drive_file_id;
                 initWorkspace();
-            } catch (e) { alert(e.message); } finally { hideLoader(); }
+            } catch (e) {
+                alert(e.message);
+            } finally {
+                hideLoader();
+            }
+        }
+
+        loadFromDriveBtn.onclick = async () => {
+            await loadPdfFromDriveId(initialDriveId.value);
         };
 
         saveBtn.onclick = async () => {
@@ -281,34 +303,64 @@
             } catch (e) { alert(e.message); } finally { hideLoader(); }
         };
 
+        function combinedMarkdownForPipeline() {
+            const parts = [];
+            appState.pages.forEach((p, i) => {
+                if (p.existing_data && p.existing_data.markdown) {
+                    parts.push(`## Page ${i + 1}\n\n${p.existing_data.markdown}`);
+                }
+            });
+            return parts.join('\n\n');
+        }
+
         driveOverwriteBtn.onclick = async () => {
-            const driveId = driveFileId.value.trim();
-            if (!driveId) return alert("Google Drive File IDを入力してください。");
-            
-            if(appState.editMode === 'visual') syncVisualToAppState(); else syncRawToAppState();
-            
-            showLoader("PDFを生成してドライブを更新中...");
+            const driveId = driveFileIdInput.value.trim();
+            if (!driveId) return alert('Google Drive File IDを入力してください。');
+            if (appState.editMode === 'visual') syncVisualToAppState();
+            else syncRawToAppState();
+
+            showLoader('PDFを生成してドライブを更新中...');
             try {
-                // First save the PDF to the server outputs folder
                 const pagesData = {};
-                appState.pages.forEach((p, i) => { if(p.existing_data) pagesData[i] = p.existing_data; });
+                appState.pages.forEach((p, i) => {
+                    if (p.existing_data) pagesData[i] = p.existing_data;
+                });
                 const saveRes = await fetch(`${API}/save_pdf`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ file_id: appState.fileId, safe_filename: appState.safeFilename, filename: outputFilename.value, pages_data: pagesData })
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_id: appState.fileId,
+                        safe_filename: appState.safeFilename,
+                        filename: outputFilename.value,
+                        pages_data: pagesData,
+                    }),
                 });
                 const saveJson = await saveRes.json();
-                if(!saveRes.ok) throw new Error(saveJson.error);
-                
-                // Then trigger the drive update
+                if (!saveRes.ok) throw new Error(saveJson.error);
+
+                const driveBody = { drive_file_id: driveId, filename: saveJson.filename };
+                const mdAll = combinedMarkdownForPipeline();
+                if (mdAll.trim()) driveBody.md_content = mdAll;
+                if (appState.pipelineMetaId) driveBody.pipeline_meta_id = appState.pipelineMetaId;
+
                 const driveRes = await fetch(`${API}/save_to_drive`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ drive_file_id: driveId, filename: saveJson.filename })
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(driveBody),
                 });
                 const driveJson = await driveRes.json();
-                if(!driveRes.ok) throw new Error(driveJson.error);
-                
-                alert("Googleドライブのファイルを上書き保存しました！");
-            } catch (e) { alert(e.message); } finally { hideLoader(); }
+                if (!driveRes.ok) throw new Error(driveJson.error);
+
+                alert(
+                    mdAll.trim()
+                        ? 'Googleドライブを上書きし、一覧用の md_content も更新しました。'
+                        : 'Googleドライブのファイルを上書きしました。（ページに抽出MDが無いため md_content は送っていません）'
+                );
+            } catch (e) {
+                alert(e.message);
+            } finally {
+                hideLoader();
+            }
         };
 
         generateFilenameBtn.onclick = async () => {
@@ -486,10 +538,13 @@
         const driveBreadcrumb = document.getElementById('driveBreadcrumb');
         const browseDriveBtn = document.getElementById('browseDriveBtn');
         const initialDriveId = document.getElementById('initialDriveId');
-        (function prefillDriveFromQuery() {
+        (function initFromQueryString() {
             const p = new URLSearchParams(window.location.search);
             const did = (p.get('drive_id') || p.get('drive_file_id') || '').trim();
+            const pmid = (p.get('pipeline_meta_id') || '').trim();
+            if (pmid) appState.pipelineMetaId = pmid;
             if (did && initialDriveId) initialDriveId.value = did;
+            if (did) setTimeout(() => loadPdfFromDriveId(did), 0);
         })();
 
         appState.driveHistory = [{id: 'root', name: 'My Drive'}];

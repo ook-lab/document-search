@@ -6,7 +6,7 @@ import base64
 import requests
 from datetime import timezone, datetime
 import fitz  # PyMuPDF
-from flask import Blueprint, request, jsonify, current_app, send_file, render_template, url_for
+from flask import Blueprint, request, jsonify, current_app, send_file, render_template
 from google import genai
 from google.genai import types
 from werkzeug.utils import secure_filename
@@ -30,6 +30,43 @@ def get_client():
     # MANDATORY: Only direct AI Studio API allowed. Fallback is PROHIBITED.
     return "AI_STUDIO_DIRECT"
 
+
+def _build_pages_info_for_embedder(input_filepath: str, file_id: str, upload_dir: str) -> list:
+    """upload / load_from_drive 共通: extract_page・save_pdf と同じ PNG 配置・URL 契約。"""
+    doc = fitz.open(input_filepath)
+    if len(doc) == 0:
+        doc.close()
+        raise ValueError("PDF is empty")
+    pages_info = []
+    try:
+        for i in range(len(doc)):
+            page = doc[i]
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+            img_name = f"{file_id}_page_{i}.png"
+            img_path = os.path.join(upload_dir, img_name)
+            pix.save(img_path)
+            text = page.get_text()
+            existing_data = None
+            if MARKER_START in text and MARKER_END in text:
+                try:
+                    start_idx = text.find(MARKER_START) + len(MARKER_START)
+                    end_idx = text.find(MARKER_END)
+                    md_str = text[start_idx:end_idx]
+                    existing_data = {"markdown": md_str.strip()}
+                except Exception as e:
+                    logging.warning("Found markers on page %s but failed to parse MD: %s", i, e)
+            pages_info.append(
+                {
+                    "page_index": i,
+                    "image_url": f"/embedder/static_uploads/{file_id}_page_{i}.png",
+                    "existing_data": existing_data,
+                }
+            )
+    finally:
+        doc.close()
+    return pages_info
+
+
 @embedder_bp.route('/')
 def index():
     return render_template('md_embedder.html')
@@ -41,48 +78,48 @@ def load_from_drive():
         drive_file_id = data.get('drive_file_id')
         if not drive_file_id:
             return jsonify({'error': 'No drive_file_id provided'}), 400
-            
+
         drive = GoogleDriveConnector()
-        # Get metadata to get the name
-        file_meta = drive.service.files().get(fileId=drive_file_id, fields='name', supportsAllDrives=True).execute()
+        file_meta = drive.service.files().get(
+            fileId=drive_file_id, fields='name,mimeType', supportsAllDrives=True
+        ).execute()
         original_name = file_meta.get('name', 'drive_file.pdf')
-        
-        file_id = str(uuid.uuid4())
+        mime_type = (file_meta.get('mimeType') or '').strip()
+        if mime_type != 'application/pdf':
+            return jsonify(
+                {
+                    'error': 'PDF のみ対応です（Google ドキュメント形式は PDF にエクスポートしてからアップロードしてください）。'
+                }
+            ), 400
+
+        file_id = str(uuid.uuid4())[:8]
+        base_fn = secure_filename(original_name) or 'document.pdf'
+        if not base_fn.lower().endswith('.pdf'):
+            base_fn = f'{base_fn}.pdf'
+        safe_filename = f'{file_id}_{base_fn}'
         upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'embedder')
         os.makedirs(upload_dir, exist_ok=True)
-        
-        # Download from drive to local server
-        local_path = drive.download_file(drive_file_id, original_name, upload_dir)
-        # Rename to include uuid
-        new_name = f"{file_id}_{secure_filename(original_name)}"
-        new_path = os.path.join(upload_dir, new_name)
-        os.rename(local_path, new_path)
 
-        # Generate previews
-        previews = []
-        doc = fitz.open(new_path)
-        preview_dir = os.path.join(current_app.config['STATIC_FOLDER'], 'previews', file_id)
-        os.makedirs(preview_dir, exist_ok=True)
-        
-        for i in range(len(doc)):
-            page = doc[i]
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-            img_name = f"page_{i}.png"
-            pix.save(os.path.join(preview_dir, img_name))
-            previews.append({
-                "index": i,
-                "url": url_for('static', filename=f'previews/{file_id}/{img_name}'),
-                "width": pix.width,
-                "height": pix.height
-            })
-        doc.close()
+        tmp_name = f'_dl_{uuid.uuid4().hex[:16]}_{base_fn}'
+        local_path = drive.download_file(drive_file_id, tmp_name, upload_dir)
+        final_path = os.path.join(upload_dir, safe_filename)
+        if os.path.abspath(local_path) != os.path.abspath(final_path):
+            if os.path.exists(final_path):
+                os.remove(final_path)
+            os.rename(local_path, final_path)
 
-        return jsonify({
-            'file_id': file_id,
-            'safe_filename': original_name,
-            'previews': previews,
-            'drive_file_id': drive_file_id # Return it so frontend can store it
-        })
+        pages_info = _build_pages_info_for_embedder(final_path, file_id, upload_dir)
+
+        return jsonify(
+            {
+                'success': True,
+                'file_id': file_id,
+                'safe_filename': safe_filename,
+                'filename': base_fn,
+                'pages': pages_info,
+                'drive_file_id': drive_file_id,
+            }
+        )
     except Exception as e:
         logging.error(f"Error loading from drive: {e}")
         return jsonify({'error': str(e)}), 500
@@ -135,40 +172,7 @@ def upload_file():
         file.save(input_filepath)
 
         try:
-            doc = fitz.open(input_filepath)
-            if len(doc) == 0:
-                return jsonify({'error': 'PDF is empty'}), 400
-
-            pages_info = []
-
-            for i in range(len(doc)):
-                page = doc[i]
-                
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_name = f"{file_id}_page_{i}.png"
-                img_path = os.path.join(upload_dir, img_name)
-                pix.save(img_path)
-                
-                text = page.get_text()
-                existing_data = None
-                
-                if MARKER_START in text and MARKER_END in text:
-                    try:
-                        start_idx = text.find(MARKER_START) + len(MARKER_START)
-                        end_idx = text.find(MARKER_END)
-                        md_str = text[start_idx:end_idx]
-                        existing_data = {"markdown": md_str.strip()}
-                    except Exception as e:
-                        logging.warning(f"Found markers on page {i} but failed to parse MD: {e}")
-                
-                pages_info.append({
-                    'page_index': i,
-                    'image_url': f"/embedder/static_uploads/{file_id}_page_{i}.png",
-                    'existing_data': existing_data
-                })
-            
-            doc.close()
-
+            pages_info = _build_pages_info_for_embedder(input_filepath, file_id, upload_dir)
             return jsonify({
                 'success': True,
                 'file_id': file_id,
@@ -177,6 +181,8 @@ def upload_file():
                 'pages': pages_info
             })
 
+        except ValueError as ve:
+            return jsonify({'error': str(ve)}), 400
         except Exception as e:
             logging.error(f"Error processing upload: {e}")
             return jsonify({'error': str(e)}), 500
@@ -409,46 +415,89 @@ def save_to_drive():
         if not success:
             return jsonify({'error': 'Failed to update Google Drive file'}), 500
 
-        # ===== Supabase 更新: Drive ID と更新時刻のみ（完了は processing_status で管理）=====
+        # ===== Supabase: 高速インデックス一覧用 md_content + updated_at =====
         now_iso = datetime.now(timezone.utc).isoformat()
+        md_in_request = isinstance(data, dict) and 'md_content' in data
+        md_content_val = (data.get('md_content') or '').strip() if md_in_request else None
+        pipeline_meta_id = (data.get('pipeline_meta_id') or '').strip() or None
+
         sb_updated = {}
         try:
             sb = _get_supabase()
             if sb:
-                # 1) pipeline_meta: drive_file_id で一致
-                pm_res = sb.table('pipeline_meta') \
-                    .update({
-                        'drive_file_id': drive_file_id,
-                        'updated_at': now_iso,
-                    }) \
-                    .eq('drive_file_id', drive_file_id) \
-                    .execute()
-                sb_updated['pipeline_meta_by_id'] = len(pm_res.data or [])
+                if pipeline_meta_id:
+                    sel = (
+                        sb.table('pipeline_meta')
+                        .select('id, drive_file_id')
+                        .eq('id', pipeline_meta_id)
+                        .limit(1)
+                        .execute()
+                    )
+                    prow = (sel.data or [None])[0]
+                    if not prow:
+                        logging.warning('pipeline_meta_id not found: %s', pipeline_meta_id)
+                    else:
+                        pm_drive = (prow.get('drive_file_id') or '').strip()
+                        if pm_drive and pm_drive != drive_file_id:
+                            return jsonify(
+                                {
+                                    'error': 'pipeline_meta の drive_file_id が、上書き対象の Drive ID と一致しません',
+                                }
+                            ), 400
+                        row_upd = {
+                            'drive_file_id': drive_file_id,
+                            'updated_at': now_iso,
+                        }
+                        if md_in_request:
+                            row_upd['md_content'] = md_content_val
+                        pm_one = sb.table('pipeline_meta').update(row_upd).eq('id', pipeline_meta_id).execute()
+                        sb_updated['pipeline_meta_row'] = len(pm_one.data or [])
 
-                # 2) raw テーブル経由で pipeline_meta を追加更新（file_url 一致）
-                for raw_table in ['05_ikuya_waseaca_01_raw', '03_ema_classroom_01_raw',
-                                  '04_ikuya_classroom_01_raw', '08_file_only_01_raw']:
+                pm_res = (
+                    sb.table('pipeline_meta')
+                    .update({'drive_file_id': drive_file_id, 'updated_at': now_iso})
+                    .eq('drive_file_id', drive_file_id)
+                    .execute()
+                )
+                sb_updated['pipeline_meta_by_drive_id'] = len(pm_res.data or [])
+
+                if md_in_request and not pipeline_meta_id:
+                    pm_md = (
+                        sb.table('pipeline_meta')
+                        .update({'md_content': md_content_val, 'updated_at': now_iso})
+                        .eq('drive_file_id', drive_file_id)
+                        .execute()
+                    )
+                    sb_updated['pipeline_meta_md_by_drive'] = len(pm_md.data or [])
+
+                for raw_table in [
+                    '05_ikuya_waseaca_01_raw',
+                    '03_ema_classroom_01_raw',
+                    '04_ikuya_classroom_01_raw',
+                    '08_file_only_01_raw',
+                ]:
                     try:
-                        raw_res = sb.table(raw_table) \
-                            .select('id') \
-                            .ilike('file_url', f'%{drive_file_id}%') \
+                        raw_res = (
+                            sb.table(raw_table)
+                            .select('id')
+                            .ilike('file_url', f'%{drive_file_id}%')
                             .execute()
+                        )
                         raw_ids = [r['id'] for r in (raw_res.data or [])]
                         if raw_ids:
-                            pm_res2 = sb.table('pipeline_meta') \
-                                .update({
-                                    'drive_file_id': drive_file_id,
-                                    'updated_at': now_iso,
-                                }) \
-                                .in_('raw_id', raw_ids) \
-                                .eq('raw_table', raw_table) \
+                            pm_res2 = (
+                                sb.table('pipeline_meta')
+                                .update({'drive_file_id': drive_file_id, 'updated_at': now_iso})
+                                .in_('raw_id', raw_ids)
+                                .eq('raw_table', raw_table)
                                 .execute()
+                            )
                             sb_updated[raw_table] = len(pm_res2.data or [])
                     except Exception as te:
-                        logging.warning(f"raw table {raw_table} update skipped: {te}")
+                        logging.warning('raw table %s update skipped: %s', raw_table, te)
 
         except Exception as se:
-            logging.warning(f"Supabase update skipped (non-fatal): {se}")
+            logging.warning('Supabase update skipped (non-fatal): %s', se)
 
         logging.info(f"Drive save complete. file_id={drive_file_id}, supabase={sb_updated}")
         return jsonify({

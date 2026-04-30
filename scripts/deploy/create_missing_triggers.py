@@ -2,11 +2,16 @@ import json
 import subprocess
 from pathlib import Path
 
+import yaml
 
 PROJECT_ID = "consummate-yew-479020-u2"
 REGION = "asia-northeast1"
 REPO_OWNER = "ook-lab"
 REPO_NAME = "document-management-system"
+# 既存トリガーから export して複製する（手書き JSON は regional で INVALID_ARGUMENT になりやすい）
+EXPORT_TEMPLATE_TRIGGER = "doc-processor"
+
+
 def load_env(path: Path) -> dict[str, str]:
     env: dict[str, str] = {}
     if not path.exists():
@@ -44,6 +49,8 @@ def run_gcloud(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             r"C:\Users\ookub\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd",
+            "--project",
+            PROJECT_ID,
             *args,
         ],
         capture_output=True,
@@ -62,41 +69,81 @@ def list_trigger_filenames() -> set[str]:
     return {t.get("filename", "") for t in triggers}
 
 
-def build_trigger_payload(
+def import_trigger_clone_from_template(
     name: str, filename: str, included: str, substitutions: dict[str, str]
-) -> dict:
-    payload = {
-        "name": name,
-        "filename": filename,
-        "github": {
-            "owner": REPO_OWNER,
-            "name": REPO_NAME,
-            "push": {"branch": "^main$"},
-        },
-        "includedFiles": [included],
-        # トリガーに build 用 serviceAccount を付けると、GCP 側で logs_bucket /
-        # defaultLogsBucketBehavior / CLOUD_LOGGING_ONLY 等の組み合わせが必須になる。
-        # 既定の Cloud Build SA で十分なら付けない（コンソールで付けた場合は cloudbuild と整合させる）。
-    }
-    if substitutions:
-        payload["substitutions"] = substitutions
-    return payload
+) -> None:
+    """
+    動いている既存トリガーを export し、name / filename / includedFiles / substitutions だけ差し替えて import。
+    """
+    export_path = Path(f"tmp_export_{EXPORT_TEMPLATE_TRIGGER}.yaml")
+    out_path = Path(f"tmp_{name}_trigger.yaml")
+    try:
+        res = run_gcloud(
+            [
+                "beta",
+                "builds",
+                "triggers",
+                "export",
+                EXPORT_TEMPLATE_TRIGGER,
+                f"--region={REGION}",
+                f"--destination={str(export_path)}",
+            ]
+        )
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"export {EXPORT_TEMPLATE_TRIGGER} failed: {res.stderr or res.stdout}"
+            )
+        raw = export_path.read_text(encoding="utf-8")
+        cfg = yaml.safe_load(raw)
+        if not isinstance(cfg, dict):
+            raise RuntimeError(f"unexpected export YAML: {cfg!r}")
 
+        for k in ("resourceName", "id", "createTime"):
+            cfg.pop(k, None)
 
-def import_trigger(payload: dict, temp_path: Path) -> None:
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    res = run_gcloud(
-        [
-            "beta",
-            "builds",
-            "triggers",
-            "import",
-            f"--region={REGION}",
-            f"--source={str(temp_path)}",
-        ]
-    )
-    if res.returncode != 0:
-        raise RuntimeError(f"Failed to import {payload['name']}: {res.stderr}")
+        cfg["name"] = name
+        cfg["filename"] = filename
+        cfg["includedFiles"] = [included]
+        cfg["description"] = f"main へ push でビルド（{filename}）"
+
+        if substitutions:
+            cfg["substitutions"] = substitutions
+        else:
+            cfg.pop("substitutions", None)
+
+        tags = list(cfg.get("tags") or [])
+        tags = [name if t == EXPORT_TEMPLATE_TRIGGER else t for t in tags]
+        if name not in tags:
+            tags.append(name)
+        cfg["tags"] = tags
+
+        with out_path.open("w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                cfg,
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+                allow_unicode=True,
+            )
+
+        res = run_gcloud(
+            [
+                "beta",
+                "builds",
+                "triggers",
+                "import",
+                f"--region={REGION}",
+                f"--source={str(out_path)}",
+            ]
+        )
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"Failed to import {name}: stderr={res.stderr!r} stdout={res.stdout!r}"
+            )
+    finally:
+        for p in (export_path, out_path):
+            if p.exists():
+                p.unlink()
 
 
 def main() -> None:
@@ -124,9 +171,7 @@ def main() -> None:
         if filename in existing_filenames:
             print(f"exists: {name}")
             continue
-        payload = build_trigger_payload(name, filename, included, substitutions)
-        temp_file = Path(f"tmp_{name}_trigger.json")
-        import_trigger(payload, temp_file)
+        import_trigger_clone_from_template(name, filename, included, substitutions)
         print(f"created: {name}")
 
 
