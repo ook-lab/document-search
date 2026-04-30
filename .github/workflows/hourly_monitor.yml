@@ -48,7 +48,7 @@ jobs:
 
       - name: Setup environment variables
         env:
-          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -57,7 +57,7 @@ jobs:
           ARCHIVE_FOLDER_ID: ${{ secrets.ARCHIVE_FOLDER_ID }}
         run: |
           # 環境変数を.envファイルに書き出し
-          echo "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" >> .env
+          echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" >> .env
           echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
           echo "SUPABASE_URL=$SUPABASE_URL" >> .env

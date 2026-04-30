@@ -28,12 +28,12 @@ jobs:
       - name: Setup credentials (Secrets to .env)
         # GitHub Secretsを環境変数として設定
         env:
-          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # Secretsから.env形式のファイルを一時的に作成
-          echo "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" > .env
+          echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" > .env
           echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
 

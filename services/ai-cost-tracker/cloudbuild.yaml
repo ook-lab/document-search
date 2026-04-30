@@ -34,10 +34,15 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=60'
-      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
+      - '--update-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-cost-tracker:latest'
+
+substitutions:
+  _SUPABASE_URL: ''
+  _SUPABASE_KEY: ''
+  _SUPABASE_SERVICE_ROLE_KEY: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
