@@ -28,12 +28,14 @@ def run():
     triggers = resp.get('triggers', [])
     print(f"Found {len(triggers)} triggers.")
 
+    # includedFiles のみ PATCH。同一パスに複数トリガーがある場合の無効化は fix_triggers_v3.py を使う。
     service_map = {
         'doc-processor': 'services/doc-processor/**',
         'html-to-a4': 'services/html-to-a4/**',
         'doda-scraper': 'services/doda-scraper/**',
         'ocr-editor': 'services/pdf-toolbox/**',
         'pdf-splitter': 'services/pdf-toolbox/**',
+        'pdf-toolbox': 'services/pdf-toolbox/**',
         'resume-maker': 'services/resume-maker/**',
         'kakeibo': 'services/kakeibo/**',
         'calendar-register': 'services/calendar-register/**',
