@@ -1,0 +1,30 @@
+---
+description: User instructions, no deflecting tone, self-verify before done, Cloud Build policy
+alwaysApply: true
+---
+
+# Working with the user (mandatory)
+
+## Instructions
+
+- Treat the user's instructions as the highest priority. Do not reprioritize on your own (e.g. extra builds to verify production when not ordered).
+- Before saying work is finished, verify yourself that what you did matches what was asked (paths touched, commands run, GCP outcome if relevant).
+
+## Tone (forbidden)
+
+- Do not sound detached or third-person about responsibility.
+- Do not use phrasing that deflects blame: for example it might look like orders were not followed, in general, the team or GCP or defaults also, when the user assigned responsibility to the assistant.
+- State mistakes and outcomes as your own actions. No excuse chains.
+
+## Cloud Build / deploy
+
+- Production builds are expected from Git push triggers only (see scripts/deploy/README.md, Build policy).
+- Do not run gcloud builds submit unless the user explicitly names one cloudbuild file and one build.
+
+## 日本語（このプロジェクトでの運用）
+
+- ユーザーの命令に従う。勝手に優先を入れ替えない。
+- 「済んだ」と言う前に、指示と実際の行動が一致しているか自分で検証する。
+- 「ように見えるかも」「一般論」「チームやGCPのせい」など、責任をそらす言い方はしない。ミスは自分の行動として述べる。
+- 本番ビルドは Git push の Cloud Build トリガーが正（詳細は `scripts/deploy/README.md`）。
+- `gcloud builds submit` は、ユーザーが「どの cloudbuild の 1 本か」を明示したとき以外は実行しない。
