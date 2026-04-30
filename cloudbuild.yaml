@@ -27,7 +27,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=3600'
-      - '--update-env-vars=GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},DOC_PROCESSOR_API_KEY=${_DOC_PROCESSOR_API_KEY},LOG_LEVEL=INFO'
+      - '--update-env-vars=GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},ANTHROPIC_API_KEY=${_ANTHROPIC_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},DOC_PROCESSOR_API_KEY=${_DOC_PROCESSOR_API_KEY},LOG_LEVEL=INFO,FAST_INDEX_PDF_TOOLBOX_BASE=${_FAST_INDEX_PDF_TOOLBOX_BASE}'
 
   # ============================================
   # 2. html-to-a4
@@ -63,6 +63,7 @@ images:
 
 substitutions:
   _TAG: 'latest'
+  _FAST_INDEX_PDF_TOOLBOX_BASE: ''
 
 options:
   machineType: 'E2_HIGHCPU_8'

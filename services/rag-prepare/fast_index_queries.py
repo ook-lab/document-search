@@ -35,6 +35,12 @@ def md_layer_in_pipeline_meta(md_content: Optional[str]) -> bool:
     return bool((md_content or "").strip())
 
 
+def body_layer_in_09(ud_row: Dict[str, Any]) -> bool:
+    """09_unified_documents.body にインデックス用の本文があるか（FastIndexer が参照する経路）。"""
+    b = ud_row.get("body")
+    return bool((b or "").strip())
+
+
 def structured_in_09(ui_data: Any) -> bool:
     """09_unified_documents.ui_data に G 由来の構造化 JSON があるか。"""
     if ui_data is None:
@@ -196,9 +202,9 @@ def fetch_pending_fast_index_docs(
         if has_structured_09:
             segment = "structured"
             segment_label = "構造化済"
-        elif has_md_col:
+        elif has_md_col or body_layer_in_09(ud_row):
             segment = "md_done"
-            segment_label = "MD済"
+            segment_label = "MD済" if has_md_col else "09本文あり"
         elif has_physical_file:
             segment = "pending_md"
             segment_label = "未処理"

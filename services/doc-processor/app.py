@@ -43,7 +43,7 @@ if str(_rag_prepare_dir) not in sys.path:
 from shared.common.database.client import DatabaseClient
 from fast_indexer import FastIndexer
 from fast_index_queries import fetch_pending_fast_index_docs
-from fast_index_scope import FAST_INDEX_RAW_TABLES
+from fast_index_scope import FAST_INDEX_RAW_TABLES, resolve_pdf_toolbox_base
 
 # ========== ビルド情報（環境指紋） ==========
 # 3環境（Cloud Run / localhost / terminal）で同一コードが動いていることを確認するため
@@ -375,7 +375,12 @@ def fast_index_ui():
         logger.error(f"Failed to fetch pending docs: {e}")
         pending_docs, list_error = [], str(e)
 
-    toolbox = (os.environ.get("FAST_INDEX_PDF_TOOLBOX_BASE") or "").strip().rstrip("/")
+    toolbox = resolve_pdf_toolbox_base()
+    if not toolbox and os.environ.get("K_SERVICE"):
+        logger.warning(
+            "FAST_INDEX_PDF_TOOLBOX_BASE（または PDF_TOOLBOX_BASE_URL / PDF_TOOLBOX_URL）が未設定です。"
+            "高速インデックス画面の PDF ツールへのリンクは相対パス /ocr/ になります。別サービスで動かす場合は Cloud Run の環境変数を設定してください。"
+        )
     return render_template(
         "fast_index.html",
         docs=pending_docs or [],

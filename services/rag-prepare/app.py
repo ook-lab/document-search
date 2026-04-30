@@ -8,7 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from fast_index_scope import FAST_INDEX_RAW_TABLES
+from fast_index_scope import FAST_INDEX_RAW_TABLES, resolve_pdf_toolbox_base
 from fast_index_queries import fetch_pending_fast_index_docs
 
 app = Flask(__name__)
@@ -43,7 +43,12 @@ def index():
         logger.error(f"Failed to fetch pending docs: {e}")
         list_error = str(e)
 
-    toolbox = (os.environ.get("FAST_INDEX_PDF_TOOLBOX_BASE") or "").strip().rstrip("/")
+    toolbox = resolve_pdf_toolbox_base()
+    if not toolbox and os.environ.get("K_SERVICE"):
+        logger.warning(
+            "FAST_INDEX_PDF_TOOLBOX_BASE（または PDF_TOOLBOX_BASE_URL / PDF_TOOLBOX_URL）が未設定です。"
+            "高速インデックス画面の PDF ツールへのリンクは相対パス /ocr/ になります。別サービスで動かす場合は Cloud Run の環境変数を設定してください。"
+        )
 
     return render_template(
         "fast_index.html",

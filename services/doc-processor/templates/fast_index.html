@@ -208,13 +208,8 @@
                         </td>
                         <td>
                             <div class="actions-cell">
-                                {% if pdf_toolbox_base %}
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/embedder/?pipeline_meta_id={{ doc.id }}{% if doc.resolved_drive_id %}&amp;drive_id={{ doc.resolved_drive_id }}{% endif %}" target="_blank" rel="noopener">帳票→Markdown抽出＆PDF埋め込み</a>
-                                {% else %}
-                                <button type="button" class="btn btn-outline" disabled title="FAST_INDEX_PDF_TOOLBOX_BASE を設定">検索できるPDFメーカー</button>
-                                <button type="button" class="btn btn-outline" disabled title="FAST_INDEX_PDF_TOOLBOX_BASE を設定">帳票→Markdown抽出＆PDF埋め込み</button>
-                                {% endif %}
                                 <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runFastIndex('{{ doc.id }}', this)">ベクトル化登録</button>
                             </div>
                         </td>
