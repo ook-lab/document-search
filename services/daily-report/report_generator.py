@@ -149,28 +149,41 @@ class ReportGenerator:
 
     def _vector_search(self, target: date, top_k: int = 12) -> list[dict]:
         """unified_search_v2 RPC でベクトル検索（補足情報取得）"""
-        query = (
-            f"date: {target.isoformat()}\n"
-            f"need: schedule homework submission items_to_bring notices exam"
+        if self.llm is None:
+            raise RuntimeError("LLM client is required for vector search (embeddings).")
+
+        query_text = (
+            f"{target.year}年{target.month}月{target.day}日 "
+            "予定 カレンダー 学校 連絡 宿題 持ち物 注意事項 課題"
         )
-        try:
-            embedding = self.llm.generate_embedding(
-                query,
-                log_context={'app': 'daily-report', 'stage': 'vector-search-embedding'}
-            )
-            result = self.db.client.rpc(
-                "unified_search_v2",
+        embedding = self.llm.generate_embedding(
+            query_text, log_context={"app": "daily-report", "stage": "report_vector_query"}
+        )
+        rpc_params = {
+            "query_text": query_text,
+            "query_embedding": embedding,
+            "match_threshold": -1.0,
+            "match_count": top_k,
+            "vector_weight": 0.7,
+            "fulltext_weight": 0.3,
+            "filter_sources": None,
+            "filter_chunk_types": None,
+            "filter_persons": None,
+            "filter_category": None,
+        }
+        response = self.db.client.rpc("unified_search_v2", rpc_params).execute()
+        rows = response.data or []
+        out: list[dict] = []
+        for result in rows:
+            out.append(
                 {
-                    "query_text":      query,
-                    "query_embedding": embedding,
-                    "match_threshold": 0.25,
-                    "match_count":     top_k,
-                },
-            ).execute()
-            return result.data or []
-        except Exception as e:
-            print(f"[WARN] vector search failed ({target}): {e}")
-            return []
+                    "title": result.get("title"),
+                    "source": result.get("source"),
+                    "best_chunk_text": result.get("best_chunk_text"),
+                    "combined_score": result.get("combined_score"),
+                }
+            )
+        return out
 
     # ─────────────────────────────────────────────────────────
     # AI synthesis – 1 day → 1 Gemini call
@@ -183,7 +196,6 @@ class ReportGenerator:
         vector_hits: list,
     ) -> dict:
         """Gemini Flash-lite で1日分ページを合成"""
-
         def _compact_candidate(c: dict) -> dict:
             details = c.get("details_json") or {}
             if isinstance(details, str):
@@ -257,7 +269,7 @@ class ReportGenerator:
         }
         try:
             import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+            from vertexai.generative_models import GenerativeModel, GenerationConfig
             from shared.common.config.settings import settings
             vertexai.init(
                 project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
@@ -278,7 +290,7 @@ from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
             return json.loads(text)
         except Exception as e:
             print(f"[WARN] AI synthesis failed ({target}): {e}")
-            return empty
+            raise RuntimeError(f"AI synthesis failed ({target}): {e}") from e
 
     # ─────────────────────────────────────────────────────────
     # Page 8: Incomplete / upcoming tasks

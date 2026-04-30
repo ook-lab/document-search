@@ -41,7 +41,19 @@ sys.modules['shared'].__path__ = [str(PROJECT_ROOT / 'shared')]
 sys.modules['shared.pipeline'] = _pipeline_pkg
 
 from loguru import logger
-from run_debug_pipeline import DebugPipeline
+
+# DebugPipeline は重い依存を引くため、ヘルスチェックだけのリクエストでは import しない
+_DP_CLS = None
+
+
+def _dp():
+    global _DP_CLS
+    if _DP_CLS is None:
+        from run_debug_pipeline import DebugPipeline
+
+        _DP_CLS = DebugPipeline
+    return _DP_CLS
+
 
 # ────────────────────────────────────────
 # Flask App
@@ -65,7 +77,7 @@ STAGE_DEPS = {
     "G": ["A", "B", "D", "E", "F"]
 }
 
-# サブステージ表示名（DebugPipeline.ALL_SUBSTAGES と同期すること）
+# サブステージ表示名（run_debug_pipeline.DebugPipeline.ALL_SUBSTAGES と同期すること）
 SUBSTAGE_LABELS = {
     # Stage A
     "A3": "Entry Point",
@@ -88,11 +100,18 @@ SUBSTAGE_LABELS = {
 # Routes
 # ────────────────────────────────────────
 
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    """ロードバランサ向け軽量ヘルス（重いパイプラインは読み込まない）"""
+    return jsonify({"status": "ok", "service": "debug-pipeline"})
+
+
 @app.route('/')
 def index():
     return render_template('index.html',
-                           stages=DebugPipeline.STAGES,
-                           substages=DebugPipeline.SUBSTAGES,
+                           stages=_dp().STAGES,
+                           substages=_dp().SUBSTAGES,
                            labels=SUBSTAGE_LABELS,
                            stage_deps=STAGE_DEPS)
 
@@ -174,8 +193,8 @@ def run_pipeline():
 
     # target 指定時は start/end を無視（--stage 相当）
     if target:
-        if target not in DebugPipeline.VALID_TARGETS:
-            return jsonify({'error': f'無効なターゲット: {target}。有効値: {DebugPipeline.VALID_TARGETS}'}), 400
+        if target not in _dp().VALID_TARGETS:
+            return jsonify({'error': f'無効なターゲット: {target}。有効値: {_dp().VALID_TARGETS}'}), 400
         start = None
         end = None
 
@@ -452,7 +471,7 @@ def _run_pipeline_job(job_id, session_id, pdf_path, start, end, target, force):
     file_sink_id = logger.add(str(log_file), format="{time:HH:mm:ss} | {level:<5} | {message}", filter=_pipeline_only, level="DEBUG")
 
     try:
-        pipeline = DebugPipeline(
+        pipeline = _dp()(
             uuid=session_id,
             base_dir=str(DEBUG_OUTPUT),
         )
@@ -666,7 +685,7 @@ def _check_completed_stages(session_id):
     """完了済みステージを返す"""
     session_dir = DEBUG_OUTPUT / session_id
     completed = []
-    for stage in DebugPipeline.STAGES:
+    for stage in _dp().STAGES:
         fp = session_dir / f"{session_id}_stage_{stage.lower()}.json"
         if fp.exists():
             completed.append(stage)
@@ -676,7 +695,7 @@ def _check_completed_stages(session_id):
 def _get_runnable_stages(completed):
     """実行可能ステージを返す"""
     runnable = []
-    for stage in DebugPipeline.STAGES:
+    for stage in _dp().STAGES:
         deps = STAGE_DEPS.get(stage, [])
         if all(d in completed for d in deps):
             runnable.append(stage)

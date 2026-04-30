@@ -29,7 +29,26 @@ from loguru import logger
 from blueprints.api import api_bp
 from blueprints.documents import documents_bp
 from blueprints.emails import emails_bp
-from blueprints.gmail_cleaner import gmail_cleaner_bp
+try:
+    from blueprints.gmail_cleaner import gmail_cleaner_bp
+except Exception as e:
+    gmail_cleaner_bp = None
+    logger.warning(f"gmail_cleaner blueprint disabled at startup: {e}")
+
+
+def _secret_key() -> str:
+    """本番で FLASK_SECRET_KEY 未設定だとプロセスごとに urandom になりセッション/CSRF が不安定になるため、
+    Cloud Run の K_REVISION があればロールアウト単位で安定したキーを生成する。"""
+    explicit = (os.environ.get("FLASK_SECRET_KEY") or "").strip()
+    if explicit:
+        return explicit
+    rev = (os.environ.get("K_REVISION") or "").strip()
+    svc = (os.environ.get("K_SERVICE") or "doc-review").strip()
+    if rev:
+        import hashlib
+
+        return hashlib.sha256(f"{svc}:{rev}".encode("utf-8")).hexdigest()
+    return os.urandom(32).hex()
 
 
 def create_app():
@@ -37,7 +56,7 @@ def create_app():
     app = Flask(__name__)
 
     # 設定
-    app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(32))
+    app.config["SECRET_KEY"] = _secret_key()
     app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -46,23 +65,30 @@ def create_app():
 
     # CORS設定
     allowed_origins = os.environ.get('CORS_ORIGINS', '*').split(',')
-    CORS(app,
-         resources={r"/api/*": {"origins": allowed_origins}},
-         supports_credentials=True)
+    has_wildcard = any(o.strip() == '*' for o in allowed_origins)
+    # Flask-CORS does not allow supports_credentials=True with wildcard origins.
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": allowed_origins}},
+        supports_credentials=not has_wildcard,
+    )
 
     # CSRF保護
     csrf = CSRFProtect(app)
-
-    # GETリクエストはCSRF免除
-    @csrf.exempt
-    def csrf_exempt_get():
-        pass
 
     # Blueprint登録
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(documents_bp, url_prefix='/documents')
     app.register_blueprint(emails_bp, url_prefix='/emails')
-    app.register_blueprint(gmail_cleaner_bp)
+    if gmail_cleaner_bp is not None:
+        app.register_blueprint(gmail_cleaner_bp)
+
+    # ヘルスチェックは CSRF 対象外（blueprint 登録後の view_functions を明示指定）
+    _health_view = app.view_functions.get("api.health")
+    if _health_view is not None:
+        csrf.exempt(_health_view)
+    else:
+        logger.error("api.health view not found; CSRF exempt not applied")
 
     # ルートリダイレクト
     @app.route('/')
@@ -79,10 +105,16 @@ def create_app():
     @app.before_request
     def before_request():
         """リクエスト前処理"""
-        # セッションからユーザー情報をgに設定
-        g.user_email = session.get('user_email')
-        g.access_token = session.get('access_token')
-        g.is_authenticated = g.access_token is not None
+        # 壊れたクッキー／SECRET_KEY 変更後のセッションで全体が 500 になるのを防ぐ
+        try:
+            g.user_email = session.get("user_email")
+            g.access_token = session.get("access_token")
+            g.is_authenticated = g.access_token is not None
+        except Exception as e:
+            logger.warning(f"session read failed (treating as logged out): {e}")
+            g.user_email = None
+            g.access_token = None
+            g.is_authenticated = False
 
     @app.after_request
     def after_request(response):

@@ -22,7 +22,6 @@ from functools import wraps
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from loguru import logger
-from shared.pipeline.pipeline_manager import PipelineManager
 
 # ロガー設定
 logging.basicConfig(level=logging.INFO)
@@ -41,15 +40,15 @@ if str(_rag_prepare_dir) not in sys.path:
 
 # DB クライアントのみインポート（処理系は一切インポートしない）
 from shared.common.database.client import DatabaseClient
-from fast_indexer import FastIndexer
-from fast_index_queries import fetch_pending_fast_index_docs
-from fast_index_scope import FAST_INDEX_RAW_TABLES, resolve_pdf_toolbox_base
 
 # ========== ビルド情報（環境指紋） ==========
 # 3環境（Cloud Run / localhost / terminal）で同一コードが動いていることを確認するため
 
 def _get_git_sha() -> str:
     """Git SHA を取得（取得失敗時は 'unknown'）"""
+    # Cloud Run イメージに .git は無いことが多く、subprocess はタイムアウト待ちになり得る
+    if os.environ.get("K_SERVICE") or os.environ.get("BUILD_TIME"):
+        return os.getenv("GIT_SHA", "unknown")
     try:
         result = subprocess.run(
             ['git', 'rev-parse', '--short', 'HEAD'],
@@ -62,12 +61,21 @@ def _get_git_sha() -> str:
         pass
     return os.getenv('GIT_SHA', 'unknown')
 
-# 起動時に一度だけ取得
-BUILD_INFO = {
-    'git_sha': _get_git_sha(),
-    'build_time': os.getenv('BUILD_TIME', datetime.now().isoformat()),
-    'version': '2025-01-16-enqueue-only'
-}
+
+_build_info_cache: dict | None = None
+
+
+def _build_info() -> dict:
+    """Cloud Run 起動を遅くしないよう、git 取得は初回ヘルス以降に遅延"""
+    global _build_info_cache
+    if _build_info_cache is None:
+        _build_info_cache = {
+            "git_sha": _get_git_sha(),
+            "build_time": os.getenv("BUILD_TIME", datetime.now().isoformat()),
+            "version": "2025-01-16-enqueue-only",
+        }
+    return _build_info_cache
+
 
 # ========== Flaskアプリケーション設定 ==========
 app = Flask(__name__)
@@ -170,12 +178,13 @@ def health_check():
     git_sha と build_time を返すことで、3環境（Cloud Run / localhost / terminal）
     で同一のコードが動いていることを確認できる。
     """
+    bi = _build_info()
     return jsonify({
         'status': 'ok',
         'message': 'Document Processing System is running',
-        'version': BUILD_INFO['version'],
-        'git_sha': BUILD_INFO['git_sha'],
-        'build_time': BUILD_INFO['build_time'],
+        'version': bi['version'],
+        'git_sha': bi['git_sha'],
+        'build_time': bi['build_time'],
         'mode': 'enqueue_only',
         'note': 'Processing is only available via CLI Worker'
     })
@@ -347,6 +356,8 @@ def search_documents():
 def fast_index():
     """軽量版高速インデックス実行"""
     try:
+        from fast_indexer import FastIndexer
+
         data = request.json
         pipeline_id = data.get('pipeline_id')
         if not pipeline_id:
@@ -365,6 +376,9 @@ def fast_index():
 @app.route('/fast-index-ui')
 def fast_index_ui():
     """軽量版プロセッサー専用画面（rag-prepare と同一一覧ロジック）"""
+    from fast_index_queries import fetch_pending_fast_index_docs
+    from fast_index_scope import FAST_INDEX_RAW_TABLES, resolve_pdf_toolbox_base
+
     db = DatabaseClient(use_service_role=True)
     list_error = None
     try:

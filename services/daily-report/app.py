@@ -26,18 +26,28 @@ CORS(app)
 
 JST = timezone(timedelta(hours=9))
 
-_db  = None
+_db = None
 _llm = None
 
 
-def _get_clients():
-    global _db, _llm
+def _get_db():
+    """Supabase（バックエンド用途: service_role）"""
+    global _db
     if _db is None:
         from shared.common.database.client import DatabaseClient
+
+        _db = DatabaseClient(use_service_role=True)
+    return _db
+
+
+def _get_llm():
+    """埋め込み生成など OpenAI 経路が必要な処理専用（一覧取得では初期化しない）"""
+    global _llm
+    if _llm is None:
         from shared.ai.llm_client.llm_client import LLMClient
-        _db  = DatabaseClient(use_service_role=True)
+
         _llm = LLMClient()
-    return _db, _llm
+    return _llm
 
 
 # ─────────────────────────────────────────────────────────────
@@ -53,7 +63,7 @@ def index():
 def report_latest():
     """最新レポートへリダイレクト（なければ今日）"""
     try:
-        db, _ = _get_clients()
+        db = _get_db()
         result = (
             db.client.table("11_daily_reports")
             .select("base_date")
@@ -81,7 +91,7 @@ def report_view(target_date: str):
 @app.route("/api/report/<target_date>")
 def api_report(target_date: str):
     try:
-        db, _ = _get_clients()
+        db = _get_db()
         result = (
             db.client.table("11_daily_reports")
             .select("base_date,generated_at,report_json")
@@ -105,7 +115,7 @@ def api_report(target_date: str):
 @app.route("/api/reports")
 def api_reports_list():
     try:
-        db, _ = _get_clients()
+        db = _get_db()
         result = (
             db.client.table("11_daily_reports")
             .select("id,base_date,generated_at")
@@ -129,9 +139,10 @@ def api_generate():
             if base_date_str
             else datetime.now(JST).date()
         )
-        db, llm = _get_clients()
+        db = _get_db()
         from report_generator import ReportGenerator
-        gen = ReportGenerator(db, llm)
+
+        gen = ReportGenerator(db, _get_llm())
         report = gen.generate(base_date)
         report_id = gen.save(report)
         return jsonify({
