@@ -27,7 +27,7 @@ class LLMClient:
         """設定からAPIキーを取得し、各プロバイダーを初期化"""
 
         # Settings経由でAPIキーを取得（環境変数管理の統一）
-        self.gemini_api_key = settings.GOOGLE_AI_API_KEY or os.getenv("GOOGLE_API_KEY")  # 後方互換性のためGOOGLE_API_KEYもサポート
+        self.gemini_api_key = settings.GOOGLE_AI_API_KEY
         self.anthropic_api_key = settings.ANTHROPIC_API_KEY
         self.openai_api_key = settings.OPENAI_API_KEY
 
