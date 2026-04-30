@@ -375,11 +375,14 @@ def fast_index_ui():
         logger.error(f"Failed to fetch pending docs: {e}")
         pending_docs, list_error = [], str(e)
 
-    toolbox = resolve_pdf_toolbox_base()
+    _fh = (request.headers.get("X-Forwarded-Host") or "").strip()
+    req_host = (_fh.split(",")[0].strip() if _fh else "") or (request.host or "").strip()
+    toolbox = resolve_pdf_toolbox_base(request_host=req_host or None)
     if not toolbox and os.environ.get("K_SERVICE"):
         logger.warning(
-            "FAST_INDEX_PDF_TOOLBOX_BASE（または PDF_TOOLBOX_BASE_URL / PDF_TOOLBOX_URL）が未設定です。"
-            "高速インデックス画面の PDF ツールへのリンクは相対パス /ocr/ になります。別サービスで動かす場合は Cloud Run の環境変数を設定してください。"
+            "PDF ツールのベース URL を決められませんでした（環境変数 FAST_INDEX_PDF_TOOLBOX_BASE 等、"
+            "または Cloud Run の *-{プロジェクト番号}.{リージョン}.run.app 形式のホストが必要です）。"
+            "カスタムドメインのみの場合は FAST_INDEX_PDF_TOOLBOX_BASE を設定してください。"
         )
     return render_template(
         "fast_index.html",
