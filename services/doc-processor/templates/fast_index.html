@@ -16,6 +16,9 @@
             --card-bg: #ffffff;
             --border: #e2e8f0;
             --success: #10b981;
+            --amber: #d97706;
+            --teal: #0d9488;
+            --indigo: #4338ca;
         }
 
         body {
@@ -27,7 +30,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1100px;
             margin: 0 auto;
         }
 
@@ -67,54 +70,84 @@
         th {
             background: #f1f5f9;
             text-align: left;
-            padding: 16px;
-            font-size: 13px;
+            padding: 14px 12px;
+            font-size: 12px;
             color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 0.04em;
         }
 
         td {
-            padding: 16px;
+            padding: 12px;
             border-top: 1px solid var(--border);
             font-size: 14px;
+            vertical-align: top;
         }
 
         .btn {
             background: var(--primary);
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 7px 12px;
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
-            font-size: 13px;
+            font-size: 12px;
             transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            white-space: nowrap;
         }
 
-        .btn:hover {
+        .btn:hover:not(:disabled) {
             background: var(--primary-hover);
-            transform: translateY(-1px);
         }
 
         .btn:disabled {
-            background: var(--text-muted);
+            background: #cbd5e1;
+            color: #64748b;
             cursor: not-allowed;
         }
 
-        .status-tag {
-            background: #fee2e2;
-            color: #ef4444;
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 600;
+        .btn-outline {
+            background: #fff;
+            color: var(--primary);
+            border: 1px solid #c7d2fe;
         }
+
+        .btn-outline:hover:not(:disabled) {
+            background: #eef2ff;
+        }
+
+        .btn-vector {
+            background: var(--success);
+        }
+
+        .btn-vector:hover:not(:disabled) {
+            background: #059669;
+        }
+
+        .actions-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+        }
+
+        .seg-structured { color: var(--indigo); font-weight: 700; }
+        .seg-md_done { color: var(--success); font-weight: 700; }
+        .seg-pending_md { color: var(--amber); font-weight: 700; }
+        .seg-text_only { color: var(--teal); font-weight: 700; }
 
         .empty-state {
             padding: 60px;
             text-align: center;
             color: var(--text-muted);
+        }
+
+        .meta-id {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
         }
     </style>
 </head>
@@ -123,12 +156,19 @@
         <header>
             <div>
                 <h1>⚡ 高速インデックス</h1>
-                <div class="subtitle">テキスト埋め込み済みドキュメントの即時ベクトル化 (軽量版プロセッサー)</div>
+                <div class="subtitle">03・04・05・08 の pipeline_meta。構造化済は <code>09_unified_documents.ui_data</code>、MD済は <code>pipeline_meta.md_content</code>、未処理／テキストのみはファイル有無で判定。外部ツールは <code>FAST_INDEX_PDF_TOOLBOX_BASE</code>（末尾スラッシュなし）。</div>
             </div>
             <div style="font-size: 14px; color: var(--success); font-weight: 600;">
                 {{ docs|length }} 件の待機中
             </div>
         </header>
+
+        {% if list_error %}
+        <div class="card" style="margin-bottom: 20px; border-color: #fecaca; background: #fef2f2; color: #991b1b; padding: 16px 20px; font-size: 14px;">
+            <strong>一覧の取得エラー</strong>（Cloud Run の環境変数・Supabase マイグレーションを確認）<br>
+            <code style="font-size: 12px; word-break: break-all;">{{ list_error }}</code>
+        </div>
+        {% endif %}
 
         <div class="card">
             {% if docs %}
@@ -136,20 +176,47 @@
                 <thead>
                     <tr>
                         <th>登録日</th>
-                        <th>ソース / 対象者</th>
+                        <th>区分</th>
+                        <th>ソース / ファイル名</th>
                         <th>アクション</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for doc in docs %}
                     <tr id="row-{{ doc.id }}">
-                        <td>{{ doc.created_at[:10] }}</td>
-                        <td>
-                            <strong>{{ doc.source }}</strong><br>
-                            <span style="font-size: 12px; color: var(--text-muted);">{{ doc.person }}</span>
+                        <td>{{ (doc.created_at or '')[:10] }}</td>
+                        <td style="font-size: 13px;">
+                            {% if doc.display_segment == 'structured' %}
+                            <span class="seg-structured">構造化済</span>
+                            {% elif doc.display_segment == 'md_done' %}
+                            <span class="seg-md_done">MD済</span>
+                            {% elif doc.display_segment == 'pending_md' %}
+                            <span class="seg-pending_md">未処理</span>
+                            {% else %}
+                            <span class="seg-text_only">テキストのみ</span>
+                            {% endif %}
                         </td>
                         <td>
-                            <button class="btn" onclick="runFastIndex('{{ doc.id }}')">実行</button>
+                            <strong>{{ doc.display_source }}</strong><br>
+                            <span style="font-size: 13px;">{{ doc.display_filename }}</span>
+                            {% if doc.resolved_drive_id %}
+                            <div style="margin-top:6px;font-size:12px;">
+                                <a href="https://drive.google.com/file/d/{{ doc.resolved_drive_id }}/view" target="_blank" rel="noopener">Drive で開く</a>
+                            </div>
+                            {% endif %}
+                            <div class="meta-id">meta {{ doc.id }}</div>
+                        </td>
+                        <td>
+                            <div class="actions-cell">
+                                {% if pdf_toolbox_base %}
+                                <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
+                                <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/embedder/{% if doc.resolved_drive_id %}?drive_id={{ doc.resolved_drive_id }}{% endif %}" target="_blank" rel="noopener">帳票→Markdown抽出＆PDF埋め込み</a>
+                                {% else %}
+                                <button type="button" class="btn btn-outline" disabled title="FAST_INDEX_PDF_TOOLBOX_BASE を設定">検索できるPDFメーカー</button>
+                                <button type="button" class="btn btn-outline" disabled title="FAST_INDEX_PDF_TOOLBOX_BASE を設定">帳票→Markdown抽出＆PDF埋め込み</button>
+                                {% endif %}
+                                <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runFastIndex('{{ doc.id }}', this)">ベクトル化登録</button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -165,14 +232,13 @@
     </div>
 
     <script>
-        async function runFastIndex(id) {
-            const btn = document.querySelector(`#row-${id} .btn`);
+        async function runFastIndex(id, btn) {
             const originalText = btn.innerText;
             btn.innerText = '処理中...';
             btn.disabled = true;
 
             try {
-                const res = await fetch('/internal/fast_index', {
+                const res = await fetch({{ fast_index_post_url|tojson }}, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pipeline_id: id })
@@ -181,12 +247,12 @@
 
                 if (data.success) {
                     btn.innerText = '完了';
-                    btn.style.background = 'var(--success)';
                     setTimeout(() => {
-                        document.getElementById(`row-${id}`).style.opacity = '0.3';
-                    }, 1000);
+                        const row = document.getElementById(`row-${id}`);
+                        if (row) row.style.opacity = '0.35';
+                    }, 800);
                 } else {
-                    alert('エラー: ' + data.error);
+                    alert('エラー: ' + (data.error || '不明なエラー'));
                     btn.innerText = originalText;
                     btn.disabled = false;
                 }

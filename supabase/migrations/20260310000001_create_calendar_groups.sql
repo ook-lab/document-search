@@ -13,10 +13,12 @@ CREATE INDEX IF NOT EXISTS cg_owner_idx ON calendar_groups (owner_email);
 
 ALTER TABLE calendar_groups ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role full access" ON calendar_groups;
 CREATE POLICY "service_role full access"
     ON calendar_groups FOR ALL TO service_role
     USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "authenticated read own" ON calendar_groups;
 CREATE POLICY "authenticated read own"
     ON calendar_groups FOR SELECT TO authenticated
     USING (owner_email = auth.jwt() ->> 'email');

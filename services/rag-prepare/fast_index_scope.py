@@ -1,5 +1,5 @@
 """
-高速インデックス (services/fast-indexer) の対象スコープ。
+RAG 準備 (services/rag-prepare) の対象スコープ。
 
 処理の論理対象は raw 行に紐づく pipeline_meta（raw_table が下記のいずれか）。
 09_unified_documents はフルパイプライン後の統合テーブルであり、ここでの「処理対象」ではない。

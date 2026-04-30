@@ -84,12 +84,14 @@ CREATE INDEX IF NOT EXISTS rc_incomplete_idx
 -- ── RLS ────────────────────────────────────────────────────
 ALTER TABLE "10_report_candidates" ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role full access" ON "10_report_candidates";
 CREATE POLICY "service_role full access"
     ON "10_report_candidates" FOR ALL
     TO service_role
     USING (true)
     WITH CHECK (true);
 
+DROP POLICY IF EXISTS "authenticated read" ON "10_report_candidates";
 CREATE POLICY "authenticated read"
     ON "10_report_candidates" FOR SELECT
     TO authenticated
@@ -104,6 +106,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS rc_updated_at ON "10_report_candidates";
 CREATE TRIGGER rc_updated_at
     BEFORE UPDATE ON "10_report_candidates"
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -1,3 +1,11 @@
+"""
+軽量 fast-index: 既存本文から 10_ix_search_index のみ更新し、
+pipeline_meta を processing_status=completed にする。
+
+完了: フルパイプライン K までと同様、ベクトル化まで終われば completed。
+"""
+from __future__ import annotations
+
 import logging
 import re
 from datetime import datetime, timezone
@@ -14,7 +22,7 @@ DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
 
 
 class FastIndexer:
-    def __init__(self):
+    def __init__(self) -> None:
         self.db = DatabaseClient(use_service_role=True)
         self.embedder = EmbeddingClient()
 
@@ -36,10 +44,10 @@ class FastIndexer:
             rt = doc.get("raw_table") or ""
             if rt not in FAST_INDEX_RAW_TABLES:
                 logger.error(
-                    "fast-indexer は raw_table が許可セット内の pipeline_meta のみ対象です: %s",
+                    "rag-prepare は raw_table が許可セット内の pipeline_meta のみ対象です: %s",
                     rt,
                 )
-                return False, "この raw_table は fast-indexer の対象外です"
+                return False, "この raw_table は rag-prepare の対象外です"
 
             raw_id = doc.get("raw_id")
             if not raw_id:
@@ -105,8 +113,6 @@ class FastIndexer:
                 {
                     "processing_status": "completed",
                     "completed_at": now_iso,
-                    "text_embedded": True,
-                    "text_embedded_at": now_iso,
                 }
             ).eq("id", pipeline_id).execute()
 

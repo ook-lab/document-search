@@ -486,6 +486,11 @@
         const driveBreadcrumb = document.getElementById('driveBreadcrumb');
         const browseDriveBtn = document.getElementById('browseDriveBtn');
         const initialDriveId = document.getElementById('initialDriveId');
+        (function prefillDriveFromQuery() {
+            const p = new URLSearchParams(window.location.search);
+            const did = (p.get('drive_id') || p.get('drive_file_id') || '').trim();
+            if (did && initialDriveId) initialDriveId.value = did;
+        })();
 
         appState.driveHistory = [{id: 'root', name: 'My Drive'}];
 

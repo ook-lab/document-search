@@ -409,34 +409,23 @@ def save_to_drive():
         if not success:
             return jsonify({'error': 'Failed to update Google Drive file'}), 500
 
-        # ===== Supabase 更新: テキスト埋め込み済みフラグを記録 =====
+        # ===== Supabase 更新: Drive ID と更新時刻のみ（完了は processing_status で管理）=====
         now_iso = datetime.now(timezone.utc).isoformat()
         sb_updated = {}
         try:
             sb = _get_supabase()
             if sb:
-                # 1) pipeline_meta: drive_file_id カラムで直接検索、なければ raw_table 経由
+                # 1) pipeline_meta: drive_file_id で一致
                 pm_res = sb.table('pipeline_meta') \
                     .update({
-                        'text_embedded': True,
-                        'text_embedded_at': now_iso,
-                        'drive_file_id': drive_file_id
+                        'drive_file_id': drive_file_id,
+                        'updated_at': now_iso,
                     }) \
                     .eq('drive_file_id', drive_file_id) \
                     .execute()
                 sb_updated['pipeline_meta_by_id'] = len(pm_res.data or [])
 
-                # 2) 09_unified_documents: file_url に drive_file_id が含まれるレコードを更新
-                ud_res = sb.table('09_unified_documents') \
-                    .update({
-                        'text_embedded': True,
-                        'text_embedded_at': now_iso
-                    }) \
-                    .ilike('file_url', f'%{drive_file_id}%') \
-                    .execute()
-                sb_updated['unified_documents'] = len(ud_res.data or [])
-
-                # 3) raw テーブル経由で pipeline_meta を追加更新（file_url 一致）
+                # 2) raw テーブル経由で pipeline_meta を追加更新（file_url 一致）
                 for raw_table in ['05_ikuya_waseaca_01_raw', '03_ema_classroom_01_raw',
                                   '04_ikuya_classroom_01_raw', '08_file_only_01_raw']:
                     try:
@@ -448,9 +437,8 @@ def save_to_drive():
                         if raw_ids:
                             pm_res2 = sb.table('pipeline_meta') \
                                 .update({
-                                    'text_embedded': True,
-                                    'text_embedded_at': now_iso,
-                                    'drive_file_id': drive_file_id
+                                    'drive_file_id': drive_file_id,
+                                    'updated_at': now_iso,
                                 }) \
                                 .in_('raw_id', raw_ids) \
                                 .eq('raw_table', raw_table) \

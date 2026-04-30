@@ -43,10 +43,14 @@ def index():
         logger.error(f"Failed to fetch pending docs: {e}")
         list_error = str(e)
 
+    toolbox = (os.environ.get("FAST_INDEX_PDF_TOOLBOX_BASE") or "").strip().rstrip("/")
+
     return render_template(
-        'fast_index.html',
+        "fast_index.html",
         docs=pending_docs,
         list_error=list_error,
+        pdf_toolbox_base=toolbox,
+        fast_index_post_url="/process",
     )
 
 def _run_fast_index():
@@ -76,7 +80,7 @@ def health_check():
     FastIndexerClass, DatabaseClientClass = get_indexer_tools()
     return jsonify({
         'status': 'ok',
-        'service': 'fast-indexer',
+        'service': 'rag-prepare',
         'dependencies_loaded': bool(FastIndexerClass and DatabaseClientClass)
     })
 

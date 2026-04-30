@@ -113,9 +113,9 @@ def main() -> None:
             {k: subs_common[k] for k in ("_SUPABASE_URL", "_SUPABASE_SERVICE_ROLE_KEY") if k in subs_common},
         ),
         (
-            "fast-indexer",
-            "services/fast-indexer/cloudbuild.yaml",
-            "services/fast-indexer/**",
+            "rag-prepare",
+            "services/rag-prepare/cloudbuild.yaml",
+            "services/rag-prepare/**",
             subs_common,
         ),
     ]

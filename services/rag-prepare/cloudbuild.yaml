@@ -1,11 +1,11 @@
 steps:
   # Dockerイメージのビルド
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/fast-indexer', '-f', 'services/fast-indexer/Dockerfile', '.']
+    args: ['build', '-t', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/rag-prepare', '-f', 'services/rag-prepare/Dockerfile', '.']
 
   # イメージのプッシュ
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/fast-indexer']
+    args: ['push', 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/rag-prepare']
 
   # Cloud Runへのデプロイ
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -13,9 +13,9 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'fast-indexer'
+      - 'rag-prepare'
       - '--image'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/fast-indexer'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/rag-prepare'
       - '--region'
       - 'asia-northeast1'
       - '--platform'
@@ -25,7 +25,7 @@ steps:
       - 'GOOGLE_AI_API_KEY=${_GOOGLE_AI_API_KEY},GOOGLE_API_KEY=${_GOOGLE_AI_API_KEY},OPENAI_API_KEY=${_OPENAI_API_KEY},SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY}'
 
 images:
-  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/fast-indexer'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/rag-prepare'
 
 # 明示 build service account 利用時の (c)。main に無いと Cloud Build が毎回失敗する。
 options:

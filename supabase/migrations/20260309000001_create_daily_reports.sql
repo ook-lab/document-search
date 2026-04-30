@@ -15,12 +15,14 @@ CREATE INDEX IF NOT EXISTS daily_reports_base_date_idx
 -- RLS: service_role のみ書き込み、authenticated も読み取り可
 ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "service_role full access" ON daily_reports;
 CREATE POLICY "service_role full access"
     ON daily_reports FOR ALL
     TO service_role
     USING (true)
     WITH CHECK (true);
 
+DROP POLICY IF EXISTS "authenticated read" ON daily_reports;
 CREATE POLICY "authenticated read"
     ON daily_reports FOR SELECT
     TO authenticated

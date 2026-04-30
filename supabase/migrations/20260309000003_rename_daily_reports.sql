@@ -1,9 +1,22 @@
 -- daily_reports → 11_daily_reports にリネーム
 -- ※ まだ daily_reports が存在しない場合は CREATE のみ実行
+-- ※ リモートで 11_daily_reports のみ既にある場合は RENAME せずスキップ（同名衝突を避ける）
 
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'daily_reports' AND schemaname = 'public') THEN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = '11_daily_reports'
+    ) THEN
+        NULL;
+    ELSIF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname = 'daily_reports'
+    ) THEN
         ALTER TABLE daily_reports RENAME TO "11_daily_reports";
     ELSE
         CREATE TABLE IF NOT EXISTS "11_daily_reports" (
