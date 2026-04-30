@@ -50,7 +50,7 @@ images:
 substitutions:
   _TAG: 'latest'
   _VERTEX_AI_REGION: 'us-central1'
-  _FAST_INDEX_PDF_TOOLBOX_BASE: ''
+  _FAST_INDEX_PDF_TOOLBOX_BASE: 'https://pdf-toolbox-983922127476.asia-northeast1.run.app'
 
 options:
   machineType: 'E2_HIGHCPU_8'
