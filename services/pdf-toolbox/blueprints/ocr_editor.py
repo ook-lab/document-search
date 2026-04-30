@@ -11,13 +11,15 @@ from flask import Blueprint, render_template, request, jsonify, send_file, url_f
 from werkzeug.utils import secure_filename
 from google import genai
 from google.genai import types
+from shared.common.gemini_studio_key import google_ai_studio_api_key
 
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
-# Gemini Client (lazy init)
-def get_client():
-    # MANDATORY: Only direct AI Studio API allowed. Fallback is PROHIBITED.
-    return "AI_STUDIO_DIRECT"
+def get_gemini_studio_client():
+    key = google_ai_studio_api_key()
+    if not key:
+        return None
+    return genai.Client(api_key=key)
 
 # Template Store
 TEMPLATES_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates.json')
@@ -124,9 +126,14 @@ def run_ocr():
 
         current_app.logger.info(f"Running OCR with model: {selected_model}")
         
-        # Direct REST API call to Google AI Studio ONLY. NO FALLBACK.
-        api_key = "AIzaSyDiVwSXMSzwtCI02lhIbkw6_04LleMvz2Q"
-        # Note: For structured output with direct API, we use response_mime_type in generationConfig
+        api_key = google_ai_studio_api_key()
+        if not api_key:
+            return jsonify(
+                {
+                    "error": "GOOGLE_AI_API_KEY が未設定です。"
+                    "pdf-toolbox の Cloud Run または .env にキーを設定してください。",
+                }
+            ), 500
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         
         img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
@@ -284,10 +291,17 @@ def generate_filename():
             f"テキスト:\n{text[:3000]}"
         )
         
-        client = get_client()
+        client = get_gemini_studio_client()
+        if client is None:
+            return jsonify(
+                {
+                    "error": "GOOGLE_AI_API_KEY が未設定です。"
+                    "pdf-toolbox の Cloud Run または .env にキーを設定してください。",
+                }
+            ), 500
         response = client.models.generate_content(
             model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
-            contents=prompt
+            contents=prompt,
         )
         filename = response.text.strip().replace(' ', '_').replace('/', '').replace('\\', '')
         

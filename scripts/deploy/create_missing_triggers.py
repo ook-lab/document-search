@@ -39,7 +39,7 @@ def cloudbuild_substitutions_from_dotenv(env: dict[str, str]) -> dict[str, str]:
         out["_SUPABASE_SERVICE_ROLE_KEY"] = v
     if v := env.get("OPENAI_API_KEY"):
         out["_OPENAI_API_KEY"] = v
-    gem = env.get("GOOGLE_AI_API_KEY") or env.get("GOOGLE_API_KEY")
+    gem = env.get("GOOGLE_AI_API_KEY")
     if gem:
         out["_GOOGLE_AI_API_KEY"] = gem
     return out

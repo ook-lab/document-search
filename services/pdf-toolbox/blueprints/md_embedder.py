@@ -11,6 +11,7 @@ from google import genai
 from google.genai import types
 from werkzeug.utils import secure_filename
 from shared.common.connectors.google_drive import GoogleDriveConnector
+from shared.common.gemini_studio_key import google_ai_studio_api_key
 from supabase import create_client as _supabase_create_client
 
 def _get_supabase():
@@ -25,10 +26,12 @@ embedder_bp = Blueprint('embedder', __name__, template_folder='../templates')
 MARKER_START = "<<<MD_SANDWICH_START>>>"
 MARKER_END = "<<<MD_SANDWICH_END>>>"
 
-# Gemini Client (lazy init)
-def get_client():
-    # MANDATORY: Only direct AI Studio API allowed. Fallback is PROHIBITED.
-    return "AI_STUDIO_DIRECT"
+def get_gemini_studio_client():
+    """google.genai クライアント。キー未設定時は None。"""
+    key = google_ai_studio_api_key()
+    if not key:
+        return None
+    return genai.Client(api_key=key)
 
 
 def _build_pages_info_for_embedder(input_filepath: str, file_id: str, upload_dir: str) -> list:
@@ -208,7 +211,6 @@ def extract_page(file_id, page_index):
         if not os.path.exists(img_path):
             return jsonify({'error': 'Image for this page not found on server'}), 404
 
-        client = get_client()
         with open(img_path, "rb") as f:
             img_bytes = f.read()
         
@@ -243,8 +245,14 @@ def extract_page(file_id, page_index):
         if custom_instructions:
             prompt += f"\n\n【追加のユーザー指示】\n{custom_instructions}\n上記指示に従ってフォーマットを調整してください。"
 
-        # Direct REST API call to Google AI Studio ONLY. NO FALLBACK.
-        api_key = "AIzaSyDiVwSXMSzwtCI02lhIbkw6_04LleMvz2Q"
+        api_key = google_ai_studio_api_key()
+        if not api_key:
+            return jsonify(
+                {
+                    "error": "GOOGLE_AI_API_KEY が未設定です。"
+                    "pdf-toolbox の Cloud Run または .env に、再発行した Gemini（Google AI Studio）用キーを設定してください。",
+                }
+            ), 500
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         
         # Prepare Base64 image
@@ -383,10 +391,17 @@ def generate_filename():
             f"データ:\n{text[:3000]}"
         )
         
-        client = get_client()
+        client = get_gemini_studio_client()
+        if client is None:
+            return jsonify(
+                {
+                    "error": "GOOGLE_AI_API_KEY が未設定です。"
+                    "pdf-toolbox の Cloud Run または .env にキーを設定してください。",
+                }
+            ), 500
         response = client.models.generate_content(
             model=os.environ.get("STAGE1_MODEL", "gemini-2.5-flash-lite"),
-            contents=prompt
+            contents=prompt,
         )
         filename = response.text.strip().replace(' ', '_').replace('/', '').replace('\\', '')
         
