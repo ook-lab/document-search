@@ -147,10 +147,37 @@
   .pattern-group { margin-bottom: 6px; }
   .pattern-group-name { color: #4f46e5; font-weight: 700; }
   .pattern-list { color: #64748b; padding-left: 12px; }
+
+  .hub-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .hub-nav a {
+    color: #4f46e5;
+    font-weight: 600;
+    font-size: 0.88rem;
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #c7d2fe;
+    background: #fff;
+  }
+  .hub-nav a:hover { background: #eef2ff; }
 </style>
 </head>
 <body>
 <div class="container">
+  <nav class="hub-nav" aria-label="文書ハブ内の移動">
+    <a href="/">Run Requests</a>
+    <a href="/documents/review">ドキュメントビューア</a>
+    <a href="/emails/inbox">メール受信トレイ</a>
+    <a href="/fast-index-ui">高速インデックス</a>
+    <a href="/pipeline" aria-current="page">パイプラインスタジオ</a>
+  </nav>
   <h1>Debug Pipeline Runner</h1>
 
   <!-- Tabs -->

@@ -149,10 +149,43 @@
             color: var(--text-muted);
             margin-top: 4px;
         }
+
+        .hub-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 24px;
+            padding: 12px 16px;
+            background: #f1f5f9;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .hub-nav a {
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 13px;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid #c7d2fe;
+            background: #fff;
+        }
+
+        .hub-nav a:hover {
+            background: #eef2ff;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <nav class="hub-nav" aria-label="文書ハブ内の移動">
+            <a href="/">Run Requests</a>
+            <a href="/documents/review">ドキュメントビューア</a>
+            <a href="/emails/inbox">メール受信トレイ</a>
+            <a href="/fast-index-ui" aria-current="page">高速インデックス</a>
+            <a href="/pipeline">パイプラインスタジオ</a>
+        </nav>
         <header>
             <div>
                 <h1>⚡ 高速インデックス</h1>

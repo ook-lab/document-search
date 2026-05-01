@@ -19,6 +19,10 @@
             <h1>Document Management System</h1>
         </div>
         <div class="nav-links">
+            <a href="/"
+               class="nav-link {% if request.path == '/' or request.path.startswith('/run-requests') %}active{% endif %}">
+                📥 Run Requests（キュー）
+            </a>
             <a href="{{ url_for('documents.review_page') }}"
                class="nav-link {% if request.path.startswith('/documents') %}active{% endif %}">
                 📋 ドキュメントレビュー
@@ -26,6 +30,14 @@
             <a href="{{ url_for('emails.inbox_page') }}"
                class="nav-link {% if request.path.startswith('/emails') %}active{% endif %}">
                 📬 メール受信トレイ
+            </a>
+            <a href="/fast-index-ui"
+               class="nav-link {% if request.path.startswith('/fast-index-ui') %}active{% endif %}">
+                ⚡ 高速インデックス
+            </a>
+            <a href="/pipeline"
+               class="nav-link {% if request.path.startswith('/pipeline') %}active{% endif %}">
+                🧪 パイプラインスタジオ
             </a>
         </div>
         <div class="nav-user">
