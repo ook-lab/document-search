@@ -1,5 +1,5 @@
 """
-rag-prepare 一覧用: pipeline_meta・raw・09_unified_documents を突き合わせ、
+fast-index 一覧用: pipeline_meta・raw・09_unified_documents を突き合わせ、
 区分・表示用ソース/ファイル名を付与する。
 
 構造化（doc-processor G 相当）は 09 の ui_data を正とする。

@@ -1,5 +1,5 @@
 """
-軽量 fast-index: 既存本文から 10_ix_search_index のみ更新し、
+軽量 fast-index（shared.fast_index）: 既存本文から 10_ix_search_index のみ更新し、
 pipeline_meta を processing_status=completed にする。
 
 完了: フルパイプライン K までと同様、ベクトル化まで終われば completed。
@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from shared.ai.embeddings.embeddings import EmbeddingClient
 from shared.common.database.client import DatabaseClient
 
-from fast_index_scope import FAST_INDEX_RAW_TABLES
+from shared.fast_index.scope import FAST_INDEX_RAW_TABLES
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +44,10 @@ class FastIndexer:
             rt = doc.get("raw_table") or ""
             if rt not in FAST_INDEX_RAW_TABLES:
                 logger.error(
-                    "rag-prepare は raw_table が許可セット内の pipeline_meta のみ対象です: %s",
+                    "fast-index は raw_table が許可セット内の pipeline_meta のみ対象です: %s",
                     rt,
                 )
-                return False, "この raw_table は rag-prepare の対象外です"
+                return False, "この raw_table は fast-index の対象外です"
 
             raw_id = doc.get("raw_id")
             if not raw_id:

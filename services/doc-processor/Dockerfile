@@ -10,9 +10,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY shared/ ./shared/
 COPY scripts/ ./scripts/
 
-# rag-prepare は services 配下のモジュールとして doc-processor から参照（shared には置かない）
-COPY services/rag-prepare/ ./services/rag-prepare/
-
 COPY services/doc-processor/app.py ./services/doc_processor/app.py
 COPY services/doc-processor/templates/ ./services/doc_processor/templates/
 COPY services/doc-processor/start.sh ./start.sh

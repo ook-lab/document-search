@@ -34,10 +34,6 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 os.environ.setdefault('PROJECT_ROOT', str(_project_root))
 
-_rag_prepare_dir = _project_root / "services" / "rag-prepare"
-if str(_rag_prepare_dir) not in sys.path:
-    sys.path.insert(0, str(_rag_prepare_dir))
-
 # DB クライアントのみインポート（処理系は一切インポートしない）
 from shared.common.database.client import DatabaseClient
 
@@ -356,7 +352,7 @@ def search_documents():
 def fast_index():
     """軽量版高速インデックス実行"""
     try:
-        from fast_indexer import FastIndexer
+        from shared.fast_index import FastIndexer
 
         data = request.json
         pipeline_id = data.get('pipeline_id')
@@ -375,9 +371,12 @@ def fast_index():
 
 @app.route('/fast-index-ui')
 def fast_index_ui():
-    """軽量版プロセッサー専用画面（rag-prepare と同一一覧ロジック）"""
-    from fast_index_queries import fetch_pending_fast_index_docs
-    from fast_index_scope import FAST_INDEX_RAW_TABLES, resolve_pdf_toolbox_base
+    """軽量版プロセッサー専用画面（fast-index 一覧）"""
+    from shared.fast_index import (
+        FAST_INDEX_RAW_TABLES,
+        fetch_pending_fast_index_docs,
+        resolve_pdf_toolbox_base,
+    )
 
     db = DatabaseClient(use_service_role=True)
     list_error = None

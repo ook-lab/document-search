@@ -8,8 +8,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from fast_index_scope import FAST_INDEX_RAW_TABLES, resolve_pdf_toolbox_base
-from fast_index_queries import fetch_pending_fast_index_docs
+from shared.fast_index import (
+    FAST_INDEX_RAW_TABLES,
+    fetch_pending_fast_index_docs,
+    resolve_pdf_toolbox_base,
+)
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +21,7 @@ logger = logging.getLogger(__name__)
 # インポートの遅延実行とエラーハンドリング
 def get_indexer_tools():
     try:
-        from fast_indexer import FastIndexer
+        from shared.fast_index import FastIndexer
         from shared.common.database.client import DatabaseClient
         return FastIndexer, DatabaseClient
     except ImportError as e:
