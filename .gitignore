@@ -72,5 +72,7 @@ tests/fixtures/**/*.pdf
 # OAuth2 tokens & credentials
 services/calendar-register/auth/token.json
 services/calendar-register/auth/credentials.json
-services/doc-review/auth/credentials.json
-services/doc-review/auth/gmail_cleaner_token.json
+services/doc-processor/review/auth/credentials.json
+services/doc-processor/review/auth/gmail_cleaner_token.json
+services/gmail-service/auth/credentials.json
+services/gmail-service/auth/gmail_cleaner_token.json

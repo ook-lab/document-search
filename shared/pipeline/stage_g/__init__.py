@@ -1,7 +1,7 @@
 """
 Stage G: UI Optimized Structuring（UI最適化構造化）
 
-Stage F の統合データを、doc-review の UI が追加処理なしで
+Stage F の統合データを、document-hub のレビュー UI が追加処理なしで
 「完全再現」できる形式にパッケージングする。
 
 パイプライン（チェーン）:

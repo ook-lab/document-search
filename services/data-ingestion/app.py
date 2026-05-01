@@ -22,32 +22,10 @@ app = Flask(__name__)
 
 # ソース定義（表示順 + グループ）
 SOURCES = {
-    'gmail':   {
-        'name': 'Gmail取込',
-        'script': 'services/data-ingestion/gmail/gmail_ingestion.py',
-        'group': 'gmail',
-        # Gmail固有オプション: mail-type選択肢
-        'mail_types': ['DM', 'JOB'],
-    },
     'waseda':  {
         'name': '早稲田アカデミー',
         'script': 'services/data-ingestion/waseda_academy/notice_ingestion.py',
         'group': 'school',
-    },
-    'daiei':   {
-        'name': 'ダイエー',
-        'script': 'scripts/processing/process_daiei.py',
-        'group': 'super',
-    },
-    'rakuten': {
-        'name': '楽天西友',
-        'script': 'scripts/processing/process_rakuten_seiyu.py',
-        'group': 'super',
-    },
-    'tokyu':   {
-        'name': '東急ストア',
-        'script': 'scripts/processing/process_tokyu_store.py',
-        'group': 'super',
     },
     'tokubai': {
         'name': 'トクバイ',
@@ -70,29 +48,6 @@ def index():
 @app.route('/api/sources')
 def api_sources():
     return jsonify(SOURCES)
-
-
-@app.route('/api/gmail/labels')
-def api_gmail_labels():
-    """Gmail ラベル一覧を取得（ユーザー定義ラベルのみ）"""
-    try:
-        import os
-        from shared.common.connectors.gmail_connector import GmailConnector
-        user_email = os.getenv('GMAIL_DM_USER_EMAIL') or os.getenv('GMAIL_USER_EMAIL')
-        if not user_email:
-            return jsonify({'error': 'GMAIL_USER_EMAIL が設定されていません'}), 500
-        gmail = GmailConnector(user_email=user_email)
-        all_labels = gmail.list_labels()
-        # ユーザー作成ラベルのみ返す（システムラベル INBOX/SENT 等を除外）
-        labels = [
-            {'id': lb['id'], 'name': lb['name']}
-            for lb in all_labels
-            if lb.get('type') == 'user'
-        ]
-        labels.sort(key=lambda x: x['name'])
-        return jsonify(labels)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/run/<source>', methods=['POST'])

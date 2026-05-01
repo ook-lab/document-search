@@ -12,7 +12,7 @@ WORKDIR /app
 COPY services/pdf-toolbox/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ルート shared/ は使わない（サービス同梱の shared/ のみ）
+# 本サービスはルート shared/ も同梱 shared/ も参照しない（Flask + ローカルモジュールのみ）
 COPY services/pdf-toolbox/ ./
 
 ENV PYTHONPATH=/app

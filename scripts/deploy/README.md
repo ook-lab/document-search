@@ -32,6 +32,14 @@ After `gcloud auth login` and project selection:
 python scripts/deploy/fix_triggers_v3.py
 ```
 
+欠けているリージョナルトリガーをまとめて作成（既存の 1 本を export して複製）:
+
+```bash
+python scripts/deploy/create_missing_triggers.py
+```
+
+初回は Git 接続付きのトリガーが少なくとも 1 本必要です。`GCP_PROJECT` / `GCP_REGION` で上書き可。
+
 Optional: patch **`includedFiles`** only via API (no duplicate consolidation):
 
 ```bash

@@ -1,21 +1,24 @@
 #!/usr/bin/env python
-"""パスを正しく設定してからサーバーを起動"""
+"""ローカル起動: Document Hub + /pipeline スタジオ（wsgi.application）。"""
+import importlib.util
 import os
 import sys
 from pathlib import Path
 
-# プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parent.parent.parent
 services_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(services_root))
 
-print(f"project_root: {project_root}")
-print(f"sys.path[:3]: {sys.path[:3]}")
+_here = Path(__file__).resolve().parent
+_spec = importlib.util.spec_from_file_location("doc_processor_wsgi", _here / "wsgi.py")
+_wsgi = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(_wsgi)
+application = _wsgi.application
 
-# appをインポートして起動
-from app import app
+if __name__ == "__main__":
+    from werkzeug.serving import run_simple
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    run_simple("0.0.0.0", port, application, use_reloader=False, threaded=True)

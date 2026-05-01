@@ -1,5 +1,5 @@
 param(
-    [string]$Service = "", # 例: "doc-processor", "doc-search", "doc-review", "calendar-register", "kakeibo", "daily-report"
+    [string]$Service = "", # 例: "doc-processor", "doc-search", "calendar-register", "kakeibo", "daily-report"
     [switch]$All           # 明示時のみ cloudbuild.yaml（全体ビルド）を実行
 )
 

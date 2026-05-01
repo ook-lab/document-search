@@ -1,6 +1,14 @@
 import subprocess
 import urllib.request
 import json
+import sys
+from pathlib import Path
+
+_deploy = Path(__file__).resolve().parent
+if str(_deploy) not in sys.path:
+    sys.path.insert(0, str(_deploy))
+from trigger_included_paths import included_glob_for_trigger_name
+
 
 def get_access_token():
     res = subprocess.run(['gcloud', 'auth', 'print-access-token'], capture_output=True, text=True, shell=True)
@@ -29,38 +37,13 @@ def run():
     print(f"Found {len(triggers)} triggers.")
 
     # includedFiles のみ PATCH。同一パスに複数トリガーがある場合の無効化は fix_triggers_v3.py を使う。
-    service_map = {
-        'doc-processor': 'services/doc-processor/**',
-        'html-to-a4': 'services/html-to-a4/**',
-        'doda-scraper': 'services/doda-scraper/**',
-        'ocr-editor': 'services/pdf-toolbox/**',
-        'pdf-splitter': 'services/pdf-toolbox/**',
-        'pdf-toolbox': 'services/pdf-toolbox/**',
-        'resume-maker': 'services/resume-maker/**',
-        'kakeibo': 'services/kakeibo/**',
-        'calendar-register': 'services/calendar-register/**',
-        'daily-report': 'services/daily-report/**',
-        'ai-cost-tracker': 'services/ai-cost-tracker/**',
-        'my-calendar-app': 'my-calendar-app/**',
-        'portal-app': 'portal-app/**',
-        'drive-checker': 'services/drive-duplicate-checker/**',
-        'doc-review': 'services/doc-review/**',
-        'doc-search': 'services/doc-search/**',
-        'data-ingestion': 'services/data-ingestion/**',
-        'tenshoku-tool': 'services/tenshoku-tool/**'
-    }
-
     for t in triggers:
         name = t.get('name', '')
         trigger_id = t.get('id')
-        
-        target_dir = None
-        for svc, path in service_map.items():
-            if svc in name.lower():
-                # 個別ビルド化のため shared/** は含めない
-                target_dir = [path]
-                break
-        
+
+        glob = included_glob_for_trigger_name(name)
+        target_dir = [glob] if glob else None
+
         if target_dir:
             print(f"Patching trigger [{name}] ({trigger_id}) -> {target_dir}")
             patch_url = f"{url}/{trigger_id}?updateMask=included_files"

@@ -74,7 +74,7 @@ def _build_info() -> dict:
 
 
 # ========== Flaskアプリケーション設定 ==========
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 # CORS設定
 ALLOWED_ORIGINS = os.getenv(
@@ -181,8 +181,8 @@ def health_check():
         'version': bi['version'],
         'git_sha': bi['git_sha'],
         'build_time': bi['build_time'],
-        'mode': 'enqueue_only',
-        'note': 'Processing is only available via CLI Worker'
+        'mode': 'document_hub',
+        'note': 'Worker CLI runs locally only; pipeline studio at /pipeline unless PIPELINE_STUDIO=0',
     })
 
 
@@ -1728,6 +1728,18 @@ def reprocess_g():
     except Exception as e:
         logger.error(f'reprocess-g エラー: {e}')
         return safe_error_response(e)
+
+
+# ========== document-hub: review UI（services/doc-processor/review） ==========
+_doc_dir = Path(__file__).resolve().parent
+if str(_doc_dir) not in sys.path:
+    sys.path.insert(0, str(_doc_dir))
+try:
+    from services.doc_processor.hub_register import register_document_hub
+except ImportError:
+    from hub_register import register_document_hub
+
+register_document_hub(app)
 
 
 # ========== エントリーポイント ==========

@@ -12,6 +12,7 @@ from subprocess import PIPE, STDOUT
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+SERVICE_ROOT = Path(__file__).parent
 
 # プロセス管理（run_id → Popen）
 _processes: dict[str, subprocess.Popen] = {}

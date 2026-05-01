@@ -29,30 +29,30 @@ services:
       - PORT=5001
     restart: unless-stopped
 
-  # ドキュメントレビュー (Flask)
-  doc-review:
-    build:
-      context: .
-      dockerfile: services/doc-review/Dockerfile
-    ports:
-      - "5002:5002"
-    env_file: .env
-    environment:
-      - PYTHONPATH=/app
-      - PORT=5002
-    restart: unless-stopped
-
-  # ドキュメント処理 (Flask)
-  doc-processor:
+  # 文書ハブ（doc-processor + review/ + /pipeline スタジオを単一イメージ）
+  document-hub:
     build:
       context: .
       dockerfile: services/doc-processor/Dockerfile
     ports:
-      - "8080:8080"
+      - "5002:8080"
     env_file: .env
     environment:
       - PYTHONPATH=/app
       - PORT=8080
+      - PIPELINE_STUDIO=1
+    restart: unless-stopped
+
+  # Gmail クリーナ等のみ（ローカル想定・軽量）
+  gmail-service:
+    build:
+      context: .
+      dockerfile: services/gmail-service/Dockerfile
+    ports:
+      - "5010:5010"
+    env_file: .env
+    environment:
+      - PORT=5010
     restart: unless-stopped
 
   # ネットスーパー検索 (Streamlit)
@@ -64,7 +64,8 @@ services:
       - "8501:8501"
     env_file: .env
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/app:/app/services/netsuper-search
+      - PORT=8501
     restart: unless-stopped
 
   # A4 HTML プレビュー・印刷アプリ

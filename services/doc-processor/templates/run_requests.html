@@ -571,6 +571,19 @@
             opacity: 0.4;
             cursor: not-allowed;
         }
+        .btn-open-viewer {
+            background: #e0e7ff;
+            color: #3730a3;
+            border: 1px solid #a5b4fc;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-open-viewer:hover {
+            background: #c7d2fe;
+        }
     </style>
 </head>
 <body>
@@ -580,6 +593,8 @@
             <p>ドキュメント処理キューの管理</p>
             <div class="nav-links">
                 <a href="/">Run Requests</a>
+                <a href="/documents/review">ドキュメントビューア</a>
+                <a href="/pipeline">パイプラインスタジオ</a>
             </div>
         </div>
 
@@ -588,6 +603,7 @@
             <div class="info-box">
                 <p><strong>設計原則:</strong> pending → queued → processing → completed/failed</p>
                 <p><strong>使い方:</strong> 下のフォームでキューに追加。Worker が自動的に queued を消化します。</p>
+                <p><strong>ビューア:</strong> 各カードの「ビューアで開く」で <code>/documents/review?doc_id=…</code> に移動します（同一ホストの Document Hub 前提）。</p>
             </div>
 
             <!-- ダッシュボード -->
@@ -1239,6 +1255,7 @@
                                 </div>
                             </div>
                             <div class="action-buttons">
+                                <button type="button" class="btn-open-viewer" onclick="openInViewer('${doc.id}')">ビューアで開く</button>
                                 <button class="btn-delete" onclick="removeFromQueue('${doc.id}')" title="キューから削除（failed に移動）">
                                     🗑 キューから削除
                                 </button>
@@ -1351,6 +1368,9 @@
                                     <div class="label">更新日時</div>
                                     <div class="value">${formatDate(doc.updated_at)}</div>
                                 </div>
+                            </div>
+                            <div class="action-buttons" style="margin-top: 12px;">
+                                <button type="button" class="btn-open-viewer" onclick="openInViewer('${doc.id}')">ビューアで開く</button>
                             </div>
                         </div>
                     `;
@@ -1645,7 +1665,8 @@
                                 ${doc.origin_app ? `<span style="margin-right: 8px;">🏷 ${escHtml(doc.origin_app)}</span>` : ''}
                                 <span>状態: ${escHtml(doc.processing_status)}</span>
                             </div>
-                            <div style="margin-top: 8px; display: flex; gap: 6px; align-items: center;">
+                            <div style="margin-top: 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                                <button type="button" class="btn-open-viewer" onclick="openInViewer('${doc.id}')">ビューア</button>
                                 <button class="btn-reprocess btn-reprocess-g17"
                                     id="btn-g17-${safeId}"
                                     onclick="reprocessG('${safeId}', 'G17', '${safeName}')"

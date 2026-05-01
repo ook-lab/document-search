@@ -1,4 +1,4 @@
-"""rag-prepare fast-index without monorepo `shared/`."""
+"""rag-prepare fast-index without monorepo ``shared/``."""
 
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen

@@ -1,0 +1,23 @@
+# 目視レビュー UI（document-hub に同梱）向けの依存メモ。
+# 実際の解決はリポジトリルートの services/doc-processor/requirements.txt に統合済み。
+# Flask core
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+Flask-WTF>=1.2.0
+gunicorn>=21.0.0
+
+# Supabase
+supabase>=2.0.0
+
+# Logging
+loguru>=0.7.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Google
+google-genai
+google-cloud-aiplatform
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+google-cloud-secret-manager>=2.0.0

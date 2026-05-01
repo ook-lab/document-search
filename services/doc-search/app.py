@@ -1341,9 +1341,8 @@ def get_workspaces():
 
     【設計方針】
     - このエンドポイントは doc-search UI 専用
-    - doc-review, doc-processor にも同名の /api/workspaces が存在するが、
-      それぞれ別サービス・別ホストで動作するため衝突しない
-    - 将来の統合は行わない（各サービスの独立性を維持）
+    - document-hub（doc-processor）にも同名の /api/workspaces が存在するが、
+      doc-search は別ホストのため衝突しない
     """
     try:
         from shared.common.database.client import DatabaseClient

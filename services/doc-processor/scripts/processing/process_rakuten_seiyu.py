@@ -24,10 +24,9 @@ from pathlib import Path
 from typing import Optional, List
 from dotenv import load_dotenv
 
-# プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent.parent.parent
+root_dir = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(root_dir))
-sys.path.insert(0, str(root_dir / "services" / "data-ingestion"))
+sys.path.insert(0, str(root_dir / "services" / "netsuper-search"))
 
 from rakuten_seiyu.auth_manager import RakutenSeiyuAuthManager
 from rakuten_seiyu.product_ingestion import RakutenSeiyuProductIngestionPipeline
@@ -79,7 +78,8 @@ async def authenticate(headless: bool = True) -> bool:
                 return False
 
             # Cookie保存
-            await auth.save_cookies("B_ingestion/rakuten_seiyu/rakuten_seiyu_cookies.json")
+            cookie_path = root_dir / "services" / "netsuper-search" / "rakuten_seiyu" / "rakuten_seiyu_cookies.json"
+            await auth.save_cookies(str(cookie_path))
 
         logger.info("=" * 60)
         logger.info("✅ 認証完了！Cookie保存しました")
@@ -93,7 +93,7 @@ async def authenticate(headless: bool = True) -> bool:
 
 async def run_ingestion(
     categories: Optional[str] = None,
-    category_config_file: str = "B_ingestion/rakuten_seiyu/categories_config.json",
+    category_config_file: str | None = None,
     headless: bool = True
 ) -> bool:
     """

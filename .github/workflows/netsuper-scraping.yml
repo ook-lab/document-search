@@ -49,44 +49,46 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install playwright loguru supabase
+          pip install -r services/netsuper-search/requirements.txt
           playwright install chromium
 
       - name: 楽天西友スクレイピング
         if: ${{ github.event.inputs.store == 'all' || github.event.inputs.store == 'rakuten_seiyu' || github.event_name == 'schedule' }}
         env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/services/netsuper-search
           RAKUTEN_ID: ${{ secrets.RAKUTEN_ID }}
           RAKUTEN_PASSWORD: ${{ secrets.RAKUTEN_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "楽天西友スクレイピング開始"
-          python -m services/data-ingestion.rakuten_seiyu.process_with_schedule
+          python -m rakuten_seiyu.process_with_schedule
         continue-on-error: true
 
       - name: 東急ストアスクレイピング
         if: ${{ github.event.inputs.store == 'all' || github.event.inputs.store == 'tokyu_store' || github.event_name == 'schedule' }}
         env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/services/netsuper-search
           TOKYU_STORE_LOGIN_ID: ${{ secrets.TOKYU_STORE_LOGIN_ID }}
           TOKYU_STORE_PASSWORD: ${{ secrets.TOKYU_STORE_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "東急ストアスクレイピング開始"
-          python -m services/data-ingestion.tokyu_store.process_with_schedule
+          python -m tokyu_store.process_with_schedule
         continue-on-error: true
 
       - name: ダイエースクレイピング
         if: ${{ github.event.inputs.store == 'all' || github.event.inputs.store == 'daiei' || github.event_name == 'schedule' }}
         env:
+          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/services/netsuper-search
           DAIEI_LOGIN_ID: ${{ secrets.DAIEI_LOGIN_ID }}
           DAIEI_PASSWORD: ${{ secrets.DAIEI_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "ダイエースクレイピング開始"
-          python -m services/data-ingestion.daiei.process_with_schedule
+          python -m daiei.process_with_schedule
         continue-on-error: true
 
       - name: Upload category config as artifact
@@ -94,5 +96,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: category-config
-          path: services/data-ingestion/common/category_config.json
+          path: services/netsuper-search/common/category_config.json
           retention-days: 30

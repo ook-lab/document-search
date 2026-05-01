@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 # プロジェクトルートをパスに追加
 root_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root_dir))
-sys.path.insert(0, str(root_dir / "services" / "data-ingestion"))
+sys.path.insert(0, str(root_dir / "services" / "netsuper-search"))
 
 from rakuten_seiyu.auth_manager import RakutenSeiyuAuthManager
 from rakuten_seiyu.product_ingestion import RakutenSeiyuProductIngestionPipeline
@@ -93,7 +93,7 @@ async def authenticate(headless: bool = True) -> bool:
 
 async def run_ingestion(
     categories: Optional[str] = None,
-    category_config_file: str = "B_ingestion/rakuten_seiyu/categories_config.json",
+    category_config_file: str | None = None,
     headless: bool = True
 ) -> bool:
     """

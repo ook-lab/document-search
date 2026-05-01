@@ -22,10 +22,9 @@ Write-Host ""
 $services = @(
     @{ Name = "kakeibo-ui";         Path = "services/kakeibo/app.py";                        Port = 5000 },
     @{ Name = "doc-search";         Path = "services/doc-search/app.py";                    Port = 5001 },
-    @{ Name = "doc-review";         Path = "services/doc-review/app.py";                    Port = 5002 },
+    @{ Name = "document-hub";      Path = "services/doc-processor/run_server.py";            Port = 5002 },
     @{ Name = "calendar-register";  Path = "services/calendar-register/app.py";             Port = 5003 },
     @{ Name = "data-ingestion";     Path = "services/data-ingestion/app.py";               Port = 5004 },
-    @{ Name = "doc-processor";      Path = "services/doc-processor/app.py";                 Port = 8080 },
     @{ Name = "kakeibo-view";       Path = "services/kakeibo_view/app.py";                  Port = 5005 }
 )
 
@@ -70,7 +69,6 @@ Write-Host "  - Doc Search:         http://localhost:5001" -ForegroundColor Gray
 Write-Host "  - Doc Review:         http://localhost:5002" -ForegroundColor Gray
 Write-Host "  - Calendar Register:  http://localhost:5003" -ForegroundColor Gray
 Write-Host "  - Data Ingestion UI:  http://localhost:5004" -ForegroundColor Gray
-Write-Host "  - Doc Processor:      http://localhost:8080" -ForegroundColor Gray
 Write-Host "  - Netsuper Search:    http://localhost:8501" -ForegroundColor Gray
 Write-Host "  - Kakeibo View:       http://localhost:5005" -ForegroundColor Gray
 Write-Host ""

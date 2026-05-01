@@ -1,13 +1,9 @@
 import os
-import sys
 import logging
 from flask import Flask
 from dotenv import load_dotenv
 
-# ルートの shared/ より先に、本サービス同梱の shared/ を解決させる
 _service_dir = os.path.dirname(os.path.abspath(__file__))
-if _service_dir not in sys.path:
-    sys.path.insert(0, _service_dir)
 
 # Load environment variables（サービス直下 → リポジトリルートの順）
 _repo_root = os.path.dirname(os.path.dirname(_service_dir))

@@ -44,7 +44,10 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # タイトル
 st.title("🛒 ネットスーパー横断検索")
-st.markdown("**楽天西友・東急ストア・ダイエー**の商品を一括検索！類似度の高い順に表示します")
+st.markdown(
+    "**楽天西友・東急ストア・ダイエー**の商品を一括検索！類似度の高い順に表示します。"
+    " 店舗データの取り込みはサイドバー **netsuper ingestion** ページから実行できます。"
+)
 
 # 検索欄
 st.subheader("🔍 商品を検索")

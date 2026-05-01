@@ -7,11 +7,20 @@ WORKDIR /app
 COPY services/doc-processor/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# パイプライン共有コード（本番イメージにはワーカー用 scripts は含めない＝ローカル CLI のみ）
 COPY shared/ ./shared/
-COPY scripts/ ./scripts/
+
+# 目視レビュー UI（review/ の blueprints / services / templates のみ同梱。Gmail クリーナは gmail-service へ）
+COPY services/doc-processor/review/blueprints ./services/doc_processor/bundled/review/blueprints
+COPY services/doc-processor/review/services ./services/doc_processor/bundled/review/services
+COPY services/doc-processor/review/templates ./services/doc_processor/bundled/review/templates
 
 COPY services/doc-processor/app.py ./services/doc_processor/app.py
+COPY services/doc-processor/hub_register.py ./services/doc_processor/hub_register.py
+COPY services/doc-processor/wsgi.py ./services/doc_processor/wsgi.py
+COPY services/doc-processor/pipeline_debug ./services/doc_processor/pipeline_debug/
 COPY services/doc-processor/templates/ ./services/doc_processor/templates/
+COPY services/doc-processor/static/ ./services/doc_processor/static/
 COPY services/doc-processor/start.sh ./start.sh
 
 # Pythonパッケージとして認識させるための __init__.py
@@ -20,8 +29,6 @@ RUN touch ./services/__init__.py ./services/doc_processor/__init__.py
 ENV PORT=8080
 ENV PYTHONPATH=/app
 
-# 起動スクリプトに実行権限を付与
 RUN chmod +x start.sh
 
-# サーバーを起動
 CMD ["./start.sh"]

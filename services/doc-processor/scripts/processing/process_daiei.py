@@ -22,10 +22,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 
-# プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent.parent.parent
+# リポジトリルート（本ファイルは services/doc-processor/scripts/processing/ 配下）
+root_dir = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(root_dir))
-sys.path.insert(0, str(root_dir / "services" / "data-ingestion"))
+sys.path.insert(0, str(root_dir / "services" / "netsuper-search"))
 
 # .envファイルを読み込む
 from dotenv import load_dotenv

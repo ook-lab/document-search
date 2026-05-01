@@ -1,5 +1,13 @@
 import subprocess
 import json
+import sys
+from pathlib import Path
+
+_deploy = Path(__file__).resolve().parent
+if str(_deploy) not in sys.path:
+    sys.path.insert(0, str(_deploy))
+from trigger_included_paths import included_glob_for_trigger_name
+
 
 def fix_triggers():
     # asia-northeast1 リージョンの全トリガーを取得
@@ -20,37 +28,12 @@ def fix_triggers():
         print(f"Failed to parse triggers JSON: {e}")
         return
     
-    # サービス名とフォルダの対応マップ
-    service_map = {
-        'doc-processor': 'services/doc-processor/**',
-        'html-to-a4': 'services/html-to-a4/**',
-        'doda-scraper': 'services/doda-scraper/**',
-        'ocr-editor': 'services/pdf-toolbox/**',
-        'pdf-splitter': 'services/pdf-toolbox/**',
-        'resume-maker': 'services/resume-maker/**',
-        'kakeibo': 'services/kakeibo/**',
-        'calendar-register': 'services/calendar-register/**',
-        'daily-report': 'services/daily-report/**',
-        'ai-cost-tracker': 'services/ai-cost-tracker/**',
-        'my-calendar-app': 'my-calendar-app/**',
-        'portal-app': 'portal-app/**',
-        'doc-review': 'services/doc-review/**',
-        'doc-search': 'services/doc-search/**',
-        'data-ingestion': 'services/data-ingestion/**',
-        'tenshoku-tool': 'services/tenshoku-tool/**',
-        'drive-checker': 'services/drive-duplicate-checker/**'
-    }
-
     for t in triggers:
         name = t.get('name')
         if not name: continue
-        
-        target_dir = None
-        for svc, path in service_map.items():
-            if svc in name.lower():
-                target_dir = path
-                break
-        
+
+        target_dir = included_glob_for_trigger_name(name)
+
         if target_dir:
             print(f"Updating trigger [{name}] -> monitoring only: {target_dir}")
             # GitHubトリガー専用のコマンド形式に修正

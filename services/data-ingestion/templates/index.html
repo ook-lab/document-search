@@ -15,30 +15,6 @@
   /* === サイドバー === */
   .sidebar { background: #ffffff; border-right: 1px solid #e2e8f0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 16px; }
 
-  /* Gmail フィーチャードカード */
-  .gmail-card {
-    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
-    border: 1px solid #4338ca;
-    border-radius: 10px;
-    padding: 14px;
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
-  }
-  .gmail-card .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-  .gmail-card .card-icon { font-size: 20px; }
-  .gmail-card .card-title { font-size: 15px; font-weight: 700; color: #ffffff; }
-  .gmail-card .status-badge { margin-left: auto; }
-
-  .mail-type-row { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-  .mail-type-btn {
-    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
-    border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.1); color: #e0e7ff; cursor: pointer;
-    transition: all 0.15s;
-  }
-  .mail-type-btn.active { background: #ffffff; color: #4338ca; border-color: #ffffff; }
-  .mail-type-btn:hover:not(.active) { background: rgba(255, 255, 255, 0.2); }
-
-  .gmail-actions { display: flex; gap: 6px; }
-
   /* グループラベル */
   .group-label { font-size: 11px; font-weight: 800; color: #94a3b8; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 4px; margin-bottom: -8px; }
 
@@ -58,9 +34,6 @@
   .btn:hover { opacity: 0.8; }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .btn-run      { background: #6366f1; color: #fff; }
-  .btn-run-lg   { background: #6366f1; color: #fff; padding: 7px 18px; font-size: 13px; font-weight: 600; border-radius: 6px; border: none; cursor: pointer; }
-  .btn-run-lg:hover:not(:disabled) { background: #4f46e5; }
-  .btn-run-lg:disabled { opacity: 0.35; cursor: not-allowed; }
   .btn-settings { background: #ffffff; color: #64748b; border: 1px solid #e2e8f0; }
 
   /* バッジ */
@@ -230,27 +203,9 @@ let currentSettingsSource = null;
 let activeEventSource = null;
 let historyInterval = null;
 
-// Gmail選択中のラベル
-let gmailMailType = 'DM';
-let gmailLabels = [];      // {id, name}[]
-let gmailSelectedLabel = null;  // 選択中のラベル名
-
 async function init() {
   const resp = await fetch('/api/sources');
   SOURCES = await resp.json();
-
-  // Gmail ラベルを非同期取得
-  fetch('/api/gmail/labels')
-    .then(r => r.json())
-    .then(labels => {
-      if (!labels.error) {
-        gmailLabels = labels;
-        gmailSelectedLabel = labels.length ? labels[0].name : null;
-        renderSidebar();
-      }
-    })
-    .catch(() => {});
-
   renderSidebar();
   loadHistory();
 }
@@ -267,49 +222,6 @@ function renderSidebar() {
   uploadBtn.textContent = '📁 ファイル取り込み';
   uploadBtn.onclick = openUploadModal;
   sb.appendChild(uploadBtn);
-
-  // --- Gmail フィーチャードカード ---
-  const gmail = SOURCES['gmail'];
-  if (gmail) {
-    const mailTypes = gmail.mail_types || ['DM'];
-    const state = cardStates['gmail'] || 'idle';
-    const div = document.createElement('div');
-    div.className = 'gmail-card';
-    div.id = 'card-gmail';
-    div.innerHTML = `
-      <div class="card-header">
-        <span class="card-icon">✉️</span>
-        <span class="card-title">${gmail.name}</span>
-        <span class="status-badge badge-${state}" id="badge-gmail">${stateLabel(state)}</span>
-      </div>
-      <div class="mail-type-row" id="gmail-type-row">
-        ${gmailLabels.length
-          ? gmailLabels.map(lb => `
-              <button class="mail-type-btn ${lb.name === gmailSelectedLabel ? 'active' : ''}"
-                      onclick="selectLabel('${lb.name.replace(/'/g,"\\'")}')">
-                ${lb.name}
-              </button>`).join('')
-          : `<span style="font-size:11px;color:#4b5563;">ラベル取得中…</span>`
-        }
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-        <label style="font-size:11px;color:#6b7280;white-space:nowrap;">取得件数</label>
-        <select id="gmail-max-results" style="background:#0d1117;border:1px solid #374151;border-radius:5px;color:#e2e8f0;font-size:12px;padding:3px 7px;cursor:pointer;">
-          <option value="10">10件</option>
-          <option value="25">25件</option>
-          <option value="50" selected>50件</option>
-          <option value="100">100件</option>
-          <option value="200">200件</option>
-        </select>
-      </div>
-      <div class="gmail-actions">
-        <button class="btn-run-lg" id="btn-run-gmail" onclick="runSource('gmail')" ${state==='running'?'disabled':''}>
-          ▶ 実行
-        </button>
-      </div>
-    `;
-    sb.appendChild(div);
-  }
 
   // --- 早稲田アカデミー ---
   appendGroup(sb, 'school', '🎓 教育');
@@ -405,23 +317,14 @@ async function runSource(source, forceArgs) {
   clearLog();
   const srcName = SOURCES[source]?.name || source;
   const modeLabel = forceArgs && forceArgs.includes('--browser') ? ' [🌐ブラウザ取得]' : '';
-  document.getElementById('current-source-name').textContent =
-    source === 'gmail' ? `${srcName} [${gmailMailType}]` : `${srcName}${modeLabel}`;
+  document.getElementById('current-source-name').textContent = `${srcName}${modeLabel}`;
 
-  // extra_args: forceArgs が渡された場合は優先、なければソースごとに組み立てる
+  // extra_args: forceArgs が渡された場合は優先、なければサーバー保存設定を使用
   let extra_args = forceArgs || [];
-  if (!forceArgs && source === 'gmail') {
-    const maxResults = document.getElementById('gmail-max-results')?.value || '50';
-    const label = gmailSelectedLabel || gmailMailType;
-    extra_args = ['--query', `label:${label}`, '--max-results', maxResults];
-  }
 
   let run_id;
   try {
-    // extra_args が空の場合はボディに含めない → サーバーが保存済み設定を使用する
-    const body = forceArgs || (source === 'gmail')
-      ? JSON.stringify({ extra_args })
-      : JSON.stringify({});
+    const body = forceArgs ? JSON.stringify({ extra_args }) : JSON.stringify({});
     const resp = await fetch(`/api/run/${source}`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},

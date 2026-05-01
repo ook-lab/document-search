@@ -24,8 +24,10 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 _service_dir = Path(__file__).resolve().parent
+_repo_root = _service_dir.parent.parent
 sys.path.insert(0, str(_service_dir))
 
+load_dotenv(_repo_root / ".env")
 load_dotenv(_service_dir / ".env")
 
 from supabase_service import SupabaseService
