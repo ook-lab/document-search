@@ -5,11 +5,10 @@ WORKDIR /app
 COPY services/daily-report/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# shared/ をコピー（DatabaseClient・LLMClient・settings が必要）
-COPY shared/ ./shared/
-
 COPY services/daily-report/app.py .
 COPY services/daily-report/report_generator.py .
+COPY services/daily-report/supabase_service.py .
+COPY services/daily-report/openai_embeddings.py .
 COPY services/daily-report/templates/ ./templates/
 
 ENV PORT=8080

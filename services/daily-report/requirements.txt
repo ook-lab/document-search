@@ -1,14 +1,9 @@
 google-cloud-aiplatform
-anthropic==0.39.0
 openai==1.54.0
 
 supabase==2.10.0
 
 python-dotenv==1.0.0
-loguru==0.7.2
-pydantic
-pydantic-settings
-tenacity>=8.2.0
 
 gunicorn==23.0.0
 Flask==3.1.0

@@ -10,13 +10,7 @@ Routes:
   POST /api/generate             → レポート生成（body: {"base_date":"YYYY-MM-DD"}）
 """
 import os
-import sys
-from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
-
-project_root = Path(__file__).parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_cors import CORS
@@ -34,9 +28,9 @@ def _get_db():
     """Supabase（バックエンド用途: service_role）"""
     global _db
     if _db is None:
-        from shared.common.database.client import DatabaseClient
+        from supabase_service import SupabaseService
 
-        _db = DatabaseClient(use_service_role=True)
+        _db = SupabaseService()
     return _db
 
 
@@ -44,9 +38,9 @@ def _get_llm():
     """埋め込み生成など OpenAI 経路が必要な処理専用（一覧取得では初期化しない）"""
     global _llm
     if _llm is None:
-        from shared.ai.llm_client.llm_client import LLMClient
+        from openai_embeddings import OpenAIEmbeddings
 
-        _llm = LLMClient()
+        _llm = OpenAIEmbeddings()
     return _llm
 
 

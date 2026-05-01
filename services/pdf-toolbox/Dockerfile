@@ -12,7 +12,7 @@ WORKDIR /app
 COPY services/pdf-toolbox/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY shared ./shared
+# ルート shared/ は使わない（サービス同梱の shared/ のみ）
 COPY services/pdf-toolbox/ ./
 
 ENV PYTHONPATH=/app

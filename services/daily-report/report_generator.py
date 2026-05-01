@@ -270,7 +270,6 @@ class ReportGenerator:
         try:
             import vertexai
             from vertexai.generative_models import GenerativeModel, GenerationConfig
-            from shared.common.config.settings import settings
             vertexai.init(
                 project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
                 location=os.environ.get("VERTEX_AI_REGION", "us-central1")
