@@ -326,7 +326,7 @@ class GmailService:
         self._set_status(raw_id, "processing")
         row = (self.db.client.table("01_gmail_01_raw")
                .select("*").eq("id", raw_id).maybe_single().execute())
-        if not row.data:
+        if not row or not row.data:
             raise ValueError(f"{raw_id} not found")
         email = row.data
         ocr = self._ocr_attachments(email.get("attachments") or [])
@@ -373,7 +373,7 @@ class GmailService:
         ex = (self.db.client.table("09_unified_documents")
               .select("id").eq("raw_id", raw_id)
               .eq("raw_table", "01_gmail_01_raw").maybe_single().execute())
-        if ex.data:
+        if ex and ex.data:
             did = ex.data["id"]
             self.db.client.table("09_unified_documents").update(row).eq("id", did).execute()
         else:
