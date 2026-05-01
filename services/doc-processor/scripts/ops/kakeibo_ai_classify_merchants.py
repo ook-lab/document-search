@@ -6,12 +6,12 @@ from pathlib import Path
 
 # Repo root: services/doc-processor/scripts/ops -> parents[4]
 _REPO = Path(__file__).resolve().parents[4]
-_OPS = _REPO / "scripts" / "ops"
-if str(_OPS) not in sys.path:
-    sys.path.insert(0, str(_OPS))
+_KAKEIBO = _REPO / "services" / "kakeibo"
+if str(_KAKEIBO) not in sys.path:
+    sys.path.insert(0, str(_KAKEIBO))
 
-from kakeibo_ai_lib.merchant_classifier import KakeiboAICacheUpdater, NullClassifier
-from kakeibo_ai_lib.openai_classifier import OpenAIClassifier
+from kakeibo_lib.merchant_classifier import KakeiboAICacheUpdater, NullClassifier
+from kakeibo_lib.openai_classifier import OpenAIClassifier
 
 
 def main() -> None:

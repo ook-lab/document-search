@@ -8,22 +8,25 @@
 - レシート単位での承認・編集
 """
 
-import streamlit as st
-import pandas as pd
+import io
+import sys
 from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from PIL import Image
-import io
 
-from .streamlit_auth import create_streamlit_auth_ui, create_logout_button
-from ._supabase import anon_supabase, client_with_access_token
+# Streamlit は __main__ として実行されるため、kakeibo_lib ディレクトリを先頭に載せる
+_LIB = Path(__file__).resolve().parent
+if str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
 
-# 設定（Google Drive認証情報用）
-try:
-    from .config import GOOGLE_DRIVE_CREDENTIALS
-except ImportError:
-    from config import GOOGLE_DRIVE_CREDENTIALS
+from _supabase import anon_supabase, client_with_access_token
+from config import GOOGLE_DRIVE_CREDENTIALS
+from streamlit_auth import create_streamlit_auth_ui, create_logout_button
 
 # Supabase接続 - グローバル変数として宣言（認証後に設定）
 db_client = None

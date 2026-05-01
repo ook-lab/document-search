@@ -1,4 +1,4 @@
-"""Supabase helpers for shared.kakeibo only (no shared.common)."""
+"""Supabase helpers for kakeibo_lib (no shared.common)."""
 from __future__ import annotations
 
 import os
