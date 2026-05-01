@@ -1,20 +1,237 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gmail service</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 36rem; margin: 2rem auto; padding: 0 1rem; }
-    ul { line-height: 1.9; }
-    a { color: #1a56db; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gmail Manager</title>
+<style>
+:root{--bg:#f8f9fa;--card:#fff;--border:#dee2e6;--pri:#2563eb;--pri-h:#1d4ed8;--red:#dc2626;--red-h:#b91c1c;--grn:#16a34a;--warn:#d97706;--txt:#1f2937;--mut:#6b7280;--r:8px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--txt);line-height:1.5}
+.w{max-width:1200px;margin:0 auto;padding:1rem}
+h1{font-size:1.5rem;font-weight:700;margin-bottom:1rem}
+h1 span{color:var(--pri)}
+
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:1rem;margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end}
+.panel label{font-size:.78rem;color:var(--mut);display:block;margin-bottom:.15rem}
+.panel select,.panel input{padding:.4rem .5rem;border:1px solid var(--border);border-radius:4px;font-size:.875rem}
+
+.bar{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem;align-items:center}
+.bar input[type=text]{flex:1;min-width:180px;padding:.5rem .75rem;border:1px solid var(--border);border-radius:var(--r);font-size:.875rem}
+.bar select{padding:.5rem;border:1px solid var(--border);border-radius:var(--r);font-size:.875rem;background:var(--card)}
+
+.btn{display:inline-flex;align-items:center;gap:.3rem;padding:.5rem 1rem;border:none;border-radius:var(--r);font-size:.85rem;font-weight:500;cursor:pointer;transition:background .15s}
+.bp{background:var(--pri);color:#fff}.bp:hover{background:var(--pri-h)}
+.br{background:var(--red);color:#fff}.br:hover{background:var(--red-h)}
+.bo{background:var(--card);color:var(--txt);border:1px solid var(--border)}.bo:hover{background:#f1f5f9}
+.bw{background:var(--warn);color:#fff}.bw:hover{background:#b45309}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+.tw{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.84rem}
+th,td{text-align:left;padding:.55rem .7rem;border-bottom:1px solid #f0f0f0}
+th{background:#f8fafc;font-weight:600;position:sticky;top:0;white-space:nowrap}
+tr:hover{background:#f1f5f9}
+td.s{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.badge{display:inline-block;padding:.12rem .45rem;border-radius:99px;font-size:.73rem;font-weight:500}
+.b-none{background:#f3f4f6;color:var(--mut)}
+.b-pending{background:#fef3c7;color:var(--warn)}
+.b-processing{background:#dbeafe;color:var(--pri)}
+.b-completed{background:#dcfce7;color:var(--grn)}
+.b-error{background:#fee2e2;color:var(--red)}
+.b-expired{background:#fee2e2;color:var(--red)}
+
+.acts{display:flex;gap:.5rem;margin-top:.7rem;flex-wrap:wrap;align-items:center}
+.acts .c{font-size:.84rem;color:var(--mut)}
+
+.log{background:#1e293b;color:#e2e8f0;border-radius:var(--r);padding:.7rem 1rem;margin-top:.75rem;font-family:monospace;font-size:.78rem;max-height:180px;overflow-y:auto;display:none;white-space:pre-wrap}
+.log.on{display:block}
+
+.sp{display:inline-block;width:14px;height:14px;border:2px solid #fff4;border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+@media(max-width:768px){.bar{flex-direction:column}.bar input[type=text]{min-width:100%}.panel{flex-direction:column}}
+</style>
 </head>
 <body>
-  <h1>Gmail service</h1>
-  <ul>
-    <li><a href="/gmail-cleaner">Gmail cleaner</a></li>
-    <li><a href="/ingest">Gmail ingest (Drive / Supabase pipeline entry)</a></li>
-  </ul>
+<div class="w">
+<h1><span>Gmail</span> Manager</h1>
+
+<div class="panel">
+  <div><label>Label</label><select id="lb"><option value="">loading...</option></select></div>
+  <div><label>Type</label><select id="mt"><option value="DM">DM</option><option value="JOB">JOB</option></select></div>
+  <div><label>Max</label><input type="number" id="mx" value="50" min="1" max="500" style="width:70px"></div>
+  <button class="btn bp" id="fbtn" onclick="doFetch()">Gmail 取込</button>
+</div>
+
+<div class="bar">
+  <input type="text" id="q" placeholder="検索 (件名, 送信者, 本文)" onkeyup="if(event.key==='Enter')load()">
+  <select id="cf" onchange="load()"><option value="">全カテゴリ</option></select>
+  <select id="sf" onchange="filter()">
+    <option value="">全ステータス</option>
+    <option value="none">未処理</option>
+    <option value="pending">Pending</option>
+    <option value="completed">処理済</option>
+    <option value="error">エラー</option>
+    <option value="expired">期限切れ</option>
+  </select>
+  <button class="btn bo" onclick="load()">検索</button>
+</div>
+
+<div class="tw">
+<table>
+<thead><tr>
+  <th><input type="checkbox" id="ca" onchange="tog(this)"></th>
+  <th>From</th><th>件名</th><th>日時</th><th>画像</th><th>Status</th>
+</tr></thead>
+<tbody id="tb"><tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--mut)">読み込み中...</td></tr></tbody>
+</table>
+</div>
+
+<div class="acts">
+  <span class="c" id="sc">0 件選択</span>
+  <button class="btn bp" id="pbtn" onclick="doProcess()" disabled>OCR + MD + ベクトル化</button>
+  <button class="btn bw" id="abtn" onclick="doAnalyze()" disabled>期限切れ判定</button>
+  <button class="btn br" id="dbtn" onclick="doDelete()" disabled>削除</button>
+</div>
+
+<div class="log" id="lp"></div>
+</div>
+
+<script>
+let D=[], EX={};
+
+async function load(){
+  const p=new URLSearchParams();
+  const q=document.getElementById('q').value.trim();
+  if(q)p.set('q',q);
+  const c=document.getElementById('cf').value;
+  if(c)p.set('category',c);
+  const r=await fetch('/api/emails?'+p);
+  D=await r.json();
+  EX={};
+  filter();
+}
+
+function filter(){
+  const s=document.getElementById('sf').value;
+  let f=D;
+  if(s==='expired') f=f.filter(e=>EX[e.id]);
+  else if(s) f=f.filter(e=>e.processing_status===s);
+  render(f);
+}
+
+function render(list){
+  const tb=document.getElementById('tb');
+  if(!list.length){tb.innerHTML='<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--mut)">メールなし</td></tr>';return}
+  tb.innerHTML=list.map(e=>{
+    const dt=e.sent_at?new Date(e.sent_at).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+    const fr=e.from_name||e.from_email||'';
+    const st=EX[e.id]?'expired':(e.processing_status||'none');
+    const sl={none:'未処理',pending:'Pending',processing:'処理中',completed:'処理済',error:'エラー',expired:'期限切れ'}[st]||st;
+    const ic=e.image_count||0;
+    return`<tr>
+      <td><input type="checkbox" class="rc" value="${e.id}" onchange="uc()"></td>
+      <td>${h(fr)}</td>
+      <td class="s" title="${h(e.header_subject||'')}">${h(e.header_subject||'(件名なし)')}</td>
+      <td style="white-space:nowrap">${dt}</td>
+      <td>${ic||''}</td>
+      <td><span class="badge b-${st}" title="${EX[e.id]||''}">${sl}</span></td>
+    </tr>`}).join('');
+}
+
+function h(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function tog(el){document.querySelectorAll('.rc').forEach(c=>c.checked=el.checked);uc()}
+function uc(){
+  const n=document.querySelectorAll('.rc:checked').length;
+  document.getElementById('sc').textContent=n+' 件選択';
+  ['pbtn','abtn','dbtn'].forEach(id=>document.getElementById(id).disabled=!n);
+}
+function ids(){return[...document.querySelectorAll('.rc:checked')].map(c=>c.value)}
+
+async function doFetch(){
+  const btn=document.getElementById('fbtn');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span> 取込中...';
+  const lp=document.getElementById('lp');lp.classList.add('on');lp.textContent='';
+  const label=document.getElementById('lb').value;
+  const mt=document.getElementById('mt').value;
+  const mx=parseInt(document.getElementById('mx').value)||50;
+  try{
+    const body={mail_type:mt, max_results:mx};
+    if(label) body.query='label:'+label;
+    const r=await fetch('/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.error){lp.textContent+='Error: '+d.error+'\n';}
+    else{lp.textContent+=`取込完了: ${d.fetched} 件取得, ${d.skipped} 件スキップ (既存), 合計 ${d.total} 件\n`;}
+    load();
+  }catch(e){lp.textContent+='Error: '+e.message+'\n';}
+  finally{btn.disabled=false;btn.textContent='Gmail 取込';}
+}
+
+async function doProcess(){
+  const sel=ids();if(!sel.length)return;
+  if(!confirm(sel.length+' 件を処理します (OCR + MD + ベクトル化)'))return;
+  const btn=document.getElementById('pbtn');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span> 処理中...';
+  try{
+    const r=await fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:sel})});
+    const d=await r.json();
+    const ok=(d.results||[]).filter(r=>r.success).length;
+    const ng=(d.results||[]).filter(r=>!r.success).length;
+    alert(`完了: ${ok} 件成功`+(ng?`, ${ng} 件失敗`:'')); load();
+  }catch(e){alert('Error: '+e.message);}
+  finally{btn.disabled=false;btn.textContent='OCR + MD + ベクトル化';}
+}
+
+async function doAnalyze(){
+  const sel=ids();if(!sel.length)return;
+  const btn=document.getElementById('abtn');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span> 分析中...';
+  try{
+    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:sel})});
+    const d=await r.json();
+    if(d.error){alert('Error: '+d.error);return;}
+    const res=d.results||[];
+    let ex=0;
+    res.forEach(r=>{if(r.expired){EX[r.id]=r.reason||'期限切れ';ex++;}});
+    alert(`分析完了: ${res.length} 件中 ${ex} 件が期限切れ`);
+    filter();
+  }catch(e){alert('Error: '+e.message);}
+  finally{btn.disabled=false;btn.textContent='期限切れ判定';}
+}
+
+async function doDelete(){
+  const sel=ids();if(!sel.length)return;
+  if(!confirm(sel.length+' 件を削除します。取消不可。'))return;
+  const btn=document.getElementById('dbtn');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span> 削除中...';
+  try{
+    const r=await fetch('/api/emails',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:sel})});
+    const d=await r.json();
+    alert(`${d.deleted} 件削除`); load();
+  }catch(e){alert('Error: '+e.message);}
+  finally{btn.disabled=false;btn.textContent='削除';}
+}
+
+async function initLabels(){
+  try{
+    const r=await fetch('/api/gmail/labels');
+    const ls=await r.json();
+    const sel=document.getElementById('lb');
+    sel.innerHTML='<option value="">-- label --</option>'+(ls.error?'':ls.map(l=>`<option value="${h(l.name)}">${h(l.name)}</option>`).join(''));
+  }catch(e){document.getElementById('lb').innerHTML='<option value="">-</option>';}
+}
+async function initCats(){
+  try{
+    const r=await fetch('/api/categories');
+    const cs=await r.json();
+    const sel=document.getElementById('cf');
+    sel.innerHTML='<option value="">全カテゴリ</option>'+cs.map(c=>`<option value="${h(c)}">${h(c)}</option>`).join('');
+  }catch(e){}
+}
+
+document.addEventListener('DOMContentLoaded',()=>{initLabels();initCats();load();});
+</script>
 </body>
 </html>

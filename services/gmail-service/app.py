@@ -1,4 +1,4 @@
-"""Gmail service: cleaner + Gmail ingest UI."""
+"""Gmail service: single unified app."""
 from __future__ import annotations
 
 import os
@@ -6,148 +6,163 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from jinja2 import FileSystemLoader
 from loguru import logger
 
 _here = Path(__file__).resolve().parent
-_repo_root = _here.parent.parent
-if str(_repo_root) not in sys.path:
-    sys.path.insert(0, str(_repo_root))
+_repo = _here.parent.parent
+if str(_repo) not in sys.path:
+    sys.path.insert(0, str(_repo))
 if str(_here) not in sys.path:
     sys.path.insert(0, str(_here))
 
-load_dotenv(_repo_root / ".env")
+load_dotenv(_repo / ".env")
 load_dotenv(_here / ".env")
+
+from shared.common.database.client import DatabaseClient
+from processing import GmailService
+
+
+def _db() -> DatabaseClient:
+    if not hasattr(_db, "_i"):
+        _db._i = DatabaseClient(use_service_role=True)
+    return _db._i
+
+
+def _svc() -> GmailService:
+    if not hasattr(_svc, "_i"):
+        _svc._i = GmailService()
+    return _svc._i
 
 
 def create_app() -> Flask:
-    app = Flask(__name__, static_folder="static", static_url_path="/static")
-    app.jinja_loader = FileSystemLoader(str(_here / "templates"))
-    app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32).hex()
-    app.config["WTF_CSRF_TIME_LIMIT"] = None
-    app.config["WTF_CSRF_CHECK_DEFAULT"] = False
-    CSRFProtect(app)
+    a = Flask(__name__, static_folder="static", static_url_path="/static")
+    a.jinja_loader = FileSystemLoader(str(_here / "templates"))
+    a.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY") or os.urandom(32).hex()
+    a.config["WTF_CSRF_TIME_LIMIT"] = None
+    a.config["WTF_CSRF_CHECK_DEFAULT"] = False
+    CSRFProtect(a)
 
-    from blueprints.auth_min import auth_min_bp
-    from blueprints.gmail_cleaner import gmail_cleaner_bp
+    @a.context_processor
+    def _csrf():
+        return {"csrf_token": generate_csrf}
 
-    app.register_blueprint(auth_min_bp, url_prefix="/api")
-    app.register_blueprint(gmail_cleaner_bp)
-
-    _register_gmail_ingestion(app)
-
-    @app.route("/")
+    # === Page ==========================================================
+    @a.route("/")
     def home():
         return render_template("home.html")
 
-    @app.context_processor
-    def inject_csrf():
-        return {"csrf_token": generate_csrf}
+    # === Email list ====================================================
+    @a.route("/api/emails")
+    def api_emails():
+        db = _db()
+        q = db.client.table("01_gmail_01_raw").select(
+            "id, message_id, thread_id, header_subject, from_name, from_email,"
+            "header_to, sent_at, snippet, category, source, attachments, ingested_at"
+        )
+        kw = request.args.get("q", "").strip()
+        if kw:
+            q = q.or_(
+                f"header_subject.ilike.%{kw}%,"
+                f"from_name.ilike.%{kw}%,"
+                f"from_email.ilike.%{kw}%,"
+                f"snippet.ilike.%{kw}%"
+            )
+        cat = request.args.get("category", "").strip()
+        if cat:
+            q = q.eq("category", cat)
+        q = q.order("sent_at", desc=True).limit(
+            request.args.get("limit", 200, type=int))
+        rows = (q.execute()).data or []
 
-    logger.info("gmail-service ready (standalone templates + static)")
-    return app
+        if rows:
+            ids = [r["id"] for r in rows]
+            pm = (db.client.table("pipeline_meta")
+                  .select("raw_id, processing_status")
+                  .eq("raw_table", "01_gmail_01_raw")
+                  .in_("raw_id", ids).execute())
+            sm = {p["raw_id"]: p["processing_status"] for p in (pm.data or [])}
+            for r in rows:
+                r["processing_status"] = sm.get(r["id"], "none")
+                att = r.get("attachments") or []
+                r["image_count"] = sum(
+                    1 for a in att if (a.get("mime_type") or "").startswith("image/"))
+        return jsonify(rows)
 
+    # === Categories ====================================================
+    @a.route("/api/categories")
+    def api_categories():
+        db = _db()
+        resp = (db.client.table("01_gmail_01_raw")
+                .select("category")
+                .not_.is_("category", "null").execute())
+        return jsonify(sorted(set(
+            r["category"] for r in (resp.data or []) if r.get("category"))))
 
-def _register_gmail_ingestion(app: Flask) -> None:
-    """Gmail取込 UI + runner。"""
-    if getattr(app, "_gmail_ingestion_routes", False):
-        return
-    from flask import Response, jsonify, request, stream_with_context
-
-    import runner
-
-    _root = Path(__file__).resolve().parents[2]
-    sources = {
-        "gmail": {
-            "name": "Gmail取込",
-            "script": "services/gmail-service/gmail/gmail_ingestion.py",
-            "group": "gmail",
-            "mail_types": ["DM", "JOB"],
-        },
-    }
-
-    @app.route("/ingest")
-    def ingest_index():
-        return render_template("ingest_index.html")
-
-    @app.route("/api/sources")
-    def api_sources():
-        return jsonify(sources)
-
-    @app.route("/api/gmail/labels")
-    def api_gmail_labels():
+    # === Gmail labels ===================================================
+    @a.route("/api/gmail/labels")
+    def api_labels():
         try:
             from shared.common.connectors.gmail_connector import GmailConnector
-
-            user_email = os.getenv("GMAIL_DM_USER_EMAIL") or os.getenv("GMAIL_USER_EMAIL")
-            if not user_email:
-                return jsonify({"error": "GMAIL_USER_EMAIL is not set"}), 500
-            gmail = GmailConnector(user_email=user_email)
-            all_labels = gmail.list_labels()
-            labels = [
-                {"id": lb["id"], "name": lb["name"]}
-                for lb in all_labels
-                if lb.get("type") == "user"
-            ]
-            labels.sort(key=lambda x: x["name"])
-            return jsonify(labels)
+            ue = os.getenv("GMAIL_DM_USER_EMAIL") or os.getenv("GMAIL_USER_EMAIL")
+            if not ue:
+                return jsonify({"error": "GMAIL_USER_EMAIL not set"}), 500
+            labs = GmailConnector(user_email=ue).list_labels()
+            return jsonify(sorted(
+                [{"id": l["id"], "name": l["name"]}
+                 for l in labs if l.get("type") == "user"],
+                key=lambda x: x["name"]))
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
-    @app.route("/api/run/<src>", methods=["POST"])
-    def api_run(src: str):
-        if src not in sources:
-            return jsonify({"error": f"Unknown source: {src}"}), 404
-        meta = sources[src]
-        script_path = str(_root / meta["script"])
+    # === Fetch ==========================================================
+    @a.route("/api/fetch", methods=["POST"])
+    def api_fetch():
         body = request.get_json(silent=True) or {}
-        if "extra_args" in body:
-            extra_args = body["extra_args"]
-            if isinstance(extra_args, str):
-                extra_args = extra_args.split()
-        else:
-            st = runner.get_settings(src)
-            extra_args = st.get("extra_args", [])
-            if isinstance(extra_args, str):
-                extra_args = extra_args.split()
-        run_id = runner.start_run(src, script_path, extra_args)
-        return jsonify({"run_id": run_id, "source": src})
+        try:
+            result = _svc().fetch(
+                mail_type=body.get("mail_type", "DM"),
+                query=body.get("query"),
+                max_results=body.get("max_results", 50),
+            )
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-    @app.route("/api/stream/<run_id>")
-    def api_stream(run_id: str):
-        def generate():
-            yield from runner.stream_log(run_id)
+    # === Process (OCR + MD + chunk + embed) =============================
+    @a.route("/api/process", methods=["POST"])
+    def api_process():
+        body = request.get_json(silent=True) or {}
+        ids = body.get("ids", [])
+        if not ids:
+            return jsonify({"error": "ids required"}), 400
+        return jsonify({"results": _svc().process(ids)})
 
-        return Response(
-            stream_with_context(generate()),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
+    # === Analyze (Gemini expiry check) ==================================
+    @a.route("/api/analyze", methods=["POST"])
+    def api_analyze():
+        body = request.get_json(silent=True) or {}
+        ids = body.get("ids", [])
+        if not ids:
+            return jsonify({"error": "ids required"}), 400
+        try:
+            return jsonify({"results": _svc().analyze(ids)})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
-    @app.route("/api/history")
-    def api_history():
-        limit = request.args.get("limit", 50, type=int)
-        return jsonify(runner.get_history(limit))
+    # === Delete =========================================================
+    @a.route("/api/emails", methods=["DELETE"])
+    def api_delete():
+        body = request.get_json(silent=True) or {}
+        ids = body.get("ids", [])
+        if not ids:
+            return jsonify({"error": "ids required"}), 400
+        return jsonify(_svc().delete(ids))
 
-    @app.route("/api/settings/<src>", methods=["GET"])
-    def api_get_settings(src: str):
-        if src not in sources:
-            return jsonify({"error": f"Unknown source: {src}"}), 404
-        return jsonify(runner.get_settings(src))
-
-    @app.route("/api/settings/<src>", methods=["POST"])
-    def api_save_settings(src: str):
-        if src not in sources:
-            return jsonify({"error": f"Unknown source: {src}"}), 404
-        data = request.get_json()
-        if data is None:
-            return jsonify({"error": "Invalid JSON"}), 400
-        ok = runner.save_settings(src, data)
-        return jsonify({"ok": ok})
-
-    app._gmail_ingestion_routes = True
+    logger.info("gmail-service ready (unified)")
+    return a
 
 
 app = create_app()
