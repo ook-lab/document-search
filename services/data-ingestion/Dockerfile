@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# bookworm: Playwright の --with-deps が trixie 等で参照する古い apt パッケージ名と噛み合わせる
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
