@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
-from shared.kakeibo.merchant_classifier import KakeiboAICacheUpdater, NullClassifier
-from shared.kakeibo.openai_classifier import OpenAIClassifier
+# Repo root: services/doc-processor/scripts/ops -> parents[4]
+_REPO = Path(__file__).resolve().parents[4]
+_OPS = _REPO / "scripts" / "ops"
+if str(_OPS) not in sys.path:
+    sys.path.insert(0, str(_OPS))
+
+from kakeibo_ai_lib.merchant_classifier import KakeiboAICacheUpdater, NullClassifier
+from kakeibo_ai_lib.openai_classifier import OpenAIClassifier
 
 
 def main() -> None:

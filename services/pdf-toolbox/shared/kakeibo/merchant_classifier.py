@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
-from loguru import logger
+from supabase import Client, create_client
 
-from shared.common.database.client import DatabaseClient
+logger = logging.getLogger(__name__)
+
+
+def _service_supabase() -> Client:
+    url = os.environ["SUPABASE_URL"]
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"]
+    return create_client(url, key)
 
 
 @dataclass
@@ -43,9 +51,9 @@ class NullClassifier:
 
 
 class KakeiboAICacheUpdater:
-    def __init__(self, db: DatabaseClient | None = None):
-        # バッチ処理なので service_role を使用
-        self.db = (db or DatabaseClient(use_service_role=True)).client
+    def __init__(self, db: Client | None = None):
+        # バッチ処理なので service_role（環境変数）を使用
+        self.db = db or _service_supabase()
 
     def fetch_unclassified_merchants(self, limit: int = 200) -> list[MerchantToClassify]:
         """
@@ -119,7 +127,7 @@ class KakeiboAICacheUpdater:
             logger.info("No unclassified merchants found.")
             return 0
 
-        logger.info(f"Classifying merchants: {len(targets)}")
+        logger.info("Classifying merchants: %s", len(targets))
         updated = 0
 
         for item in targets:
@@ -132,5 +140,5 @@ class KakeiboAICacheUpdater:
             self.upsert_cache(item.merchant_key, result)
             updated += 1
 
-        logger.info(f"AI cache upserted: {updated}")
+        logger.info("AI cache upserted: %s", updated)
         return updated

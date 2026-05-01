@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 
-from shared.kakeibo.merchant_classifier import KakeiboAICacheUpdater, NullClassifier
-from shared.kakeibo.openai_classifier import OpenAIClassifier
+_OPS = Path(__file__).resolve().parent
+if str(_OPS) not in sys.path:
+    sys.path.insert(0, str(_OPS))
+
+from kakeibo_ai_lib.merchant_classifier import KakeiboAICacheUpdater, NullClassifier
+from kakeibo_ai_lib.openai_classifier import OpenAIClassifier
 
 
 def main() -> None:
