@@ -50,4 +50,4 @@ options:
   logging: CLOUD_LOGGING_ONLY
   substitutionOption: ALLOW_LOOSE
 
-timeout: 1200s
+timeout: 2400s

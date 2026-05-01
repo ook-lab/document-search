@@ -7,6 +7,7 @@ WORKDIR /app
 # システム環境に必要なライブラリを自動的に導入、最後に chromium を取得します
 COPY services/data-ingestion/requirements.txt /app/services/data-ingestion/requirements.txt
 RUN apt-get update && \
+    pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r /app/services/data-ingestion/requirements.txt && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
