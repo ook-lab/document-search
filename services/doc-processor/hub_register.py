@@ -45,6 +45,11 @@ def register_document_hub(app: Flask) -> None:
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
+    # /app/services/ が namespace package として先に解決されると
+    # bundled/review/services/ の auth_service に到達できない。
+    # 既に "services" が sys.modules に入っていたら退避して再解決させる。
+    _stale = sys.modules.pop("services", None)
+
     app.config.setdefault("SECRET_KEY", _secret_key())
     app.config.setdefault("SESSION_COOKIE_SECURE", os.environ.get("FLASK_ENV") == "production")
     app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
