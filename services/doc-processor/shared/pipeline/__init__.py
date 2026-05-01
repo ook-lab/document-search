@@ -16,5 +16,7 @@
     # ...
 """
 
-__all__ = []
-__version__ = '2.0.0'
+from shared.pipeline.unified_document_pipeline import UnifiedDocumentPipeline
+
+__all__ = ["UnifiedDocumentPipeline"]
+__version__ = "2.0.0"

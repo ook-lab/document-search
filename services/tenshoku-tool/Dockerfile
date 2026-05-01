@@ -16,8 +16,6 @@ WORKDIR /app
 COPY services/tenshoku-tool/requirements.txt /app/services/tenshoku-tool/requirements.txt
 RUN pip install --no-cache-dir -r /app/services/tenshoku-tool/requirements.txt
 
-# 共通モジュール & スクリプト（スクレイパーが参照）
-COPY shared/ /app/shared/
 COPY scripts/ /app/scripts/
 
 # スクレイパー本体（subprocess から呼び出し）

@@ -23,14 +23,12 @@ if sys.platform == "win32":
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(root_dir))
+_service_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(_service_dir))
 
-load_dotenv(root_dir / ".env")
+load_dotenv(_service_dir / ".env")
 
-from supabase import create_client
-from shared.common.database.client import DatabaseClient
+from supabase_service import SupabaseService
 
 # ロギング設定
 try:
@@ -94,19 +92,6 @@ class ProductEmbeddingGenerator:
             model=self.model,
             input=text
         )
-        try:
-            from shared.common.ai_cost_logger import log_ai_usage
-            if hasattr(response, 'usage') and response.usage:
-                prompt_tokens = getattr(response.usage, 'prompt_tokens', 0) or 0
-                log_ai_usage(
-                    app='netsuper-search',
-                    stage='product-embedding',
-                    model=self.model,
-                    prompt_token_count=prompt_tokens,
-                    total_token_count=prompt_tokens,
-                )
-        except Exception:
-            pass
         return response.data[0].embedding
 
     def update_product_embedding(self, product_id: str, embedding: List[float]):

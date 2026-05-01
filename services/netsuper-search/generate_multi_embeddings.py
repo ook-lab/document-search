@@ -23,13 +23,12 @@ if sys.platform == "win32":
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent.parent
-sys.path.insert(0, str(root_dir))
+_service_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(_service_dir))
 
-load_dotenv(root_dir / ".env")
+load_dotenv(_service_dir / ".env")
 
-from shared.common.database.client import DatabaseClient
+from supabase_service import SupabaseService
 
 # ロギング設定
 try:
@@ -47,7 +46,7 @@ class MultiEmbeddingGenerator:
 
     def __init__(self):
         # Supabase接続（service roleキーを使用）
-        self.db = DatabaseClient(use_service_role=True)
+        self.db = SupabaseService(use_service_role=True)
 
         # OpenAI接続
         self.openai_api_key = os.getenv("OPENAI_API_KEY")

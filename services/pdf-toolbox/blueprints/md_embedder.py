@@ -10,8 +10,8 @@ from flask import Blueprint, request, jsonify, current_app, send_file, render_te
 from google import genai
 from google.genai import types
 from werkzeug.utils import secure_filename
-from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.common.gemini_studio_key import google_ai_studio_api_key
+from gemini_studio_key import google_ai_studio_api_key
+from google_drive_connector import GoogleDriveConnector
 from supabase import create_client as _supabase_create_client
 
 def _get_supabase():

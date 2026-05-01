@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 from subprocess import PIPE, STDOUT
 from pathlib import Path
 
-# プロジェクトルート
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+SERVICE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = SERVICE_ROOT.parent.parent
 
 # プロセス管理（run_id → Popen）
 _processes: dict[str, subprocess.Popen] = {}
@@ -27,11 +27,12 @@ _db = None
 def _get_db():
     global _db
     if _db is None:
-        root = str(PROJECT_ROOT)
-        if root not in sys.path:
-            sys.path.insert(0, root)
+        if str(SERVICE_ROOT) not in sys.path:
+            sys.path.insert(0, str(SERVICE_ROOT))
+        if str(PROJECT_ROOT) not in sys.path:
+            sys.path.insert(0, str(PROJECT_ROOT))
         from dotenv import load_dotenv
-        load_dotenv(PROJECT_ROOT / '.env')
+        load_dotenv(PROJECT_ROOT / ".env")
         from shared.common.database.client import DatabaseClient
         _db = DatabaseClient(use_service_role=True)
     return _db
@@ -43,7 +44,11 @@ def start_run(source: str, script_path: str, extra_args: list = None) -> str:
     extra_args = extra_args or []
 
     cmd = [sys.executable, script_path] + extra_args
-    env = {**os.environ, 'PYTHONUNBUFFERED': '1', 'PYTHONPATH': str(PROJECT_ROOT)}
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONPATH": f"{SERVICE_ROOT}{os.pathsep}{PROJECT_ROOT}",
+    }
 
     try:
         proc = subprocess.Popen(

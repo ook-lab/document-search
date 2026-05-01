@@ -6,14 +6,14 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from loguru import logger
 from dotenv import load_dotenv
 
-# プロジェクトルート
-project_root = Path(__file__).resolve().parent.parent.parent
-load_dotenv(project_root / ".env")
+_service_dir = Path(__file__).resolve().parent
+project_root = _service_dir.parent.parent
+load_dotenv(_service_dir / ".env")
+load_dotenv(project_root / ".env", override=False)
+if str(_service_dir) not in sys.path:
+    sys.path.insert(0, str(_service_dir))
 
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-from shared.common.connectors.google_drive import GoogleDriveConnector
+from google_drive_connector import GoogleDriveConnector
 
 app = Flask(__name__)
 app.secret_key = "drive-manager-safety-first"

@@ -24,13 +24,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 5. 必要なモジュールとアプリケーションファイルをコピー
 COPY services/doc-search/app.py .
 COPY services/doc-search/templates/ ./templates/
-# プロジェクトルートからの共通モジュール
-COPY shared/__init__.py ./shared/__init__.py
-COPY shared/common/ ./shared/common/
-COPY shared/ai/ ./shared/ai/
-# ドキュメント処理用のファイル
+COPY services/doc-search/shared/ ./shared/
 COPY scripts/processing/process_queued_documents.py .
-COPY shared/pipeline/ ./shared/pipeline/
 
 # Note: PlaywrightはローカルのGmail取り込みのみで使用。Cloud Runでは不要。
 

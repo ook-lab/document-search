@@ -6,8 +6,11 @@ import os
 import sys
 from pathlib import Path
 
-# プロジェクトルートをPythonパスに追加（ローカル実行時用）
-project_root = Path(__file__).parent.parent.parent
+# 同梱 shared/ を優先しつつ、ローカルでルートスクリプトを使う場合はルートも追加
+_service_dir = Path(__file__).resolve().parent
+project_root = _service_dir.parent.parent
+if str(_service_dir) not in sys.path:
+    sys.path.insert(0, str(_service_dir))
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 

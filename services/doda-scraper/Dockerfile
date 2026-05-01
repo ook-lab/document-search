@@ -10,8 +10,6 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-# 共通モジュール & スクリプト
-COPY shared/ /app/shared/
 COPY scripts/ /app/scripts/
 
 # サービス本体

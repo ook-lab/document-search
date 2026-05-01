@@ -11,16 +11,13 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-# 共通モジュール (shared パッケージ) をコピー
-COPY shared/ /app/shared/
-
 # スクリプト (scripts パッケージ) をコピー
 COPY scripts/ /app/scripts/
 
 # data-ingestion サービス本体をコピー
 COPY services/data-ingestion/ /app/services/data-ingestion/
 
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/services/data-ingestion:/app
 ENV PORT=8080
 
 # サーバーを起動

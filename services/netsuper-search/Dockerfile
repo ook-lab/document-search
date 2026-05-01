@@ -9,6 +9,7 @@ COPY services/netsuper-search/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/netsuper-search/app.py .
+COPY services/netsuper-search/supabase_service.py .
 
 # ポート設定
 ENV PORT=8080

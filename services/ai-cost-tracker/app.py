@@ -4,14 +4,7 @@ AI Cost Tracker Dashboard（port 5005）
 AIトークン使用量とコストを集計・可視化するFlaskダッシュボード。
 """
 import os
-import sys
-from pathlib import Path
 from datetime import datetime, timedelta
-
-# プロジェクトルートをパスに追加
-project_root = Path(__file__).parent.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
@@ -25,8 +18,9 @@ _db = None
 def get_db():
     global _db
     if _db is None:
-        from shared.common.database.client import DatabaseClient
-        _db = DatabaseClient(use_service_role=True)
+        from supabase_service import SupabaseService
+
+        _db = SupabaseService()
     return _db
 
 
@@ -47,7 +41,7 @@ def index():
 def api_apps():
     try:
         db = get_db()
-        resp = db.table('ai_usage_logs').select('app').execute()
+        resp = db.client.table("ai_usage_logs").select("app").execute()
         apps = sorted(set(r['app'] for r in (resp.data or []) if r.get('app')))
         return jsonify({'apps': apps})
     except Exception as e:

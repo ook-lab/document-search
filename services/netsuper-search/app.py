@@ -11,12 +11,11 @@ import os
 import sys
 from pathlib import Path
 
-# パス設定
-_project_root = Path(__file__).resolve().parent.parent.parent
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+_service_dir = Path(__file__).resolve().parent
+if str(_service_dir) not in sys.path:
+    sys.path.insert(0, str(_service_dir))
 
-from shared.common.database.client import DatabaseClient
+from supabase_service import SupabaseService
 from openai import OpenAI
 
 # ページ設定
@@ -26,9 +25,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# Supabase接続（DatabaseClientを使用）
+# Supabase接続
 try:
-    db_client = DatabaseClient()
+    db_client = SupabaseService(use_service_role=False)
     db = db_client.client
 except Exception as e:
     st.error(f"データベース接続エラー: {e}")

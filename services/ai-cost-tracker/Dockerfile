@@ -7,9 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/ai-cost-tracker/app.py .
 COPY services/ai-cost-tracker/templates/ ./templates/
-
-COPY shared/__init__.py ./shared/__init__.py
-COPY shared/common/ ./shared/common/
+COPY services/ai-cost-tracker/supabase_service.py .
 
 ENV PORT=8080
 

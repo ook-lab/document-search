@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file, url_f
 from werkzeug.utils import secure_filename
 from google import genai
 from google.genai import types
-from shared.common.gemini_studio_key import google_ai_studio_api_key
+from gemini_studio_key import google_ai_studio_api_key
 
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
