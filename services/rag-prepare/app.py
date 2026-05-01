@@ -8,8 +8,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from shared.fast_index import (
+from standalone import (
     FAST_INDEX_RAW_TABLES,
+    RagServiceDB,
     fetch_pending_fast_index_docs,
     resolve_pdf_toolbox_base,
 )
@@ -21,23 +22,23 @@ logger = logging.getLogger(__name__)
 # インポートの遅延実行とエラーハンドリング
 def get_indexer_tools():
     try:
-        from shared.fast_index import FastIndexer
-        from shared.common.database.client import DatabaseClient
-        return FastIndexer, DatabaseClient
+        from standalone.indexer import FastIndexer
+
+        return FastIndexer, RagServiceDB
     except ImportError as e:
         logger.error(f"Import Error: {e}")
         return None, None
 
 @app.route('/')
 def index():
-    FastIndexerClass, DatabaseClientClass = get_indexer_tools()
-    if not DatabaseClientClass:
+    FastIndexerClass, DbClass = get_indexer_tools()
+    if not DbClass:
         return "System Configuration Error: Missing dependencies.", 500
 
     pending_docs = []
     list_error = None
     try:
-        db = DatabaseClientClass(use_service_role=True)
+        db = DbClass()
         raw_tables = list(FAST_INDEX_RAW_TABLES)
         pending_docs, list_error = fetch_pending_fast_index_docs(db.client, raw_tables)
         if list_error:
@@ -88,11 +89,11 @@ def process():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    FastIndexerClass, DatabaseClientClass = get_indexer_tools()
+    FastIndexerClass, DbClass = get_indexer_tools()
     return jsonify({
         'status': 'ok',
         'service': 'rag-prepare',
-        'dependencies_loaded': bool(FastIndexerClass and DatabaseClientClass)
+        'dependencies_loaded': bool(FastIndexerClass and DbClass)
     })
 
 if __name__ == '__main__':

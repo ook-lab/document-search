@@ -7,8 +7,7 @@ WORKDIR /app/services/rag-prepare
 COPY services/rag-prepare/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 共有ライブラリとサービスソース
-COPY shared /app/shared
+# サービスソース（monorepo の shared/ は不要）
 COPY services/rag-prepare /app/services/rag-prepare
 
 ENV PYTHONPATH=/app
