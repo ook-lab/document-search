@@ -23,8 +23,10 @@ COPY services/doc-processor/templates/ ./services/doc_processor/templates/
 COPY services/doc-processor/static/ ./services/doc_processor/static/
 COPY services/doc-processor/start.sh ./start.sh
 
-# Pythonパッケージとして認識させるための __init__.py
-RUN touch ./services/__init__.py ./services/doc_processor/__init__.py
+# doc_processor のみパッケージ化（services/ には __init__.py を置かない）
+# services/__init__.py を置くと review blueprints の "from services.auth_service"
+# が /app/services/ を先に見て bundled/review/services/ に到達できなくなる
+RUN touch ./services/doc_processor/__init__.py
 
 ENV PORT=8080
 ENV PYTHONPATH=/app
