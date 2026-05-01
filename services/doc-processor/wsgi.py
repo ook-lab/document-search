@@ -23,6 +23,7 @@ if str(_pr.parent) not in sys.path:
 _spec_app = importlib.util.spec_from_file_location("doc_processor_main_app", _here / "app.py")
 _app_mod = importlib.util.module_from_spec(_spec_app)
 assert _spec_app.loader is not None
+sys.modules[_spec_app.name] = _app_mod
 _spec_app.loader.exec_module(_app_mod)
 main_app = _app_mod.app
 
