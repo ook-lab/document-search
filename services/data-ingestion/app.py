@@ -6,11 +6,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-_service_dir = Path(__file__).resolve().parent
-root_dir = _service_dir.parent.parent
-# 同梱の shared/ をルートの shared より優先
-sys.path.insert(0, str(_service_dir))
+root_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root_dir))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
 load_dotenv(root_dir / '.env')
