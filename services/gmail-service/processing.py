@@ -40,9 +40,10 @@ _IMAGE_MIMES = frozenset({
 
 def _gemini_client():
     from google import genai
-    project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT_ID")
-    region = os.environ.get("VERTEX_AI_REGION", "us-central1")
-    return genai.Client(vertexai=True, project=project, location=region)
+    key = os.environ.get("GOOGLE_AI_API_KEY")
+    if not key:
+        raise RuntimeError("GOOGLE_AI_API_KEY not set")
+    return genai.Client(api_key=key)
 
 
 def _ocr_image_bytes(client, image_bytes: bytes, mime_type: str) -> str:
@@ -201,7 +202,7 @@ class GmailService:
         user_email = os.getenv(f"GMAIL_{mt}_USER_EMAIL") or os.getenv("GMAIL_USER_EMAIL")
         if not user_email:
             raise ValueError(f"GMAIL_{mt}_USER_EMAIL not set")
-        owner_id = os.getenv("DEFAULT_OWNER_ID")
+        owner_id = os.getenv("SUPABASE_ADMIN_USER_ID")
         att_folder = os.getenv(f"GMAIL_{mt}_ATTACHMENT_FOLDER_ID")
         email_folder = os.getenv(f"GMAIL_{mt}_EMAIL_FOLDER_ID")
 
