@@ -1,13 +1,22 @@
 """Verify the foodium (外税) receipt's 7-element structure"""
-from shared.common.database.client import DatabaseClient
+import os
+
 from loguru import logger
+from supabase import create_client
+
+
+def _db():
+    return create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"],
+    )
 
 
 def verify_foodium():
-    db = DatabaseClient(use_service_role=True)
+    db = _db()
 
     # Get the foodium receipt (ordered by created_at desc, should be second latest)
-    receipts = db.client.table("Rawdata_RECEIPT_shops").select("*").eq("shop_name", "foodium武蔵小杉").order("created_at", desc=True).limit(1).execute()
+    receipts = db.table("Rawdata_RECEIPT_shops").select("*").eq("shop_name", "foodium武蔵小杉").order("created_at", desc=True).limit(1).execute()
 
     if not receipts.data:
         logger.error("No foodium receipt found!")
@@ -31,7 +40,7 @@ def verify_foodium():
     logger.info(f"   税表示タイプ: {tax_type}")
 
     # Get transactions
-    transactions = db.client.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt['id']).execute()
+    transactions = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt['id']).execute()
     logger.info(f"\n   商品数: {len(transactions.data)}件")
 
     for trans in transactions.data:  # Show all items

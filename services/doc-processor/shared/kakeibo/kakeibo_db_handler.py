@@ -7,22 +7,24 @@ Stage Hで処理された家計簿データを2層構造のDBに保存する
 - 99_lg_image_proc_log（処理ログ）
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from loguru import logger
 from datetime import datetime
 
-from shared.common.database.client import DatabaseClient
+from supabase import Client
+
+from ._supabase import service_supabase
 
 
 class KakeiboDBHandler:
     """家計簿データのDB保存専用ハンドラー"""
 
-    def __init__(self, db_client: DatabaseClient):
+    def __init__(self, db_client: Optional[Client] = None):
         """
         Args:
-            db_client: データベースクライアント
+            db_client: Supabase クライアント（省略時は service role）
         """
-        self.db = db_client
+        self.db: Client = db_client or service_supabase()
 
     def save_receipt(
         self,
@@ -166,7 +168,7 @@ class KakeiboDBHandler:
             "owner_id": owner_id  # Phase 3: 必須
         }
 
-        result = self.db.client.table("Rawdata_RECEIPT_shops").insert(data).execute()
+        result = self.db.table("Rawdata_RECEIPT_shops").insert(data).execute()
         return result.data[0]["id"]
 
     def _insert_transaction(
@@ -218,7 +220,7 @@ class KakeiboDBHandler:
                 "needs_review": normalized.get("tax_rate_source") != "master"
             })
 
-        result = self.db.client.table("Rawdata_RECEIPT_items").insert(data).execute()
+        result = self.db.table("Rawdata_RECEIPT_items").insert(data).execute()
         return result.data[0]["id"]
 
     def _log_processing_success(
@@ -241,7 +243,7 @@ class KakeiboDBHandler:
             log_data["ocr_model"] = model_name
 
         # file_name をユニークキーとして upsert
-        result = self.db.client.table("99_lg_image_proc_log").upsert(
+        result = self.db.table("99_lg_image_proc_log").upsert(
             log_data,
             on_conflict="file_name"
         ).execute()
@@ -268,7 +270,7 @@ class KakeiboDBHandler:
             log_data["receipt_id"] = receipt_id
 
         # file_name をユニークキーとして upsert
-        self.db.client.table("99_lg_image_proc_log").upsert(
+        self.db.table("99_lg_image_proc_log").upsert(
             log_data,
             on_conflict="file_name"
         ).execute()

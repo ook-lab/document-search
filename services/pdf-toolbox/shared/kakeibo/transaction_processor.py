@@ -13,17 +13,16 @@ from typing import Dict, List, Optional
 from supabase import Client
 from loguru import logger
 
-from shared.common.database.client import DatabaseClient
-from shared.ai.llm_client.llm_client import LLMClient
+from ._gemini_text import KakeiboGeminiTextClient
+from ._supabase import service_supabase
 
 
 class TransactionProcessor:
     """トランザクション処理クラス"""
 
     def __init__(self):
-        db_client = DatabaseClient()
-        self.db: Client = db_client.client
-        self.llm_client = LLMClient()  # AI一般名詞抽出用
+        self.db: Client = service_supabase()
+        self.llm_client = KakeiboGeminiTextClient()  # AI一般名詞抽出用
 
         # マスタデータをキャッシュ
         self.aliases = self._load_aliases()

@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
-from supabase import Client, create_client
+from supabase import Client
+
+from ._supabase import service_supabase
 
 logger = logging.getLogger(__name__)
-
-
-def _service_supabase() -> Client:
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"]
-    return create_client(url, key)
 
 
 @dataclass
@@ -53,7 +48,7 @@ class NullClassifier:
 class KakeiboAICacheUpdater:
     def __init__(self, db: Client | None = None):
         # バッチ処理なので service_role（環境変数）を使用
-        self.db = db or _service_supabase()
+        self.db = db or service_supabase()
 
     def fetch_unclassified_merchants(self, limit: int = 200) -> list[MerchantToClassify]:
         """

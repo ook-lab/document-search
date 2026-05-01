@@ -16,12 +16,12 @@ from googleapiclient.discovery import build
 from PIL import Image
 import io
 
-from shared.common.database.client import DatabaseClient
-from shared.common.auth.admin_auth import create_streamlit_auth_ui, create_logout_button
+from .streamlit_auth import create_streamlit_auth_ui, create_logout_button
+from ._supabase import anon_supabase, client_with_access_token
 
 # 設定（Google Drive認証情報用）
 try:
-    from shared.kakeibo.config import GOOGLE_DRIVE_CREDENTIALS
+    from .config import GOOGLE_DRIVE_CREDENTIALS
 except ImportError:
     from config import GOOGLE_DRIVE_CREDENTIALS
 
@@ -34,10 +34,10 @@ def init_database(access_token: str = None):
     """認証済みトークンでデータベース接続を初期化"""
     global db_client, db
     if access_token:
-        db_client = DatabaseClient(access_token=access_token)
+        db = client_with_access_token(access_token)
     else:
-        db_client = DatabaseClient()
-    db = db_client.client
+        db = anon_supabase()
+    db_client = None
 
 # Google Drive接続
 @st.cache_resource

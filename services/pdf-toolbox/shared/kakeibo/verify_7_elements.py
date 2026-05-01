@@ -3,17 +3,26 @@
 
 DB に保存された商品データが7要素構造になっているか確認
 """
-from shared.common.database.client import DatabaseClient
-from loguru import logger
 import json
+import os
+
+from loguru import logger
+from supabase import create_client
+
+
+def _db():
+    return create_client(
+        os.environ["SUPABASE_URL"],
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ["SUPABASE_KEY"],
+    )
 
 
 def verify_7_elements():
     """7要素データ構造を検証"""
-    db = DatabaseClient(use_service_role=True)
+    db = _db()
 
     # レシート一覧を取得
-    receipts = db.client.table("Rawdata_RECEIPT_shops").select("*").limit(3).execute()
+    receipts = db.table("Rawdata_RECEIPT_shops").select("*").limit(3).execute()
 
     for receipt in receipts.data:
         logger.info(f"\n{'='*80}")
@@ -33,7 +42,7 @@ def verify_7_elements():
         logger.info(f"   税表示タイプ: {tax_type}")
 
         # トランザクションを取得
-        transactions = db.client.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt['id']).execute()
+        transactions = db.table("Rawdata_RECEIPT_items").select("*").eq("receipt_id", receipt['id']).execute()
 
         logger.info(f"\n   商品一覧:")
         for trans in transactions.data:
