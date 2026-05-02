@@ -12,7 +12,16 @@ def _find_project_root() -> Path:
     if os.getenv('PROJECT_ROOT'):
         return Path(os.getenv('PROJECT_ROOT'))
 
-    # 2. このファイルから辿る (shared/common/config/settings.py)
+    # 2. このファイルから辿り、.env または .git がある階層を探す
+    candidate = Path(__file__).resolve().parent.parent.parent.parent
+    for _ in range(5):
+        if (candidate / ".env").exists() or (candidate / ".git").exists():
+            return candidate
+        if candidate.parent == candidate:
+            break
+        candidate = candidate.parent
+
+    # 3. フォールバック: 4階層上
     return Path(__file__).resolve().parent.parent.parent.parent
 
 def _load_env_file():
@@ -47,42 +56,27 @@ class Settings:
     # 処理実行は Worker (CLI) のみ
     # この原則は設定で変更不可（構造的に強制）
 
-    # OpenAI API Key
+    # OpenAI API Key (Embedding生成用)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
-    # Google AI API Key
+    # Google AI API Key (Gemini呼び出し用)
     GOOGLE_AI_API_KEY: str = os.getenv("GOOGLE_AI_API_KEY", "")
 
-    # Anthropic API Key
-    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    
     # Supabase
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    
-    # Google Drive
-    PERSONAL_FOLDER_ID: str = os.getenv("PERSONAL_FOLDER_ID", "")
-    FAMILY_FOLDER_ID: str = os.getenv("FAMILY_FOLDER_ID", "")
-    WORK_FOLDER_ID: str = os.getenv("WORK_FOLDER_ID", "")
 
-    # Google Drive InBox監視システム用
-    INBOX_FOLDER_ID: str = os.getenv("INBOX_FOLDER_ID", "")
-    ARCHIVE_FOLDER_ID: str = os.getenv("ARCHIVE_FOLDER_ID", "")
-    
     # プロジェクトルート
     PROJECT_ROOT: Path = _project_root
 
     # 検索リランク調整（デフォルトは影響ゼロ）
-    # date_range がある時だけ threshold を緩める量（0.0=変更なし）
     DATE_RANGE_THRESHOLD_DELTA: float = float(os.getenv("DATE_RANGE_THRESHOLD_DELTA", "0.0"))
-    # rel に similarity を少し混ぜる割合（0.0=混ぜない）
     REL_SIM_MIX_EPS: float = float(os.getenv("REL_SIM_MIX_EPS", "0.0"))
 
     # データディレクトリ
     DATA_DIR: Path = Path("/tmp/data")
     TEMP_DIR: Path = Path("/tmp/temp")
-    SCHEMAS_DIR: Path = PROJECT_ROOT / "frontend" / "schemas"
     
     def __init__(self):
         """初期化時にディレクトリを作成"""

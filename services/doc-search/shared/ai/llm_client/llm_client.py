@@ -31,12 +31,12 @@ class LLMClient:
         self.anthropic_api_key = settings.ANTHROPIC_API_KEY
         self.openai_api_key = settings.OPENAI_API_KEY
 
-        # Gemini設定 (トップレベル関数のみ使用)
+        # Gemini設定 (Google AI API Key + 東京リージョン)
         vertexai.init(
-            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
+            api_key=settings.GOOGLE_AI_API_KEY,
+            location="asia-northeast1",
         )
-        self.gemini_api_key = True # to bypass checks
+        self.gemini_api_key = bool(settings.GOOGLE_AI_API_KEY)
 
         # Anthropic設定
         if self.anthropic_api_key:
