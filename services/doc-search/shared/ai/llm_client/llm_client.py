@@ -1,6 +1,6 @@
 """
 LLMクライアント（v3.0: マルチプロバイダ対応）
-Gemini / Anthropic / OpenAI を統一インターフェースで利用
+Gemini / OpenAI を統一インターフェースで利用（全てAPIキー認証）
 """
 
 import os
@@ -9,8 +9,8 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 import mimetypes
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+import google.generativeai as genai
+from google.generativeai.types import GenerationConfig
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
@@ -28,12 +28,9 @@ class LLMClient:
         # Settings経由でAPIキーを取得（環境変数管理の統一）
         self.openai_api_key = settings.OPENAI_API_KEY
 
-        # Gemini設定 (Cloud Runのサービスアカウント認証)
-        vertexai.init(
-            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-            location="us-central1",
-        )
-        self.gemini_api_key = True
+        # Gemini設定 (API Key認証)
+        genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
+        self.gemini_api_key = bool(settings.GOOGLE_AI_API_KEY)
 
         # OpenAI設定
         if self.openai_api_key:
@@ -66,7 +63,7 @@ class LLMClient:
             raise ValueError("Gemini API key is missing")
 
         try:
-            model_obj = GenerativeModel(model)
+            model_obj = genai.GenerativeModel(model)
 
             # 画像データをリスト化
             if isinstance(image_data, str):
@@ -83,10 +80,7 @@ class LLMClient:
                 img_bytes = base64.b64decode(img_base64)
 
                 # Geminiの画像形式に変換
-                image_part = Part.from_data(
-                    mime_type='image/png',
-                    data=img_bytes
-                )
+                image_part = {"mime_type": "image/png", "data": img_bytes}
                 content_parts.append(image_part)
 
             # 安全フィルター設定
@@ -203,7 +197,7 @@ class LLMClient:
         """Gemini API呼び出し（トップレベル関数のみ使用）"""
         uploaded_file = None
         try:
-            model = GenerativeModel(model_name)
+            model = genai.GenerativeModel(model_name)
 
             content_parts = [prompt]
 
@@ -216,7 +210,7 @@ class LLMClient:
                 # ファイルを読み込み
                 with open(str(file_path), "rb") as f:
                     file_data = f.read()
-                uploaded_file = Part.from_data(data=file_data, mime_type=mime_type)
+                uploaded_file = {"mime_type": mime_type, "data": file_data}
                 content_parts.append(uploaded_file)
 
             # 安全フィルター設定（finish_reason: 2 対策）
@@ -326,6 +320,7 @@ class LLMClient:
             }
 
         except Exception as e:
+            logger.error(f"Gemini API呼び出し失敗 model={model_name}: {type(e).__name__}: {e}")
             self._cleanup_uploaded_file(uploaded_file)
             return {"success": False, "error": str(e), "model": model_name, "provider": "gemini"}
 
@@ -485,7 +480,7 @@ class LLMClient:
             raise ValueError("Gemini API key is missing")
 
         try:
-            model_obj = GenerativeModel(model)
+            model_obj = genai.GenerativeModel(model)
 
             # ファイルをアップロード
             mime_type, _ = mimetypes.guess_type(image_path)
@@ -494,7 +489,7 @@ class LLMClient:
 
             with open(image_path, "rb") as f:
                 file_data = f.read()
-            uploaded_file = Part.from_data(data=file_data, mime_type=mime_type)
+            uploaded_file = {"mime_type": mime_type, "data": file_data}
 
             # コンテンツパーツを構築
             content_parts = [prompt, uploaded_file]
