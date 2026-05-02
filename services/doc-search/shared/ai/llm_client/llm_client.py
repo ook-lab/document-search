@@ -28,12 +28,12 @@ class LLMClient:
         # Settings経由でAPIキーを取得（環境変数管理の統一）
         self.openai_api_key = settings.OPENAI_API_KEY
 
-        # Gemini設定 (Google AI API Key + 東京リージョン)
+        # Gemini設定 (Cloud Runのサービスアカウント認証 + 東京リージョン)
         vertexai.init(
-            api_key=settings.GOOGLE_AI_API_KEY,
+            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
             location="asia-northeast1",
         )
-        self.gemini_api_key = bool(settings.GOOGLE_AI_API_KEY)
+        self.gemini_api_key = True
 
         # OpenAI設定
         if self.openai_api_key:
