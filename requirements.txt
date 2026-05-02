@@ -125,7 +125,7 @@ soupsieve==2.8
 storage3==0.9.0
 streamlit==1.50.0
 streamlit-pdf-viewer==0.0.26
-supabase
+supabase==2.10.0
 supafunc==0.7.0
 surya-ocr==0.17.0
 sympy==1.14.0

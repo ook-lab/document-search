@@ -15,10 +15,8 @@ RUN apt-get update && apt-get install -y \
 # 3. 作業ディレクトリを設定
 WORKDIR /app
 
-# 4. プロジェクトルート全体をコピー（親ディレクトリから）
-# ビルドコンテキストはプロジェクトルート (document_management_system/) です
-# まずrequirements.txtだけコピーしてインストール（キャッシュ効率化）
-COPY requirements.txt .
+# 4. サービス固有の requirements.txt をコピーしてインストール（キャッシュ効率化）
+COPY services/doc-search/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. 必要なモジュールとアプリケーションファイルをコピー
