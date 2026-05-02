@@ -43,5 +43,3 @@ psutil==5.9.8
 json_repair
 beautifulsoup4==4.12.3
 lxml>=5.1.0
-# playwright==1.40.0  # Gmail蜿悶ｊ霎ｼ縺ｿ蟆ら畑・・loud Run縺ｧ縺ｯ荳崎ｦ・ｼ・
-
