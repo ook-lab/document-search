@@ -27,8 +27,6 @@ class LLMClient:
         """設定からAPIキーを取得し、各プロバイダーを初期化"""
 
         # Settings経由でAPIキーを取得（環境変数管理の統一）
-        self.gemini_api_key = settings.GOOGLE_AI_API_KEY
-        self.anthropic_api_key = settings.ANTHROPIC_API_KEY
         self.openai_api_key = settings.OPENAI_API_KEY
 
         # Gemini設定 (Google AI API Key + 東京リージョン)
@@ -38,11 +36,9 @@ class LLMClient:
         )
         self.gemini_api_key = bool(settings.GOOGLE_AI_API_KEY)
 
-        # Anthropic設定
-        if self.anthropic_api_key:
-            self.anthropic_client = Anthropic(api_key=self.anthropic_api_key)
-        else:
-            self.anthropic_client = None
+        # Anthropic: doc-searchでは未使用
+        self.anthropic_api_key = None
+        self.anthropic_client = None
 
         # OpenAI設定
         if self.openai_api_key:
