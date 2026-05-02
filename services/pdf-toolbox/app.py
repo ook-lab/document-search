@@ -31,6 +31,7 @@ def create_app():
     from blueprints.md_embedder import embedder_bp
     from blueprints.pdf_splitter import splitter_bp
     from blueprints.pdf_optimizer import optimizer_bp
+    from blueprints.page_labeler import labeler_bp
     from blueprints.shell import shell_bp
 
     app.register_blueprint(shell_bp)
@@ -38,6 +39,7 @@ def create_app():
     app.register_blueprint(embedder_bp, url_prefix='/embedder')
     app.register_blueprint(splitter_bp, url_prefix='/splitter')
     app.register_blueprint(optimizer_bp, url_prefix='/optimizer')
+    app.register_blueprint(labeler_bp, url_prefix='/labeler')
 
     return app
 

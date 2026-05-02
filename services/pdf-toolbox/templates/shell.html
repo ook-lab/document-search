@@ -18,6 +18,7 @@
             --accent-embed: #10b981;
             --accent-split: #3b82f6;
             --accent-opt: #ec4899;
+            --accent-label: #8b5cf6;
             --border: #e2e8f0;
             --radius: 12px;
         }
@@ -129,6 +130,7 @@
         .tab-btn[data-tab="embedder"] .tab-dot { background: var(--accent-embed); }
         .tab-btn[data-tab="splitter"] .tab-dot { background: var(--accent-split); }
         .tab-btn[data-tab="optimizer"] .tab-dot { background: var(--accent-opt); }
+        .tab-btn[data-tab="labeler"] .tab-dot { background: var(--accent-label); }
 
         /* ===== CONTENT ===== */
         .tab-content {
@@ -182,9 +184,9 @@
 
         .tool-cards {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1.5rem;
-            max-width: 900px;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            max-width: 1100px;
             width: 100%;
             padding: 0 2rem;
         }
@@ -245,10 +247,11 @@
             <span>PDF ツールボックス</span>
         </div>
         <nav class="tab-bar" id="tabBar">
-            <button class="tab-btn" data-tab="ocr"><span class="tab-dot"></span>OCR</button>
-            <button class="tab-btn" data-tab="embedder"><span class="tab-dot"></span>MD抽出</button>
-            <button class="tab-btn" data-tab="splitter"><span class="tab-dot"></span>分割</button>
-            <button class="tab-btn" data-tab="optimizer"><span class="tab-dot"></span>目次作成</button>
+            <button class="tab-btn" data-tab="ocr"><span class="tab-dot"></span>テキスト座標抽出</button>
+            <button class="tab-btn" data-tab="embedder"><span class="tab-dot"></span>Markdown抽出</button>
+            <button class="tab-btn" data-tab="splitter"><span class="tab-dot"></span>見開き分割</button>
+            <button class="tab-btn" data-tab="optimizer"><span class="tab-dot"></span>AI目次ページ</button>
+            <button class="tab-btn" data-tab="labeler"><span class="tab-dot"></span>ページ見出し付与</button>
         </nav>
     </header>
 
@@ -256,27 +259,32 @@
         <!-- Welcome screen shown initially -->
         <div class="welcome" id="welcomeScreen">
             <h2>PDF ツールボックスへようこそ</h2>
-            <p>4つのPDFツールが1つに統合されました。上のタブまたは下のカードをクリックして開始してください。</p>
+            <p>5つのPDFツールが1つに統合されました。上のタブまたは下のカードをクリックして開始してください。</p>
             <div class="tool-cards">
                 <div class="tool-card" onclick="switchTab('ocr')">
                     <span class="icon">🔍</span>
-                    <h3>OCR</h3>
-                    <p>スキャンPDFを検索可能にする</p>
+                    <h3>テキスト座標抽出</h3>
+                    <p>ページ画像から座標付きテキストを抽出・編集</p>
                 </div>
                 <div class="tool-card" onclick="switchTab('embedder')">
                     <span class="icon">📋</span>
-                    <h3>MD抽出</h3>
-                    <p>帳票からMarkdownを抽出&PDF埋め込み</p>
+                    <h3>Markdown抽出</h3>
+                    <p>ページ画像をMarkdown化してPDF/MD保存</p>
                 </div>
                 <div class="tool-card" onclick="switchTab('splitter')">
                     <span class="icon">✂️</span>
-                    <h3>分割</h3>
+                    <h3>見開き分割</h3>
                     <p>見開きPDFを左右に分割</p>
                 </div>
                 <div class="tool-card" onclick="switchTab('optimizer')">
                     <span class="icon">📑</span>
-                    <h3>目次作成</h3>
-                    <p>メタデータ編集&透明ラベル挿入</p>
+                    <h3>AI目次ページ</h3>
+                    <p>各ページをAIで要約し、先頭に目次を追加</p>
+                </div>
+                <div class="tool-card" onclick="switchTab('labeler')">
+                    <span class="icon">🏷️</span>
+                    <h3>ページ見出し付与</h3>
+                    <p>手入力した見出しを画像としてページに焼き込み</p>
                 </div>
             </div>
         </div>
@@ -286,6 +294,7 @@
         <iframe id="iframe-embedder" data-src="/embedder/"></iframe>
         <iframe id="iframe-splitter" data-src="/splitter/"></iframe>
         <iframe id="iframe-optimizer" data-src="/optimizer/"></iframe>
+        <iframe id="iframe-labeler" data-src="/labeler/"></iframe>
     </div>
 
     <script>

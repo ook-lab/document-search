@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDFの目次（しおり）作成ツール</title>
+    <title>AI目次ページ作成ツール</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/optimizer_style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -11,57 +11,56 @@
 </head>
 <body>
     <div class="app-container">
-        <aside class="sidebar">
-            <div class="sidebar-header">
+        <section class="pdf-pane">
+            <div class="pane-header">
                 <div class="logo">
                     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    <span>PDFの目次（しおり）作成ツール</span>
+                    <span>AI目次ページ作成ツール</span>
                 </div>
                 <button id="upload-btn" class="btn btn-primary">ファイルのアップロード</button>
                 <input type="file" id="file-input" accept="application/pdf" style="display: none;">
             </div>
-            <div class="page-list-container">
-                <div id="page-list" class="page-list"><div class="empty-state">PDFをアップロードしてください</div></div>
+            <div class="page-scroll" id="page-scroll">
+                <div id="page-list" class="page-list single-column"><div class="empty-state">PDFをアップロードしてください</div></div>
             </div>
-        </aside>
-        <main class="main-content">
-            <section class="preview-section" id="preview-section">
-                <div class="preview-controls">
-                    <button id="zoom-out-btn">－縮小</button>
-                    <button id="zoom-in-btn">＋拡大</button>
-                    <button id="zoom-reset-btn">リセット</button>
+        </section>
+        <main class="toc-pane">
+            <div class="pane-header compact-header">
+                <div class="form-group file-name-group">
+                    <label for="output-filename">保存ファイル名</label>
+                    <input type="text" id="output-filename" placeholder="未入力なら元ファイル名で保存">
                 </div>
-                <div class="preview-container" id="preview-container"><div class="empty-state">サムネイルを選択してプレビュー</div></div>
-            </section>
+            </div>
             <section class="editor-section">
-                <div class="panel-card metadata-panel">
-                    <h3>メタデータ編集</h3>
-                    <div class="form-group"><label for="meta-title">タイトル (Title)</label><input type="text" id="meta-title" placeholder="ドキュメントのタイトル"></div>
-                    <div class="form-group"><label for="meta-author">作成者 (Author)</label><input type="text" id="meta-author" placeholder="作成者名"></div>
-                    <div class="form-group"><label for="meta-subject">サブジェクト (Subject)</label><input type="text" id="meta-subject" placeholder="NotebookLM 最適化" value="NotebookLM Optimization"></div>
-                </div>
-                <div class="panel-card tags-panel">
-                    <h3>ページタイトル（透明テキスト）</h3>
-                    <div class="form-row">
-                        <div class="form-group flex-2"><label for="base-title">タイトル名</label><input type="text" id="base-title" placeholder="例: 第1回 算数"></div>
-                        <div class="form-group flex-1"><label for="start-num">開始ページ数</label><input type="number" id="start-num" placeholder="空は1"></div>
+                <div class="panel-card">
+                    <h3>目次生成</h3>
+                    <div class="form-group">
+                        <label for="toc-instructions">追加指示</label>
+                        <textarea id="toc-instructions" rows="4" placeholder="例: 教材名・章名・単元名を優先して、各ページを1行で要約してください。"></textarea>
                     </div>
-                    <button id="apply-tags-btn" class="btn btn-secondary">選択ページに適用</button>
-                    <p class="help-text">Shift/Ctrlキーで左のページを複数選択できます。</p>
+                    <button id="generate-toc-btn" class="btn btn-secondary">目次生成</button>
+                    <p class="help-text">目次挿入後の物理ページ番号（PDF p.2〜）を主軸にし、原本ページ番号は読めた場合だけ補助として入れます。</p>
+                </div>
+                <div class="panel-card toc-editor-card">
+                    <h3>目次内容（手修正できます）</h3>
+                    <div class="form-group">
+                        <textarea id="toc-markdown" class="toc-editor" placeholder="# 目次&#10;&#10;- PDF p.2 / 元PDF p.1 / 原本 p.不明: ..."></textarea>
+                    </div>
                 </div>
                 <div class="panel-card action-panel">
                     <h3>保存・出力</h3>
-                    <button id="process-download-btn" class="btn btn-success">
+                    <button id="save-download-btn" class="btn btn-success">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        上書き保存してダウンロード
+                        保存してダウンロード
                     </button>
+                    <p class="help-text">右側の目次テキストをPDFの1ページ目に挿入します。元ページには何も書き込みません。</p>
                 </div>
             </section>
         </main>
     </div>
     <script>
     const API = '/optimizer';
-    let pdfDoc = null, currentFileId = null, selectedPages = new Set(), lastSelectedIndex = -1, pageLabels = {}, previewRenderTask = null, currentZoom = 1.0;
+    let pdfDoc = null, currentFileId = null, originalFilename = '';
 
     document.addEventListener('DOMContentLoaded', () => {
         const loadingOverlay = document.createElement('div');
@@ -70,36 +69,32 @@
         document.body.appendChild(loadingOverlay);
         document.getElementById('upload-btn').addEventListener('click', () => document.getElementById('file-input').click());
         document.getElementById('file-input').addEventListener('change', handleFileUpload);
-        document.getElementById('apply-tags-btn').addEventListener('click', applyTags);
-        document.getElementById('process-download-btn').addEventListener('click', processAndDownload);
-        document.getElementById('zoom-in-btn').addEventListener('click', () => { currentZoom += 0.2; applyZoom(); });
-        document.getElementById('zoom-out-btn').addEventListener('click', () => { currentZoom = Math.max(0.2, currentZoom - 0.2); applyZoom(); });
-        document.getElementById('zoom-reset-btn').addEventListener('click', () => { currentZoom = 1.0; applyZoom(); });
+        document.getElementById('generate-toc-btn').addEventListener('click', generateToc);
+        document.getElementById('save-download-btn').addEventListener('click', saveAndDownload);
     });
 
-    function applyZoom() { const c = document.getElementById('preview-canvas'); if (c) c.style.transform = `scale(${currentZoom})`; }
     function showLoading(t) { document.getElementById('loading-text').textContent = t; document.getElementById('loading-overlay').classList.add('active'); }
     function hideLoading() { document.getElementById('loading-overlay').classList.remove('active'); }
+    function baseName(filename) { return filename.replace(/\.pdf$/i, ''); }
+    function withPdfExtension(filename) { return /\.pdf$/i.test(filename) ? filename : `${filename}.pdf`; }
 
     async function handleFileUpload(e) {
         const file = e.target.files[0]; if (!file) return;
-        showLoading('アップロード中...'); pageLabels = {}; selectedPages.clear(); lastSelectedIndex = -1;
+        showLoading('アップロード中...');
         const fd = new FormData(); fd.append('file', file);
         try {
             const res = await fetch(`${API}/upload`, { method: 'POST', body: fd });
             const data = await res.json();
             if (res.ok) {
                 currentFileId = data.file_id;
-                document.getElementById('meta-title').value = file.name.replace('.pdf', '');
+                originalFilename = data.filename || file.name;
+                document.getElementById('output-filename').value = '';
+                document.getElementById('output-filename').placeholder = originalFilename;
+                document.getElementById('toc-markdown').value = '';
                 await loadPDF(`${API}/files/${currentFileId}`);
                 try {
-                    showLoading('既存ラベルの解析中...');
-                    const ar = await fetch(`${API}/analyze/${currentFileId}`);
-                    if (ar.ok) {
-                        const ad = await ar.json();
-                        if (ad.metadata) { if (ad.metadata.title) document.getElementById('meta-title').value = ad.metadata.title; if (ad.metadata.author) document.getElementById('meta-author').value = ad.metadata.author; if (ad.metadata.subject) document.getElementById('meta-subject').value = ad.metadata.subject; }
-                        if (ad.pages) { for (const [k, v] of Object.entries(ad.pages)) { pageLabels[parseInt(k)] = v; const t = document.getElementById(`thumb-${k}`); if (t) { const b = t.querySelector('.label-badge'); b.textContent = v; b.style.display = 'block'; } } }
-                    }
+                    showLoading('PDF情報の解析中...');
+                    await fetch(`${API}/analyze/${currentFileId}`);
                 } catch (err) { console.error("Analysis failed", err); }
             } else { alert("Error: " + data.error); }
         } catch (err) { alert("Upload failed."); console.error(err); } finally { hideLoading(); }
@@ -110,62 +105,58 @@
         try {
             pdfDoc = await pdfjsLib.getDocument(url).promise;
             const lc = document.getElementById('page-list'); lc.innerHTML = '';
-            const obs = new IntersectionObserver((entries) => { entries.forEach(en => { if (en.isIntersecting) { renderThumbnail(parseInt(en.target.dataset.index), en.target); obs.unobserve(en.target); } }); }, { root: lc, rootMargin: '100px' });
+            const root = document.getElementById('page-scroll');
+            const obs = new IntersectionObserver((entries) => { entries.forEach(en => { if (en.isIntersecting) { renderPage(parseInt(en.target.dataset.index), en.target); obs.unobserve(en.target); } }); }, { root, rootMargin: '600px' });
             for (let i = 0; i < pdfDoc.numPages; i++) {
-                const item = document.createElement('div'); item.className = 'thumb-item'; item.id = `thumb-${i}`; item.dataset.index = i;
-                item.innerHTML = `<div class="page-num">${i+1}</div><div class="canvas-container"><canvas></canvas></div><div class="label-badge" style="display:none;"></div>`;
-                item.addEventListener('click', (e) => handleThumbClick(i, e));
+                const item = document.createElement('div'); item.className = 'page-item'; item.id = `page-${i}`; item.dataset.index = i;
+                item.innerHTML = `<div class="page-num">${i+1}</div><div class="canvas-container"><canvas></canvas></div>`;
                 lc.appendChild(item); obs.observe(item);
             }
-            if (pdfDoc.numPages > 0) handleThumbClick(0, { shiftKey: false, ctrlKey: false, metaKey: false });
         } catch (err) { console.error(err); alert("Failed to render PDF"); } finally { hideLoading(); }
     }
 
-    async function renderThumbnail(index, element) {
-        try { const page = await pdfDoc.getPage(index+1); const vp = page.getViewport({ scale: 0.3 }); const canvas = element.querySelector('canvas'); const ctx = canvas.getContext('2d'); canvas.width = vp.width; canvas.height = vp.height; await page.render({ canvasContext: ctx, viewport: vp }).promise; } catch (err) { console.error("Error rendering thumbnail", index, err); }
-    }
-
-    async function renderPreview(index) {
+    async function renderPage(index, element) {
         try {
-            const page = await pdfDoc.getPage(index+1); const container = document.getElementById('preview-container'); container.innerHTML = '';
-            const canvas = document.createElement('canvas'); canvas.id = 'preview-canvas'; container.appendChild(canvas); const ctx = canvas.getContext('2d');
-            const p = 40; const cw = container.clientWidth - p; const ch = container.clientHeight - p;
-            const uv = page.getViewport({ scale: 1.0 }); const scale = Math.min(cw / uv.width, ch / uv.height);
-            const vp = page.getViewport({ scale: scale > 0 ? scale : 1.0 }); canvas.width = vp.width; canvas.height = vp.height;
-            if (previewRenderTask) previewRenderTask.cancel();
-            previewRenderTask = page.render({ canvasContext: ctx, viewport: vp }); await previewRenderTask.promise;
-            currentZoom = 1.0; applyZoom();
-        } catch (err) { if (err.name !== 'RenderingCancelledException') console.error("Error rendering preview", err); }
+            const page = await pdfDoc.getPage(index + 1);
+            const container = element.querySelector('.canvas-container');
+            const canvas = element.querySelector('canvas');
+            const ctx = canvas.getContext('2d');
+            const uv = page.getViewport({ scale: 1.0 });
+            const targetWidth = Math.max(320, container.clientWidth - 24);
+            const scale = targetWidth / uv.width;
+            const vp = page.getViewport({ scale });
+            canvas.width = vp.width; canvas.height = vp.height;
+            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        } catch (err) { console.error("Error rendering page", index, err); }
     }
 
-    function handleThumbClick(index, event) {
-        if (event.shiftKey && lastSelectedIndex !== -1) { let s = Math.min(index, lastSelectedIndex), e = Math.max(index, lastSelectedIndex); if (!event.ctrlKey && !event.metaKey) selectedPages.clear(); for (let i = s; i <= e; i++) selectedPages.add(i); }
-        else if (event.ctrlKey || event.metaKey) { if (selectedPages.has(index)) selectedPages.delete(index); else selectedPages.add(index); }
-        else { selectedPages.clear(); selectedPages.add(index); }
-        lastSelectedIndex = index; updateSelectionUI();
-        if (selectedPages.size > 0 && selectedPages.has(index)) renderPreview(index);
-        else if (selectedPages.size > 0) { const arr = Array.from(selectedPages); renderPreview(arr[arr.length-1]); }
-        else document.getElementById('preview-container').innerHTML = '<div class="empty-state">サムネイルを選択してプレビュー</div>';
-    }
-
-    function updateSelectionUI() { document.querySelectorAll('.thumb-item').forEach((el, i) => { el.classList.toggle('selected', selectedPages.has(i)); }); }
-
-    function applyTags() {
-        const bt = document.getElementById('base-title').value.trim();
-        let sn = document.getElementById('start-num').value; sn = sn !== '' ? parseInt(sn) : 1;
-        if (!bt) { alert("タイトル名を入力してください。"); return; }
-        if (selectedPages.size === 0) { alert("適用するページを選択してください。"); return; }
-        Array.from(selectedPages).sort((a,b) => a-b).forEach((pi, i) => {
-            const label = `${bt}_${sn+i}`; pageLabels[pi] = label;
-            const thumb = document.getElementById(`thumb-${pi}`);
-            if (thumb) { const badge = thumb.querySelector('.label-badge'); badge.textContent = label; badge.style.display = 'block'; }
-        });
-    }
-
-    async function processAndDownload() {
+    async function generateToc() {
         if (!currentFileId) { alert("PDFをアップロードしてください。"); return; }
-        showLoading('PDFを保存・出力しています...');
-        const payload = { metadata: { title: document.getElementById('meta-title').value, author: document.getElementById('meta-author').value, subject: document.getElementById('meta-subject').value }, pages: pageLabels };
+        showLoading('Geminiで各ページの目次を作成しています...');
+        const payload = {
+            metadata: { title: baseName(originalFilename) },
+            instructions: document.getElementById('toc-instructions').value
+        };
+        try {
+            const res = await fetch(`${API}/generate_toc/${currentFileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (res.ok && data.toc_markdown) document.getElementById('toc-markdown').value = data.toc_markdown;
+            else alert("エラー: " + data.error);
+        } catch (err) { console.error(err); alert("通信エラー"); } finally { hideLoading(); }
+    }
+
+    async function saveAndDownload() {
+        if (!currentFileId) { alert("PDFをアップロードしてください。"); return; }
+        const tocMarkdown = document.getElementById('toc-markdown').value.trim();
+        if (!tocMarkdown) { alert("目次内容を入力してください。"); return; }
+        const inputName = document.getElementById('output-filename').value.trim();
+        const outputName = withPdfExtension(inputName || originalFilename);
+        showLoading('目次ページを挿入して保存しています...');
+        const payload = {
+            filename: outputName,
+            metadata: { title: baseName(outputName), subject: 'NotebookLM Optimization' },
+            toc_markdown: tocMarkdown
+        };
         try {
             const res = await fetch(`${API}/process/${currentFileId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();

@@ -31,23 +31,30 @@ body {
     width: 100vw;
 }
 
-/* Sidebar (Now the main workspace area) */
-.sidebar {
-    flex: 1.5; /* Takes up more space */
-    min-width: 500px;
+.pdf-pane,
+.toc-pane {
+    flex: 1 1 50%;
+    min-width: 0;
     background-color: var(--bg-panel);
     display: flex;
     flex-direction: column;
-    z-index: 10;
 }
 
-.sidebar-header {
+.pdf-pane {
+    border-right: 1px solid var(--border-color);
+}
+
+.pane-header {
     padding: 20px;
     border-bottom: 1px solid var(--border-color);
     background-color: var(--bg-panel);
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.compact-header {
+    display: block;
 }
 
 .logo {
@@ -64,7 +71,7 @@ body {
     stroke: var(--accent-primary);
 }
 
-.page-list-container {
+.page-scroll {
     flex: 1;
     overflow-y: auto;
     padding: 20px;
@@ -72,22 +79,22 @@ body {
 }
 
 .page-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    display: flex;
+    flex-direction: column;
     gap: 20px;
-    align-content: start;
+    align-items: center;
 }
 
 /* Scrollbar styling */
-.page-list-container::-webkit-scrollbar,
+.page-scroll::-webkit-scrollbar,
 .editor-section::-webkit-scrollbar {
     width: 6px;
 }
-.page-list-container::-webkit-scrollbar-track,
+.page-scroll::-webkit-scrollbar-track,
 .editor-section::-webkit-scrollbar-track {
     background: transparent;
 }
-.page-list-container::-webkit-scrollbar-thumb,
+.page-scroll::-webkit-scrollbar-thumb,
 .editor-section::-webkit-scrollbar-thumb {
     background: #CBD5E1;
     border-radius: 4px;
@@ -101,28 +108,15 @@ body {
     grid-column: 1 / -1;
 }
 
-.thumb-item {
+.page-item {
     background-color: var(--bg-card);
     border-radius: 10px;
-    padding: 12px;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: 14px;
+    border: 1px solid var(--border-color);
     position: relative;
     user-select: none;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-}
-
-.thumb-item:hover {
-    border-color: #D1D5DB;
-    transform: translateY(-3px);
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.08);
-}
-
-.thumb-item.selected {
-    border-color: var(--accent-primary);
-    background-color: rgba(79, 70, 229, 0.03);
-    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.15);
+    width: min(100%, 760px);
 }
 
 .page-num {
@@ -162,101 +156,38 @@ body {
     display: block;
 }
 
-.label-badge {
-    position: absolute;
-    bottom: -10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(135deg, var(--accent-success), #059669);
-    color: #fff;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    white-space: nowrap;
-    z-index: 5;
-    box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
-}
-
-        /* Main Content (Now the right-side properties panel) */
-.main-content {
-    flex: 1;
-    min-width: 360px;
-    max-width: 450px;
-    display: flex;
-    flex-direction: column;
-    border-left: 1px solid var(--border-color);
-}
-
-.preview-section {
-    height: 350px; /* Increased slightly to give room for zoom controls */
-    flex: none;
-    background-color: var(--bg-body);
-    display: flex;
-    flex-direction: column;
-    padding: 15px;
-    overflow: hidden;
-    background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
-    background-size: 20px 20px;
-    position: relative;
-}
-
-.preview-controls {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 10px;
-    justify-content: flex-end;
-    z-index: 10;
-}
-
-.preview-controls button {
-    background: #fff;
-    border: 1px solid var(--border-color);
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    color: var(--text-muted);
-}
-
-.preview-controls button:hover {
-    background: #F1F5F9;
-    color: var(--text-main);
-}
-
-.preview-container {
-    flex: 1;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: auto; /* Allow scrolling if zoomed */
-}
-
-.preview-container canvas {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-    border-radius: 4px;
-    border: 1px solid var(--border-color);
-    background: #fff;
-    transform-origin: center center;
-    transition: transform 0.2s;
-}
-
 /* Editor Section (Vertically stacked) */
 .editor-section {
     flex: 1;
     background-color: var(--bg-panel);
-    border-top: 1px solid var(--border-color);
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 20px;
     overflow-y: auto;
+}
+
+.file-name-group {
+    margin-bottom: 0;
+}
+
+.toc-editor-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 300px;
+}
+
+.toc-editor-card .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.toc-editor {
+    height: 100%;
+    min-height: 360px;
+    resize: none;
+    font-family: Consolas, 'Courier New', monospace;
 }
 
 .panel-card {
@@ -295,7 +226,8 @@ label {
     font-weight: 600;
 }
 
-input {
+input,
+textarea {
     width: 100%;
     background-color: #F9FAFB;
     border: 1px solid var(--border-color);
@@ -307,14 +239,21 @@ input {
     transition: all 0.2s;
 }
 
-input:focus {
+textarea {
+    resize: vertical;
+    line-height: 1.5;
+}
+
+input:focus,
+textarea:focus {
     outline: none;
     border-color: var(--accent-primary);
     background-color: #FFFFFF;
     box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
 }
 
-input::placeholder {
+input::placeholder,
+textarea::placeholder {
     color: #9CA3AF;
 }
 

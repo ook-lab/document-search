@@ -29,7 +29,7 @@ def _ensure_templates():
         with open(TEMPLATES_FILE, 'w', encoding='utf-8') as f:
             json.dump({
                 "Standard": {
-                    "name": "Standard OCR",
+                    "name": "標準・テキスト座標抽出",
                     "prompt": "Extract all text and their bounding boxes. Group related text, sentences, and paragraphs into single continuous blocks where appropriate. Do NOT extract character by character or separate small fragments unless they are independent. Focus on preserving the natural reading layout."
                 },
                 "Invoice": {

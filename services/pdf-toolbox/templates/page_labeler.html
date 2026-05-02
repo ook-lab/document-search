@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ページ見出し付与ツール</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/page_labeler.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+</head>
+<body>
+    <div class="app-container">
+        <section class="pdf-pane">
+            <div class="pane-header">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg>
+                    <span>ページ見出し付与ツール</span>
+                </div>
+                <button id="upload-btn" class="btn btn-primary">PDFアップロード</button>
+                <input type="file" id="file-input" accept="application/pdf" style="display:none;">
+            </div>
+            <div class="page-scroll" id="page-scroll">
+                <div id="page-list" class="page-list"><div class="empty-state">PDFをアップロードしてください</div></div>
+            </div>
+        </section>
+
+        <main class="editor-pane">
+            <div class="pane-header compact-header">
+                <div class="form-group">
+                    <label for="output-filename">保存ファイル名</label>
+                    <input type="text" id="output-filename" placeholder="未入力なら元ファイル名で保存">
+                </div>
+            </div>
+            <section class="editor-section">
+                <div class="panel-card">
+                    <h3>選択ページの見出し</h3>
+                    <div class="current-page" id="current-page-label">ページ未選択</div>
+                    <div class="form-group">
+                        <label for="page-label-input">書き込むページ見出し</label>
+                        <textarea id="page-label-input" rows="3" placeholder="例: 数学II 第4章 三角関数 / 例題3"></textarea>
+                    </div>
+                    <button id="apply-current-btn" class="btn btn-secondary">選択ページに反映</button>
+                    <p class="help-text">左のページを選び、右上に焼き込む短いページ見出しを入力します。</p>
+                </div>
+
+                <div class="panel-card">
+                    <h3>一括入力</h3>
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label for="batch-label">共通ページ見出し</label>
+                            <input type="text" id="batch-label" placeholder="例: 物理 基礎 第4章">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="batch-start">開始番号</label>
+                            <input type="number" id="batch-start" placeholder="空は番号なし">
+                        </div>
+                    </div>
+                    <button id="apply-all-btn" class="btn btn-secondary">全ページに適用</button>
+                    <p class="help-text">開始番号を入れると「共通ラベル 1」「共通ラベル 2」のように連番を付けます。</p>
+                </div>
+
+                <div class="panel-card">
+                    <h3>表示設定</h3>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="position-select">位置</label>
+                            <select id="position-select">
+                                <option value="top-right" selected>右上</option>
+                                <option value="top-left">左上</option>
+                                <option value="bottom-right">右下</option>
+                                <option value="bottom-left">左下</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="font-size-input">文字サイズ</label>
+                            <input type="number" id="font-size-input" value="8" min="5" max="18" step="0.5">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label for="margin-input">余白(mm)</label>
+                            <input type="number" id="margin-input" value="5" min="0" max="30" step="0.5">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="opacity-input">背景濃度</label>
+                            <input type="number" id="opacity-input" value="215" min="0" max="255" step="5">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel-card label-list-card">
+                    <h3>入力済みラベル</h3>
+                    <div id="label-list" class="label-list"><div class="empty-state small">まだ入力がありません</div></div>
+                </div>
+
+                <div class="panel-card action-panel">
+                    <h3>保存・出力</h3>
+                    <button id="save-btn" class="btn btn-success">画像ラベルを焼き込んでダウンロード</button>
+                    <p class="help-text">ページ見出しをPNG画像として貼り込むため、PDFテキスト層には追加しません。</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+    const API = '/labeler';
+    let pdfDoc = null;
+    let currentFileId = null;
+    let originalFilename = '';
+    let currentPageIndex = -1;
+    const labels = {};
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.className = 'loading-overlay';
+        loadingOverlay.id = 'loading-overlay';
+        loadingOverlay.innerHTML = '<div class="spinner"></div><div id="loading-text">処理中...</div>';
+        document.body.appendChild(loadingOverlay);
+
+        document.getElementById('upload-btn').addEventListener('click', () => document.getElementById('file-input').click());
+        document.getElementById('file-input').addEventListener('change', handleUpload);
+        document.getElementById('apply-current-btn').addEventListener('click', applyCurrentLabel);
+        document.getElementById('apply-all-btn').addEventListener('click', applyAllLabels);
+        document.getElementById('save-btn').addEventListener('click', saveAndDownload);
+    });
+
+    function showLoading(text) {
+        document.getElementById('loading-text').textContent = text;
+        document.getElementById('loading-overlay').classList.add('active');
+    }
+
+    function hideLoading() {
+        document.getElementById('loading-overlay').classList.remove('active');
+    }
+
+    function baseName(filename) {
+        return filename.replace(/\.pdf$/i, '');
+    }
+
+    function withPdfExtension(filename) {
+        return /\.pdf$/i.test(filename) ? filename : `${filename}.pdf`;
+    }
+
+    async function handleUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        showLoading('アップロード中...');
+        Object.keys(labels).forEach(key => delete labels[key]);
+        currentPageIndex = -1;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const response = await fetch(`${API}/upload`, { method: 'POST', body: formData });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Upload failed');
+            currentFileId = data.file_id;
+            originalFilename = data.filename || file.name;
+            document.getElementById('output-filename').value = '';
+            document.getElementById('output-filename').placeholder = originalFilename;
+            document.getElementById('page-label-input').value = '';
+            renderLabelList();
+            await loadPDF(`${API}/files/${currentFileId}`);
+        } catch (error) {
+            console.error(error);
+            alert(`アップロードに失敗しました: ${error.message}`);
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function loadPDF(url) {
+        showLoading('PDFを読み込み中...');
+        try {
+            pdfDoc = await pdfjsLib.getDocument(url).promise;
+            const list = document.getElementById('page-list');
+            list.innerHTML = '';
+            const root = document.getElementById('page-scroll');
+            const observer = new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        renderPage(parseInt(entry.target.dataset.index, 10), entry.target);
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { root, rootMargin: '600px' });
+
+            for (let i = 0; i < pdfDoc.numPages; i++) {
+                const item = document.createElement('div');
+                item.className = 'page-item';
+                item.id = `page-${i}`;
+                item.dataset.index = i;
+                item.innerHTML = `<div class="page-num">${i + 1}</div><div class="label-preview"></div><div class="canvas-container"><canvas></canvas></div>`;
+                item.addEventListener('click', () => selectPage(i));
+                list.appendChild(item);
+                observer.observe(item);
+            }
+            if (pdfDoc.numPages > 0) selectPage(0);
+        } catch (error) {
+            console.error(error);
+            alert('PDFの読み込みに失敗しました');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function renderPage(index, element) {
+        try {
+            const page = await pdfDoc.getPage(index + 1);
+            const container = element.querySelector('.canvas-container');
+            const canvas = element.querySelector('canvas');
+            const context = canvas.getContext('2d');
+            const viewportBase = page.getViewport({ scale: 1.0 });
+            const targetWidth = Math.max(320, container.clientWidth - 24);
+            const scale = targetWidth / viewportBase.width;
+            const viewport = page.getViewport({ scale });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page.render({ canvasContext: context, viewport }).promise;
+        } catch (error) {
+            console.error('Error rendering page', index, error);
+        }
+    }
+
+    function selectPage(index) {
+        currentPageIndex = index;
+        document.querySelectorAll('.page-item').forEach((item, itemIndex) => {
+            item.classList.toggle('selected', itemIndex === index);
+        });
+        document.getElementById('current-page-label').textContent = `選択中: ${index + 1}ページ目`;
+        document.getElementById('page-label-input').value = labels[index] || '';
+    }
+
+    function applyCurrentLabel() {
+        if (currentPageIndex < 0) {
+            alert('左側でページを選択してください。');
+            return;
+        }
+        const text = document.getElementById('page-label-input').value.trim();
+        if (text) labels[currentPageIndex] = text;
+        else delete labels[currentPageIndex];
+        updatePageBadge(currentPageIndex);
+        renderLabelList();
+    }
+
+    function applyAllLabels() {
+        if (!pdfDoc) {
+            alert('PDFをアップロードしてください。');
+            return;
+        }
+        const base = document.getElementById('batch-label').value.trim();
+        if (!base) {
+            alert('共通ラベルを入力してください。');
+            return;
+        }
+        const startRaw = document.getElementById('batch-start').value.trim();
+        const hasNumber = startRaw !== '';
+        const startNumber = hasNumber ? parseInt(startRaw, 10) : 0;
+        for (let i = 0; i < pdfDoc.numPages; i++) {
+            labels[i] = hasNumber ? `${base} ${startNumber + i}` : base;
+            updatePageBadge(i);
+        }
+        if (currentPageIndex >= 0) document.getElementById('page-label-input').value = labels[currentPageIndex] || '';
+        renderLabelList();
+    }
+
+    function updatePageBadge(index) {
+        const item = document.getElementById(`page-${index}`);
+        if (!item) return;
+        const badge = item.querySelector('.label-preview');
+        const text = labels[index] || '';
+        badge.textContent = text;
+        badge.style.display = text ? 'block' : 'none';
+    }
+
+    function renderLabelList() {
+        const container = document.getElementById('label-list');
+        const entries = Object.entries(labels).sort((a, b) => parseInt(a[0], 10) - parseInt(b[0], 10));
+        if (entries.length === 0) {
+            container.innerHTML = '<div class="empty-state small">まだ入力がありません</div>';
+            return;
+        }
+        container.innerHTML = entries.map(([pageIndex, text]) => (
+            `<button class="label-row" type="button" onclick="selectPage(${pageIndex})"><strong>p.${parseInt(pageIndex, 10) + 1}</strong><span>${escapeHtml(text)}</span></button>`
+        )).join('');
+    }
+
+    function escapeHtml(text) {
+        return text.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+    }
+
+    async function saveAndDownload() {
+        if (!currentFileId) {
+            alert('PDFをアップロードしてください。');
+            return;
+        }
+        if (Object.keys(labels).length === 0) {
+            alert('少なくとも1ページにラベルを入力してください。');
+            return;
+        }
+
+        const inputName = document.getElementById('output-filename').value.trim();
+        const outputName = withPdfExtension(inputName || originalFilename);
+        const payload = {
+            filename: outputName,
+            labels,
+            options: {
+                position: document.getElementById('position-select').value,
+                font_size: parseFloat(document.getElementById('font-size-input').value || '8'),
+                margin_mm: parseFloat(document.getElementById('margin-input').value || '5'),
+                bg_opacity: parseInt(document.getElementById('opacity-input').value || '215', 10)
+            }
+        };
+
+        showLoading('画像ラベルを焼き込んでいます...');
+        try {
+            const response = await fetch(`${API}/process/${currentFileId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if (!response.ok || !data.download_url) throw new Error(data.error || 'Save failed');
+            window.location.href = data.download_url;
+        } catch (error) {
+            console.error(error);
+            alert(`保存に失敗しました: ${error.message}`);
+        } finally {
+            hideLoading();
+        }
+    }
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MD抽出 & PDF埋め込み</title>
+    <title>Markdown抽出・保存ツール</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root { --primary: #4f46e5; --primary-hover: #4338ca; --bg-color: #f8fafc; --surface: #ffffff; --text-main: #0f172a; --text-muted: #64748b; --border: #e2e8f0; --success: #059669; --danger: #dc2626; }
@@ -48,20 +48,20 @@
 </head>
 <body>
     <header>
-        <h1>帳票データからMarkdown抽出＆PDF埋め込み</h1>
+        <h1>Markdown抽出・保存ツール</h1>
         <div style="display:flex; gap: 1rem; align-items: center;">
             <span style="font-size: 0.85rem; color: var(--text-muted);" id="headerStatus">Waiting for upload...</span>
             <input type="text" id="outputFilename" placeholder="保存ファイル名" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 200px;">
             <button class="btn-outline" id="generateFilenameBtn" style="display:none; padding: 0.5rem; font-size: 0.85rem; background: white;">AI生成</button>
             <input type="text" id="driveFileId" placeholder="Google Drive ID (上書き用)" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 180px;">
-            <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">Download Final PDF</button>
+            <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">MD保存PDFをダウンロード</button>
             <button class="btn-primary" id="driveOverwriteBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem; background: #059669;">ドライブ上書き</button>
         </div>
     </header>
     <div id="uploadView">
         <div class="upload-card">
             <h2 style="margin-top:0">Upload Document</h2>
-            <p style="color:var(--text-muted); margin-bottom:2rem;">Upload a PDF to begin structural analysis.</p>
+            <p style="color:var(--text-muted); margin-bottom:2rem;">PDFをアップロードして、ページ画像をMarkdown化します。</p>
             <div class="upload-area" id="dropZone">
                 <p>PDFをドラッグ＆ドロップ、またはクリックして選択</p>
                 <input type="file" id="fileInput" accept="application/pdf" style="display: none;">
