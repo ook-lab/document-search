@@ -77,6 +77,66 @@ def _download_drive_bytes(file_id: str) -> tuple[bytes, str]:
     return buf.getvalue(), mime
 
 
+def _extract_external_images(html: str) -> list[tuple[str, str]]:
+    """HTML から外部 URL 画像の (url, mime_type) を抽出。CID・data URI は除外。"""
+    imgs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for m in re.finditer(r'<img\s[^>]*src=["\']([^"\']+)["\']', html, re.IGNORECASE):
+        url = m.group(1).strip()
+        if url.startswith("cid:") or url.startswith("data:"):
+            continue
+        if not url.startswith("http"):
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        ext = Path(url.split("?")[0].split("#")[0]).suffix.lower()
+        mime = {".png":"image/png", ".jpg":"image/jpeg", ".jpeg":"image/jpeg",
+                ".gif":"image/gif", ".webp":"image/webp", ".bmp":"image/bmp"
+                }.get(ext, "image/jpeg")
+        imgs.append((url, mime))
+    return imgs
+
+
+def _download_url(url: str, timeout: int = 15) -> bytes | None:
+    """HTTP GET で画像バイト列を取得。"""
+    import urllib.request
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        ct = resp.headers.get("Content-Type", "")
+        if "image" not in ct and "octet" not in ct:
+            return None
+        return resp.read()
+
+
+def _mime_to_ext(mime: str) -> str:
+    return {
+        "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+        "image/webp": ".webp", "image/bmp": ".bmp",
+    }.get(mime, ".jpg")
+
+
+def _resize_image(img_bytes: bytes, mime: str,
+                  max_bytes: int = 5 * 1024 * 1024) -> tuple[bytes, str]:
+    """画像を JPEG に変換しつつ max_bytes 以下に縮小。"""
+    from PIL import Image
+    im = Image.open(io.BytesIO(img_bytes))
+    if im.mode in ("RGBA", "P"):
+        im = im.convert("RGB")
+    quality = 85
+    while True:
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=quality)
+        if buf.tell() <= max_bytes or quality <= 20:
+            return buf.getvalue(), "image/jpeg"
+        if quality > 50:
+            quality -= 15
+        else:
+            w, h = im.size
+            im = im.resize((w // 2, h // 2), Image.LANCZOS)
+            quality = 85
+
+
 class _StripHTML(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -262,6 +322,9 @@ class GmailService:
 
         att_list = []
         exts = {".pdf",".doc",".docx",".xls",".xlsx",".png",".jpg",".jpeg",".gif",".webp"}
+        mime_map = {".pdf":"application/pdf",".png":"image/png",
+                    ".jpg":"image/jpeg",".jpeg":"image/jpeg",
+                    ".gif":"image/gif",".webp":"image/webp"}
         for att in attachments:
             fn = att.get("filename", "")
             aid = att.get("attachmentId")
@@ -271,17 +334,39 @@ class GmailService:
             data = gmail.get_attachment(message_id, aid)
             if not data:
                 continue
-            mime_map = {".pdf":"application/pdf",".png":"image/png",
-                        ".jpg":"image/jpeg",".jpeg":"image/jpeg",
-                        ".gif":"image/gif",".webp":"image/webp"}
+            hdrs = att.get("headers") or {}
+            has_cid = bool(hdrs.get("Content-ID") or hdrs.get("Content-Id")
+                           or hdrs.get("content-id"))
+            source = "inline_cid" if has_cid else "attachment"
             fid = drive.upload_file(
                 file_content=data, file_name=fn,
                 mime_type=mime_map.get(ext, "application/octet-stream"),
                 folder_id=att_folder)
             if fid:
                 att_list.append({"filename":fn,"drive_file_id":fid,
-                                 "size":att.get("size",0),
-                                 "mime_type":att.get("mimeType","")})
+                                 "size":len(data),
+                                 "mime_type":att.get("mimeType",""),
+                                 "source": source})
+
+        # HTML 内の外部 URL 画像を抽出してダウンロード
+        if text_html:
+            ext_images = _extract_external_images(text_html)
+            for idx, (img_url, img_mime) in enumerate(ext_images):
+                try:
+                    img_data = _download_url(img_url)
+                    if not img_data or len(img_data) < 1024:
+                        continue
+                    ext_fn = f"html_image_{idx}{_mime_to_ext(img_mime)}"
+                    fid = drive.upload_file(
+                        file_content=img_data, file_name=ext_fn,
+                        mime_type=img_mime, folder_id=att_folder)
+                    if fid:
+                        att_list.append({"filename": ext_fn, "drive_file_id": fid,
+                                         "size": len(img_data),
+                                         "mime_type": img_mime,
+                                         "source": "html_external"})
+                except Exception as e:
+                    logger.warning("external image %s: %s", img_url, e)
 
         raw_row = {
             "person": "宜紀",
@@ -337,10 +422,16 @@ class GmailService:
         self._set_status(raw_id, "completed")
         return {"raw_id": raw_id, "doc_id": str(doc_id), "success": True}
 
+    _OCR_MIN_BYTES = 5 * 1024       # 5 KB 未満はスキップ
+    _OCR_MAX_BYTES = 5 * 1024 * 1024  # 5 MB 超はリサイズ
+
     def _ocr_attachments(self, attachments: list[dict]) -> list[dict]:
         results = []
         client = None
         for att in attachments:
+            source = att.get("source", "attachment")
+            if source == "inline_cid":
+                continue
             mime = (att.get("mime_type") or "").lower()
             if mime not in _IMAGE_MIMES:
                 continue
@@ -351,9 +442,15 @@ class GmailService:
                 if client is None:
                     client = _gemini_client()
                 img, actual = _download_drive_bytes(fid)
+                if len(img) < self._OCR_MIN_BYTES:
+                    logger.info("skip tiny image %s (%d B)", att.get("filename"), len(img))
+                    continue
+                if len(img) > self._OCR_MAX_BYTES:
+                    img, actual = _resize_image(img, actual)
                 text = _ocr_image_bytes(client, img, actual)
                 if text:
-                    results.append({"filename": att.get("filename","image"), "text": text})
+                    results.append({"filename": att.get("filename","image"),
+                                    "text": text, "source": source})
             except Exception as e:
                 logger.warning("OCR %s: %s", att.get("filename"), e)
         return results
