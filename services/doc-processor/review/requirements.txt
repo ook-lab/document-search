@@ -7,7 +7,7 @@ Flask-WTF>=1.2.0
 gunicorn>=21.0.0
 
 # Supabase
-supabase>=2.0.0
+supabase
 
 # Logging
 loguru>=0.7.0

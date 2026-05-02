@@ -1,7 +1,7 @@
 google-cloud-aiplatform
 openai==1.54.0
 
-supabase==2.10.0
+supabase
 
 python-dotenv==1.0.0
 

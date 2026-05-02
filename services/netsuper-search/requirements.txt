@@ -1,6 +1,6 @@
 # Streamlit UI + ネットスーパー店舗スクレイピング（Playwright）
 streamlit==1.39.0
-supabase==2.9.1
+supabase
 openai==1.58.1
 
 google-api-python-client==2.108.0
