@@ -4,9 +4,8 @@ google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
 google-cloud-aiplatform
 
-anthropic==0.39.0
 
-openai==1.54.0
+openai
 
 supabase
 

@@ -11,9 +11,8 @@ import mimetypes
 
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
-from anthropic import Anthropic, RateLimitError
 from openai import OpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
+from tenacity import retry, stop_after_attempt, wait_exponential
 from loguru import logger
 
 from shared.common.config.model_tiers import AIProvider, get_model_config
@@ -35,10 +34,6 @@ class LLMClient:
             location="asia-northeast1",
         )
         self.gemini_api_key = bool(settings.GOOGLE_AI_API_KEY)
-
-        # Anthropic: doc-searchでは未使用
-        self.anthropic_api_key = None
-        self.anthropic_client = None
 
         # OpenAI設定
         if self.openai_api_key:
@@ -187,14 +182,7 @@ class LLMClient:
             return self._call_gemini(model_name, prompt, file_path, config, **kwargs)
 
         elif provider == AIProvider.CLAUDE:
-            if not self.anthropic_client:
-                return {"success": False, "error": "Anthropic API key is missing", "model": model_name}
-            try:
-                return self._call_claude(model_name, prompt, config, **kwargs)
-            except RetryError as e:
-                # リトライが全て失敗した場合
-                original_error = e.last_attempt.exception()
-                return {"success": False, "error": str(original_error), "model": model_name, "provider": "claude"}
+            return {"success": False, "error": "Anthropic is not supported in doc-search", "model": model_name}
 
         elif provider == AIProvider.OPENAI:
             if not self.openai_client:
@@ -349,95 +337,6 @@ class LLMClient:
             uploaded_file: アップロードされたファイルオブジェクト
         """
         pass
-
-    @retry(
-        retry=retry_if_exception_type(RateLimitError),
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=2, max=60)
-    )
-    def _call_claude(
-        self,
-        model_name: str,
-        prompt: str,
-        config: Dict,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Anthropic API呼び出し"""
-        try:
-            # ✅ DEBUG: 送信するプロンプトの先頭部分をログに出力
-            from loguru import logger
-            logger.debug(f"[Anthropic CALL] Model: {model_name}, Prompt start: {prompt[:300]}...")
-
-            # Anthropicの最大トークン数制限を適用
-            max_tokens = config.get("max_tokens", 8192)
-            # Anthropic models: max 64000 tokens
-            if max_tokens > 64000:
-                max_tokens = 64000
-
-            response = self.anthropic_client.messages.create(
-                model=model_name,
-                max_tokens=max_tokens,
-                temperature=config.get("temperature", 0.0),
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-
-            # ✅ DEBUG: Anthropic からの生の応答コンテンツ全体をログに出力
-            raw_content = response.content[0].text
-            logger.debug(f"[Anthropic RAW RESP] Content length: {len(raw_content)} chars")
-            # 応答が長すぎる場合があるため、先頭2000文字のみをログに記録
-            logger.debug(f"[Anthropic RAW RESP] Content preview: {raw_content[:2000]}")
-
-            # トークン使用量を取得
-            usage = {}
-            if hasattr(response, 'usage') and response.usage:
-                input_tokens  = getattr(response.usage, 'input_tokens', 0) or 0
-                output_tokens = getattr(response.usage, 'output_tokens', 0) or 0
-                # thinking tokens (extended thinking の場合)
-                thinking_tokens = 0
-                if hasattr(response.usage, 'cache_creation_input_tokens'):
-                    pass  # Claude の thinking は別途対応
-                usage = {
-                    "prompt_tokens":    input_tokens,
-                    "completion_tokens": output_tokens,
-                    "thinking_tokens":  thinking_tokens,
-                    "total_tokens":     input_tokens + output_tokens + thinking_tokens,
-                }
-                logger.info(f"[Anthropic] トークン使用量: prompt={usage['prompt_tokens']}, completion={usage['completion_tokens']}, total={usage['total_tokens']}")
-
-            # ログ記録
-            log_context = kwargs.get('log_context')
-            if log_context and usage:
-                try:
-                    from shared.common.ai_cost_logger import log_ai_usage
-                    log_ai_usage(
-                        app=log_context.get('app', 'unknown'),
-                        stage=log_context.get('stage', 'unknown'),
-                        model=model_name,
-                        prompt_token_count=usage['prompt_tokens'],
-                        candidates_token_count=usage['completion_tokens'],
-                        thoughts_token_count=usage['thinking_tokens'],
-                        total_token_count=usage['total_tokens'],
-                        session_id=log_context.get('session_id'),
-                        workspace_id=log_context.get('workspace_id'),
-                    )
-                except Exception as _log_err:
-                    logger.warning(f"[Anthropic] cost log failed: {_log_err}")
-
-            return {
-                "success": True,
-                "content": raw_content,
-                "model": model_name,
-                "provider": "claude",
-                "usage": usage
-            }
-
-        except RateLimitError:
-            # RateLimitErrorは再スローしてtenacityにリトライさせる
-            raise
-        except Exception as e:
-            return {"success": False, "error": str(e), "model": model_name, "provider": "claude"}
 
     def _call_openai(
         self,
