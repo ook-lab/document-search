@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouTube 検索 → URL 一覧</title>
+  <style>
+    :root {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      line-height: 1.5;
+      color: #1a1a1a;
+      background: #f6f7f9;
+    }
+    body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin-bottom: 0.5rem; }
+    p.hint { color: #555; font-size: 0.9rem; margin-top: 0; margin-bottom: 1.25rem; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
+    input[type="text"], input[type="number"], textarea {
+      width: 100%; box-sizing: border-box;
+      padding: 0.5rem 0.65rem; border: 1px solid #c8cdd3; border-radius: 6px;
+      font-size: 1rem;
+    }
+    textarea {
+      min-height: 220px; font-family: Consolas, "Courier New", monospace;
+      font-size: 0.9rem; resize: vertical;
+    }
+    .row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+    .row .field { flex: 1; min-width: 200px; }
+    .row .nfield { width: 6rem; }
+    button {
+      padding: 0.55rem 1rem; border: none; border-radius: 6px;
+      font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    }
+    button.primary { background: #c00; color: #fff; }
+    button.primary:hover { background: #a00; }
+    button.secondary { background: #e8eaee; color: #222; }
+    button.secondary:hover { background: #dde0e6; }
+    .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.75rem 0 0; }
+    .err {
+      background: #fdecea; color: #611a15; padding: 0.65rem 0.85rem;
+      border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;
+    }
+    .ok { color: #1b5e20; font-size: 0.85rem; min-height: 1.25rem; margin-top: 0.35rem; }
+  </style>
+</head>
+<body>
+  <h1>YouTube 検索 → URL 一覧</h1>
+  <p class="hint">検索結果の上位から順に、1 行 1 URL で表示します。NotebookLM などにそのまま貼り付けられます。</p>
+
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/">
+    <div class="row">
+      <div class="field">
+        <label for="query">検索語</label>
+        <input id="query" name="query" type="text" value="{{ query }}" autocomplete="off" required />
+      </div>
+      <div class="nfield">
+        <label for="max_results">件数</label>
+        <input id="max_results" name="max_results" type="number" min="1" max="50" value="{{ max_results }}" />
+      </div>
+    </div>
+    <button type="submit" class="primary">取得</button>
+  </form>
+
+  <div style="margin-top: 1.25rem;">
+    <label for="out">URL 一覧</label>
+    <textarea id="out" readonly>{{ output_text }}</textarea>
+    <div class="actions">
+      <button type="button" class="secondary" id="copyBtn">クリップボードにコピー</button>
+    </div>
+    <p class="ok" id="copyStatus" aria-live="polite"></p>
+  </div>
+
+  <script>
+    (function () {
+      var out = document.getElementById("out");
+      var btn = document.getElementById("copyBtn");
+      var st = document.getElementById("copyStatus");
+      if (!btn || !out) return;
+      btn.addEventListener("click", function () {
+        var t = out.value.trim();
+        if (!t) { st.textContent = "コピーする内容がありません。"; return; }
+        navigator.clipboard.writeText(t).then(function () {
+          st.textContent = "コピーしました（NotebookLM に貼り付け可）";
+        }).catch(function () {
+          out.removeAttribute("readonly");
+          out.focus();
+          out.select();
+          st.textContent = "コピーに失敗したため、テキストを選択しました（Ctrl+C）";
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

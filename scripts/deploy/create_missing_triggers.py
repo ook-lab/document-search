@@ -52,6 +52,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("portal-deploy", "portal-app/cloudbuild.yaml", "portal-app/**"),
     ("rag-prepare", "services/rag-prepare/cloudbuild.yaml", "services/rag-prepare/**"),
     ("tenshoku-tool", "services/tenshoku-tool/cloudbuild.yaml", "services/tenshoku-tool/**"),
+    ("youtube-search-links", "services/youtube-search-links/cloudbuild.yaml", "services/youtube-search-links/**"),
 )
 
 # export に使う候補（先頭から順に試す）
