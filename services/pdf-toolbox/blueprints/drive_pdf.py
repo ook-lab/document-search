@@ -5,6 +5,9 @@ from werkzeug.utils import secure_filename
 
 from google_drive_connector import GoogleDriveConnector
 
+PDF_MIME = "application/pdf"
+SHORTCUT_MIME = "application/vnd.google-apps.shortcut"
+
 
 def download_drive_pdf(drive_file_id, dest_dir, prefix=None):
     drive_file_id = (drive_file_id or "").strip()
@@ -14,13 +17,31 @@ def download_drive_pdf(drive_file_id, dest_dir, prefix=None):
     drive = GoogleDriveConnector()
     file_meta = drive.service.files().get(
         fileId=drive_file_id,
-        fields="name,mimeType",
+        fields="id,name,mimeType,shortcutDetails(targetId,targetMimeType)",
         supportsAllDrives=True,
     ).execute()
 
     original_name = file_meta.get("name", "drive_file.pdf")
     mime_type = (file_meta.get("mimeType") or "").strip()
-    if mime_type != "application/pdf":
+
+    if mime_type == SHORTCUT_MIME:
+        shortcut = file_meta.get("shortcutDetails") or {}
+        target_id = shortcut.get("targetId")
+        target_mime_type = (shortcut.get("targetMimeType") or "").strip()
+        if not target_id:
+            raise ValueError("Driveショートカットのリンク先を取得できませんでした。")
+        if target_mime_type != PDF_MIME:
+            raise ValueError("PDFへのショートカットのみ対応です。")
+        drive_file_id = target_id
+        file_meta = drive.service.files().get(
+            fileId=drive_file_id,
+            fields="id,name,mimeType",
+            supportsAllDrives=True,
+        ).execute()
+        original_name = file_meta.get("name", original_name)
+        mime_type = (file_meta.get("mimeType") or "").strip()
+
+    if mime_type != PDF_MIME:
         raise ValueError("PDF のみ対応です。Google ドキュメント形式はPDFにエクスポートしてから指定してください。")
 
     os.makedirs(dest_dir, exist_ok=True)
