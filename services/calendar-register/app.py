@@ -12,6 +12,7 @@ Google カレンダー一括登録アプリ
   パターン3: 時間なし → 終日イベント
 """
 
+import html
 import os
 import json
 import sys
@@ -23,11 +24,18 @@ from datetime import datetime, timedelta
 
 from flask import (
     Flask, render_template, request, jsonify,
-    redirect, url_for, session
+    redirect, url_for, session, make_response,
 )
 from flask_cors import CORS
 from dotenv import load_dotenv
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+from oauthlib.oauth2 import InsecureTransportError as OAuthInsecureTransportError
+from oauthlib.oauth2.rfc6749.errors import (
+    InvalidGrantError,
+    MismatchingStateError,
+    OAuth2Error,
+)
 
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
@@ -101,6 +109,8 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'calendar-register-dev-key')
 # Cloud Run: ロードバランサ経由で X-Forwarded-Proto=https が付与される。
 # これが無いと request.url が http のままになり、OAuth コード交換で redirect_uri 不一致になる。
 if os.environ.get('K_SERVICE'):
+    # コンソールで誤って付いていると oauthlib の https 判定が曖昧になる
+    os.environ.pop('OAUTHLIB_INSECURE_TRANSPORT', None)
     app.wsgi_app = ProxyFix(
         app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1
     )
@@ -108,6 +118,12 @@ if os.environ.get('K_SERVICE'):
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 CORS(app)
+
+
+def _html_response(body: str, status: int):
+    r = make_response(body, status)
+    r.headers['Content-Type'] = 'text/html; charset=utf-8'
+    return r
 
 
 # ─────────────────────────────────────────
@@ -433,9 +449,21 @@ def index():
 
 
 def _get_redirect_uri() -> str:
-    """リダイレクト URI を返す（環境変数 OAUTH_REDIRECT_URI 優先）"""
-    if os.environ.get('OAUTH_REDIRECT_URI'):
-        return os.environ['OAUTH_REDIRECT_URI']
+    """
+    Google に登録したリダイレクト URI と一致させる（トークン交換で完全一致が必要）。
+    リクエストコンテキスト必須（ルートハンドラからのみ呼ぶこと）。
+    """
+    explicit = (os.environ.get('OAUTH_REDIRECT_URI') or '').strip()
+    if explicit:
+        return explicit.split('?', 1)[0].rstrip('/')
+    if os.environ.get('K_SERVICE'):
+        # env 未設定時: Cloud Run の Host / X-Forwarded-Proto から組み立て
+        # （Google コンソールの「承認済みのリダイレクト URI」に同じ URL を登録すること）
+        raw_proto = (request.headers.get('X-Forwarded-Proto') or 'https').split(',')[0].strip()
+        proto = raw_proto if raw_proto in ('http', 'https') else 'https'
+        host = (request.headers.get('Host') or '').split(',')[0].strip()
+        if host:
+            return f'{proto}://{host}/auth/callback'.rstrip('/')
     port = int(os.environ.get('CALENDAR_REGISTER_PORT', 5003))
     return f'http://localhost:{port}/auth/callback'
 
@@ -470,7 +498,10 @@ def auth_login():
     ).rstrip(b'=').decode()
 
     flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        creds_data, scopes=SCOPES, redirect_uri=_get_redirect_uri()
+        creds_data,
+        scopes=SCOPES,
+        redirect_uri=_get_redirect_uri(),
+        autogenerate_code_verifier=False,
     )
     auth_url, state = flow.authorization_url(
         access_type='offline',
@@ -494,18 +525,19 @@ def auth_callback():
         app.logger.warning(
             'auth/callback: セッションに code_verifier なし（Cookie / セッション維持失敗）'
         )
-        return (
-            'ログインセッションが途切れています（Cookie がブロックされている、'
-            '別タブから開いた、前回のログインから時間が空きすぎた等）。'
-            '<a href="/auth/login">/auth/login から最初からやり直してください</a>。',
-            400,
+        body = (
+            '<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"></head><body>'
+            '<p>ログインセッションが途切れています（Cookie 阻止・別タブ・期限切れ等）。</p>'
+            '<p><a href="/auth/login">/auth/login からやり直す</a></p></body></html>'
         )
+        return _html_response(body, 400)
     try:
         flow = google_auth_oauthlib.flow.Flow.from_client_config(
             creds_data,
             scopes=SCOPES,
             state=session.get('oauth_state'),
-            redirect_uri=_get_redirect_uri()
+            redirect_uri=_get_redirect_uri(),
+            autogenerate_code_verifier=False,
         )
         flow.fetch_token(
             authorization_response=_authorization_response_url_for_token(),
@@ -513,13 +545,54 @@ def auth_callback():
         )
         _save_credentials(flow.credentials)
         return redirect(url_for('index'))
+    except MismatchingStateError as e:
+        app.logger.warning('OAuth state 不一致: %s', e)
+        d = html.escape(str(e))
+        body = (
+            f'<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"></head><body>'
+            f'<p>セキュリティ検証（state）に失敗しました。古いタブや複数回の戻る操作が原因のことがあります。</p><pre>{d}</pre>'
+            f'<p><a href="/auth/login">/auth/login からやり直す</a></p></body></html>'
+        )
+        return _html_response(body, 400)
+    except OAuthInsecureTransportError as e:
+        app.logger.error('OAuth InsecureTransport: %s redirect_uri=%s', e, _get_redirect_uri())
+        d = html.escape(str(e))
+        body = (
+            f'<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"></head><body>'
+            f'<p>コールバック URL の scheme が不正です（https である必要があります）。'
+            f'OAUTH_REDIRECT_URI または Cloud Run の Host を確認してください。</p>'
+            f'<pre>redirect_uri={html.escape(_get_redirect_uri())}\n{d}</pre>'
+            f'<p><a href="/auth/login">やり直す</a></p></body></html>'
+        )
+        return _html_response(body, 500)
+    except InvalidGrantError as e:
+        app.logger.warning('OAuth invalid_grant: %s', e)
+        d = html.escape(str(e))
+        body = (
+            f'<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"></head><body>'
+            f'<p>Google が認可コードを拒否しました（期限切れ・再利用・client_secret 誤り・'
+            f'redirect_uri と Google コンソールの登録不一致が多いです）。</p><pre>{d}</pre>'
+            f'<p><a href="/auth/login">/auth/login からやり直す</a></p></body></html>'
+        )
+        return _html_response(body, 400)
+    except OAuth2Error as e:
+        app.logger.exception('OAuth2 エラー: %s', e)
+        d = html.escape(str(e))
+        body = (
+            f'<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"></head><body>'
+            f'<p>OAuth エラー</p><pre>{d}</pre>'
+            f'<p><a href="/auth/login">やり直す</a></p></body></html>'
+        )
+        return _html_response(body, 500)
     except Exception as e:
         app.logger.exception('OAuth auth/callback 失敗: %s', e)
-        return (
-            'ログイン処理に失敗しました（サーバーログを確認してください）。'
-            ' Cloud Run ではリバースプロキシ経由の HTTPS 設定不整合がよくあります。',
-            500,
+        d = html.escape(f'{type(e).__name__}: {e}')
+        body = (
+            f'<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"></head><body>'
+            f'<p>ログイン処理に失敗しました。</p><pre>{d}</pre>'
+            f'<p><a href="/auth/login">やり直す</a></p></body></html>'
         )
+        return _html_response(body, 500)
 
 
 @app.route('/auth/logout')
