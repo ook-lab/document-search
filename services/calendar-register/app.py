@@ -103,6 +103,10 @@ SECRET_TOKEN      = 'calendar-register-token'
 if not os.environ.get('K_SERVICE'):
     os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
+# 同一 OAuth クライアントで Drive/Gmail 等のスコープが既に付与されていると、
+# トークン応答の scope が要求（calendar のみ）より広くなり oauthlib が Warning を raise する。
+os.environ.setdefault('OAUTHLIB_RELAX_TOKEN_SCOPE', '1')
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'calendar-register-dev-key')
 
