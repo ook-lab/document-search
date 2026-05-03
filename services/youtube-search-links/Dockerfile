@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/youtube-search-links/app.py .
 COPY services/youtube-search-links/fetch_urls.py .
+COPY services/youtube-search-links/fetch_web.py .
 COPY services/youtube-search-links/templates/ ./templates/
 
 ENV PORT=8080

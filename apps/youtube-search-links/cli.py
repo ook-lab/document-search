@@ -6,13 +6,21 @@ import argparse
 import sys
 
 from fetch_urls import fetch_youtube_search_urls, urls_as_text
+from fetch_web import fetch_web_search_urls
 
 
 def main() -> int:
     p = argparse.ArgumentParser(
-        description="YouTube 検索の上位から順に動画 URL をテキストで出力します。"
+        description="YouTube または Web（DuckDuckGo）検索の上位から URL を 1 行 1 本で出力します。"
     )
     p.add_argument("query", help="検索語（スペース区切りは引用で囲む）")
+    p.add_argument(
+        "-m",
+        "--mode",
+        choices=("youtube", "web"),
+        default="youtube",
+        help="youtube（既定）または web",
+    )
     p.add_argument(
         "-n",
         "--max-results",
@@ -23,7 +31,10 @@ def main() -> int:
     )
     args = p.parse_args()
     try:
-        urls = fetch_youtube_search_urls(args.query, args.max_results)
+        if args.mode == "web":
+            urls = fetch_web_search_urls(args.query, args.max_results)
+        else:
+            urls = fetch_youtube_search_urls(args.query, args.max_results)
     except RuntimeError as e:
         print(str(e), file=sys.stderr)
         return 1

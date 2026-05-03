@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>YouTube 検索 → URL 一覧</title>
+  <title>YouTube / Web 検索 → URL 一覧</title>
   <style>
     :root {
       font-family: "Segoe UI", system-ui, sans-serif;
@@ -27,6 +27,9 @@
     .row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
     .row .field { flex: 1; min-width: 200px; }
     .row .nfield { width: 6rem; }
+    .modes { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+    .modes label { font-weight: 500; margin-bottom: 0; display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+    .modes input[type="radio"] { margin: 0; }
     button {
       padding: 0.55rem 1rem; border: none; border-radius: 6px;
       font-size: 0.95rem; font-weight: 600; cursor: pointer;
@@ -44,12 +47,16 @@
   </style>
 </head>
 <body>
-  <h1>YouTube 検索 → URL 一覧</h1>
-  <p class="hint">検索結果の上位から順に、1 行 1 URL で表示します。NotebookLM などにそのまま貼り付けられます。</p>
+  <h1>YouTube / Web 検索 → URL 一覧</h1>
+  <p class="hint">どちらか一方を選び、検索結果の上位から 1 行 1 URL で出します。Web は DuckDuckGo 経由のため、Google 本家の並びとは一致しないことがあります。</p>
 
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
 
   <form method="post" action="/">
+    <div class="modes">
+      <label><input type="radio" name="search_mode" value="youtube" {% if search_mode == 'youtube' %}checked{% endif %} /> YouTube</label>
+      <label><input type="radio" name="search_mode" value="web" {% if search_mode == 'web' %}checked{% endif %} /> Web（DuckDuckGo）</label>
+    </div>
     <div class="row">
       <div class="field">
         <label for="query">検索語</label>

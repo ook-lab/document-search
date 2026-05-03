@@ -6,15 +6,23 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 from fetch_urls import fetch_youtube_search_urls, urls_as_text
+from fetch_web import fetch_web_search_urls
 
 
 def main() -> None:
     root = tk.Tk()
-    root.title("YouTube 検索 → URL 一覧")
+    root.title("YouTube / Web 検索 → URL 一覧")
     root.minsize(520, 400)
 
     frm = ttk.Frame(root, padding=10)
     frm.pack(fill=tk.BOTH, expand=True)
+
+    mode_var = tk.StringVar(value="youtube")
+    mode_row = ttk.Frame(frm)
+    mode_row.pack(fill=tk.X, pady=(0, 8))
+    ttk.Label(mode_row, text="検索先:").pack(side=tk.LEFT)
+    ttk.Radiobutton(mode_row, text="YouTube", variable=mode_var, value="youtube").pack(side=tk.LEFT, padx=(8, 12))
+    ttk.Radiobutton(mode_row, text="Web（DuckDuckGo）", variable=mode_var, value="web").pack(side=tk.LEFT)
 
     row1 = ttk.Frame(frm)
     row1.pack(fill=tk.X, pady=(0, 8))
@@ -54,14 +62,20 @@ def main() -> None:
         output.insert(tk.END, "取得中…")
         output.configure(state=tk.DISABLED)
         root.update_idletasks()
+        mode = mode_var.get()
         try:
-            urls = fetch_youtube_search_urls(q, n)
+            if mode == "web":
+                urls = fetch_web_search_urls(q, n)
+                empty_msg = "該当するページがありませんでした。"
+            else:
+                urls = fetch_youtube_search_urls(q, n)
+                empty_msg = "該当する動画がありませんでした。"
         except RuntimeError as e:
             messagebox.showerror("エラー", str(e) or "取得に失敗しました。")
             set_output("")
             return
         if not urls:
-            messagebox.showinfo("結果", "該当する動画がありませんでした。")
+            messagebox.showinfo("結果", empty_msg)
             set_output("")
             return
         set_output(urls_as_text(urls))
