@@ -12,6 +12,7 @@ from google.genai import types
 from werkzeug.utils import secure_filename
 from gemini_studio_key import google_ai_studio_api_key
 from google_drive_connector import GoogleDriveConnector
+from blueprints.drive_pdf import download_drive_pdf
 from supabase import create_client as _supabase_create_client
 
 def _get_supabase():
@@ -82,43 +83,18 @@ def load_from_drive():
         if not drive_file_id:
             return jsonify({'error': 'No drive_file_id provided'}), 400
 
-        drive = GoogleDriveConnector()
-        file_meta = drive.service.files().get(
-            fileId=drive_file_id, fields='name,mimeType', supportsAllDrives=True
-        ).execute()
-        original_name = file_meta.get('name', 'drive_file.pdf')
-        mime_type = (file_meta.get('mimeType') or '').strip()
-        if mime_type != 'application/pdf':
-            return jsonify(
-                {
-                    'error': 'PDF のみ対応です（Google ドキュメント形式は PDF にエクスポートしてからアップロードしてください）。'
-                }
-            ), 400
-
         file_id = str(uuid.uuid4())[:8]
-        base_fn = secure_filename(original_name) or 'document.pdf'
-        if not base_fn.lower().endswith('.pdf'):
-            base_fn = f'{base_fn}.pdf'
-        safe_filename = f'{file_id}_{base_fn}'
         upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'embedder')
-        os.makedirs(upload_dir, exist_ok=True)
+        loaded = download_drive_pdf(drive_file_id, upload_dir, prefix=file_id)
 
-        tmp_name = f'_dl_{uuid.uuid4().hex[:16]}_{base_fn}'
-        local_path = drive.download_file(drive_file_id, tmp_name, upload_dir)
-        final_path = os.path.join(upload_dir, safe_filename)
-        if os.path.abspath(local_path) != os.path.abspath(final_path):
-            if os.path.exists(final_path):
-                os.remove(final_path)
-            os.rename(local_path, final_path)
-
-        pages_info = _build_pages_info_for_embedder(final_path, file_id, upload_dir)
+        pages_info = _build_pages_info_for_embedder(loaded['path'], file_id, upload_dir)
 
         return jsonify(
             {
                 'success': True,
                 'file_id': file_id,
-                'safe_filename': safe_filename,
-                'filename': base_fn,
+                'safe_filename': loaded['safe_filename'],
+                'filename': loaded['filename'],
                 'pages': pages_info,
                 'drive_file_id': drive_file_id,
             }

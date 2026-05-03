@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 from google import genai
 from google.genai import types
 from gemini_studio_key import google_ai_studio_api_key
+from blueprints.drive_pdf import download_drive_pdf
 
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
@@ -44,6 +45,38 @@ def load_templates():
         return json.load(f)
 
 
+def _build_previews(pdf_path, pdf_id):
+    doc = fitz.open(pdf_path)
+    previews = []
+
+    preview_dir = os.path.join(current_app.config['STATIC_FOLDER'], 'previews', pdf_id)
+    os.makedirs(preview_dir, exist_ok=True)
+
+    try:
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            zoom = 2
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat)
+
+            img_name = f"page_{page_num}.png"
+            img_path = os.path.join(preview_dir, img_name)
+            pix.save(img_path)
+
+            previews.append({
+                "page_num": page_num,
+                "url": url_for('static', filename=f'previews/{pdf_id}/{img_name}'),
+                "width": pix.width,
+                "height": pix.height,
+                "page_width": page.rect.width,
+                "page_height": page.rect.height
+            })
+    finally:
+        doc.close()
+
+    return previews
+
+
 @ocr_bp.route('/')
 def index():
     templates = load_templates()
@@ -60,38 +93,33 @@ def upload_file():
     filename = str(uuid.uuid4()) + "_" + secure_filename(file.filename)
     pdf_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
     file.save(pdf_path)
-    
-    doc = fitz.open(pdf_path)
-    previews = []
-    
-    preview_dir = os.path.join(current_app.config['STATIC_FOLDER'], 'previews', filename)
-    os.makedirs(preview_dir, exist_ok=True)
-    
-    for page_num in range(len(doc)):
-        page = doc.load_page(page_num)
-        zoom = 2
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat)
-        
-        img_name = f"page_{page_num}.png"
-        img_path = os.path.join(preview_dir, img_name)
-        pix.save(img_path)
-        
-        previews.append({
-            "page_num": page_num,
-            "url": url_for('static', filename=f'previews/{filename}/{img_name}'),
-            "width": pix.width,
-            "height": pix.height,
-            "page_width": page.rect.width,
-            "page_height": page.rect.height
-        })
-        
-    doc.close()
+    previews = _build_previews(pdf_path, filename)
     
     return jsonify({
         "pdf_id": filename,
-        "previews": previews
+        "previews": previews,
+        "filename": file.filename
     })
+
+
+@ocr_bp.route('/load_from_drive', methods=['POST'])
+def load_from_drive():
+    try:
+        data = request.json or {}
+        token = str(uuid.uuid4())
+        loaded = download_drive_pdf(data.get('drive_file_id'), current_app.config['UPLOAD_FOLDER'], prefix=token)
+        previews = _build_previews(loaded['path'], loaded['safe_filename'])
+        return jsonify({
+            "pdf_id": loaded['safe_filename'],
+            "previews": previews,
+            "filename": loaded['filename'],
+            "drive_file_id": loaded['drive_file_id'],
+        })
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Drive load error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @ocr_bp.route('/run_ocr', methods=['POST'])
 def run_ocr():

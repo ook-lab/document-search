@@ -1,8 +1,9 @@
 import os
 import io
-from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for
+from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for, jsonify
 from werkzeug.utils import secure_filename
 from pypdf import PdfReader, PdfWriter
+from blueprints.drive_pdf import download_drive_pdf
 
 splitter_bp = Blueprint('splitter', __name__, template_folder='../templates')
 
@@ -58,3 +59,25 @@ def split_pdf():
         print(f"Error processing PDF: {e}")
         flash("PDFの処理中にエラーが発生しました。")
         return redirect(url_for('splitter.index'))
+
+
+@splitter_bp.route('/split_from_drive', methods=['POST'])
+def split_pdf_from_drive():
+    data = request.json or {}
+    try:
+        loaded = download_drive_pdf(data.get('drive_file_id'), os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads'))
+        order = data.get("order", "ltor")
+        with open(loaded['path'], 'rb') as fh:
+            out_stream = split_pdf_left_right(fh, order=order)
+        original_base = os.path.splitext(loaded['filename'])[0]
+        return send_file(
+            out_stream,
+            as_attachment=True,
+            download_name=f"{original_base}_split.pdf",
+            mimetype="application/pdf",
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print(f"Error processing Drive PDF: {e}")
+        return jsonify({"error": "PDFの処理中にエラーが発生しました。"}), 500

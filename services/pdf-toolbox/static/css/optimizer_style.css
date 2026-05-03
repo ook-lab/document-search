@@ -71,6 +71,23 @@ body {
     stroke: var(--accent-primary);
 }
 
+.source-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.source-actions input {
+    max-width: 240px;
+}
+
+.source-actions .btn {
+    width: auto;
+    white-space: nowrap;
+}
+
 .page-scroll {
     flex: 1;
     overflow-y: auto;

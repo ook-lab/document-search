@@ -71,7 +71,8 @@
         .file-name { display: block; margin-top: 1rem; font-weight: 500; color: var(--accent); word-break: break-all; }
         .form-group { margin-bottom: 1.5rem; }
         .label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
-        select {
+        select,
+        input[type="text"] {
             width: 100%;
             padding: 0.875rem 1rem;
             background: #fff;
@@ -84,7 +85,8 @@
             appearance: none;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
-        select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+        select:focus,
+        input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
         .btn-submit { width: 100%; background: var(--accent); color: white; border: none; padding: 1rem; border-radius: 10px; font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 4px 6px -1px rgba(59,130,246,0.3); }
         .btn-submit:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 10px 15px -3px rgba(59,130,246,0.4); }
         .btn-submit:active { transform: translateY(0); }
@@ -125,8 +127,20 @@
                     <div class="loading" id="loading-spinner"></div>
                 </button>
             </form>
+            <div class="form-group" style="margin-top: 1.5rem;">
+                <label class="label">Google Driveから読み込み</label>
+                <input type="text" id="drive-file-id" placeholder="Google Drive File ID">
+            </div>
+            <button type="button" class="btn-submit" id="drive-pick-btn" style="margin-bottom: 0.75rem; background: #64748b;">
+                DriveからPDFを選択
+            </button>
+            <button type="button" class="btn-submit" id="drive-submit-btn">
+                Drive PDFを分割する
+                <div class="loading" id="drive-loading-spinner"></div>
+            </button>
         </div>
     </div>
+    <script src="/static/js/drive_picker.js"></script>
     <script>
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
@@ -134,6 +148,10 @@
         const submitBtn = document.getElementById('submit-btn');
         const form = document.getElementById('upload-form');
         const loadingSpinner = document.getElementById('loading-spinner');
+        const driveFileId = document.getElementById('drive-file-id');
+        const driveSubmitBtn = document.getElementById('drive-submit-btn');
+        const drivePickBtn = document.getElementById('drive-pick-btn');
+        const driveLoadingSpinner = document.getElementById('drive-loading-spinner');
         ['dragenter','dragover','dragleave','drop'].forEach(e => { dropZone.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }); document.body.addEventListener(e, ev => { ev.preventDefault(); ev.stopPropagation(); }); });
         ['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, () => dropZone.classList.add('dragover')));
         ['dragleave','drop'].forEach(e => dropZone.addEventListener(e, () => dropZone.classList.remove('dragover')));
@@ -159,6 +177,48 @@
             submitBtn.childNodes[0].textContent = '処理中... ';
             loadingSpinner.style.display = 'block';
             setTimeout(() => { submitBtn.disabled = false; submitBtn.childNodes[0].textContent = '処理を開始する '; loadingSpinner.style.display = 'none'; }, 3000);
+        });
+        drivePickBtn.addEventListener('click', () => {
+            window.openDrivePicker(item => {
+                driveFileId.value = item.id;
+                driveSubmitBtn.click();
+            });
+        });
+        driveSubmitBtn.addEventListener('click', async () => {
+            const id = driveFileId.value.trim();
+            if (!id) { alert('Google Drive File ID を入力してください。'); return; }
+            driveSubmitBtn.disabled = true;
+            driveSubmitBtn.childNodes[0].textContent = '処理中... ';
+            driveLoadingSpinner.style.display = 'block';
+            try {
+                const response = await fetch('/splitter/split_from_drive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ drive_file_id: id, order: document.getElementById('order').value })
+                });
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.error || 'Drive PDFの分割に失敗しました。');
+                }
+                const blob = await response.blob();
+                const disposition = response.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                const filename = match ? match[1] : 'split.pdf';
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert(err.message);
+            } finally {
+                driveSubmitBtn.disabled = false;
+                driveSubmitBtn.childNodes[0].textContent = 'Drive PDFを分割する ';
+                driveLoadingSpinner.style.display = 'none';
+            }
         });
     </script>
 </body>

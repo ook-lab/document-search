@@ -17,7 +17,12 @@
                     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"></path></svg>
                     <span>ページ見出し付与ツール</span>
                 </div>
-                <button id="upload-btn" class="btn btn-primary">PDFアップロード</button>
+                <div class="source-actions">
+                    <input type="text" id="drive-file-id" placeholder="Google Drive File ID">
+                    <button id="drive-pick-btn" class="btn btn-secondary">Driveから選択</button>
+                    <button id="drive-load-btn" class="btn btn-secondary">Drive読込</button>
+                    <button id="upload-btn" class="btn btn-primary">PDFアップロード</button>
+                </div>
                 <input type="file" id="file-input" accept="application/pdf" style="display:none;">
             </div>
             <div class="page-scroll" id="page-scroll">
@@ -103,6 +108,7 @@
         </main>
     </div>
 
+    <script src="/static/js/drive_picker.js"></script>
     <script>
     const API = '/labeler';
     let pdfDoc = null;
@@ -120,6 +126,13 @@
 
         document.getElementById('upload-btn').addEventListener('click', () => document.getElementById('file-input').click());
         document.getElementById('file-input').addEventListener('change', handleUpload);
+        document.getElementById('drive-pick-btn').addEventListener('click', () => {
+            window.openDrivePicker(item => {
+                document.getElementById('drive-file-id').value = item.id;
+                handleDriveLoad();
+            });
+        });
+        document.getElementById('drive-load-btn').addEventListener('click', handleDriveLoad);
         document.getElementById('apply-current-btn').addEventListener('click', applyCurrentLabel);
         document.getElementById('apply-all-btn').addEventListener('click', applyAllLabels);
         document.getElementById('save-btn').addEventListener('click', saveAndDownload);
@@ -154,19 +167,49 @@
             const response = await fetch(`${API}/upload`, { method: 'POST', body: formData });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || 'Upload failed');
-            currentFileId = data.file_id;
-            originalFilename = data.filename || file.name;
-            document.getElementById('output-filename').value = '';
-            document.getElementById('output-filename').placeholder = originalFilename;
-            document.getElementById('page-label-input').value = '';
-            renderLabelList();
-            await loadPDF(`${API}/files/${currentFileId}`);
+            await applyLoadedFile(data, file.name);
         } catch (error) {
             console.error(error);
             alert(`アップロードに失敗しました: ${error.message}`);
         } finally {
             hideLoading();
         }
+    }
+
+    async function handleDriveLoad() {
+        const driveFileId = document.getElementById('drive-file-id').value.trim();
+        if (!driveFileId) {
+            alert('Google Drive File ID を入力してください。');
+            return;
+        }
+        showLoading('Google DriveからPDFを読み込み中...');
+        Object.keys(labels).forEach(key => delete labels[key]);
+        currentPageIndex = -1;
+        try {
+            const response = await fetch(`${API}/load_from_drive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drive_file_id: driveFileId })
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Drive load failed');
+            await applyLoadedFile(data, data.filename);
+        } catch (error) {
+            console.error(error);
+            alert(`Drive読み込みに失敗しました: ${error.message}`);
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function applyLoadedFile(data, fallbackName) {
+        currentFileId = data.file_id;
+        originalFilename = data.filename || fallbackName || 'document.pdf';
+        document.getElementById('output-filename').value = '';
+        document.getElementById('output-filename').placeholder = originalFilename;
+        document.getElementById('page-label-input').value = '';
+        renderLabelList();
+        await loadPDF(`${API}/files/${currentFileId}`);
     }
 
     async function loadPDF(url) {

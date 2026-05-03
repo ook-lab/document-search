@@ -32,6 +32,7 @@ def create_app():
     from blueprints.pdf_splitter import splitter_bp
     from blueprints.pdf_optimizer import optimizer_bp
     from blueprints.page_labeler import labeler_bp
+    from blueprints.drive_browser import drive_browser_bp
     from blueprints.shell import shell_bp
 
     app.register_blueprint(shell_bp)
@@ -40,6 +41,7 @@ def create_app():
     app.register_blueprint(splitter_bp, url_prefix='/splitter')
     app.register_blueprint(optimizer_bp, url_prefix='/optimizer')
     app.register_blueprint(labeler_bp, url_prefix='/labeler')
+    app.register_blueprint(drive_browser_bp, url_prefix='/drive')
 
     return app
 

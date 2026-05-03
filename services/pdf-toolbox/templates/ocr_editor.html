@@ -18,6 +18,9 @@
                 {% endfor %}
             </select>
             <button id="editTemplateBtn" class="btn secondary">⚙️ テンプレート管理</button>
+            <input type="text" id="driveFileId" placeholder="Google Drive File ID" style="margin-left:10px; padding:6px; border:1px solid #ccc; border-radius:4px; min-width:200px;">
+            <button id="drivePickBtn" class="btn secondary">Driveから選択</button>
+            <button id="driveLoadBtn" class="btn secondary">Drive読込</button>
             <input type="file" id="pdfUpload" accept="application/pdf" hidden>
             <button id="uploadBtn" class="btn primary">PDFを選択</button>
             <input type="text" id="outputFilename" placeholder="保存ファイル名" style="margin-left:10px; padding:6px; border:1px solid #ccc; border-radius:4px; min-width:200px;">
@@ -87,6 +90,7 @@
     </div>
 
     <div id="notification" class="hidden"></div>
+    <script src="/static/js/drive_picker.js"></script>
     <script>
     // All API calls prefixed with /ocr/
     const API_PREFIX = '/ocr';
@@ -115,11 +119,21 @@
         saveTemplateBtn: document.getElementById('saveTemplateBtn'),
         closeModal: document.getElementById('closeModal'),
         outputFilename: document.getElementById('outputFilename'),
-        generateFilenameBtn: document.getElementById('generateFilenameBtn')
+        generateFilenameBtn: document.getElementById('generateFilenameBtn'),
+        driveFileId: document.getElementById('driveFileId'),
+        driveLoadBtn: document.getElementById('driveLoadBtn'),
+        drivePickBtn: document.getElementById('drivePickBtn')
     };
 
     elements.uploadBtn.addEventListener('click', () => elements.pdfUpload.click());
     elements.pdfUpload.addEventListener('change', uploadPdf);
+    elements.drivePickBtn.addEventListener('click', () => {
+        window.openDrivePicker(item => {
+            elements.driveFileId.value = item.id;
+            loadFromDrive();
+        });
+    });
+    elements.driveLoadBtn.addEventListener('click', loadFromDrive);
     elements.savePdfBtn.addEventListener('click', saveSearchablePdf);
     elements.generateFilenameBtn.addEventListener('click', async () => {
         let allText = [];
@@ -159,13 +173,36 @@
             const response = await fetch(`${API_PREFIX}/upload`, { method: 'POST', body: formData });
             const data = await response.json();
             if (data.error) throw new Error(data.error);
-            currentPdfId = data.pdf_id;
-            currentPreviews = data.previews;
-            renderPageList();
-            loadPage(0);
-            elements.sidebar.classList.remove('hidden');
+            applyLoadedPdf(data);
         } catch (err) { showNotification("エラー: " + err.message); }
         finally { showLoading(false); }
+    }
+
+    async function loadFromDrive() {
+        const driveFileId = elements.driveFileId.value.trim();
+        if (!driveFileId) { showNotification("Google Drive File ID を入力してください。"); return; }
+        showLoading(true, "Google DriveからPDFを読み込み中...");
+        try {
+            const response = await fetch(`${API_PREFIX}/load_from_drive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drive_file_id: driveFileId })
+            });
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            applyLoadedPdf(data);
+        } catch (err) { showNotification("エラー: " + err.message); }
+        finally { showLoading(false); }
+    }
+
+    function applyLoadedPdf(data) {
+        currentPdfId = data.pdf_id;
+        currentPreviews = data.previews;
+        allOcrData = {};
+        elements.outputFilename.value = data.filename ? data.filename.replace(/\.pdf$/i, '') : '';
+        renderPageList();
+        loadPage(0);
+        elements.sidebar.classList.remove('hidden');
     }
 
     function renderPageList() {

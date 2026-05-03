@@ -10,6 +10,7 @@ import requests
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app
 
 from gemini_studio_key import google_ai_studio_api_key
+from blueprints.drive_pdf import download_drive_pdf
 
 optimizer_bp = Blueprint('optimizer', __name__, template_folder='../templates')
 
@@ -202,6 +203,21 @@ def upload():
     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], f"{file_id}.pdf")
     file.save(filepath)
     return jsonify({'file_id': file_id, 'filename': file.filename})
+
+
+@optimizer_bp.route('/load_from_drive', methods=['POST'])
+def load_from_drive():
+    try:
+        data = request.json or {}
+        file_id = str(uuid.uuid4())
+        loaded = download_drive_pdf(data.get('drive_file_id'), current_app.config['UPLOAD_FOLDER'], prefix=file_id)
+        os.replace(loaded['path'], os.path.join(current_app.config['UPLOAD_FOLDER'], f"{file_id}.pdf"))
+        return jsonify({'file_id': file_id, 'filename': loaded['filename'], 'drive_file_id': loaded['drive_file_id']})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Drive load error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @optimizer_bp.route('/files/<file_id>')
 def serve_file(file_id):
