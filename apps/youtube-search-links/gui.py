@@ -35,7 +35,7 @@ def main() -> None:
     row2.pack(fill=tk.X, pady=(0, 8))
     ttk.Label(row2, text="件数:").pack(side=tk.LEFT)
     count_var = tk.StringVar(value="20")
-    spin = ttk.Spinbox(row2, from_=1, to=50, width=6, textvariable=count_var)
+    spin = ttk.Spinbox(row2, from_=1, to=200, width=6, textvariable=count_var)
     spin.pack(side=tk.LEFT, padx=(8, 16))
 
     output = scrolledtext.ScrolledText(frm, height=18, wrap=tk.NONE, font=("Consolas", 10))
@@ -55,7 +55,7 @@ def main() -> None:
         try:
             n = int(count_var.get().strip())
         except ValueError:
-            messagebox.showerror("入力", "件数は 1〜50 の整数にしてください。")
+            messagebox.showerror("入力", "件数は 1〜200 の整数にしてください。")
             return
         output.configure(state=tk.NORMAL)
         output.delete("1.0", tk.END)

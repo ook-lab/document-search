@@ -27,7 +27,7 @@ def main() -> int:
         type=int,
         default=20,
         metavar="N",
-        help="取得する最大件数（1〜50、既定 20）",
+        help="取得する最大件数（1〜200、既定 20）",
     )
     args = p.parse_args()
     try:

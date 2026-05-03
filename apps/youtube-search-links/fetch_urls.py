@@ -12,7 +12,7 @@ def fetch_youtube_search_urls(query: str, max_results: int = 20) -> List[str]:
     q = (query or "").strip()
     if not q:
         return []
-    n = max(1, min(int(max_results), 50))
+    n = max(1, min(int(max_results), 200))
     search = f"ytsearch{n}:{q}"
     cmd = [
         sys.executable,
