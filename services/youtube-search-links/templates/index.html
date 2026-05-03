@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>YouTube / Web 検索 → URL 一覧</title>
+  <title>YouTube / Web → URL 一覧</title>
   <style>
     :root {
       font-family: "Segoe UI", system-ui, sans-serif;
@@ -11,11 +11,11 @@
       color: #1a1a1a;
       background: #f6f7f9;
     }
-    body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    body { max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
     h1 { font-size: 1.35rem; font-weight: 600; margin-bottom: 0.5rem; }
     p.hint { color: #555; font-size: 0.9rem; margin-top: 0; margin-bottom: 1.25rem; }
     label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
-    input[type="text"], input[type="number"], textarea {
+    input[type="text"], input[type="url"], input[type="number"], input[type="date"], textarea {
       width: 100%; box-sizing: border-box;
       padding: 0.5rem 0.65rem; border: 1px solid #c8cdd3; border-radius: 6px;
       font-size: 1rem;
@@ -27,9 +27,15 @@
     .row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
     .row .field { flex: 1; min-width: 200px; }
     .row .nfield { width: 6rem; }
-    .modes { display: flex; gap: 1.25rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-    .modes label { font-weight: 500; margin-bottom: 0; display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
-    .modes input[type="radio"] { margin: 0; }
+    .modes, .submodes, .order-row {
+      display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem;
+    }
+    .modes label, .submodes label, .order-row label {
+      font-weight: 500; margin-bottom: 0; display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;
+    }
+    .modes input[type="radio"], .submodes input[type="radio"], .order-row input[type="radio"] { margin: 0; }
+    fieldset.optional-block { border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.75rem 1rem 1rem; margin-bottom: 1rem; background: #fff; }
+    fieldset.optional-block legend { font-size: 0.8rem; font-weight: 600; color: #64748b; padding: 0 0.35rem; }
     button {
       padding: 0.55rem 1rem; border: none; border-radius: 6px;
       font-size: 0.95rem; font-weight: 600; cursor: pointer;
@@ -44,29 +50,68 @@
       border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;
     }
     .ok { color: #1b5e20; font-size: 0.85rem; min-height: 1.25rem; margin-top: 0.35rem; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <h1>YouTube / Web 検索 → URL 一覧</h1>
-  <p class="hint">どちらか一方を選び、検索結果の上位から 1 行 1 URL で出します。Web は DuckDuckGo 経由のため、Google 本家の並びとは一致しないことがあります。</p>
+  <h1>YouTube / Web → URL 一覧</h1>
+  <p class="hint">NotebookLM 用に 1 行 1 URL。YouTube はキーワード検索・チャンネル（動画タブ）・再生リストに対応。チャンネルは <code>@handle</code> や channel ID の URL 可（自動で /videos を補います）。期間はアップロード日が指定期間に入る動画だけを対象にします（件数が足りない場合は最大 2000 本まで走査）。Web は DuckDuckGo 経由です。</p>
 
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
 
-  <form method="post" action="/">
+  <form method="post" action="/" id="mainform">
     <div class="modes">
       <label><input type="radio" name="search_mode" value="youtube" {% if search_mode == 'youtube' %}checked{% endif %} /> YouTube</label>
       <label><input type="radio" name="search_mode" value="web" {% if search_mode == 'web' %}checked{% endif %} /> Web（DuckDuckGo）</label>
     </div>
-    <div class="row">
+
+    <div id="youtube_sub_wrap" class="submodes">
+      <span style="font-size:0.85rem;font-weight:600;color:#64748b;">取得方法</span>
+      <label><input type="radio" name="youtube_source" value="search" {% if youtube_source == 'search' %}checked{% endif %} /> キーワード検索</label>
+      <label><input type="radio" name="youtube_source" value="channel" {% if youtube_source == 'channel' %}checked{% endif %} /> チャンネル URL</label>
+      <label><input type="radio" name="youtube_source" value="playlist" {% if youtube_source == 'playlist' %}checked{% endif %} /> 再生リスト URL</label>
+    </div>
+
+    <div class="row" id="row_query">
       <div class="field">
-        <label for="query">検索語</label>
-        <input id="query" name="query" type="text" value="{{ query }}" autocomplete="off" required />
+        <label for="query">検索語（YouTube 検索 / Web）</label>
+        <input id="query" name="query" type="text" value="{{ query }}" autocomplete="off" />
       </div>
+    </div>
+
+    <div class="row" id="row_count">
       <div class="nfield">
         <label for="max_results">件数</label>
         <input id="max_results" name="max_results" type="number" min="1" max="200" value="{{ max_results }}" />
       </div>
     </div>
+
+    <div class="row hidden" id="row_source">
+      <div class="field">
+        <label for="source_url">チャンネルまたは再生リストの URL</label>
+        <input id="source_url" name="source_url" type="url" inputmode="url" placeholder="https://www.youtube.com/@… または playlist?list=…" value="{{ source_url }}" />
+      </div>
+    </div>
+
+    <fieldset class="optional-block hidden" id="fieldset_channel_opts">
+      <legend>チャンネル / 再生リストのオプション</legend>
+      <div class="row" style="margin-bottom:0.5rem;">
+        <div class="field">
+          <label for="date_from">開始日（アップロード日・任意）</label>
+          <input id="date_from" name="date_from" type="date" value="{{ date_from }}" />
+        </div>
+        <div class="field">
+          <label for="date_to">終了日（任意）</label>
+          <input id="date_to" name="date_to" type="date" value="{{ date_to }}" />
+        </div>
+      </div>
+      <div class="order-row" style="margin-bottom:0;">
+        <span style="font-size:0.85rem;font-weight:600;color:#475569;">並び</span>
+        <label><input type="radio" name="yt_order" value="newest" {% if yt_order == 'newest' %}checked{% endif %} /> 新しい動画を先頭 <span style="font-weight:400;color:#64748b;">（yt-dlp の playlist-reverse）</span></label>
+        <label><input type="radio" name="yt_order" value="original" {% if yt_order == 'original' %}checked{% endif %} /> 一覧の元の順のまま</label>
+      </div>
+    </fieldset>
+
     <button type="submit" class="primary">取得</button>
   </form>
 
@@ -81,11 +126,45 @@
 
   <script>
     (function () {
+      function syncForm() {
+        var sm = (document.querySelector('input[name="search_mode"]:checked') || {}).value || 'youtube';
+        var ytSrc = (document.querySelector('input[name="youtube_source"]:checked') || {}).value || 'search';
+        var sub = document.getElementById('youtube_sub_wrap');
+        var rowQ = document.getElementById('row_query');
+        var rowCount = document.getElementById('row_count');
+        var rowS = document.getElementById('row_source');
+        var fset = document.getElementById('fieldset_channel_opts');
+
+        if (sm === 'web') {
+          sub.classList.add('hidden');
+          rowS.classList.add('hidden');
+          fset.classList.add('hidden');
+          rowQ.classList.remove('hidden');
+          rowCount.classList.remove('hidden');
+        } else {
+          sub.classList.remove('hidden');
+          rowCount.classList.remove('hidden');
+          if (ytSrc === 'search') {
+            rowQ.classList.remove('hidden');
+            rowS.classList.add('hidden');
+            fset.classList.add('hidden');
+          } else {
+            rowS.classList.remove('hidden');
+            fset.classList.remove('hidden');
+            rowQ.classList.add('hidden');
+          }
+        }
+      }
+
+      document.querySelectorAll('input[name="search_mode"], input[name="youtube_source"]').forEach(function (el) {
+        el.addEventListener('change', syncForm);
+      });
+      syncForm();
+
       var out = document.getElementById("out");
       var btn = document.getElementById("copyBtn");
       var st = document.getElementById("copyStatus");
-      if (!btn || !out) return;
-      btn.addEventListener("click", function () {
+      if (btn && out) btn.addEventListener("click", function () {
         var t = out.value.trim();
         if (!t) { st.textContent = "コピーする内容がありません。"; return; }
         navigator.clipboard.writeText(t).then(function () {

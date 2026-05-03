@@ -23,7 +23,7 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--timeout=300'
+      - '--timeout=600'
       - '--memory=512Mi'
       - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
 

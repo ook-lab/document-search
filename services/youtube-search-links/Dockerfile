@@ -11,4 +11,4 @@ COPY services/youtube-search-links/fetch_web.py .
 COPY services/youtube-search-links/templates/ ./templates/
 
 ENV PORT=8080
-CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 300 app:app
+CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 600 app:app
