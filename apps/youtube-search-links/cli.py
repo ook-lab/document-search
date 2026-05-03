@@ -6,6 +6,8 @@ import argparse
 import sys
 
 from fetch_urls import (
+    effective_web_period,
+    effective_youtube_upload_dates,
     fetch_youtube_flat_urls,
     fetch_youtube_search_urls,
     normalize_channel_videos_url,
@@ -46,30 +48,66 @@ def main() -> int:
         metavar="N",
         help="最大件数（1〜200、既定 20）",
     )
-    p.add_argument("--date-after", dest="date_after", default=None, metavar="YYYY-MM-DD", help="アップロード日・以降（任意）")
-    p.add_argument("--date-before", dest="date_before", default=None, metavar="YYYY-MM-DD", help="アップロード日・以前（任意）")
+    p.add_argument(
+        "--date-after",
+        dest="date_after",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="開始日（任意）",
+    )
+    p.add_argument(
+        "--date-before",
+        dest="date_before",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="終了日（任意）",
+    )
+    p.add_argument(
+        "--period",
+        choices=("d", "w", "m", "y"),
+        default=None,
+        help="日付未指定時のみ有効：ざっくり期間（Web=timelimit、YouTube=おおよその公開日）",
+    )
     p.add_argument(
         "--order",
         choices=("newest", "original"),
         default="newest",
-        help="チャンネル・再生リストの並び（既定: newest = playlist-reverse）",
+        help="チャンネル・再生リストの並び（既定: newest）",
     )
     args = p.parse_args()
 
     rev = args.order == "newest"
+    yt_df, yt_dt = effective_youtube_upload_dates(
+        args.date_after, args.date_before, args.period
+    )
+    web_da, web_db, web_tl = effective_web_period(
+        args.date_after, args.date_before, args.period
+    )
+
     try:
         if args.mode == "web":
             q = (args.query or "").strip()
             if not q:
                 print("検索語を指定してください。", file=sys.stderr)
                 return 2
-            urls = fetch_web_search_urls(q, args.max_results)
+            urls = fetch_web_search_urls(
+                q,
+                args.max_results,
+                timelimit=web_tl,
+                date_after=web_da,
+                date_before=web_db,
+            )
         elif args.mode == "youtube-search":
             q = (args.query or "").strip()
             if not q:
                 print("検索語を指定してください。", file=sys.stderr)
                 return 2
-            urls = fetch_youtube_search_urls(q, args.max_results)
+            urls = fetch_youtube_search_urls(
+                q,
+                args.max_results,
+                dateafter=yt_df,
+                datebefore=yt_dt,
+            )
         elif args.mode == "youtube-channel":
             u = (args.source_url or "").strip()
             if not u:
@@ -79,8 +117,8 @@ def main() -> int:
             urls = fetch_youtube_flat_urls(
                 ch,
                 args.max_results,
-                dateafter=args.date_after,
-                datebefore=args.date_before,
+                dateafter=yt_df,
+                datebefore=yt_dt,
                 playlist_reverse=rev,
             )
         else:
@@ -91,8 +129,8 @@ def main() -> int:
             urls = fetch_youtube_flat_urls(
                 u,
                 args.max_results,
-                dateafter=args.date_after,
-                datebefore=args.date_before,
+                dateafter=yt_df,
+                datebefore=yt_dt,
                 playlist_reverse=rev,
             )
     except RuntimeError as e:

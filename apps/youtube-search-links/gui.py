@@ -6,6 +6,8 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 from fetch_urls import (
+    effective_web_period,
+    effective_youtube_upload_dates,
     fetch_youtube_flat_urls,
     fetch_youtube_search_urls,
     normalize_channel_videos_url,
@@ -13,11 +15,14 @@ from fetch_urls import (
 )
 from fetch_web import fetch_web_search_urls
 
+_PRESET_LABELS = ("なし", "直近24h", "1週間", "1ヶ月", "1年")
+_PRESET_CODES = ("", "d", "w", "m", "y")
+
 
 def main() -> None:
     root = tk.Tk()
     root.title("YouTube / Web → URL 一覧")
-    root.minsize(560, 520)
+    root.minsize(560, 560)
 
     frm = ttk.Frame(root, padding=10)
     frm.pack(fill=tk.BOTH, expand=True)
@@ -51,22 +56,34 @@ def main() -> None:
     url_entry = ttk.Entry(row1b, textvariable=url_var, width=52)
     url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
-    opts = ttk.LabelFrame(frm, text="チャンネル・再生リスト用（任意）", padding=8)
-    opts.pack(fill=tk.X, pady=(0, 6))
-    orow = ttk.Frame(opts)
-    orow.pack(fill=tk.X, pady=(0, 4))
-    ttk.Label(orow, text="開始日 YYYY-MM-DD:").pack(side=tk.LEFT)
+    period_frm = ttk.LabelFrame(frm, text="期間（任意・検索語/全YouTubeモード/Web 共通）", padding=8)
+    period_frm.pack(fill=tk.X, pady=(0, 6))
+    prow0 = ttk.Frame(period_frm)
+    prow0.pack(fill=tk.X, pady=(0, 4))
+    ttk.Label(prow0, text="プリセット:").pack(side=tk.LEFT)
+    preset_cb = ttk.Combobox(
+        prow0, values=_PRESET_LABELS, width=16, state="readonly"
+    )
+    preset_cb.set(_PRESET_LABELS[0])
+    preset_cb.pack(side=tk.LEFT, padx=(6, 0))
+    prow1 = ttk.Frame(period_frm)
+    prow1.pack(fill=tk.X)
+    ttk.Label(prow1, text="開始日:").pack(side=tk.LEFT)
     date_from_var = tk.StringVar()
-    ttk.Entry(orow, textvariable=date_from_var, width=12).pack(side=tk.LEFT, padx=(6, 16))
-    ttk.Label(orow, text="終了日:").pack(side=tk.LEFT)
+    ttk.Entry(prow1, textvariable=date_from_var, width=12).pack(side=tk.LEFT, padx=(6, 12))
+    ttk.Label(prow1, text="終了日:").pack(side=tk.LEFT)
     date_to_var = tk.StringVar()
-    ttk.Entry(orow, textvariable=date_to_var, width=12).pack(side=tk.LEFT, padx=(6, 0))
+    ttk.Entry(prow1, textvariable=date_to_var, width=12).pack(side=tk.LEFT, padx=(6, 0))
 
+    order_frm = ttk.LabelFrame(frm, text="チャンネル・リストの並び（キーワード/Web では無効）", padding=8)
+    order_frm.pack(fill=tk.X, pady=(0, 6))
     order_var = tk.StringVar(value="newest")
-    orow2 = ttk.Frame(opts)
+    orow2 = ttk.Frame(order_frm)
     orow2.pack(fill=tk.X)
     ttk.Label(orow2, text="並び:").pack(side=tk.LEFT)
-    ttk.Radiobutton(orow2, text="新しい動画を先頭", variable=order_var, value="newest").pack(side=tk.LEFT, padx=(8, 12))
+    ttk.Radiobutton(orow2, text="新しい動画を先頭", variable=order_var, value="newest").pack(
+        side=tk.LEFT, padx=(8, 12)
+    )
     ttk.Radiobutton(orow2, text="元の順", variable=order_var, value="original").pack(side=tk.LEFT)
 
     row2 = ttk.Frame(frm)
@@ -76,7 +93,7 @@ def main() -> None:
     spin = ttk.Spinbox(row2, from_=1, to=200, width=6, textvariable=count_var)
     spin.pack(side=tk.LEFT, padx=(8, 16))
 
-    output = scrolledtext.ScrolledText(frm, height=16, wrap=tk.NONE, font=("Consolas", 10))
+    output = scrolledtext.ScrolledText(frm, height=14, wrap=tk.NONE, font=("Consolas", 10))
     output.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
     def set_output(lines: str) -> None:
@@ -85,60 +102,44 @@ def main() -> None:
         output.insert(tk.END, lines)
         output.configure(state=tk.DISABLED)
 
+    def _set_state_recursive(widget: tk.Widget, state: str) -> None:
+        try:
+            widget.configure(state=state)
+        except tk.TclError:
+            pass
+        for c in widget.winfo_children():
+            _set_state_recursive(c, state)
+
     def sync_widgets(*_a: object) -> None:
         tm = top_mode.get()
         yk = yt_kind.get()
         if tm == "web":
-            for child in yt_frame.winfo_children():
-                try:
-                    child.configure(state="disabled")
-                except tk.TclError:
-                    pass
+            _set_state_recursive(yt_frame, "disabled")
             query_entry.configure(state="normal")
             url_entry.configure(state="disabled")
-            for child in opts.winfo_children():
-                for c in child.winfo_children():
-                    try:
-                        c.configure(state="disabled")
-                    except tk.TclError:
-                        pass
-                try:
-                    child.configure(state="disabled")
-                except tk.TclError:
-                    pass
+            _set_state_recursive(period_frm, "normal")
+            _set_state_recursive(order_frm, "disabled")
         else:
-            for child in yt_frame.winfo_children():
-                try:
-                    child.configure(state="normal")
-                except tk.TclError:
-                    pass
+            _set_state_recursive(yt_frame, "normal")
+            _set_state_recursive(period_frm, "normal")
             url_entry.configure(state="normal")
-            for child in opts.winfo_children():
-                try:
-                    child.configure(state="normal")
-                except tk.TclError:
-                    pass
-                for c in child.winfo_children():
-                    try:
-                        c.configure(state="normal")
-                    except tk.TclError:
-                        pass
             if yk == "search":
                 query_entry.configure(state="normal")
                 url_entry.configure(state="disabled")
-                for child in opts.winfo_children():
-                    for c in child.winfo_children():
-                        try:
-                            c.configure(state="disabled")
-                        except tk.TclError:
-                            pass
-                    try:
-                        child.configure(state="disabled")
-                    except tk.TclError:
-                        pass
+                _set_state_recursive(order_frm, "disabled")
             else:
                 query_entry.configure(state="disabled")
                 url_entry.configure(state="normal")
+                _set_state_recursive(order_frm, "normal")
+        preset_cb.configure(state="readonly")
+
+    def _preset_code() -> str:
+        label = preset_cb.get()
+        try:
+            i = _PRESET_LABELS.index(label)
+            return _PRESET_CODES[i]
+        except ValueError:
+            return ""
 
     def on_search() -> None:
         try:
@@ -152,8 +153,11 @@ def main() -> None:
         output.configure(state=tk.DISABLED)
         root.update_idletasks()
         rev = order_var.get() == "newest"
-        da = date_from_var.get().strip() or None
-        db = date_to_var.get().strip() or None
+        df = date_from_var.get().strip()
+        dt = date_to_var.get().strip()
+        pcode = _preset_code()
+        yt_df, yt_dt = effective_youtube_upload_dates(df, dt, pcode)
+        web_da, web_db, web_tl = effective_web_period(df, dt, pcode)
         try:
             if top_mode.get() == "web":
                 q = query_var.get().strip()
@@ -161,7 +165,9 @@ def main() -> None:
                     messagebox.showinfo("入力", "検索語を入力してください。")
                     set_output("")
                     return
-                urls = fetch_web_search_urls(q, n)
+                urls = fetch_web_search_urls(
+                    q, n, timelimit=web_tl, date_after=web_da, date_before=web_db
+                )
                 empty_msg = "該当するページがありませんでした。"
             else:
                 yk = yt_kind.get()
@@ -171,7 +177,9 @@ def main() -> None:
                         messagebox.showinfo("入力", "検索語を入力してください。")
                         set_output("")
                         return
-                    urls = fetch_youtube_search_urls(q, n)
+                    urls = fetch_youtube_search_urls(
+                        q, n, dateafter=yt_df, datebefore=yt_dt
+                    )
                     empty_msg = "該当する動画がありませんでした。"
                 elif yk == "channel":
                     u = url_var.get().strip()
@@ -181,7 +189,11 @@ def main() -> None:
                         return
                     ch = normalize_channel_videos_url(u)
                     urls = fetch_youtube_flat_urls(
-                        ch, n, dateafter=da, datebefore=db, playlist_reverse=rev
+                        ch,
+                        n,
+                        dateafter=yt_df,
+                        datebefore=yt_dt,
+                        playlist_reverse=rev,
                     )
                     empty_msg = "条件に合う動画がありませんでした。"
                 else:
@@ -191,7 +203,11 @@ def main() -> None:
                         set_output("")
                         return
                     urls = fetch_youtube_flat_urls(
-                        u, n, dateafter=da, datebefore=db, playlist_reverse=rev
+                        u,
+                        n,
+                        dateafter=yt_df,
+                        datebefore=yt_dt,
+                        playlist_reverse=rev,
                     )
                     empty_msg = "条件に合う動画がありませんでした。"
         except RuntimeError as e:
@@ -225,7 +241,7 @@ def main() -> None:
     top_mode.trace_add("write", sync_widgets)
     yt_kind.trace_add("write", sync_widgets)
     sync_widgets()
-
+    preset_cb.configure(state="readonly")
     query_entry.focus_set()
     root.bind("<Return>", lambda e: on_search())
 

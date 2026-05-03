@@ -20,6 +20,12 @@
       padding: 0.5rem 0.65rem; border: 1px solid #c8cdd3; border-radius: 6px;
       font-size: 1rem;
     }
+    select {
+      width: 100%; max-width: 320px;
+      padding: 0.5rem 0.65rem; border: 1px solid #c8cdd3; border-radius: 6px;
+      font-size: 1rem;
+      background: #fff;
+    }
     textarea {
       min-height: 220px; font-family: Consolas, "Courier New", monospace;
       font-size: 0.9rem; resize: vertical;
@@ -55,7 +61,7 @@
 </head>
 <body>
   <h1>YouTube / Web → URL 一覧</h1>
-  <p class="hint">NotebookLM 用に 1 行 1 URL。YouTube はキーワード検索・チャンネル（動画タブ）・再生リストに対応。チャンネルは <code>@handle</code> や channel ID の URL 可（自動で /videos を補います）。期間はアップロード日が指定期間に入る動画だけを対象にします（件数が足りない場合は最大 2000 本まで走査）。Web は DuckDuckGo 経由です。</p>
+  <p class="hint">NotebookLM 用に 1 行 1 URL。YouTube の公開日・Web の期間は「期間」で指定できます（日付を入れたときはプリセットより優先）。Web: 日付はクエリに <code>after:</code> / <code>before:</code> を付与（DuckDuckGo の解釈依存）。プリセットのみのときは検索エンジン側の期間絞り込み（d/w/m/y）を使います。YouTube: yt-dlp の <code>--dateafter</code> / <code>--datebefore</code>（アップロード日）。</p>
 
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
 
@@ -93,11 +99,23 @@
       </div>
     </div>
 
-    <fieldset class="optional-block hidden" id="fieldset_channel_opts">
-      <legend>チャンネル / 再生リストのオプション</legend>
+    <fieldset class="optional-block" id="fieldset_period">
+      <legend>期間（任意）</legend>
       <div class="row" style="margin-bottom:0.5rem;">
         <div class="field">
-          <label for="date_from">開始日（アップロード日・任意）</label>
+          <label for="period_preset">ざっくりプリセット</label>
+          <select id="period_preset" name="period_preset">
+            <option value="" {% if not period_preset %}selected{% endif %}>なし</option>
+            <option value="d" {% if period_preset == 'd' %}selected{% endif %}>直近〜24時間程度</option>
+            <option value="w" {% if period_preset == 'w' %}selected{% endif %}>直近〜1週間程度</option>
+            <option value="m" {% if period_preset == 'm' %}selected{% endif %}>直近〜1ヶ月程度</option>
+            <option value="y" {% if period_preset == 'y' %}selected{% endif %}>直近〜1年程度（「ここ1年」）</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:0;">
+        <div class="field">
+          <label for="date_from">開始日（任意・YYYY-MM-DD）</label>
           <input id="date_from" name="date_from" type="date" value="{{ date_from }}" />
         </div>
         <div class="field">
@@ -105,9 +123,14 @@
           <input id="date_to" name="date_to" type="date" value="{{ date_to }}" />
         </div>
       </div>
+      <p style="font-size:0.8rem;color:#64748b;margin:0.5rem 0 0;">日付を指定するとプリセットは無視されます。YouTube は公開日基準。Web の日付指定は検索演算子頼みで厳密ではありません。</p>
+    </fieldset>
+
+    <fieldset class="optional-block hidden" id="fieldset_channel_opts">
+      <legend>チャンネル / 再生リストの並び</legend>
       <div class="order-row" style="margin-bottom:0;">
         <span style="font-size:0.85rem;font-weight:600;color:#475569;">並び</span>
-        <label><input type="radio" name="yt_order" value="newest" {% if yt_order == 'newest' %}checked{% endif %} /> 新しい動画を先頭 <span style="font-weight:400;color:#64748b;">（yt-dlp の playlist-reverse）</span></label>
+        <label><input type="radio" name="yt_order" value="newest" {% if yt_order == 'newest' %}checked{% endif %} /> 新しい動画を先頭 <span style="font-weight:400;color:#64748b;">（playlist-reverse）</span></label>
         <label><input type="radio" name="yt_order" value="original" {% if yt_order == 'original' %}checked{% endif %} /> 一覧の元の順のまま</label>
       </div>
     </fieldset>
