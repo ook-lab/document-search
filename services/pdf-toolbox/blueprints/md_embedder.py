@@ -13,7 +13,6 @@ from google_drive_connector import GoogleDriveConnector
 from blueprints.drive_pdf import download_drive_pdf
 from blueprints.gemini_http import post_generate_content
 from blueprints.gemini_images import to_gemini_inline_image_part
-from blueprints.pdf_fonts import require_japanese_font
 from supabase import create_client as _supabase_create_client
 
 def _get_supabase():
@@ -292,8 +291,6 @@ def save_pdf():
 
         doc = fitz.open(input_filepath)
 
-        font_path = require_japanese_font()
-
         for str_idx, page_data in pages_data.items():
             page_idx = int(str_idx)
             if page_idx < len(doc):
@@ -304,7 +301,7 @@ def save_pdf():
                 
                 rect = fitz.Rect(0, 0, page.rect.width, page.rect.height)
                 
-                page.insert_textbox(rect, payload, fontsize=6, fontname="jpfont", fontfile=font_path, render_mode=3)
+                page.insert_textbox(rect, payload, fontsize=6, fontname="japan", render_mode=3)
 
         doc.save(output_filepath)
         doc.close()

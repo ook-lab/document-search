@@ -133,13 +133,42 @@
         .editor-pane.active { display: block; }
         
         /* Table Editor Styles */
-        .editable-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; background: white; font-size: 0.85rem; }
-        .editable-table th, .editable-table td { border: 1px solid var(--border); padding: 0.5rem; text-align: left; }
+        .editable-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 2rem; background: white; font-size: 0.85rem; }
+        .editable-table th, .editable-table td { border: 1px solid var(--border); padding: 0.5rem; text-align: left; vertical-align: top; }
         .editable-table th { background: #f8fafc; font-weight: 600; }
-        .editable-table input { width: 100%; border: none; background: transparent; font-family: inherit; font-size: inherit; outline: none; padding: 2px; }
-        .editable-table input:focus { background: #eff6ff; }
+        .editable-table textarea {
+            width: 100%;
+            min-height: 2.2rem;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: 1.5;
+            outline: none;
+            padding: 2px;
+            resize: vertical;
+            overflow: hidden;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            box-sizing: border-box;
+        }
+        .editable-table textarea:focus { background: #eff6ff; }
         .text-section { margin-bottom: 1.5rem; }
-        .text-section textarea { width: 100%; border: 1px solid #eee; border-radius: 4px; padding: 0.5rem; font-family: inherit; resize: vertical; }
+        .text-section textarea {
+            width: 100%;
+            min-height: 4rem;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 0.5rem;
+            font-family: inherit;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            resize: vertical;
+            overflow: hidden;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            box-sizing: border-box;
+        }
         .table-actions { display: flex; gap: 0.5rem; margin-top: -1.5rem; margin-bottom: 1.5rem; justify-content: flex-end; }
     </style>
 
@@ -389,6 +418,24 @@
             }
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function autoResizeTextarea(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = `${textarea.scrollHeight + 2}px`;
+        }
+
+        function autoResizeAllTextareas(root = document) {
+            root.querySelectorAll('textarea.auto-grow').forEach(autoResizeTextarea);
+        }
+
         function renderVisualEditor(md) {
             tableContainer.innerHTML = '';
             // Split MD by potential table markers
@@ -402,10 +449,11 @@
                 } else if (section.content.trim()) {
                     const textDiv = document.createElement('div');
                     textDiv.className = 'text-section';
-                    textDiv.innerHTML = `<textarea data-index="${sIdx}">${section.content}</textarea>`;
+                    textDiv.innerHTML = `<textarea class="auto-grow" data-index="${sIdx}" oninput="autoResizeTextarea(this)">${escapeHtml(section.content)}</textarea>`;
                     tableContainer.appendChild(textDiv);
                 }
             });
+            autoResizeAllTextareas(tableContainer);
         }
 
         function splitMarkdown(md) {
@@ -456,7 +504,7 @@
             const hRow = document.createElement('tr');
             tableObj.headers.forEach(h => {
                 const th = document.createElement('th');
-                th.innerHTML = `<input value="${h}">`;
+                th.innerHTML = `<textarea class="auto-grow" oninput="autoResizeTextarea(this)">${escapeHtml(h)}</textarea>`;
                 hRow.appendChild(th);
             });
             thead.appendChild(hRow);
@@ -467,7 +515,7 @@
                 const tr = document.createElement('tr');
                 r.forEach(cell => {
                     const td = document.createElement('td');
-                    td.innerHTML = `<input value="${cell}">`;
+                    td.innerHTML = `<textarea class="auto-grow" oninput="autoResizeTextarea(this)">${escapeHtml(cell)}</textarea>`;
                     tr.appendChild(td);
                 });
                 tbody.appendChild(tr);
@@ -490,7 +538,7 @@
             const newRow = table.querySelector('tbody').insertRow();
             for (let i = 0; i < rowCount; i++) {
                 const cell = newRow.insertCell();
-                cell.innerHTML = `<input value="">`;
+                cell.innerHTML = `<textarea class="auto-grow" oninput="autoResizeTextarea(this)"></textarea>`;
             }
         };
 
@@ -500,9 +548,9 @@
             for (let child of children) {
                 if (child.querySelector('.editable-table')) {
                     const table = child.querySelector('.editable-table');
-                    const headers = Array.from(table.querySelectorAll('thead th input')).map(i => i.value);
+                    const headers = Array.from(table.querySelectorAll('thead th textarea')).map(i => i.value);
                     const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr => 
-                        Array.from(tr.querySelectorAll('td input')).map(i => i.value)
+                        Array.from(tr.querySelectorAll('td textarea')).map(i => i.value)
                     );
                     let mdTable = '| ' + headers.join(' | ') + ' |\n';
                     mdTable += '| ' + headers.map(() => '---').join(' | ') + ' |\n';

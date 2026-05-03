@@ -19,14 +19,3 @@ def find_japanese_font():
         if os.path.exists(path):
             return path
     return None
-
-
-def require_japanese_font():
-    font_path = find_japanese_font()
-    if font_path:
-        return font_path
-
-    raise RuntimeError(
-        "日本語フォントファイルが見つかりません。"
-        "Cloud Run の Docker イメージには fonts-noto-cjk を含めてください。"
-    )

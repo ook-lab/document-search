@@ -13,7 +13,6 @@ from gemini_studio_key import google_ai_studio_api_key
 from blueprints.drive_pdf import download_drive_pdf
 from blueprints.gemini_http import post_generate_content
 from blueprints.gemini_images import to_gemini_inline_image_part
-from blueprints.pdf_fonts import require_japanese_font
 
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
@@ -252,7 +251,6 @@ def save_pdf():
         output_path = os.path.join(current_app.config['OUTPUT_FOLDER'], output_filename)
         
         doc = fitz.open(original_path)
-        font_path = require_japanese_font()
         
         for item in corrections:
             page_num = item.get('page_num')
@@ -274,8 +272,7 @@ def save_pdf():
                 (x, y + (fontsize * 0.8)),
                 text,
                 fontsize=fontsize,
-                fontname="jpfont",
-                fontfile=font_path,
+                fontname="japan",
                 render_mode=3,
             )
             

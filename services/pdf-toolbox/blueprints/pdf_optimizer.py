@@ -11,7 +11,6 @@ from gemini_studio_key import google_ai_studio_api_key
 from blueprints.drive_pdf import download_drive_pdf
 from blueprints.gemini_http import post_generate_content
 from blueprints.gemini_images import to_gemini_inline_image_part
-from blueprints.pdf_fonts import require_japanese_font
 
 optimizer_bp = Blueprint('optimizer', __name__, template_folder='../templates')
 
@@ -131,10 +130,8 @@ def _insert_toc_markdown_page(doc, markdown_text):
     base_font_size = 9.2
     line_height = base_font_size * 1.45
     max_chars = max(24, int((page_width - margin * 2) / (base_font_size * 0.55)))
-    font_path = require_japanese_font()
 
     page = doc.new_page(pno=0, width=page_width, height=page_height)
-    page.insert_font(fontname="jpfont", fontfile=font_path)
 
     printable_lines = []
     for raw_line in (markdown_text or "# 目次").splitlines():
@@ -169,8 +166,7 @@ def _insert_toc_markdown_page(doc, markdown_text):
                 fitz.Rect(margin, y, page_width - margin, page_height - margin),
                 "...",
                 fontsize=max(6, base_font_size * scale),
-                fontname="jpfont",
-                fontfile=font_path,
+                fontname="japan",
                 color=(0, 0, 0),
             )
             break
@@ -179,8 +175,7 @@ def _insert_toc_markdown_page(doc, markdown_text):
                 fitz.Rect(margin, y, page_width - margin, y + actual_line_height + 2),
                 line,
                 fontsize=actual_size,
-                fontname="jpfont",
-                fontfile=font_path,
+                fontname="japan",
                 color=(0, 0, 0),
                 align=fitz.TEXT_ALIGN_LEFT,
             )
