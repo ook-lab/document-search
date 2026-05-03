@@ -28,14 +28,11 @@ steps:
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--memory'
       - '1Gi'
-      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=${_VERTEX_AI_REGION}'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
       - '--set-secrets=GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_APPLICATION_CREDENTIALS:latest,GMAIL_USER_EMAIL=GMAIL_USER_EMAIL:latest'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-toolbox:latest'
-
-substitutions:
-  _VERTEX_AI_REGION: 'us-central1'
 
 options:
   logging: CLOUD_LOGGING_ONLY

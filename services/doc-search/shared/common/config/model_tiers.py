@@ -53,48 +53,39 @@ def get_model_config(tier: str) -> Dict[str, Any]:
 
 
 # ============================================
-# Deep Research 構成フロー定義
+# Research 構成フロー定義
 # ============================================
 class ResearchFlow:
-    """Deep Research構成フローの定義"""
+    """Research構成フローの定義"""
 
     # 各構成フローの定義
-    # steps = [Step1モデル, Step2モデル, Step3モデル]
-    # Step1: Evidenceノート生成（抽象要約禁止）
-    # Step2: 論点別証拠束への再編
-    # Step3: 最終回答生成（ここで初めて抽象化OK）
+    # steps = [回答モデル] または [Evidence整理モデル, 最終回答モデル]
     # ※ クエリ改善は常に Flash-lite 固定（steps に含まない）
     FLOWS = {
-        # 1段: 回答生成+Evidence抽出を同時実行（最小コスト）
-        "compress-1step": {
+        # 1段: 2.5 Flash-Lite 単独
+        "single-25-lite": {
             "steps": ["gemini-2.5-flash-lite"],
-            "description": "1段: 回答生成+Evidence同時（Lite×1）",
+            "description": "1段: Gemini 2.5 Flash-Lite単独",
             "rounds": 1,
         },
-        # 2段: Evidence整理→回答生成（安定モード）
-        "compress-2step": {
-            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite"],
-            "description": "2段: Evidence整理(Lite) → 回答生成(Lite)",
+        # 2段: 2.5 Flash-LiteでEvidence整理、3.1 Flash-Lite Previewで最終回答
+        "cascade-25lite-31lite-preview": {
+            "steps": ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview"],
+            "description": "2段: Gemini 2.5 Flash-Lite → Gemini 3.1 Flash-Lite Preview",
             "rounds": 2,
         },
-        # 3段全Lite: Evidence抽出→論点整理→回答生成（Lite統一）
-        "compress-3step-lite": {
-            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash-lite"],
-            "description": "3段: Evidence抽出(Lite) → 論点整理(Lite) → 最終回答(Lite)",
-            "rounds": 3,
-        },
-        # 3段Flash締め: Evidence抽出→論点整理→回答生成（最終のみFlash）
-        "compress-3step": {
-            "steps": ["gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "gemini-2.5-flash-lite"],
-            "description": "3段: Evidence抽出(Lite) → 論点整理(Lite) → 最終回答(Flash)",
-            "rounds": 3,
+        # 1段: 3.1 Flash-Lite Preview 単独
+        "single-31-lite-preview": {
+            "steps": ["gemini-3.1-flash-lite-preview"],
+            "description": "1段: Gemini 3.1 Flash-Lite Preview単独",
+            "rounds": 1,
         },
     }
 
     @classmethod
     def get_flow(cls, flow_id: str) -> Dict[str, Any]:
         """指定されたフローIDの構成を取得"""
-        return cls.FLOWS.get(flow_id, cls.FLOWS["compress-1step"])
+        return cls.FLOWS.get(flow_id, cls.FLOWS["single-25-lite"])
 
     @classmethod
     def get_all_flows(cls) -> Dict[str, Dict[str, Any]]:

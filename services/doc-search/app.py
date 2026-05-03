@@ -252,9 +252,9 @@ def generate_answer():
     """
     回答生成API
 
-    compress-1step: 回答生成+Evidence同時（1回呼び出し）
-    compress-2step: Evidence整理 → 回答生成（2回呼び出し）
-    compress-3step: Evidence抽出 → 論点整理 → 最終回答（3回呼び出し）
+    single-25-lite: 2.5 Flash-Lite単独（1回呼び出し）
+    cascade-25lite-31lite-preview: 2.5 Flash-LiteでEvidence整理 → 3.1 Flash-Lite Previewで回答生成（2回呼び出し）
+    single-31-lite-preview: 3.1 Flash-Lite Preview単独（1回呼び出し）
 
     共通前処理:
       Step0: クエリ改善（Flash-lite固定）
@@ -266,7 +266,7 @@ def generate_answer():
 
         data = request.get_json()
         query = data.get('query', '')
-        flow_id = data.get('flow', 'compress-1step')
+        flow_id = data.get('flow', 'single-25-lite')
         max_context_chars = int(data.get('max_context_chars') or 30000)
         persons    = data.get('persons', [])
         sources    = data.get('sources', [])

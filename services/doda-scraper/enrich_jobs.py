@@ -19,8 +19,7 @@ if hasattr(sys.stdout, 'buffer'):
 from datetime import datetime, timezone
 from pathlib import Path
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+import google.generativeai as genai
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -35,13 +34,13 @@ for i, arg in enumerate(sys.argv):
     if arg == "--limit" and i + 1 < len(sys.argv):
         LIMIT = int(sys.argv[i + 1])
 
-vertexai.init(
-    project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-    location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-)
-model = GenerativeModel(
+gemini_api_key = os.environ.get("GOOGLE_AI_API_KEY")
+if not gemini_api_key:
+    raise RuntimeError("GOOGLE_AI_API_KEY is not set")
+genai.configure(api_key=gemini_api_key)
+model = genai.GenerativeModel(
     "gemini-2.5-flash-lite",
-    generation_config=GenerationConfig(
+    generation_config=genai.types.GenerationConfig(
         response_mime_type="application/json",
         temperature=0.0,
     ),

@@ -4,7 +4,6 @@ requests
 supabase
 pymupdf
 pypdf
-google-cloud-aiplatform
 google-genai
 google-generativeai
 python-dotenv

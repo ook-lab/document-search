@@ -25,8 +25,7 @@ import re
 from .coordinate_matcher import CoordinateMatcher
 
 try:
-    import vertexai
-    from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+    import google.generativeai as genai
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -57,11 +56,8 @@ class E21ContextExtractor:
             return
 
         if api_key:
-            vertexai.init(
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-            )
-            self.model = GenerativeModel(model_name)
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel(model_name)
             logger.info(f"[E-21] モデル初期化: {model_name}")
         else:
             logger.warning("[E-21] API key が設定されていません")
@@ -177,11 +173,7 @@ class E21ContextExtractor:
 
             # Gemini に送信
             logger.info("[E-21] Gemini API 呼び出し開始...")
-            try:
-                from vertexai.generative_models import GenerationConfig
-                gen_config = GenerationConfig(max_output_tokens=8192)
-            except Exception:
-                gen_config = None
+            gen_config = genai.types.GenerationConfig(max_output_tokens=8192)
             response = self.model.generate_content(
                 [prompt, {'mime_type': 'image/png', 'data': image_data}],
                 generation_config=gen_config,

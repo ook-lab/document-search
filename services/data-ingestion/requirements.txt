@@ -1,6 +1,6 @@
 # services/data-ingestion — Google 系は互換のある版に固定（pip バックトラック防止）
 
-# Google（vertexai / Drive 等で共通利用）
+# Google（Drive 等で共通利用）
 google-api-core==2.24.2
 grpcio==1.71.2
 grpcio-status==1.71.2
@@ -8,9 +8,9 @@ google-api-python-client==2.161.0
 google-auth==2.36.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
-google-cloud-aiplatform==1.85.0
 
 # AI APIs
+google-generativeai
 anthropic==0.39.0
 openai==1.54.0
 

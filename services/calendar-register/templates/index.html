@@ -579,6 +579,55 @@
     }
     .ar-input:focus { border-color: #4285F4; }
     .ar-input.time { max-width: 88px; flex: none; }
+
+    /* ───── 同期設定画面 ───── */
+    .sync-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+    .sync-toolbar {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #eee;
+      flex-wrap: wrap;
+    }
+    .sync-toolbar-note {
+      flex: 1;
+      font-size: 12px;
+      color: #777;
+      line-height: 1.6;
+    }
+    .sync-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .sync-table th {
+      background: #f8f9fa;
+      color: #555;
+      font-weight: 600;
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid #eee;
+      white-space: nowrap;
+    }
+    .sync-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #f1f3f4;
+      vertical-align: top;
+    }
+    .sync-table tr:last-child td { border-bottom: none; }
+    .sync-name { font-weight: 600; color: #222; }
+    .sync-subcal { font-size: 11px; color: #888; margin-top: 3px; line-height: 1.5; }
+    .sync-person-input {
+      width: 110px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 5px 8px;
+      font-size: 13px;
+    }
+    .sync-count { color: #555; white-space: nowrap; }
+    .sync-muted { color: #aaa; }
   </style>
 </head>
 <body>
@@ -619,6 +668,7 @@
     <button class="tab-btn active" onclick="switchTab('register')">📝 登録</button>
     <button class="tab-btn" onclick="switchTab('assign')">✏️ 修正</button>
     <button class="tab-btn" onclick="switchTab('attendance')">🗓 出欠</button>
+    <button class="tab-btn" onclick="switchTab('sync')">同期設定</button>
   </div>
 
   <!-- ==============================
@@ -804,6 +854,36 @@
     </div>
   </div><!-- /tab-attendance -->
 
+  <!-- ==============================
+       タブ4: 同期設定
+       ============================== -->
+  <div class="tab-content" id="tab-sync">
+    <div class="sync-card">
+      <div class="sync-toolbar">
+        <div class="sync-toolbar-note">
+          Google Calendar に見えている全カレンダーを base / _pen / _arc ごとにまとめて表示します。<br>
+          同期ONのグループは保存後に watch 登録と初回同期を開始します。
+        </div>
+        <button class="btn-fetch" onclick="loadSyncSettings()">再読み込み</button>
+        <button class="btn-fetch" onclick="saveSyncSettings()" style="background:#34a853;">保存して同期開始</button>
+        <span id="syncSettingsStatus" style="font-size:12px;color:#888;"></span>
+      </div>
+      <table class="sync-table">
+        <thead>
+          <tr>
+            <th>同期</th>
+            <th>カレンダーグループ</th>
+            <th>person</th>
+            <th>状態</th>
+          </tr>
+        </thead>
+        <tbody id="syncSettingsBody">
+          <tr><td colspan="4" class="sync-muted">「同期設定」タブを開くと読み込みます</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div><!-- /tab-sync -->
+
   {% endif %}
 </div>
 
@@ -812,6 +892,8 @@ let parsedEvents = [];
 let calendars = [];
 let presetOpen = false;
 let calendarTags = [];   // 現在のカレンダーのタグ一覧
+let syncSettingGroups = [];
+let syncSettingsLoaded = false;
 
 {% if authed %}
 // ─── カレンダー一覧ロード ───
@@ -1373,7 +1455,7 @@ function renderResults(results) {
 }
 
 // ─── タブ切り替え ───
-const TAB_NAMES = ['register', 'assign', 'attendance'];
+const TAB_NAMES = ['register', 'assign', 'attendance', 'sync'];
 function switchTab(name) {
   document.querySelectorAll('.tab-btn').forEach((b, i) => {
     b.classList.toggle('active', TAB_NAMES[i] === name);
@@ -1382,6 +1464,7 @@ function switchTab(name) {
     el.classList.toggle('active', el.id === 'tab-' + name);
   });
   if (name === 'assign') initAssignDates();
+  if (name === 'sync' && !syncSettingsLoaded) loadSyncSettings();
 }
 
 function initAssignDates() {
@@ -1576,6 +1659,105 @@ function setAssignStatus(html, color) {
   const el = document.getElementById('assignStatus');
   el.innerHTML = html;
   el.style.color = color || '#1a73e8';
+}
+
+// ─── 同期設定 ───
+function setSyncSettingsStatus(text, color) {
+  const el = document.getElementById('syncSettingsStatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = color || '#888';
+}
+
+function roleLabel(role) {
+  if (role === 'arc') return '_arc: 不参加';
+  if (role === 'pen') return '_pen: 参加不参加未定';
+  return 'base: 参加';
+}
+
+async function loadSyncSettings() {
+  const body = document.getElementById('syncSettingsBody');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="4" class="sync-muted">読み込み中...</td></tr>';
+  setSyncSettingsStatus('');
+
+  try {
+    const res = await fetch('/api/calendar-sync-settings');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '読み込み失敗');
+    syncSettingGroups = data.groups || [];
+    syncSettingsLoaded = true;
+    renderSyncSettings();
+    setSyncSettingsStatus(`${syncSettingGroups.length} グループ`, '#137333');
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="4" class="sync-muted">読み込み失敗: ${esc(e.message)}</td></tr>`;
+    setSyncSettingsStatus('読み込み失敗', '#c5221f');
+  }
+}
+
+function renderSyncSettings() {
+  const body = document.getElementById('syncSettingsBody');
+  if (!syncSettingGroups.length) {
+    body.innerHTML = '<tr><td colspan="4" class="sync-muted">カレンダーが見つかりません</td></tr>';
+    return;
+  }
+
+  body.innerHTML = syncSettingGroups.map((g, i) => {
+    const sub = g.calendars.map(c => {
+      const enabled = c.index_enabled ? '同期ON' : '同期OFF';
+      const count = c.raw_count ? `${c.raw_count}件` : '0件';
+      return `${esc(roleLabel(c.role))} / ${esc(c.name)} / ${enabled} / ${count}`;
+    }).join('<br>');
+    const enabled = g.index_enabled ? 'checked' : '';
+    const rawCount = g.raw_count || 0;
+    const syncTokenCount = g.calendars.filter(c => c.has_sync_token).length;
+    return `
+      <tr>
+        <td>
+          <label class="toggle-switch">
+            <input type="checkbox" data-sync-idx="${i}" ${enabled}>
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
+        <td>
+          <div class="sync-name">${esc(g.base_name)}</div>
+          <div class="sync-subcal">${sub}</div>
+        </td>
+        <td>
+          <input class="sync-person-input" data-person-idx="${i}" value="${esc(g.person || '')}" placeholder="共有">
+        </td>
+        <td class="sync-count">
+          DB ${rawCount}件<br>
+          <span class="sync-muted">syncToken ${syncTokenCount}/${g.calendars.length}</span>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+async function saveSyncSettings() {
+  if (!syncSettingGroups.length) return;
+
+  const groups = syncSettingGroups.map((g, i) => ({
+    calendar_ids: g.calendar_ids,
+    index_enabled: !!document.querySelector(`[data-sync-idx="${i}"]`)?.checked,
+    person: document.querySelector(`[data-person-idx="${i}"]`)?.value.trim() || '',
+  }));
+
+  setSyncSettingsStatus('保存中...', '#888');
+  try {
+    const res = await fetch('/api/calendar-sync-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groups }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '保存失敗');
+    setSyncSettingsStatus(`保存しました: ${data.updated}件、同期開始 ${data.sync_started}件`, '#137333');
+    syncSettingsLoaded = false;
+    setTimeout(loadSyncSettings, 1200);
+  } catch (e) {
+    setSyncSettingsStatus('保存失敗: ' + e.message, '#c5221f');
+  }
 }
 
 // ─── ステータスバー ───

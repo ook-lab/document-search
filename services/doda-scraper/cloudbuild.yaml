@@ -27,11 +27,11 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=us-central1'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
       - '--timeout=600'
       - '--memory=2Gi'
       - '--remove-env-vars=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY'
-      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
+      - '--set-secrets=GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/doda-scraper:${_TAG}'

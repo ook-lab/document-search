@@ -765,10 +765,9 @@
                     <label>
                         構成フロー:
                         <select id="flow-select" style="padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;" onchange="updateCostDisplay()">
-                            <option value="compress-1step" selected>1回回し (Lite×1)</option>
-                            <option value="compress-2step">2回回し (Lite×2)</option>
-                            <option value="compress-3step-lite">3回回し (Lite×3)</option>
-                            <option value="compress-3step">3回回し+Flash (Lite×2→Flash)</option>
+                            <option value="single-25-lite" selected>2.5 Flash-Lite 単独</option>
+                            <option value="cascade-25lite-31lite-preview">2.5 Flash-Lite → 3.1 Flash-Lite Preview</option>
+                            <option value="single-31-lite-preview">3.1 Flash-Lite Preview 単独</option>
                         </select>
                     </label>
                     <label>
@@ -843,29 +842,18 @@
         let hierarchyData = []; // {name: person, sources: [{name: source, categories: [cat,...]}, ...]}
 
         // ── コスト計算 ────────────────────────────────────────────────
-        // モデル別入力単価（$/1M tokens）
-        const MODEL_PRICE = {
-            'lite':  0.10,
-            'flash': 0.30,
-        };
         // 各フローの入力トークン合計 × モデル単価（クエリ改善は誤差範囲）
         function getFlowCost(flowId, chars) {
-            const LITE  = 0.10;  // $/1M input tokens (Flash-lite)
-            const FLASH = 0.30;  // $/1M input tokens (Flash)
+            const LITE_25 = 0.10; // $/1M input tokens (Gemini 2.5 Flash-Lite)
+            const LITE_31_PREVIEW = 0.25; // $/1M input tokens (Gemini 3.1 Flash-Lite Preview)
             const t = chars / 4; // Step1入力トークン（最大）
-            if (flowId === 'compress-1step') {
-                // Lite×1: Step=t
-                return (t * LITE) / 1_000_000;
-            } else if (flowId === 'compress-2step') {
-                // Lite×2: Step1=t, Step2=t*0.33
-                return ((t + t * 0.33) * LITE) / 1_000_000;
-            } else if (flowId === 'compress-3step-lite') {
-                // Lite×3: Step1=t, Step2=t*0.4, Step3=t*0.132
-                return ((t + t * 0.4 + t * 0.132) * LITE) / 1_000_000;
-            } else {
-                // compress-3step: Lite×2 + Flash×1: Step1=t, Step2=t*0.4, Step3=t*0.132
-                return ((t + t * 0.4) * LITE + t * 0.132 * FLASH) / 1_000_000;
+            if (flowId === 'single-25-lite') {
+                return (t * LITE_25) / 1_000_000;
+            } else if (flowId === 'cascade-25lite-31lite-preview') {
+                // Step1は全文、Step2はEvidence整理後の約33%を想定
+                return ((t * LITE_25) + (t * 0.33 * LITE_31_PREVIEW)) / 1_000_000;
             }
+            return (t * LITE_31_PREVIEW) / 1_000_000;
         }
 
         let usdJpy = null; // 取得後にセット

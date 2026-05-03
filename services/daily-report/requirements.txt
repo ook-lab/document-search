@@ -1,4 +1,4 @@
-google-cloud-aiplatform
+google-generativeai
 openai==1.54.0
 
 supabase

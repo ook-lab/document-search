@@ -50,6 +50,44 @@ function parseStartEnd(ev: any): { start_at: string | null; end_at: string | nul
   return { start_at: isoOrNull(start), end_at: isoOrNull(end) };
 }
 
+type AttendanceStatus = "accepted" | "tentative" | "declined";
+
+function attendanceStatusFromCalendarName(calendarName: string): AttendanceStatus {
+  if (calendarName.endsWith("_arc")) return "declined";
+  if (calendarName.endsWith("_pen")) return "tentative";
+  return "accepted";
+}
+
+function attendanceLabel(status: AttendanceStatus): string {
+  if (status === "declined") return "不参加";
+  if (status === "tentative") return "参加不参加未定";
+  return "参加";
+}
+
+function normalizeAttendees(payload: any, userEmail: string | null, status: AttendanceStatus): any[] | null {
+  const attendees = Array.isArray(payload.attendees) ? [...payload.attendees] : [];
+
+  if (!userEmail && attendees.length === 0) {
+    return [{ responseStatus: status, self: true }];
+  }
+
+  const idx = attendees.findIndex((a: any) => a?.self || (userEmail && a?.email === userEmail));
+  if (idx >= 0) {
+    attendees[idx] = {
+      ...attendees[idx],
+      email: attendees[idx].email ?? userEmail ?? undefined,
+      responseStatus: status,
+      self: attendees[idx].self ?? true,
+    };
+  } else if (userEmail) {
+    attendees.unshift({ email: userEmail, responseStatus: status, self: true });
+  } else {
+    attendees.unshift({ responseStatus: status, self: true });
+  }
+
+  return attendees.length > 0 ? attendees : null;
+}
+
 async function listEventsPage(
   accessToken: string,
   calendarId: string,
@@ -71,7 +109,12 @@ async function listEventsPage(
   return j;
 }
 
-function buildChunkText(payload: any, startAt: string | null, endAt: string | null): string {
+function buildChunkText(
+  payload: any,
+  startAt: string | null,
+  endAt: string | null,
+  attendanceStatus: AttendanceStatus,
+): string {
   const title = payload.summary ?? "(タイトルなし)";
   const parts: string[] = [title];
 
@@ -102,6 +145,7 @@ function buildChunkText(payload: any, startAt: string | null, endAt: string | nu
   }
 
   if (payload.location) parts.push(`場所: ${payload.location}`);
+  parts.push(`出欠: ${attendanceLabel(attendanceStatus)}`);
 
   // 会議URL（Google Meet 等）
   const meetUrl = payload.hangoutLink
@@ -123,7 +167,7 @@ function buildChunkText(payload: any, startAt: string | null, endAt: string | nu
   return parts.join("\n");
 }
 
-function buildGcalUiData(payload: any, startAt: string | null): object {
+function buildGcalUiData(payload: any, startAt: string | null, attendanceStatus: AttendanceStatus): object {
   const summary     = payload.summary     ?? null;
   const description = payload.description ?? null;
   const location    = payload.location    ?? null;
@@ -136,7 +180,13 @@ function buildGcalUiData(payload: any, startAt: string | null): object {
   if (description) {
     sections.push({ title: summary ?? "", body: description });
   }
-  return { sections, tables: [], timeline, actions: [], notices: [] };
+  return {
+    sections,
+    tables: [],
+    timeline,
+    actions: [],
+    notices: [{ title: "出欠", body: attendanceLabel(attendanceStatus) }],
+  };
 }
 
 async function generateEmbedding(text: string, apiKey: string): Promise<number[]> {
@@ -190,6 +240,7 @@ serve(async (req) => {
       ? calendar_name.split('/').pop()!
       : calendar_name;
     const person: string = syncState.person || calendar_name;
+    const attendance_status = attendanceStatusFromCalendarName(calendar_name);
     let syncToken: string | null = syncState.next_sync_token ?? null;
 
     // 2) OAuth refresh_token 取得
@@ -301,6 +352,7 @@ serve(async (req) => {
             // 追加 / 更新
             const { start_at, end_at } = parseStartEnd(ev);
             const payload = ev;
+            const attendees = normalizeAttendees(payload, user_email, attendance_status);
 
             // --- 02_gcal_01_raw に UPSERT ---
             const rawRow = {
@@ -344,9 +396,8 @@ serve(async (req) => {
               organizer_email:    payload.organizer?.email      ?? null,
               organizer_name:     payload.organizer?.displayName ?? null,
 
-              // 参加者（attendees が null = 自分が主催者で他に参加者なし → 自分を accepted で保存）
-              attendees: payload.attendees
-                ?? (user_email ? [{ email: user_email, responseStatus: "accepted", self: true }] : null),
+              // _arc/_pen カレンダーはカレンダー名から出欠を補完する。
+              attendees,
               attendees_omitted:  payload.attendeesOmitted      ?? null,
 
               // ゲスト権限
@@ -391,7 +442,7 @@ serve(async (req) => {
             const raw_id = upsertedRaw.id;
 
             // --- 09_unified_documents に UPSERT ---
-            const ui_data    = buildGcalUiData(payload, start_at);
+            const ui_data    = buildGcalUiData(payload, start_at, attendance_status);
             const unifiedDoc = {
               raw_id,
               raw_table:   RAW_TABLE,
@@ -411,14 +462,16 @@ serve(async (req) => {
               post_type:   null,
               ui_data,
               meta: {
-                attendees: payload.attendees
-                  ?? (user_email ? [{ email: user_email, responseStatus: "accepted", self: true }] : null),
+                attendees,
+                attendance_status,
+                attendance_status_label: attendanceLabel(attendance_status),
                 recurrence:         payload.recurrence            ?? null,
                 recurring_event_id: payload.recurringEventId      ?? null,
                 creator_email:      payload.creator?.email        ?? null,
                 creator_name:       payload.creator?.displayName  ?? null,
                 visibility:         payload.visibility            ?? null,
                 calendar_id,
+                calendar_name,
               },
             };
 
@@ -438,7 +491,7 @@ serve(async (req) => {
             }
 
             // --- 10_ix_search_index に embedding 保存 ---
-            const chunk_text = buildChunkText(payload, start_at, end_at);
+            const chunk_text = buildChunkText(payload, start_at, end_at, attendance_status);
             if (chunk_text.trim()) {
               const embedding = await generateEmbedding(chunk_text, OPENAI_API_KEY);
               await supabase.from(INDEX_TABLE).delete().eq("doc_id", doc_id);

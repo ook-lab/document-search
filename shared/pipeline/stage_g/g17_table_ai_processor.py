@@ -47,20 +47,16 @@ class G17TableAIProcessor:
         self.model = None
 
         try:
-            import vertexai
-            from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
-            # Vertex AI 初期化
-            vertexai.init(
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-            )
-            self.model = GenerativeModel(model_name)
-            logger.info(f"[G-17] モデル初期化 (Vertex AI): {model_name}")
+            import google.generativeai as genai
+            api_key = os.environ.get("GOOGLE_AI_API_KEY")
+            if not api_key:
+                raise RuntimeError("GOOGLE_AI_API_KEY is not set")
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel(model_name)
+            logger.info(f"[G-17] モデル初期化 (API key): {model_name}")
         except Exception as e:
-            logger.error(f"[G-17] Vertex AI 初期化エラー: {e}")
+            logger.error(f"[G-17] Gemini API 初期化エラー: {e}")
             self.model = None
-        except ImportError:
-            logger.warning("[G-17] google-generativeai がインストールされていません")
 
     # =========================================================================
     # エントリーポイント

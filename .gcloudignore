@@ -12,8 +12,6 @@ venv/
 _runtime/
 # 各サービスの cloudbuild はリポジトリルートがコンテキストのため、
 # services/<name>/ を丸ごと除外すると Dockerfile の COPY が必ず失敗する。
-# doc-processor 配下の scripts はルート scripts/ が SSOT（重複アップロードを避ける）
-services/doc-processor/scripts/
 services/doda-dashboard/
 # services/doda-scraper/
 # services/kakeibo/

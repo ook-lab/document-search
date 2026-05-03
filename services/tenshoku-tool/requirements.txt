@@ -5,4 +5,3 @@ python-dotenv
 gunicorn
 weasyprint==62.3
 playwright
-google-cloud-aiplatform

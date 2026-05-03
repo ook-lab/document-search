@@ -17,8 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+import google.generativeai as genai
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeout
 from supabase import create_client, Client
@@ -51,13 +50,13 @@ CATEGORIES = {
     },
 }
 
-vertexai.init(
-    project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-    location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-)
-gemini_model = GenerativeModel(
+gemini_api_key = os.environ.get("GOOGLE_AI_API_KEY")
+if not gemini_api_key:
+    raise RuntimeError("GOOGLE_AI_API_KEY is not set")
+genai.configure(api_key=gemini_api_key)
+gemini_model = genai.GenerativeModel(
     "gemini-2.5-flash-lite",
-    generation_config=GenerationConfig(
+    generation_config=genai.types.GenerationConfig(
         response_mime_type="application/json",
         temperature=0.0,
     ),

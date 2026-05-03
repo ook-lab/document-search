@@ -6,8 +6,7 @@ import json
 import os
 from typing import Dict, Optional
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+import google.generativeai as genai
 
 
 _log_db = None
@@ -44,10 +43,10 @@ class GeminiClient:
     """Gemini API クライアント（Kakeibo専用）"""
 
     def __init__(self):
-                        vertexai.init(
-                            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-                        )
+        api_key = os.environ.get("GOOGLE_AI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GOOGLE_AI_API_KEY is not set")
+        genai.configure(api_key=api_key)
 
     # ── レシート OCR（画像 → テキスト）────────────────────────
 
@@ -69,13 +68,13 @@ class GeminiClient:
         import base64
         image_bytes = base64.b64decode(image_data)
 
-        gen_model = GenerativeModel(model)
+        gen_model = genai.GenerativeModel(model)
         response = gen_model.generate_content(
             [
                 {"mime_type": "image/jpeg", "data": image_bytes},
                 prompt,
             ],
-            generation_config=GenerationConfig(
+            generation_config=genai.types.GenerationConfig(
                 temperature=temperature,
                 max_output_tokens=32768,
             ),
@@ -106,10 +105,10 @@ class GeminiClient:
         テキストプロンプトを送信して結果を返す。
         戻り値: {"success": bool, "content": str}
         """
-        gen_model = GenerativeModel(model_name)
+        gen_model = genai.GenerativeModel(model_name)
         response = gen_model.generate_content(
             prompt,
-            generation_config=GenerationConfig(
+            generation_config=genai.types.GenerationConfig(
                 max_output_tokens=max_output_tokens,
                 temperature=0.1,
             ),

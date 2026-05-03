@@ -9,8 +9,7 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 import mimetypes
 
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+import google.generativeai as genai
 from anthropic import Anthropic, RateLimitError
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
@@ -31,12 +30,9 @@ class LLMClient:
         self.anthropic_api_key = settings.ANTHROPIC_API_KEY
         self.openai_api_key = settings.OPENAI_API_KEY
 
-        # Gemini設定 (トップレベル関数のみ使用)
-        vertexai.init(
-            project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-            location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-        )
-        self.gemini_api_key = True # to bypass checks
+        # Gemini設定
+        if self.gemini_api_key:
+            genai.configure(api_key=self.gemini_api_key)
 
         # Anthropic設定
         if self.anthropic_api_key:
@@ -75,7 +71,7 @@ class LLMClient:
             raise ValueError("Gemini API key is missing")
 
         try:
-            model_obj = GenerativeModel(model)
+            model_obj = genai.GenerativeModel(model)
 
             # 画像データをリスト化
             if isinstance(image_data, str):
@@ -92,10 +88,7 @@ class LLMClient:
                 img_bytes = base64.b64decode(img_base64)
 
                 # Geminiの画像形式に変換
-                image_part = Part.from_data(
-                    mime_type='image/png',
-                    data=img_bytes
-                )
+                image_part = {'mime_type': 'image/png', 'data': img_bytes}
                 content_parts.append(image_part)
 
             # 安全フィルター設定
@@ -109,7 +102,7 @@ class LLMClient:
             # APIを呼び出し
             response = model_obj.generate_content(
                 content_parts,
-                generation_config=GenerationConfig(
+                generation_config=genai.types.GenerationConfig(
                     max_output_tokens=max_tokens,
                     temperature=temperature
                 ),
@@ -219,7 +212,7 @@ class LLMClient:
         """Gemini API呼び出し（トップレベル関数のみ使用）"""
         uploaded_file = None
         try:
-            model = GenerativeModel(model_name)
+            model = genai.GenerativeModel(model_name)
 
             content_parts = [prompt]
 
@@ -232,7 +225,7 @@ class LLMClient:
                 # ファイルを読み込み
                 with open(str(file_path), "rb") as f:
                     file_data = f.read()
-                uploaded_file = Part.from_data(data=file_data, mime_type=mime_type)
+                uploaded_file = {'mime_type': mime_type, 'data': file_data}
                 content_parts.append(uploaded_file)
 
             # 安全フィルター設定（finish_reason: 2 対策）
@@ -244,7 +237,7 @@ class LLMClient:
             ]
 
             # 生成設定（kwargs で max_tokens が渡された場合は優先）
-            generation_config = GenerationConfig(
+            generation_config = genai.types.GenerationConfig(
                 max_output_tokens=kwargs.pop('max_tokens', config.get("max_tokens", 65536)),
                 temperature=config.get("temperature", 0.1)
             )
@@ -252,7 +245,7 @@ class LLMClient:
             # response_format が kwargs に含まれている場合
             response_format = kwargs.get('response_format')
             if response_format in ["json", "json_object"]:
-                generation_config = GenerationConfig(
+                generation_config = genai.types.GenerationConfig(
                     max_output_tokens=kwargs.pop('max_tokens', config.get("max_tokens", 65536)),
                     temperature=config.get("temperature", 0.1),
                     response_mime_type="application/json"
@@ -590,7 +583,7 @@ class LLMClient:
             raise ValueError("Gemini API key is missing")
 
         try:
-            model_obj = GenerativeModel(model)
+            model_obj = genai.GenerativeModel(model)
 
             # ファイルをアップロード
             mime_type, _ = mimetypes.guess_type(image_path)
@@ -599,7 +592,7 @@ class LLMClient:
 
             with open(image_path, "rb") as f:
                 file_data = f.read()
-            uploaded_file = Part.from_data(data=file_data, mime_type=mime_type)
+            uploaded_file = {'mime_type': mime_type, 'data': file_data}
 
             # コンテンツパーツを構築
             content_parts = [prompt, uploaded_file]
@@ -618,13 +611,13 @@ class LLMClient:
             
             # response_format が指定されている場合
             if response_format in ["json", "json_object"]:
-                generation_config = GenerationConfig(
+                generation_config = genai.types.GenerationConfig(
                     max_output_tokens=HARDCODED_MAX_TOKENS,
                     temperature=temperature,
                     response_mime_type="application/json"
                 )
             else:
-                generation_config = GenerationConfig(
+                generation_config = genai.types.GenerationConfig(
                     max_output_tokens=HARDCODED_MAX_TOKENS,
                     temperature=temperature
                 )

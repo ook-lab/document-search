@@ -23,7 +23,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars'
-      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=us-central1,FAST_INDEX_PDF_TOOLBOX_BASE=${_FAST_INDEX_PDF_TOOLBOX_BASE}'
+      - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,FAST_INDEX_PDF_TOOLBOX_BASE=${_FAST_INDEX_PDF_TOOLBOX_BASE}'
       - '--remove-env-vars=GOOGLE_AI_API_KEY,OPENAI_API_KEY,SUPABASE_URL,SUPABASE_KEY,SUPABASE_SERVICE_ROLE_KEY'
       - '--set-secrets'
       - 'GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest'

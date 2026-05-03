@@ -17,8 +17,7 @@ import json
 from shared.common.database.client import DatabaseClient
 
 try:
-    import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
+    import google.generativeai as genai
     GENAI_AVAILABLE = True
 except ImportError:
     GENAI_AVAILABLE = False
@@ -49,14 +48,14 @@ class G22TextAIProcessor:
             return
 
         try:
-            vertexai.init(
-                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-            )
-            self.model = GenerativeModel(model_name)
-            logger.info(f"[G-22] モデル初期化 (Vertex AI): {model_name}")
+            api_key = os.environ.get("GOOGLE_AI_API_KEY")
+            if not api_key:
+                raise RuntimeError("GOOGLE_AI_API_KEY is not set")
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel(model_name)
+            logger.info(f"[G-22] モデル初期化 (API key): {model_name}")
         except Exception as e:
-            logger.error(f"[G-22] Vertex AI 初期化エラー: {e}")
+            logger.error(f"[G-22] Gemini API 初期化エラー: {e}")
             self.model = None
 
     def process(

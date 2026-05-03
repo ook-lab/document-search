@@ -579,7 +579,7 @@ class PipelineManager:
                 'doc_type':              'gmail-DM',
                 'person':                raw_doc.get('person'),
                 'organizations':         None,
-                'workspace':             raw_doc.get('source', 'gmail'),
+                'workspace':             raw_doc.get('source', 'Gmail'),
                 'mimeType':              None,
             }
         # デフォルト: そのまま返す（将来の raw テーブル追加に備え）

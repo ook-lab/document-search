@@ -48,6 +48,15 @@ GEMINI_MODEL = 'gemini-2.5-flash-lite'
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('SUPABASE_KEY')
 
+def _get_gemini_client():
+    from google import genai
+
+    api_key = os.environ.get('GOOGLE_AI_API_KEY')
+    if not api_key:
+        raise RuntimeError('GOOGLE_AI_API_KEY が未設定です')
+    return genai.Client(api_key=api_key)
+
+
 def _get_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
@@ -329,13 +338,7 @@ def parse_events_with_gemini(text: str, preset_text: str = '') -> list:
         ]
     """
 
-    import vertexai
-    from google import genai
-    client = genai.Client(
-        vertexai=True, 
-        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-        location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-    )
+    client = _get_gemini_client()
 
     today = datetime.now()
     preset_section = f"""
@@ -548,6 +551,147 @@ def api_calendars():
     # プライマリを先頭に
     calendars.sort(key=lambda c: (not c['primary'], c['name']))
     return jsonify(calendars)
+
+
+def _strip_attendance_suffix(name: str) -> str:
+    if name.endswith('_pen') or name.endswith('_arc'):
+        return name[:-4]
+    return name
+
+
+def _attendance_role_from_name(name: str) -> str:
+    if name.endswith('_arc'):
+        return 'arc'
+    if name.endswith('_pen'):
+        return 'pen'
+    return 'base'
+
+
+@app.route('/api/calendar-sync-settings', methods=['GET'])
+def api_calendar_sync_settings_get():
+    """同期設定画面用に、全カレンダーとDB同期状態をまとめて返す。"""
+    creds = _get_valid_credentials()
+    if not creds:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    service = _build_calendar_service(creds)
+    all_items = []
+    page_token = None
+    try:
+        while True:
+            result = service.calendarList().list(pageToken=page_token).execute()
+            all_items.extend(result.get('items', []))
+            page_token = result.get('nextPageToken')
+            if not page_token:
+                break
+    except Exception:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    db = _get_supabase()
+    state_by_id = {}
+    raw_counts = {}
+    watch_by_id = {}
+    if db:
+        try:
+            states = db.table('calendar_sync_state') \
+                .select('calendar_id, calendar_name, index_enabled, person, next_sync_token, last_full_sync_at') \
+                .execute()
+            state_by_id = {r['calendar_id']: r for r in (states.data or [])}
+
+            raw = db.table('02_gcal_01_raw').select('calendar_id').execute()
+            for row in (raw.data or []):
+                cid = row.get('calendar_id')
+                raw_counts[cid] = raw_counts.get(cid, 0) + 1
+
+            watches = db.table('calendar_watches').select('calendar_id, expiration_ms').execute()
+            watch_by_id = {r['calendar_id']: r for r in (watches.data or [])}
+        except Exception as e:
+            app.logger.warning(f'calendar-sync-settings DB取得失敗: {e}')
+
+    groups = {}
+    for c in all_items:
+        name = c.get('summary', c['id'])
+        base_name = _strip_attendance_suffix(name)
+        group = groups.setdefault(base_name, {
+            'base_name': base_name,
+            'calendars': [],
+            'index_enabled': False,
+            'person': '',
+            'raw_count': 0,
+        })
+        state = state_by_id.get(c['id'], {})
+        watch = watch_by_id.get(c['id'], {})
+        group['index_enabled'] = group['index_enabled'] or bool(state.get('index_enabled'))
+        group['person'] = group['person'] or state.get('person') or ''
+        group['raw_count'] += raw_counts.get(c['id'], 0)
+        group['calendars'].append({
+            'id': c['id'],
+            'name': name,
+            'role': _attendance_role_from_name(name),
+            'primary': c.get('primary', False),
+            'access_role': c.get('accessRole'),
+            'time_zone': c.get('timeZone'),
+            'index_enabled': bool(state.get('index_enabled')),
+            'person': state.get('person') or '',
+            'has_sync_token': bool(state.get('next_sync_token')),
+            'last_full_sync_at': state.get('last_full_sync_at'),
+            'watch_expiration_ms': watch.get('expiration_ms'),
+            'raw_count': raw_counts.get(c['id'], 0),
+        })
+
+    role_order = {'base': 0, 'pen': 1, 'arc': 2}
+    result_groups = list(groups.values())
+    for g in result_groups:
+        g['calendar_ids'] = [c['id'] for c in g['calendars']]
+        g['calendars'].sort(key=lambda c: (role_order.get(c['role'], 9), c['name'], c['id']))
+    result_groups.sort(key=lambda g: (not any(c.get('primary') for c in g['calendars']), g['base_name']))
+
+    return jsonify({'groups': result_groups})
+
+
+@app.route('/api/calendar-sync-settings', methods=['POST'])
+def api_calendar_sync_settings_save():
+    """同期設定画面から複数カレンダーの同期ON/OFFとpersonを保存する。"""
+    db = _get_supabase()
+    if not db:
+        return jsonify({'error': 'Supabase が設定されていません'}), 500
+
+    data = request.get_json() or {}
+    groups = data.get('groups') or []
+    user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
+    if not user_id:
+        return jsonify({'error': 'CALENDAR_SYNC_USER_ID が未設定です'}), 500
+
+    updated_ids = []
+    enabled_ids = []
+    try:
+        for group in groups:
+            calendar_ids = group.get('calendar_ids') or []
+            index_enabled = bool(group.get('index_enabled'))
+            person = (group.get('person') or '').strip()
+            for calendar_id in calendar_ids:
+                row = {
+                    'user_id': user_id,
+                    'calendar_id': calendar_id,
+                    'index_enabled': index_enabled,
+                }
+                if person:
+                    row['person'] = person
+                db.table('calendar_sync_state').upsert(row, on_conflict='user_id,calendar_id').execute()
+                updated_ids.append(calendar_id)
+                if index_enabled:
+                    enabled_ids.append(calendar_id)
+
+        if enabled_ids:
+            def _watch_then_sync(cal_ids: list[str]):
+                for cal_id in cal_ids:
+                    _register_calendar_watch(cal_id)
+                    _trigger_index_sync(cal_id)
+            threading.Thread(target=_watch_then_sync, args=(enabled_ids,), daemon=True).start()
+
+        return jsonify({'success': True, 'updated': len(updated_ids), 'sync_started': len(enabled_ids)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/parse', methods=['POST'])
@@ -1009,13 +1153,7 @@ def api_assign():
     if not subject_text:
         return jsonify({'error': '科目リストが空です'}), 400
 
-    import vertexai
-    from google import genai
-    client = genai.Client(
-        vertexai=True, 
-        project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
-        location=os.environ.get("VERTEX_AI_REGION", "us-central1")
-    )
+    client = _get_gemini_client()
 
     def _slot_line(s):
         time_str = f'{s.get("start_time","") or "終日"}-{s.get("end_time","") or ""}'
@@ -1204,6 +1342,23 @@ def _register_calendar_watch(calendar_id: str):
         app.logger.warning(f'google-calendar-watch 呼び出し失敗: {e}')
 
 
+def _get_index_target_calendar_ids(calendar_id: str) -> list[str]:
+    """選択カレンダーに対応する base/_pen/_arc の同期対象IDを返す。"""
+    creds = _get_valid_credentials()
+    if not creds:
+        return [calendar_id]
+
+    try:
+        service = _build_calendar_service(creds)
+        base = _resolve_base_calendar(service, calendar_id)
+        base_id = base[0] if base else calendar_id
+        related = _get_related_calendar_ids(service, base_id)
+        return list(dict.fromkeys(related))
+    except Exception as e:
+        app.logger.warning(f'関連カレンダー取得失敗: {e}')
+        return [calendar_id]
+
+
 @app.route('/api/index-settings/<path:calendar_id>', methods=['POST'])
 def api_index_settings_save(calendar_id):
     """index_enabled を更新し、ON なら初回 index-sync を自動実行、OFF ならチャンク削除"""
@@ -1217,44 +1372,49 @@ def api_index_settings_save(calendar_id):
 
     try:
         user_id = os.environ.get('CALENDAR_SYNC_USER_ID')
-        row = {'user_id': user_id, 'calendar_id': calendar_id, 'index_enabled': index_enabled}
-        if person:
-            row['person'] = person
-        db.table('calendar_sync_state').upsert(row, on_conflict='user_id,calendar_id').execute()
+        target_calendar_ids = _get_index_target_calendar_ids(calendar_id)
+        for target_id in target_calendar_ids:
+            row = {'user_id': user_id, 'calendar_id': target_id, 'index_enabled': index_enabled}
+            if person:
+                row['person'] = person
+            db.table('calendar_sync_state').upsert(row, on_conflict='user_id,calendar_id').execute()
 
         if index_enabled:
             # ON: watch 登録が完了してから index-sync を実行（calendar_name が確定した後に同期）
-            def _watch_then_sync(cal_id: str):
-                _register_calendar_watch(cal_id)
-                _trigger_index_sync(cal_id)
-            threading.Thread(target=_watch_then_sync, args=(calendar_id,), daemon=True).start()
+            def _watch_then_sync(cal_ids: list[str]):
+                for cal_id in cal_ids:
+                    _register_calendar_watch(cal_id)
+                    _trigger_index_sync(cal_id)
+            threading.Thread(target=_watch_then_sync, args=(target_calendar_ids,), daemon=True).start()
         else:
             # OFF: このカレンダーの全イベントレコード + チャンクを削除
-            raw = db.table('02_gcal_01_raw') \
-                    .select('id') \
-                    .eq('calendar_id', calendar_id) \
-                    .execute()
-            if raw.data:
-                raw_ids = [str(r['id']) for r in raw.data]
-                # pipeline_meta ID を取得してチャンク + meta を削除
-                meta_rows = db.table('pipeline_meta') \
-                    .select('id') \
-                    .eq('raw_table', '02_gcal_01_raw') \
-                    .in_('raw_id', raw_ids) \
-                    .execute()
-                for r in (meta_rows.data or []):
-                    db.table('10_ix_search_index').delete().eq('document_id', r['id']).execute()
-                    db.table('pipeline_meta').delete().eq('id', r['id']).execute()
-                # 09_unified_documents を削除
-                db.table('09_unified_documents') \
-                    .delete() \
-                    .eq('raw_table', '02_gcal_01_raw') \
-                    .in_('raw_id', raw_ids) \
-                    .execute()
-                # 02_gcal_01_raw を削除
-                db.table('02_gcal_01_raw').delete().in_('id', raw_ids).execute()
+            for target_id in target_calendar_ids:
+                raw = db.table('02_gcal_01_raw') \
+                        .select('id') \
+                        .eq('calendar_id', target_id) \
+                        .execute()
+                if raw.data:
+                    raw_ids = [str(r['id']) for r in raw.data]
+                    unified = db.table('09_unified_documents') \
+                        .select('id') \
+                        .eq('raw_table', '02_gcal_01_raw') \
+                        .in_('raw_id', raw_ids) \
+                        .execute()
+                    for doc in (unified.data or []):
+                        db.table('10_ix_search_index').delete().eq('doc_id', doc['id']).execute()
+                    db.table('09_unified_documents') \
+                        .delete() \
+                        .eq('raw_table', '02_gcal_01_raw') \
+                        .in_('raw_id', raw_ids) \
+                        .execute()
+                    db.table('02_gcal_01_raw').delete().in_('id', raw_ids).execute()
 
-        return jsonify({'success': True, 'index_enabled': index_enabled, 'person': person})
+        return jsonify({
+            'success': True,
+            'index_enabled': index_enabled,
+            'person': person,
+            'calendar_ids': target_calendar_ids,
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

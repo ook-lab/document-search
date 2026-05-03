@@ -33,7 +33,8 @@ steps:
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=us-central1'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--set-secrets=GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest'
       - '--timeout=3600'
       - '--memory=${_MEMORY}'
 
