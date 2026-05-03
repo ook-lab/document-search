@@ -131,12 +131,12 @@
                 <label class="label">Google Driveから読み込み</label>
                 <input type="text" id="drive-file-id" placeholder="Google Drive File ID">
             </div>
-            <button type="button" class="btn-submit" id="drive-pick-btn" style="margin-bottom: 0.75rem; background: #64748b;">
-                DriveからPDFを選択
-            </button>
-            <button type="button" class="btn-submit" id="drive-submit-btn">
-                Drive PDFを分割する
+            <button type="button" class="btn-submit" id="drive-submit-btn" style="margin-bottom: 0.75rem;">
+                IDで読み込み
                 <div class="loading" id="drive-loading-spinner"></div>
+            </button>
+            <button type="button" class="btn-submit" id="drive-pick-btn" style="margin-bottom: 0.75rem; background: #64748b;">
+                Driveから読み込み
             </button>
         </div>
     </div>
@@ -216,7 +216,7 @@
                 alert(err.message);
             } finally {
                 driveSubmitBtn.disabled = false;
-                driveSubmitBtn.childNodes[0].textContent = 'Drive PDFを分割する ';
+                driveSubmitBtn.childNodes[0].textContent = 'IDで読み込み ';
                 driveLoadingSpinner.style.display = 'none';
             }
         });

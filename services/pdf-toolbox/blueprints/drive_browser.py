@@ -50,13 +50,13 @@ def _list_all_files(service, **list_args):
 def list_roots():
     try:
         drive = GoogleDriveConnector()
-        about = drive.service.about().get(fields="user(emailAddress,displayName),rootFolderId").execute()
+        about = drive.service.about().get(fields="user(emailAddress,displayName)").execute()
         drives_result = drive.service.drives().list(pageSize=100, fields="drives(id,name)").execute()
         shared_drives = sorted(drives_result.get("drives", []), key=lambda item: item.get("name", "").lower())
         return jsonify(
             {
                 "user": about.get("user", {}),
-                "rootFolderId": about.get("rootFolderId", "root"),
+                "rootFolderId": "root",
                 "sharedDrives": shared_drives,
             }
         )
