@@ -7,6 +7,7 @@ import fitz
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file
 from PIL import Image, ImageDraw, ImageFont
 from blueprints.drive_pdf import download_drive_pdf
+from blueprints.pdf_fonts import find_japanese_font
 
 labeler_bp = Blueprint("labeler", __name__, template_folder="../templates")
 
@@ -20,23 +21,10 @@ def _safe_output_filename(filename):
     return cleaned or "labeled.pdf"
 
 
-def _font_candidates():
-    return [
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-jp-Regular.otf",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        r"C:\Windows\Fonts\meiryo.ttc",
-        r"C:\Windows\Fonts\YuGothM.ttc",
-        r"C:\Windows\Fonts\msgothic.ttc",
-        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-        "/Library/Fonts/Arial Unicode.ttf",
-    ]
-
-
 def _load_font(font_size_px):
-    for path in _font_candidates():
-        if os.path.exists(path):
-            return ImageFont.truetype(path, font_size_px)
+    path = find_japanese_font()
+    if path:
+        return ImageFont.truetype(path, font_size_px)
     return ImageFont.load_default()
 
 

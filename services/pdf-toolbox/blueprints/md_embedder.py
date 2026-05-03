@@ -2,8 +2,6 @@ import os
 import re
 import uuid
 import logging
-import base64
-import requests
 from datetime import timezone, datetime
 import fitz  # PyMuPDF
 from flask import Blueprint, request, jsonify, current_app, send_file, render_template
@@ -13,6 +11,9 @@ from werkzeug.utils import secure_filename
 from gemini_studio_key import google_ai_studio_api_key
 from google_drive_connector import GoogleDriveConnector
 from blueprints.drive_pdf import download_drive_pdf
+from blueprints.gemini_http import post_generate_content
+from blueprints.gemini_images import to_gemini_inline_image_part
+from blueprints.pdf_fonts import require_japanese_font
 from supabase import create_client as _supabase_create_client
 
 def _get_supabase():
@@ -231,19 +232,16 @@ def extract_page(file_id, page_index):
             ), 500
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         
-        # Prepare Base64 image
-        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
-        
         payload = {
             "contents": [{
                 "parts": [
                     {"text": prompt},
-                    {"inline_data": {"mime_type": "image/png", "data": img_base64}}
+                    to_gemini_inline_image_part(img_bytes),
                 ]
             }]
         }
         
-        resp = requests.post(url, json=payload)
+        resp = post_generate_content(url, payload, timeout=120, logger=current_app.logger)
         if resp.status_code != 200:
             raise Exception(f"Gemini API Error ({resp.status_code}): {resp.text}")
         
@@ -294,13 +292,7 @@ def save_pdf():
 
         doc = fitz.open(input_filepath)
 
-        # Register Japanese Font to avoid "need font file or buffer"
-        font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
-        if not os.path.exists(font_path):
-            # Fallback if the path is slightly different
-            font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-jp-Regular.otf"
-        
-        has_font = os.path.exists(font_path)
+        font_path = require_japanese_font()
 
         for str_idx, page_data in pages_data.items():
             page_idx = int(str_idx)
@@ -312,12 +304,7 @@ def save_pdf():
                 
                 rect = fitz.Rect(0, 0, page.rect.width, page.rect.height)
                 
-                if has_font:
-                    # Insert with explicit font to support Japanese
-                    page.insert_textbox(rect, payload, fontsize=6, fontname="noto", fontfile=font_path, render_mode=3)
-                else:
-                    # Last resort fallback
-                    page.insert_textbox(rect, payload, fontsize=6, fontname="cjk", render_mode=3)
+                page.insert_textbox(rect, payload, fontsize=6, fontname="jpfont", fontfile=font_path, render_mode=3)
 
         doc.save(output_filepath)
         doc.close()

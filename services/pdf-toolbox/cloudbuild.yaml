@@ -29,7 +29,6 @@ steps:
       - '--memory'
       - '1Gi'
       - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_REGION=${_VERTEX_AI_REGION}'
-      - '--remove-env-vars=GOOGLE_AI_API_KEY'
       - '--set-secrets=GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_APPLICATION_CREDENTIALS:latest,GMAIL_USER_EMAIL=GMAIL_USER_EMAIL:latest'
 
 images:

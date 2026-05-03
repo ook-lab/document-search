@@ -5,14 +5,15 @@ import fitz  # PyMuPDF
 import io
 import re
 import traceback
-import requests
-import base64
 from flask import Blueprint, render_template, request, jsonify, send_file, url_for, current_app
 from werkzeug.utils import secure_filename
 from google import genai
 from google.genai import types
 from gemini_studio_key import google_ai_studio_api_key
 from blueprints.drive_pdf import download_drive_pdf
+from blueprints.gemini_http import post_generate_content
+from blueprints.gemini_images import to_gemini_inline_image_part
+from blueprints.pdf_fonts import require_japanese_font
 
 ocr_bp = Blueprint('ocr', __name__, template_folder='../templates')
 
@@ -164,13 +165,11 @@ def run_ocr():
             ), 500
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{selected_model}:generateContent?key={api_key}"
         
-        img_base64 = base64.b64encode(img_byte_arr).decode('utf-8')
-        
         payload = {
             "contents": [{
                 "parts": [
                     {"text": full_prompt},
-                    {"inline_data": {"mime_type": "image/png", "data": img_base64}}
+                    to_gemini_inline_image_part(img_byte_arr),
                 ]
             }],
             "generationConfig": {
@@ -178,7 +177,7 @@ def run_ocr():
             }
         }
         
-        resp = requests.post(url, json=payload)
+        resp = post_generate_content(url, payload, timeout=120, logger=current_app.logger)
         if resp.status_code != 200:
             raise Exception(f"Gemini API Error ({resp.status_code}): {resp.text}")
         
@@ -253,6 +252,7 @@ def save_pdf():
         output_path = os.path.join(current_app.config['OUTPUT_FOLDER'], output_filename)
         
         doc = fitz.open(original_path)
+        font_path = require_japanese_font()
         
         for item in corrections:
             page_num = item.get('page_num')
@@ -270,7 +270,14 @@ def save_pdf():
             box_h = ((ymax - ymin) / 1000.0) * p_height
             fontsize = max(8, box_h * 0.8)
             
-            page.insert_text((x, y + (fontsize * 0.8)), text, fontsize=fontsize, fontname="cjk", render_mode=3)
+            page.insert_text(
+                (x, y + (fontsize * 0.8)),
+                text,
+                fontsize=fontsize,
+                fontname="jpfont",
+                fontfile=font_path,
+                render_mode=3,
+            )
             
         doc.save(output_path)
         doc.close()

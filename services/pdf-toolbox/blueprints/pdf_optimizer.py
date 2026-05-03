@@ -1,16 +1,17 @@
 import os
 import uuid
 import logging
-import base64
 import textwrap
 from urllib.parse import quote
 
 import fitz
-import requests
 from flask import Blueprint, render_template, request, jsonify, send_file, current_app
 
 from gemini_studio_key import google_ai_studio_api_key
 from blueprints.drive_pdf import download_drive_pdf
+from blueprints.gemini_http import post_generate_content
+from blueprints.gemini_images import to_gemini_inline_image_part
+from blueprints.pdf_fonts import require_japanese_font
 
 optimizer_bp = Blueprint('optimizer', __name__, template_folder='../templates')
 
@@ -65,12 +66,7 @@ def _call_gemini_for_toc_entry(page_number, page_count, image_bytes, document_ti
             {
                 "parts": [
                     {"text": prompt},
-                    {
-                        "inline_data": {
-                            "mime_type": "image/png",
-                            "data": base64.b64encode(image_bytes).decode("utf-8"),
-                        }
-                    },
+                    to_gemini_inline_image_part(image_bytes),
                 ]
             }
         ]
@@ -88,7 +84,7 @@ def _call_gemini_for_toc_entry(page_number, page_count, image_bytes, document_ti
 
 
 def requests_post_json(url, payload):
-    return requests.post(url, json=payload, timeout=120)
+    return post_generate_content(url, payload, timeout=120, logger=current_app.logger)
 
 
 def _generate_toc_entries(doc, document_title="", instructions=""):
@@ -135,10 +131,10 @@ def _insert_toc_markdown_page(doc, markdown_text):
     base_font_size = 9.2
     line_height = base_font_size * 1.45
     max_chars = max(24, int((page_width - margin * 2) / (base_font_size * 0.55)))
-    cjk_font = fitz.Font("cjk")
+    font_path = require_japanese_font()
 
     page = doc.new_page(pno=0, width=page_width, height=page_height)
-    page.insert_font(fontname="cjk", fontbuffer=cjk_font.buffer)
+    page.insert_font(fontname="jpfont", fontfile=font_path)
 
     printable_lines = []
     for raw_line in (markdown_text or "# 目次").splitlines():
@@ -173,7 +169,8 @@ def _insert_toc_markdown_page(doc, markdown_text):
                 fitz.Rect(margin, y, page_width - margin, page_height - margin),
                 "...",
                 fontsize=max(6, base_font_size * scale),
-                fontname="cjk",
+                fontname="jpfont",
+                fontfile=font_path,
                 color=(0, 0, 0),
             )
             break
@@ -182,7 +179,8 @@ def _insert_toc_markdown_page(doc, markdown_text):
                 fitz.Rect(margin, y, page_width - margin, y + actual_line_height + 2),
                 line,
                 fontsize=actual_size,
-                fontname="cjk",
+                fontname="jpfont",
+                fontfile=font_path,
                 color=(0, 0, 0),
                 align=fitz.TEXT_ALIGN_LEFT,
             )
