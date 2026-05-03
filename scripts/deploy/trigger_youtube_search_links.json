@@ -1,0 +1,22 @@
+{
+  "description": "Push to main: services/youtube-search-links/cloudbuild.yaml",
+  "filename": "services/youtube-search-links/cloudbuild.yaml",
+  "github": {
+    "name": "document-management-system",
+    "owner": "ook-lab",
+    "push": {
+      "branch": "^main$"
+    }
+  },
+  "includeBuildLogs": "INCLUDE_BUILD_LOGS_WITH_STATUS",
+  "includedFiles": [
+    "services/youtube-search-links/**"
+  ],
+  "name": "youtube-search-links",
+  "serviceAccount": "projects/consummate-yew-479020-u2/serviceAccounts/document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com",
+  "tags": [
+    "gcp-cloud-build-deploy-cloud-run",
+    "gcp-cloud-build-deploy-cloud-run-managed",
+    "youtube-search-links"
+  ]
+}
