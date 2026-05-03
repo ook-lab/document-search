@@ -629,39 +629,29 @@
     .sync-count { color: #555; white-space: nowrap; }
     .sync-muted { color: #aaa; }
 
-    /* ───── 常時表示: 選択カレンダーの検索同期 ───── */
-    .context-sync-wrap {
-      max-width: 740px;
-      margin: 0 auto;
-      padding: 0 16px 12px;
-    }
-    .context-sync-bar {
-      background: #fff;
+    /* ───── 同期設定タブ内: 選択中カレンダー1件用 ───── */
+    .sync-tab-current {
+      margin-bottom: 16px;
+      border: 1px solid #e8eaed;
       border-radius: 12px;
-      box-shadow: 0 1px 8px rgba(0,0,0,.06);
-      border: 1px solid #eee;
       overflow: hidden;
+      background: #fafbff;
     }
-    .context-sync-bar .index-toggle-wrap {
+    .sync-tab-current-h {
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #444;
+      background: #f0f4ff;
+      border-bottom: 1px solid #e8eaed;
+    }
+    .sync-tab-current .index-toggle-wrap {
       border-top: none;
       background: #fafbff;
     }
-    .context-sync-bar .index-person-wrap {
+    .sync-tab-current .index-person-wrap {
       background: #fafbff;
     }
-    .context-sync-hint {
-      padding: 6px 16px 10px;
-      font-size: 12px;
-      color: #888;
-      background: #f8f9fa;
-      border-top: 1px solid #eee;
-    }
-    .context-sync-hint a {
-      color: #1a73e8;
-      text-decoration: none;
-      font-weight: 500;
-    }
-    .context-sync-hint a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -685,33 +675,6 @@
   <a href="/auth/login" class="auth-btn btn-login">Google でログイン</a>
   {% endif %}
 </div>
-
-{% if authed %}
-<div class="context-sync-wrap">
-  <div class="context-sync-bar">
-    <div class="index-toggle-wrap">
-      <div class="index-toggle-label">
-        検索（RAG）へ同期する
-        <small>ON のカレンダーだけイベントが自動取り込みされます（選択中のカレンダー）</small>
-      </div>
-      <span id="indexToggleStatus"></span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <div class="index-person-wrap">
-      <span class="index-person-label">担当者名</span>
-      <input type="text" id="indexPerson" class="index-person-input" placeholder="例: 山田太郎">
-      <button class="btn-save-person" onclick="savePersonSetting()">保存</button>
-      <span id="indexPersonStatus"></span>
-    </div>
-    <div class="context-sync-hint">
-      複数カレンダーをまとめて設定する場合は <a href="#" onclick="switchTab('sync'); return false;">「同期設定」タブ</a> を開いてください。
-    </div>
-  </div>
-</div>
-{% endif %}
 
 <div class="main">
   {% if not authed %}
@@ -903,10 +866,30 @@
        ============================== -->
   <div class="tab-content" id="tab-sync">
     <div class="sync-card">
+      <div class="sync-tab-current">
+        <div class="sync-tab-current-h">トップバーのカレンダーで選んでいる 1 件（検索同期・person）</div>
+        <div class="index-toggle-wrap">
+          <div class="index-toggle-label">
+            検索（RAG）へ同期する
+            <small>ON にするとこのカレンダーのイベントを自動取り込みします</small>
+          </div>
+          <span id="indexToggleStatus"></span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="index-person-wrap">
+          <span class="index-person-label">担当者名</span>
+          <input type="text" id="indexPerson" class="index-person-input" placeholder="例: 山田太郎">
+          <button class="btn-save-person" onclick="savePersonSetting()">保存</button>
+          <span id="indexPersonStatus"></span>
+        </div>
+      </div>
       <div class="sync-toolbar">
         <div class="sync-toolbar-note">
-          Google Calendar に見えている全カレンダーを base / _pen / _arc ごとにまとめて表示します。<br>
-          同期ONのグループは保存後に watch 登録と初回同期を開始します。
+          <strong>まとめて指定:</strong> 下の一覧の<strong>「同期」列のチェックボックス</strong>で、base / _pen / _arc ごとのグループ単位で検索への同期 ON・OFF を指定します。<br>
+          Google Calendar に見えているカレンダーを表示しています。同期 ON のグループは「保存して同期開始」後に watch 登録と初回同期が始まります。
         </div>
         <button class="btn-fetch" onclick="loadSyncSettings()">再読み込み</button>
         <button class="btn-fetch" onclick="saveSyncSettings()" style="background:#34a853;">保存して同期開始</button>
@@ -922,7 +905,7 @@
           </tr>
         </thead>
         <tbody id="syncSettingsBody">
-          <tr><td colspan="4" class="sync-muted">「同期設定」タブを開くと読み込みます</td></tr>
+          <tr><td colspan="4" class="sync-muted">このタブを開くと一覧を読み込みます</td></tr>
         </tbody>
       </table>
     </div>
@@ -1508,7 +1491,11 @@ function switchTab(name) {
     el.classList.toggle('active', el.id === 'tab-' + name);
   });
   if (name === 'assign') initAssignDates();
-  if (name === 'sync' && !syncSettingsLoaded) loadSyncSettings();
+  if (name === 'sync') {
+    if (!syncSettingsLoaded) loadSyncSettings();
+    const sel = document.getElementById('calendarSelect');
+    if (sel && sel.value) loadIndexSetting(sel.value);
+  }
 }
 
 function initAssignDates() {
