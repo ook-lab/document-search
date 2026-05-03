@@ -26,7 +26,7 @@ def index():
             max_results = int(request.form.get("max_results") or 20)
         except ValueError:
             max_results = 20
-        max_results = max(1, min(max_results, 50))
+        max_results = max(1, min(max_results, 200))
         if not query:
             error = "検索語を入力してください。"
         else:

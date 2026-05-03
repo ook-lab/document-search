@@ -11,7 +11,7 @@ def fetch_web_search_urls(query: str, max_results: int = 20) -> List[str]:
     q = (query or "").strip()
     if not q:
         return []
-    n = max(1, min(int(max_results), 50))
+    n = max(1, min(int(max_results), 200))
     urls: List[str] = []
     seen: set[str] = set()
     try:
