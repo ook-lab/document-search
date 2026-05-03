@@ -628,6 +628,40 @@
     }
     .sync-count { color: #555; white-space: nowrap; }
     .sync-muted { color: #aaa; }
+
+    /* ───── 常時表示: 選択カレンダーの検索同期 ───── */
+    .context-sync-wrap {
+      max-width: 740px;
+      margin: 0 auto;
+      padding: 0 16px 12px;
+    }
+    .context-sync-bar {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 8px rgba(0,0,0,.06);
+      border: 1px solid #eee;
+      overflow: hidden;
+    }
+    .context-sync-bar .index-toggle-wrap {
+      border-top: none;
+      background: #fafbff;
+    }
+    .context-sync-bar .index-person-wrap {
+      background: #fafbff;
+    }
+    .context-sync-hint {
+      padding: 6px 16px 10px;
+      font-size: 12px;
+      color: #888;
+      background: #f8f9fa;
+      border-top: 1px solid #eee;
+    }
+    .context-sync-hint a {
+      color: #1a73e8;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .context-sync-hint a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -651,6 +685,33 @@
   <a href="/auth/login" class="auth-btn btn-login">Google でログイン</a>
   {% endif %}
 </div>
+
+{% if authed %}
+<div class="context-sync-wrap">
+  <div class="context-sync-bar">
+    <div class="index-toggle-wrap">
+      <div class="index-toggle-label">
+        検索（RAG）へ同期する
+        <small>ON のカレンダーだけイベントが自動取り込みされます（選択中のカレンダー）</small>
+      </div>
+      <span id="indexToggleStatus"></span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="index-person-wrap">
+      <span class="index-person-label">担当者名</span>
+      <input type="text" id="indexPerson" class="index-person-input" placeholder="例: 山田太郎">
+      <button class="btn-save-person" onclick="savePersonSetting()">保存</button>
+      <span id="indexPersonStatus"></span>
+    </div>
+    <div class="context-sync-hint">
+      複数カレンダーをまとめて設定する場合は <a href="#" onclick="switchTab('sync'); return false;">「同期設定」タブ</a> を開いてください。
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="main">
   {% if not authed %}
@@ -694,23 +755,6 @@
       <span class="preset-hint">カレンダーごとに保存されます。Gemini がこの辞書を参照して時間・場所を解釈します。</span>
       <span id="presetSaveStatus"></span>
       <button class="btn-save-preset" onclick="savePreset()">保存</button>
-    </div>
-    <div class="index-toggle-wrap">
-      <div class="index-toggle-label">
-        同期に含める
-        <small>ON にするとカレンダーのイベントが自動同期されます</small>
-      </div>
-      <span id="indexToggleStatus"></span>
-      <label class="toggle-switch">
-        <input type="checkbox" id="indexToggle" onchange="saveIndexSetting(this.checked)">
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-    <div class="index-person-wrap">
-      <span class="index-person-label">担当者名</span>
-      <input type="text" id="indexPerson" class="index-person-input" placeholder="例: 山田太郎">
-      <button class="btn-save-person" onclick="savePersonSetting()">保存</button>
-      <span id="indexPersonStatus"></span>
     </div>
   </div>
 
@@ -921,7 +965,10 @@ let syncSettingsLoaded = false;
     });
 
     // 初期プリセット読み込み（パネルが開いたときのために）
-    if (primary) loadPreset(primary.id, primary.name);
+    if (primary) {
+      loadPreset(primary.id, primary.name);
+      loadIndexSetting(primary.id);
+    }
 
     // 出欠タブの日付デフォルト（今日〜1ヶ月後）
     const today = new Date();
@@ -953,10 +1000,7 @@ function togglePreset() {
   if (presetOpen) {
     const sel = document.getElementById('calendarSelect');
     const cal = calendars.find(c => c.id === sel?.value);
-    if (cal) {
-      loadPreset(cal.id, cal.name);
-      loadIndexSetting(cal.id);
-    }
+    if (cal) loadPreset(cal.id, cal.name);
   }
 }
 
