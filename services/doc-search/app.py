@@ -208,6 +208,7 @@ def search_documents():
             date_filter=date_filter,
             threshold=threshold,
         )
+        results = _filter_calendar_results_by_attendance_intent(results, query)
 
         # GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
         cal_results   = [d for d in results if d.get('source') == 'Googleカレンダー']
@@ -304,6 +305,10 @@ def generate_answer():
             persons=persons if persons else None,
             category=categories if categories else None,
             date_range=date_range,
+        )
+        search_results = _filter_calendar_results_by_attendance_intent(
+            search_results,
+            f"{query} {refined_query}",
         )
         print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
@@ -1085,6 +1090,85 @@ def _build_context(documents: List[Dict[str, Any]]) -> str:
     print(f"[DEBUG] コンテキスト: {len(documents)} 件 / {total_chars} 文字")
 
     return final_context
+
+
+def _calendar_attendance_intent(query: str) -> Optional[set[str]]:
+    """予定検索時に _arc/_pen を通常予定から分離するための出欠意図を返す。"""
+    q = (query or "").lower()
+
+    declined_terms = (
+        "キャンセル", "取消", "取り消", "中止", "欠席", "不参加",
+        "行かない", "断った", "declined", "_arc",
+    )
+    tentative_terms = (
+        "未定", "保留", "仮", "ペンディング", "pending",
+        "参加不参加未定", "tentative", "_pen",
+    )
+    all_terms = ("出欠", "参加状況", "全予定", "すべての予定", "全部の予定")
+
+    wants_declined = any(t in q for t in declined_terms)
+    wants_tentative = any(t in q for t in tentative_terms)
+    wants_all = any(t in q for t in all_terms)
+
+    if wants_all:
+        return {"accepted", "declined", "tentative"}
+    if wants_declined and wants_tentative:
+        return {"declined", "tentative"}
+    if wants_declined:
+        return {"declined"}
+    if wants_tentative:
+        return {"tentative"}
+
+    # 通常の「明日の予定」などでは _arc/_pen を出さない。
+    return {"accepted"}
+
+
+def _calendar_attendance_status(doc: Dict[str, Any]) -> str:
+    meta = doc.get("meta") or {}
+    status = meta.get("attendance_status")
+    if status in {"accepted", "declined", "tentative"}:
+        return status
+
+    calendar_name = (meta.get("calendar_name") or "").strip()
+    if calendar_name.endswith("_arc"):
+        return "declined"
+    if calendar_name.endswith("_pen"):
+        return "tentative"
+
+    attendees = meta.get("attendees")
+    if isinstance(attendees, list):
+        self_attendee = next((a for a in attendees if isinstance(a, dict) and a.get("self")), None)
+        if self_attendee and self_attendee.get("responseStatus") in {"accepted", "declined", "tentative"}:
+            return self_attendee["responseStatus"]
+
+    return "accepted"
+
+
+def _filter_calendar_results_by_attendance_intent(
+    documents: List[Dict[str, Any]],
+    query: str,
+) -> List[Dict[str, Any]]:
+    allowed_statuses = _calendar_attendance_intent(query)
+    if not allowed_statuses:
+        return documents
+
+    filtered = []
+    removed = 0
+    for doc in documents:
+        if doc.get("source") != "Googleカレンダー":
+            filtered.append(doc)
+            continue
+        if _calendar_attendance_status(doc) in allowed_statuses:
+            filtered.append(doc)
+        else:
+            removed += 1
+
+    if removed:
+        print(
+            f"[DEBUG] カレンダー出欠フィルタ: allowed={sorted(allowed_statuses)} removed={removed}",
+            flush=True,
+        )
+    return filtered
 
 
 @app.route('/api/extract_schedules', methods=['POST'])
