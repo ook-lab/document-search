@@ -27,6 +27,7 @@ from flask import (
 )
 from flask_cors import CORS
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import google.oauth2.credentials
 import google_auth_oauthlib.flow
@@ -90,11 +91,22 @@ GCP_PROJECT_ID = os.environ.get('GCP_PROJECT_ID')
 SECRET_CREDENTIALS = 'calendar-register-credentials'
 SECRET_TOKEN      = 'calendar-register-token'
 
-# ローカル実行時: http を許可
-os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
+# ローカル HTTP のみ oauthlib に平文を許可（Cloud Run は外部 HTTPS → ProxyFix で scheme を合わせる）
+if not os.environ.get('K_SERVICE'):
+    os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'calendar-register-dev-key')
+
+# Cloud Run: ロードバランサ経由で X-Forwarded-Proto=https が付与される。
+# これが無いと request.url が http のままになり、OAuth コード交換で redirect_uri 不一致になる。
+if os.environ.get('K_SERVICE'):
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1
+    )
+    app.config['SESSION_COOKIE_SECURE'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
 CORS(app)
 
 
@@ -428,6 +440,22 @@ def _get_redirect_uri() -> str:
     return f'http://localhost:{port}/auth/callback'
 
 
+def _authorization_response_url_for_token() -> str:
+    """
+    OAuth トークン交換に渡す「コールバック完全 URL」。
+    Cloud Run はコンテナへ http で転送するため request.url が http になり、
+    Google が発行した code は https の redirect_uri 前提 → 不一致で失敗する。
+    登録済み URI（通常 https）と生クエリを合成して確実に一致させる。
+    """
+    registered = _get_redirect_uri().strip()
+    if '?' in registered:
+        base, _ = registered.split('?', 1)
+    else:
+        base = registered
+    q = request.query_string.decode('utf-8', errors='replace')
+    return f'{base}?{q}' if q else base
+
+
 @app.route('/auth/login')
 def auth_login():
     """OAuth2 認証フロー開始"""
@@ -460,18 +488,38 @@ def auth_login():
 def auth_callback():
     """OAuth2 コールバック"""
     creds_data = _read_credentials_json()
-    flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        creds_data,
-        scopes=SCOPES,
-        state=session.get('oauth_state'),
-        redirect_uri=_get_redirect_uri()
-    )
-    flow.fetch_token(
-        authorization_response=request.url,
-        code_verifier=session.get('code_verifier'),
-    )
-    _save_credentials(flow.credentials)
-    return redirect(url_for('index'))
+    if not creds_data:
+        return jsonify({'error': 'credentials.json が見つかりません（auth/ または Secret Manager）'}), 500
+    if not session.get('code_verifier'):
+        app.logger.warning(
+            'auth/callback: セッションに code_verifier なし（Cookie / セッション維持失敗）'
+        )
+        return (
+            'ログインセッションが途切れています（Cookie がブロックされている、'
+            '別タブから開いた、前回のログインから時間が空きすぎた等）。'
+            '<a href="/auth/login">/auth/login から最初からやり直してください</a>。',
+            400,
+        )
+    try:
+        flow = google_auth_oauthlib.flow.Flow.from_client_config(
+            creds_data,
+            scopes=SCOPES,
+            state=session.get('oauth_state'),
+            redirect_uri=_get_redirect_uri()
+        )
+        flow.fetch_token(
+            authorization_response=_authorization_response_url_for_token(),
+            code_verifier=session.get('code_verifier'),
+        )
+        _save_credentials(flow.credentials)
+        return redirect(url_for('index'))
+    except Exception as e:
+        app.logger.exception('OAuth auth/callback 失敗: %s', e)
+        return (
+            'ログイン処理に失敗しました（サーバーログを確認してください）。'
+            ' Cloud Run ではリバースプロキシ経由の HTTPS 設定不整合がよくあります。',
+            500,
+        )
 
 
 @app.route('/auth/logout')
