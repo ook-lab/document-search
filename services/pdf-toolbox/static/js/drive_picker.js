@@ -72,12 +72,12 @@
         const choices = [
             {
                 id: roots.rootFolderId || 'root',
-                name: 'マイドライブ',
+                name: roots.rootName || 'マイドライブ',
                 icon: '🏠',
                 source: 'my_drive',
                 folderId: roots.rootFolderId || 'root',
                 driveId: '',
-                title: 'マイドライブ',
+                title: roots.rootName || 'マイドライブ',
                 description: roots.user && roots.user.emailAddress ? roots.user.emailAddress : '',
             },
             {
