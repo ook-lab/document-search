@@ -156,7 +156,7 @@
         <header>
             <div>
                 <h1>⚡ 高速インデックス</h1>
-                <div class="subtitle">03・04・05・08 の pipeline_meta。構造化済は <code>09_unified_documents.ui_data</code> または <code>pipeline_meta.md_content</code>、ベクトル化済は <code>pipeline_meta.vectorized_at</code> で判定。外部ツールは <code>FAST_INDEX_PDF_TOOLBOX_BASE</code>（末尾スラッシュなし）。</div>
+                <div class="subtitle">03・04・05・08 の raw 行を対象に、PDF由来MDは <code>raw.pdf_md_content</code>、統合本文は <code>09_unified_documents.body</code>、ベクトル化済は <code>pipeline_meta.vectorized_at</code> で判定。外部ツールは <code>FAST_INDEX_PDF_TOOLBOX_BASE</code>（末尾スラッシュなし）。</div>
             </div>
             <div style="font-size: 14px; color: var(--success); font-weight: 600;">
                 {{ docs|length }} 件の待機中

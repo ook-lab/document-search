@@ -384,15 +384,19 @@ def save_to_drive():
         if not os.path.exists(output_filepath):
             return jsonify({'error': 'Generated file not found on server'}), 404
 
-        # ===== Supabase: 高速インデックス一覧用 md_content + updated_at =====
+        # ===== Supabase: raw 行へ PDF由来MDを保存 =====
         now_iso = datetime.now(timezone.utc).isoformat()
-        md_in_request = isinstance(data, dict) and 'md_content' in data
-        md_content_val = (data.get('md_content') or '').strip() if md_in_request else None
+        md_in_request = isinstance(data, dict) and (
+            'pdf_md_content' in data or 'md_content' in data
+        )
+        md_content_val = (
+            data.get('pdf_md_content') or data.get('md_content') or ''
+        ).strip() if md_in_request else None
         pipeline_meta_id = (data.get('pipeline_meta_id') or '').strip() or None
         sb = _get_supabase()
         if md_in_request and not sb:
             return jsonify({
-                'error': 'Supabase未設定のため、md_contentを高速インデックス一覧へ反映できません',
+                'error': 'Supabase未設定のため、PDF由来MDをraw行へ反映できません',
             }), 500
 
         drive = GoogleDriveConnector()
@@ -407,7 +411,7 @@ def save_to_drive():
                 if pipeline_meta_id:
                     sel = (
                         sb.table('pipeline_meta')
-                        .select('id, drive_file_id')
+                        .select('id, raw_id, raw_table')
                         .eq('id', pipeline_meta_id)
                         .limit(1)
                         .execute()
@@ -416,38 +420,19 @@ def save_to_drive():
                     if not prow:
                         logging.warning('pipeline_meta_id not found: %s', pipeline_meta_id)
                     else:
-                        pm_drive = (prow.get('drive_file_id') or '').strip()
-                        if pm_drive and pm_drive != drive_file_id:
-                            return jsonify(
-                                {
-                                    'error': 'pipeline_meta の drive_file_id が、上書き対象の Drive ID と一致しません',
-                                }
-                            ), 400
-                        row_upd = {
-                            'drive_file_id': drive_file_id,
-                            'updated_at': now_iso,
-                        }
+                        raw_table = (prow.get('raw_table') or '').strip()
+                        raw_id = prow.get('raw_id')
                         if md_in_request:
-                            row_upd['md_content'] = md_content_val
-                        pm_one = sb.table('pipeline_meta').update(row_upd).eq('id', pipeline_meta_id).execute()
-                        sb_updated['pipeline_meta_row'] = len(pm_one.data or [])
-
-                pm_res = (
-                    sb.table('pipeline_meta')
-                    .update({'drive_file_id': drive_file_id, 'updated_at': now_iso})
-                    .eq('drive_file_id', drive_file_id)
-                    .execute()
-                )
-                sb_updated['pipeline_meta_by_drive_id'] = len(pm_res.data or [])
-
-                if md_in_request and not pipeline_meta_id:
-                    pm_md = (
-                        sb.table('pipeline_meta')
-                        .update({'md_content': md_content_val, 'updated_at': now_iso})
-                        .eq('drive_file_id', drive_file_id)
-                        .execute()
-                    )
-                    sb_updated['pipeline_meta_md_by_drive'] = len(pm_md.data or [])
+                            raw_res = (
+                                sb.table(raw_table)
+                                .update({
+                                    'pdf_md_content': md_content_val,
+                                    'pdf_md_updated_at': now_iso,
+                                })
+                                .eq('id', raw_id)
+                                .execute()
+                            )
+                            sb_updated[f'{raw_table}.pdf_md'] = len(raw_res.data or [])
 
                 for raw_table in [
                     '05_ikuya_waseaca_01_raw',
@@ -464,20 +449,25 @@ def save_to_drive():
                         )
                         raw_ids = [r['id'] for r in (raw_res.data or [])]
                         if raw_ids:
-                            pm_update = {
-                                'drive_file_id': drive_file_id,
-                                'updated_at': now_iso,
-                            }
                             if md_in_request:
-                                pm_update['md_content'] = md_content_val
+                                raw_upd = (
+                                    sb.table(raw_table)
+                                    .update({
+                                        'pdf_md_content': md_content_val,
+                                        'pdf_md_updated_at': now_iso,
+                                    })
+                                    .in_('id', raw_ids)
+                                    .execute()
+                                )
+                                sb_updated[f'{raw_table}.pdf_md_by_file_url'] = len(raw_upd.data or [])
                             pm_res2 = (
                                 sb.table('pipeline_meta')
-                                .update(pm_update)
+                                .update({'updated_at': now_iso})
                                 .in_('raw_id', raw_ids)
                                 .eq('raw_table', raw_table)
                                 .execute()
                             )
-                            sb_updated[raw_table] = len(pm_res2.data or [])
+                            sb_updated[f'{raw_table}.pipeline_meta'] = len(pm_res2.data or [])
                     except Exception as te:
                         logging.warning('raw table %s update skipped: %s', raw_table, te)
 
@@ -490,23 +480,16 @@ def save_to_drive():
         md_update_rows = sum(
             count
             for key, count in sb_updated.items()
-            if key == 'pipeline_meta_row'
-            or key == 'pipeline_meta_md_by_drive'
-            or key in [
-                '05_ikuya_waseaca_01_raw',
-                '03_ema_classroom_01_raw',
-                '04_ikuya_classroom_01_raw',
-                '08_file_only_01_raw',
-            ]
+            if key.endswith('.pdf_md') or key.endswith('.pdf_md_by_file_url')
         )
         if md_in_request and md_content_val and md_update_rows == 0:
             logging.error(
-                'Drive overwritten but no pipeline_meta row received md_content. file_id=%s supabase=%s',
+                'Drive overwritten but no raw row received pdf_md_content. file_id=%s supabase=%s',
                 drive_file_id,
                 sb_updated,
             )
             return jsonify({
-                'error': 'Driveは上書きしましたが、md_contentを書き込むpipeline_meta行が見つかりませんでした',
+                'error': 'Driveは上書きしましたが、pdf_md_contentを書き込むraw行が見つかりませんでした',
                 'supabase_updated': sb_updated,
             }), 500
 

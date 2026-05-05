@@ -56,26 +56,9 @@ class FastIndexer:
             full_markdown, md_err = self._resolve_markdown(doc)
             if not full_markdown:
                 logger.error("インデックス用の本文がありません: %s", pipeline_id)
-                return False, md_err or "インデックス用の本文がありません（09 / raw / md_content）"
+                return False, md_err or "インデックス用の本文がありません（raw / pdf_md_content）"
 
-            ud_res = (
-                self.db.client.table("09_unified_documents")
-                .select("id, person, source, category")
-                .eq("raw_id", raw_id)
-                .eq("raw_table", rt)
-                .limit(1)
-                .execute()
-            )
-            ud_rows = ud_res.data or []
-            if not ud_rows:
-                logger.error(
-                    "09_unified_documents に行がありません raw_id=%s raw_table=%s",
-                    raw_id,
-                    rt,
-                )
-                return False, "09_unified_documents に行がありません（先に統合行が必要です）"
-
-            unified = ud_rows[0]
+            unified = self._ensure_unified_document(doc, full_markdown)
             unified_doc_id = unified["id"]
             person = unified.get("person") or doc.get("person")
             source = unified.get("source") or doc.get("source")
@@ -122,6 +105,76 @@ class FastIndexer:
             logger.error("Fast index failed: %s", e, exc_info=True)
             return False, str(e)
 
+    def _ensure_unified_document(self, pm: Dict[str, Any], body: str) -> Dict[str, Any]:
+        raw_id = pm["raw_id"]
+        raw_table = pm["raw_table"]
+        ud_res = (
+            self.db.client.table("09_unified_documents")
+            .select("id, person, source, category")
+            .eq("raw_id", raw_id)
+            .eq("raw_table", raw_table)
+            .limit(1)
+            .execute()
+        )
+        ud_rows = ud_res.data or []
+        if ud_rows:
+            return ud_rows[0]
+
+        raw_row = self._load_raw_row(raw_table, raw_id)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        doc = {
+            "raw_id": str(raw_id),
+            "raw_table": raw_table,
+            "person": pm.get("person") or raw_row.get("person"),
+            "source": pm.get("source") or raw_row.get("source"),
+            "category": raw_row.get("course_name") or raw_row.get("category") or raw_table,
+            "title": raw_row.get("title") or raw_row.get("file_name"),
+            "file_url": raw_row.get("file_url"),
+            "snippet": None,
+            "post_at": raw_row.get("created_at"),
+            "due_date": raw_row.get("due_date"),
+            "post_type": raw_row.get("post_type"),
+            "body": body,
+            "ui_data": {
+                "sections": [
+                    {
+                        "title": raw_row.get("title") or raw_row.get("file_name") or "本文",
+                        "body": body,
+                    }
+                ]
+            },
+            "meta": {
+                "fast_index_created": True,
+                "pipeline_meta_id": pm.get("id"),
+                "created_at": now_iso,
+            },
+        }
+        inserted = self.db.client.table("09_unified_documents").insert(doc).execute()
+        rows = inserted.data or []
+        if not rows:
+            raise RuntimeError("09_unified_documents の作成に失敗しました")
+        logger.info(
+            "Created 09_unified_documents for fast-index: raw_id=%s raw_table=%s",
+            raw_id,
+            raw_table,
+        )
+        return rows[0]
+
+    def _load_raw_row(self, raw_table: str, raw_id: Any) -> Dict[str, Any]:
+        try:
+            return (
+                self.db.client.table(raw_table)
+                .select("*")
+                .eq("id", raw_id)
+                .single()
+                .execute()
+                .data
+                or {}
+            )
+        except Exception as e:
+            logger.warning("raw row load failed: table=%s id=%s error=%s", raw_table, raw_id, e)
+            return {}
+
     def _drive_id_from_pm_or_raw(self, pm: Dict[str, Any]) -> Optional[str]:
         did = (pm.get("drive_file_id") or "").strip()
         if did:
@@ -150,57 +203,62 @@ class FastIndexer:
         return m.group(1) if m else None
 
     def _resolve_markdown(self, pm: Dict[str, Any]) -> tuple[str, Optional[str]]:
-        md = (pm.get("md_content") or "").strip()
-        if md:
-            return md, None
-
         raw_table = pm.get("raw_table")
         raw_id = pm.get("raw_id")
         if raw_table and raw_id:
-            try:
-                ud = (
-                    self.db.client.table("09_unified_documents")
-                    .select("body")
-                    .eq("raw_id", raw_id)
-                    .eq("raw_table", raw_table)
-                    .limit(1)
-                    .execute()
-                )
-                if ud.data and (ud.data[0].get("body") or "").strip():
-                    return str(ud.data[0]["body"]).strip(), None
-            except Exception as e:
-                logger.warning("09 からの body 取得に失敗: %s", e)
+            raw_row = self._load_raw_row(raw_table, raw_id)
+            sections = []
 
-            try:
-                raw_row = (
-                    self.db.client.table(raw_table)
-                    .select("*")
-                    .eq("id", raw_id)
-                    .single()
-                    .execute()
-                    .data
-                    or {}
-                )
-                body = (
-                    raw_row.get("description")
-                    or raw_row.get("content")
-                    or raw_row.get("body")
-                    or ""
-                )
-                if str(body).strip():
-                    return str(body).strip(), None
-            except Exception as e:
-                logger.warning("raw からの本文取得に失敗: %s", e)
+            external = self._raw_external_markdown(raw_row)
+            if external:
+                sections.append("# ファイル外テキスト\n\n" + external)
+
+            pdf_md = (raw_row.get("pdf_md_content") or "").strip()
+            if pdf_md:
+                sections.append("# PDF抽出Markdown\n\n" + pdf_md)
+
+            if sections:
+                return "\n\n".join(sections).strip(), None
 
         drive_id = self._drive_id_from_pm_or_raw(pm)
         if drive_id:
             msg = (
                 "PDF（Drive）由来の本文はこのサービスでは未対応です。"
-                " pipeline_meta.md_content を設定するか、別経路でテキスト化してください。"
+                " raw.pdf_md_content を設定するか、別経路でテキスト化してください。"
             )
             logger.error("%s drive_file_id=%s", msg, drive_id)
             return "", msg
         return "", None
+
+    @staticmethod
+    def _raw_external_markdown(raw: Dict[str, Any]) -> str:
+        fields = [
+            ("person", "対象者"),
+            ("source", "ソース"),
+            ("category", "カテゴリ"),
+            ("course_name", "コース名"),
+            ("topic_name", "トピック"),
+            ("title", "タイトル"),
+            ("description", "説明"),
+            ("post_type", "投稿種別"),
+            ("due_date", "期限日"),
+            ("due_time", "期限時刻"),
+            ("creator_name", "作成者"),
+            ("source_url", "投稿URL"),
+            ("file_name", "ファイル名"),
+            ("file_url", "ファイルURL"),
+            ("original_path", "元パス"),
+            ("mime_type", "MIMEタイプ"),
+        ]
+        lines = []
+        for key, label in fields:
+            value = raw.get(key)
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                lines.append(f"- {label}: {text}")
+        return "\n".join(lines)
 
     @staticmethod
     def _plain_chunks(text: str, chunk_size: int = 1200) -> List[str]:

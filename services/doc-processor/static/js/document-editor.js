@@ -2365,13 +2365,15 @@ async function saveDocument() {
     document.getElementById('json-error').style.display = 'none';
 
     try {
+        const markdown = metadataToMarkdown(metadata);
+        if (!markdown) {
+            App.toast('保存するMDテキストがありません', 'error');
+            return;
+        }
+
         await App.api(`/api/documents/${DocState.currentDoc.id}`, {
             method: 'PUT',
-            body: JSON.stringify({
-                metadata,
-                doc_type: DocState.currentDoc.doc_type,
-                notes: 'Flask UIからの手動修正',
-            }),
+            body: JSON.stringify({ markdown }),
         });
 
         App.toast('保存しました', 'success');
@@ -2385,6 +2387,89 @@ async function saveDocument() {
     } catch (error) {
         App.toast(`保存に失敗しました: ${error.message}`, 'error');
     }
+}
+
+function metadataToMarkdown(metadata) {
+    const lines = [];
+
+    const appendSection = (title, body) => {
+        const text = String(body || '').trim();
+        if (!text) return;
+        if (title) lines.push(`## ${title}`);
+        lines.push(text);
+        lines.push('');
+    };
+
+    const scalarToText = (value) => {
+        if (value === null || value === undefined) return '';
+        if (Array.isArray(value)) {
+            return value.map(item => scalarToText(item)).filter(Boolean).join('、');
+        }
+        if (typeof value === 'object') {
+            return Object.entries(value)
+                .map(([key, child]) => {
+                    const text = scalarToText(child);
+                    return text ? `${formatFieldName(key)}: ${text}` : '';
+                })
+                .filter(Boolean)
+                .join(' / ');
+        }
+        return String(value).trim();
+    };
+
+    const tableFromObjects = (items) => {
+        if (!Array.isArray(items) || items.length === 0) return '';
+        if (!items.every(item => item && typeof item === 'object' && !Array.isArray(item))) return '';
+        const keys = Array.from(new Set(items.flatMap(item => Object.keys(item))));
+        if (keys.length === 0) return '';
+        const rows = [
+            `| ${keys.join(' | ')} |`,
+            `| ${keys.map(() => '---').join(' | ')} |`,
+            ...items.map(item => `| ${keys.map(key => scalarToText(item[key]).replace(/\|/g, '\\|')).join(' | ')} |`),
+        ];
+        return rows.join('\n');
+    };
+
+    const appendValue = (title, value) => {
+        if (value === null || value === undefined || value === '') return;
+        if (typeof value !== 'object') {
+            appendSection(title, value);
+            return;
+        }
+        if (Array.isArray(value)) {
+            const table = tableFromObjects(value);
+            if (table) {
+                appendSection(title, table);
+                return;
+            }
+            value.forEach((item, index) => appendValue(`${title} ${index + 1}`, item));
+            return;
+        }
+        Object.entries(value).forEach(([key, child]) => appendValue(`${title} / ${formatFieldName(key)}`, child));
+    };
+
+    if (Array.isArray(metadata.g21_output)) {
+        metadata.g21_output.forEach((article, index) => {
+            appendSection(article.title || `記事 ${index + 1}`, article.body || '');
+        });
+    } else if (Array.isArray(metadata.articles)) {
+        metadata.articles.forEach((article, index) => {
+            appendSection(article.title || `記事 ${index + 1}`, article.body || '');
+        });
+    }
+
+    if (Array.isArray(metadata.text_blocks)) {
+        metadata.text_blocks.forEach((block) => {
+            appendSection(null, block.text || '');
+        });
+    }
+
+    Object.entries(metadata).forEach(([key, value]) => {
+        if (['g21_output', 'articles', 'text_blocks'].includes(key)) return;
+        appendValue(formatFieldName(key), value);
+    });
+
+    return lines.join('\n').trim();
 }
 
 // フォームの編集内容を収集してメタデータにマージ

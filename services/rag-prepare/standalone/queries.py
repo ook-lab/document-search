@@ -2,7 +2,7 @@
 fast-index 一覧用: pipeline_meta・raw・09_unified_documents を突き合わせ、
 区分・表示用ソース/ファイル名を付与する。
 
-構造化は 09_unified_documents.ui_data または pipeline_meta.md_content を正とする。
+構造化は raw.pdf_md_content または 09_unified_documents.body/ui_data を正とする。
 ベクトル化済み判定は pipeline_meta.vectorized_at のみを正とする。
 """
 from __future__ import annotations
@@ -29,8 +29,8 @@ def raw_row_has_file_backing(file_url: Optional[str]) -> bool:
     return s.startswith("http") or s.startswith("//")
 
 
-def md_layer_in_pipeline_meta(md_content: Optional[str]) -> bool:
-    """pipeline_meta.md_content に MD 層（本文）が入っているか。"""
+def pdf_md_in_raw(md_content: Optional[str]) -> bool:
+    """raw 行にPDF由来MDが入っているか。"""
     return bool((md_content or "").strip())
 
 
@@ -61,7 +61,7 @@ def _gmail_without_attachment(r: Dict[str, Any], file_url: Optional[str]) -> boo
     if src != "gmail":
         return False
     has_pm_drive = bool((r.get("drive_file_id") or "").strip())
-    has_md = md_layer_in_pipeline_meta(r.get("md_content"))
+    has_md = pdf_md_in_raw(r.get("pdf_md_content"))
     return not has_pm_drive and not has_md and not raw_row_has_file_backing(file_url)
 
 
@@ -99,7 +99,7 @@ def fetch_pending_fast_index_docs(
             db_client.table("pipeline_meta")
             .select(
                 "id, raw_id, raw_table, source, person, created_at, updated_at, "
-                "processing_status, drive_file_id, md_content, vectorized_at"
+                "processing_status, drive_file_id, vectorized_at"
             )
             .in_("raw_table", tables)
             .is_("vectorized_at", "null")
@@ -132,7 +132,7 @@ def fetch_pending_fast_index_docs(
             try:
                 raw_res = (
                     db_client.table(rt)
-                    .select("id, file_url, file_name, title, source")
+                    .select("id, file_url, file_name, title, source, pdf_md_content, pdf_md_updated_at")
                     .in_("id", chunk)
                     .execute()
                 )
@@ -143,6 +143,8 @@ def fetch_pending_fast_index_docs(
                             "file_name": row.get("file_name"),
                             "title": row.get("title"),
                             "source": row.get("source"),
+                            "pdf_md_content": row.get("pdf_md_content"),
+                            "pdf_md_updated_at": row.get("pdf_md_updated_at"),
                         }
             except Exception:
                 fetched = {}
@@ -186,7 +188,7 @@ def fetch_pending_fast_index_docs(
         fu = extras.get("file_url")
 
         has_pm_drive = bool((r.get("drive_file_id") or "").strip())
-        has_md_col = md_layer_in_pipeline_meta(r.get("md_content"))
+        has_pdf_md = pdf_md_in_raw(extras.get("pdf_md_content"))
         has_physical_file = has_pm_drive or raw_row_has_file_backing(fu) or bool(
             drive_id_from_file_url(fu)
         )
@@ -200,9 +202,9 @@ def fetch_pending_fast_index_docs(
         if has_structured_09:
             segment = "structured"
             segment_label = "構造化済"
-        elif has_md_col or body_layer_in_09(ud_row):
+        elif has_pdf_md or body_layer_in_09(ud_row):
             segment = "structured"
-            segment_label = "構造化済" if has_md_col else "09本文あり"
+            segment_label = "構造化済" if has_pdf_md else "09本文あり"
         elif has_physical_file:
             segment = "pending_md"
             segment_label = "未処理"

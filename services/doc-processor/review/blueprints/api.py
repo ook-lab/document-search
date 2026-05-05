@@ -11,6 +11,7 @@ import os
 import re
 import json
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request, session, Response, abort
@@ -436,20 +437,10 @@ def get_document_history(doc_id: str):
 @login_required
 def update_document(doc_id: str):
     """
-    ドキュメントメタデータ更新
-
-    監査ログ: corrector_emailは必ずsessionのuser_emailを使用
+    レビュー画面で編集した本文をMDテキストとして 03-05 raw.pdf_md_content に保存
     """
     try:
         db_client = get_db_client_or_abort()
-        user_email = get_current_user_email()
-
-        if not user_email:
-            return jsonify({
-                'error_code': 'UNAUTHORIZED',
-                'message': 'User email not found in session',
-                'details': {}
-            }), 401
 
         data = request.get_json()
         if not data:
@@ -459,34 +450,59 @@ def update_document(doc_id: str):
                 'details': {}
             }), 400
 
-        metadata = data.get('metadata')
-        doc_type = data.get('doc_type')
-        notes = data.get('notes', 'Flask UIからの手動修正')
+        markdown = data.get('markdown')
 
-        if metadata is None:
+        if not isinstance(markdown, str):
             return jsonify({
                 'error_code': 'BAD_REQUEST',
-                'message': 'metadata field required',
+                'message': 'markdown field required',
                 'details': {}
             }), 400
 
-        # 修正履歴を記録して保存
-        success = db_client.record_correction(
-            doc_id=doc_id,
-            new_metadata=metadata,
-            new_doc_type=doc_type,
-            corrector_email=user_email,  # 必ずセッションから取得
-            notes=notes
-        )
+        document = db_client.get_document_by_id(doc_id)
+        if not document:
+            return jsonify({
+                'error_code': 'NOT_FOUND',
+                'message': 'Document not found',
+                'details': {'doc_id': doc_id}
+            }), 404
 
-        if success:
-            return jsonify({'success': True})
-        else:
+        raw_table = document.get('raw_table')
+        raw_id = document.get('raw_id')
+        allowed_tables = {
+            '03_ema_classroom_01_raw',
+            '04_ikuya_classroom_01_raw',
+            '05_ikuya_waseaca_01_raw',
+        }
+        if raw_table not in allowed_tables or not raw_id:
+            return jsonify({
+                'error_code': 'UNSUPPORTED_RAW_TABLE',
+                'message': 'PDF由来MDの保存対象外です',
+                'details': {'raw_table': raw_table}
+            }), 400
+
+        response = (
+            db_client.client.table(raw_table)
+            .update({
+                'pdf_md_content': markdown,
+                'pdf_md_updated_at': datetime.now(timezone.utc).isoformat(),
+            })
+            .eq('id', raw_id)
+            .execute()
+        )
+        if not response.data:
             return jsonify({
                 'error_code': 'UPDATE_FAILED',
-                'message': 'Failed to update document',
-                'details': {}
+                'message': 'raw行のpdf_md_content更新に失敗しました',
+                'details': {'raw_table': raw_table, 'raw_id': str(raw_id)}
             }), 500
+
+        return jsonify({
+            'success': True,
+            'raw_table': raw_table,
+            'raw_id': str(raw_id),
+            'pdf_md_length': len(markdown),
+        })
 
     except Exception as e:
         logger.error(f"Failed to update document {doc_id}: {e}")
