@@ -384,21 +384,25 @@ def save_to_drive():
         if not os.path.exists(output_filepath):
             return jsonify({'error': 'Generated file not found on server'}), 404
 
+        # ===== Supabase: 高速インデックス一覧用 md_content + updated_at =====
+        now_iso = datetime.now(timezone.utc).isoformat()
+        md_in_request = isinstance(data, dict) and 'md_content' in data
+        md_content_val = (data.get('md_content') or '').strip() if md_in_request else None
+        pipeline_meta_id = (data.get('pipeline_meta_id') or '').strip() or None
+        sb = _get_supabase()
+        if md_in_request and not sb:
+            return jsonify({
+                'error': 'Supabase未設定のため、md_contentを高速インデックス一覧へ反映できません',
+            }), 500
+
         drive = GoogleDriveConnector()
         success = drive.update_file_content(drive_file_id, output_filepath)
 
         if not success:
             return jsonify({'error': 'Failed to update Google Drive file'}), 500
 
-        # ===== Supabase: 高速インデックス一覧用 md_content + updated_at =====
-        now_iso = datetime.now(timezone.utc).isoformat()
-        md_in_request = isinstance(data, dict) and 'md_content' in data
-        md_content_val = (data.get('md_content') or '').strip() if md_in_request else None
-        pipeline_meta_id = (data.get('pipeline_meta_id') or '').strip() or None
-
         sb_updated = {}
         try:
-            sb = _get_supabase()
             if sb:
                 if pipeline_meta_id:
                     sel = (
@@ -478,7 +482,33 @@ def save_to_drive():
                         logging.warning('raw table %s update skipped: %s', raw_table, te)
 
         except Exception as se:
-            logging.warning('Supabase update skipped (non-fatal): %s', se)
+            logging.error('Supabase update failed after Drive overwrite: %s', se)
+            return jsonify({
+                'error': f'Driveは上書きしましたが、Supabase更新に失敗しました: {se}',
+            }), 500
+
+        md_update_rows = sum(
+            count
+            for key, count in sb_updated.items()
+            if key == 'pipeline_meta_row'
+            or key == 'pipeline_meta_md_by_drive'
+            or key in [
+                '05_ikuya_waseaca_01_raw',
+                '03_ema_classroom_01_raw',
+                '04_ikuya_classroom_01_raw',
+                '08_file_only_01_raw',
+            ]
+        )
+        if md_in_request and md_content_val and md_update_rows == 0:
+            logging.error(
+                'Drive overwritten but no pipeline_meta row received md_content. file_id=%s supabase=%s',
+                drive_file_id,
+                sb_updated,
+            )
+            return jsonify({
+                'error': 'Driveは上書きしましたが、md_contentを書き込むpipeline_meta行が見つかりませんでした',
+                'supabase_updated': sb_updated,
+            }), 500
 
         logging.info(f"Drive save complete. file_id={drive_file_id}, supabase={sb_updated}")
         return jsonify({
