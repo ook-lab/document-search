@@ -2,9 +2,8 @@
 fast-index 一覧用: pipeline_meta・raw・09_unified_documents を突き合わせ、
 区分・表示用ソース/ファイル名を付与する。
 
-構造化（doc-processor G 相当）は 09 の ui_data を正とする。
-完了判定は pipeline_meta.processing_status のみ
-（K 完了・ベクトル化完了とも completed）。
+構造化は 09_unified_documents.ui_data または pipeline_meta.md_content を正とする。
+ベクトル化済み判定は pipeline_meta.vectorized_at のみを正とする。
 """
 from __future__ import annotations
 
@@ -90,9 +89,7 @@ def fetch_pending_fast_index_docs(
     *,
     meta_limit: int = 500,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """
-    processing_status != completed の pipeline_meta を対象 raw のみ返す。
-    """
+    """vectorized_at が未設定の pipeline_meta を対象 raw のみ返す。"""
     tables = list(raw_tables)
     if not tables:
         return [], None
@@ -101,11 +98,12 @@ def fetch_pending_fast_index_docs(
         res = (
             db_client.table("pipeline_meta")
             .select(
-                "id, raw_id, raw_table, source, person, created_at, processing_status, "
-                "drive_file_id, md_content"
+                "id, raw_id, raw_table, source, person, created_at, updated_at, "
+                "processing_status, drive_file_id, md_content, vectorized_at"
             )
             .in_("raw_table", tables)
-            .neq("processing_status", "completed")
+            .is_("vectorized_at", "null")
+            .order("updated_at", desc=True)
             .order("created_at", desc=True)
             .limit(meta_limit)
             .execute()
@@ -203,8 +201,8 @@ def fetch_pending_fast_index_docs(
             segment = "structured"
             segment_label = "構造化済"
         elif has_md_col or body_layer_in_09(ud_row):
-            segment = "md_done"
-            segment_label = "MD済" if has_md_col else "09本文あり"
+            segment = "structured"
+            segment_label = "構造化済" if has_md_col else "09本文あり"
         elif has_physical_file:
             segment = "pending_md"
             segment_label = "未処理"
@@ -229,5 +227,8 @@ def fetch_pending_fast_index_docs(
         }
         out.append(enriched)
 
-    out.sort(key=lambda x: (x.get("created_at") or ""), reverse=True)
+    out.sort(
+        key=lambda x: (x.get("updated_at") or x.get("created_at") or ""),
+        reverse=True,
+    )
     return out, None

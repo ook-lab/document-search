@@ -156,7 +156,7 @@
         <header>
             <div>
                 <h1>⚡ 高速インデックス</h1>
-                <div class="subtitle">03・04・05・08 の pipeline_meta。構造化済は <code>09_unified_documents.ui_data</code>、MD済は <code>pipeline_meta.md_content</code>、未処理／テキストのみはファイル有無で判定。外部ツールは <code>FAST_INDEX_PDF_TOOLBOX_BASE</code>（末尾スラッシュなし）。</div>
+                <div class="subtitle">03・04・05・08 の pipeline_meta。構造化済は <code>09_unified_documents.ui_data</code> または <code>pipeline_meta.md_content</code>、ベクトル化済は <code>pipeline_meta.vectorized_at</code> で判定。外部ツールは <code>FAST_INDEX_PDF_TOOLBOX_BASE</code>（末尾スラッシュなし）。</div>
             </div>
             <div style="font-size: 14px; color: var(--success); font-weight: 600;">
                 {{ docs|length }} 件の待機中
@@ -189,7 +189,7 @@
                             {% if doc.display_segment == 'structured' %}
                             <span class="seg-structured">構造化済</span>
                             {% elif doc.display_segment == 'md_done' %}
-                            <span class="seg-md_done">MD済</span>
+                            <span class="seg-md_done">構造化済</span>
                             {% elif doc.display_segment == 'pending_md' %}
                             <span class="seg-pending_md">未処理</span>
                             {% else %}
@@ -241,7 +241,7 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    btn.innerText = '完了';
+                    btn.innerText = 'ベクトル化済';
                     setTimeout(() => {
                         const row = document.getElementById(`row-${id}`);
                         if (row) row.style.opacity = '0.35';

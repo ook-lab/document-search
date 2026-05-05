@@ -460,9 +460,15 @@ def save_to_drive():
                         )
                         raw_ids = [r['id'] for r in (raw_res.data or [])]
                         if raw_ids:
+                            pm_update = {
+                                'drive_file_id': drive_file_id,
+                                'updated_at': now_iso,
+                            }
+                            if md_in_request:
+                                pm_update['md_content'] = md_content_val
                             pm_res2 = (
                                 sb.table('pipeline_meta')
-                                .update({'drive_file_id': drive_file_id, 'updated_at': now_iso})
+                                .update(pm_update)
                                 .in_('raw_id', raw_ids)
                                 .eq('raw_table', raw_table)
                                 .execute()

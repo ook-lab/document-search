@@ -1,8 +1,8 @@
 """
 軽量 fast-index（rag-prepare standalone）: 既存本文から 10_ix_search_index のみ更新し、
-pipeline_meta を processing_status=completed にする。
+pipeline_meta.vectorized_at を記録する。
 
-完了: フルパイプライン K までと同様、ベクトル化まで終われば completed。
+ベクトル化済み判定は processing_status ではなく vectorized_at を使う。
 """
 from __future__ import annotations
 
@@ -110,8 +110,8 @@ class FastIndexer:
             now_iso = datetime.now(timezone.utc).isoformat()
             self.db.client.table("pipeline_meta").update(
                 {
-                    "processing_status": "completed",
-                    "completed_at": now_iso,
+                    "vectorized_at": now_iso,
+                    "updated_at": now_iso,
                 }
             ).eq("id", pipeline_id).execute()
 
