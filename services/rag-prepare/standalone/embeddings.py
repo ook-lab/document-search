@@ -1,4 +1,4 @@
-"""OpenAI embeddings for rag-prepare fast-index only (no monorepo ``dms/``)."""
+"""OpenAI embeddings for rag-prepare search index registration (no monorepo ``dms/``)."""
 from __future__ import annotations
 
 import os

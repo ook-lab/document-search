@@ -1,5 +1,5 @@
 """
-fast-index の対象スコープ（rag-prepare standalone）。
+rag-prepare: 検索データ準備でベクトル登録する raw テーブル範囲。
 
 正本は 01–05 系 raw、生成テキストは 09・10。補助は 09_unified_documents_meta（ステータスのみ）。
 検索データ準備は pipeline_meta を読まない。
@@ -9,7 +9,7 @@ import os
 import re
 from typing import Optional
 
-FAST_INDEX_RAW_TABLES = frozenset(
+RAG_PREPARE_VECTORIZE_RAW_TABLES = frozenset(
     {
         "03_ema_classroom_01_raw",
         "04_ikuya_classroom_01_raw",
@@ -41,13 +41,13 @@ def resolve_pdf_toolbox_base(*, request_host: Optional[str] = None) -> str:
     """
     PDF ツールボックスのベース URL（末尾スラッシュなし）。
 
-    優先順: FAST_INDEX_PDF_TOOLBOX_BASE / PDF_TOOLBOX_BASE_URL / PDF_TOOLBOX_URL。
+    優先順: RAG_PREPARE_PDF_TOOLBOX_BASE / PDF_TOOLBOX_BASE_URL / PDF_TOOLBOX_URL。
     いずれも無く Cloud Run（K_SERVICE あり）のとき、リクエストホストが
     ``*-{プロジェクト番号}.{リージョン}.run.app`` なら pdf-toolbox の sibling URL を推定する。
     ローカル（K_SERVICE なし）で未設定なら http://127.0.0.1:{PDF_TOOLBOX_PORT|5050}。
     """
     for key in (
-        "FAST_INDEX_PDF_TOOLBOX_BASE",
+        "RAG_PREPARE_PDF_TOOLBOX_BASE",
         "PDF_TOOLBOX_BASE_URL",
         "PDF_TOOLBOX_URL",
     ):

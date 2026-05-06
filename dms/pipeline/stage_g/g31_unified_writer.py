@@ -3,6 +3,7 @@ G31: Unified Writer
 パイプライン処理済みデータを 09_unified_documents に書き込む。
 全ソース（Gmail / Calendar / Classroom / File）共通のゲート。
 
+- 新規 INSERT では 09.id は raw 行の id と同一 UUID とする（10 / meta 参照の一本化）。
 - Gmail / Classroom / File: A→G 経由で ui_data を受け取り書き込む
 - Calendar: G スキップ、生データから軽量 ui_data を生成して書き込む
 """
@@ -70,9 +71,12 @@ class G31UnifiedWriter:
 
             if existing.data:
                 doc_id = existing.data[0]['id']
+                doc.pop('id', None)
                 self.db.client.table('09_unified_documents').update(doc).eq('id', doc_id).execute()
                 logger.info(f"[G31] UPDATE 完了: doc_id={doc_id}")
             else:
+                # 09.id は raw 行の id と同一（検索・meta・10 参照の一本化）
+                doc['id'] = str(raw_data['id'])
                 result = self.db.client.table('09_unified_documents').insert(doc).execute()
                 doc_id = result.data[0]['id']
                 logger.info(f"[G31] INSERT 完了: doc_id={doc_id}")

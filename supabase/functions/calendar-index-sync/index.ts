@@ -444,6 +444,7 @@ serve(async (req) => {
             // --- 09_unified_documents に UPSERT ---
             const ui_data    = buildGcalUiData(payload, start_at, attendance_status);
             const unifiedDoc = {
+              id: raw_id,
               raw_id,
               raw_table:   RAW_TABLE,
               person,

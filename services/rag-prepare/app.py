@@ -9,9 +9,9 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from standalone import (
-    FAST_INDEX_RAW_TABLES,
+    RAG_PREPARE_VECTORIZE_RAW_TABLES,
     RagServiceDB,
-    fetch_pending_fast_index_docs,
+    fetch_pending_search_data_prep_docs,
     resolve_pdf_toolbox_base,
 )
 
@@ -22,16 +22,16 @@ logger = logging.getLogger(__name__)
 # インポートの遅延実行とエラーハンドリング
 def get_indexer_tools():
     try:
-        from standalone.indexer import FastIndexer
+        from standalone.indexer import RagPrepareSearchIndexer
 
-        return FastIndexer, RagServiceDB
+        return RagPrepareSearchIndexer, RagServiceDB
     except ImportError as e:
         logger.error(f"Import Error: {e}")
         return None, None
 
 @app.route('/')
 def index():
-    FastIndexerClass, DbClass = get_indexer_tools()
+    _, DbClass = get_indexer_tools()
     if not DbClass:
         return "System Configuration Error: Missing dependencies.", 500
 
@@ -39,8 +39,8 @@ def index():
     list_error = None
     try:
         db = DbClass()
-        raw_tables = list(FAST_INDEX_RAW_TABLES)
-        pending_docs, list_error = fetch_pending_fast_index_docs(db.client, raw_tables)
+        raw_tables = list(RAG_PREPARE_VECTORIZE_RAW_TABLES)
+        pending_docs, list_error = fetch_pending_search_data_prep_docs(db.client, raw_tables)
         if list_error:
             logger.error("検索データ準備 一覧: %s", list_error)
     except Exception as e:
@@ -52,9 +52,9 @@ def index():
     toolbox = resolve_pdf_toolbox_base(request_host=req_host or None)
     if not toolbox and os.environ.get("K_SERVICE"):
         logger.warning(
-            "PDF ツールのベース URL を決められませんでした（環境変数 FAST_INDEX_PDF_TOOLBOX_BASE 等、"
+            "PDF ツールのベース URL を決められませんでした（環境変数 RAG_PREPARE_PDF_TOOLBOX_BASE 等、"
             "または Cloud Run の *-{プロジェクト番号}.{リージョン}.run.app 形式のホストが必要です）。"
-            "カスタムドメインのみの場合は FAST_INDEX_PDF_TOOLBOX_BASE を設定してください。"
+            "カスタムドメインのみの場合は RAG_PREPARE_PDF_TOOLBOX_BASE を設定してください。"
         )
 
     return render_template(
@@ -73,11 +73,11 @@ def _run_search_index_register():
     if not unified_doc_id and not (raw_table and raw_id):
         return jsonify({"success": False, "error": "Missing unified_doc_id or (raw_table, raw_id)"}), 400
 
-    FastIndexerClass, _ = get_indexer_tools()
-    if not FastIndexerClass:
+    IndexerClass, _ = get_indexer_tools()
+    if not IndexerClass:
         return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
 
-    indexer = FastIndexerClass()
+    indexer = IndexerClass()
     success, err_msg = indexer.process_document(
         unified_doc_id or None,
         raw_table=raw_table or None,
@@ -89,17 +89,16 @@ def _run_search_index_register():
     return jsonify({'success': False, 'error': err_msg or 'Processing failed'})
 
 @app.route('/process', methods=['POST'])
-@app.route('/internal/fast_index', methods=['POST'])
 def process():
     return _run_search_index_register()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    FastIndexerClass, DbClass = get_indexer_tools()
+    IndexerClass, DbClass = get_indexer_tools()
     return jsonify({
         'status': 'ok',
         'service': 'rag-prepare',
-        'dependencies_loaded': bool(FastIndexerClass and DbClass)
+        'dependencies_loaded': bool(IndexerClass and DbClass)
     })
 
 if __name__ == '__main__':

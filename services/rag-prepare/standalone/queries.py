@@ -1,5 +1,5 @@
 """
-fast-index 一覧用: 09_unified_documents・09_unified_documents_meta（ステータスのみ）・raw を突き合わせる。
+検索データ準備一覧: 09_unified_documents・09_unified_documents_meta（ステータスのみ）・raw を突き合わせる。
 
 正本の本文は raw（01–05 系）、生成テキストは 09・10。登録済み判定は meta.ix_vectorized_at のみ。
 pipeline_meta は参照しない。
@@ -113,7 +113,7 @@ def _fetch_meta_ix_map(db_client: Any, doc_ids: Sequence[str]) -> Dict[str, Opti
     return out
 
 
-def fetch_pending_fast_index_docs(
+def fetch_pending_search_data_prep_docs(
     db_client: Any,
     raw_tables: Sequence[str],
     *,

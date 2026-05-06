@@ -1,5 +1,5 @@
 """
-軽量 fast-index（rag-prepare standalone）: 既存本文から 10_ix_search_index のみ更新し、
+rag-prepare: 既存本文から 10_ix_search_index のみ更新し、
 09_unified_documents_meta.ix_vectorized_at（ステータスのみ）を記録する。
 
 pipeline_meta は読まない・更新しない。
@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen
-from standalone.scope import FAST_INDEX_RAW_TABLES
+from standalone.scope import RAG_PREPARE_VECTORIZE_RAW_TABLES
 from standalone.ud_meta import UD_META_TABLE
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
 _UD_SELECT = "id, raw_id, raw_table, person, source, category, title, file_url"
 
 
-class FastIndexer:
+class RagPrepareSearchIndexer:
     def __init__(self) -> None:
         self.db = RagServiceDB()
         self.embedder = EmbeddingGen()
@@ -43,17 +43,18 @@ class FastIndexer:
             if not ud:
                 return False, "09_unified_documents が見つからず、raw からも作成できません"
             rt = ud.get("raw_table") or ""
-            if rt not in FAST_INDEX_RAW_TABLES:
-                logger.error("raw_table out of fast-index scope: %s", rt)
-                return False, "この raw_table は fast-index の対象外です"
+            if rt not in RAG_PREPARE_VECTORIZE_RAW_TABLES:
+                logger.error("raw_table out of rag-prepare vectorize scope: %s", rt)
+                return False, "この raw_table は rag-prepare の検索インデックス登録の対象外です"
 
-            raw_id = ud.get("raw_id")
-            if not raw_id:
+            ud_raw = ud.get("raw_id")
+            if ud_raw is None or (isinstance(ud_raw, str) and not ud_raw.strip()):
                 logger.error("09.raw_id がありません: %s", unified_doc_id)
                 return False, "raw_id がありません"
+            ud_raw_id = str(ud_raw).strip()
 
             ctx = {
-                "raw_id": raw_id,
+                "raw_id": ud_raw_id,
                 "raw_table": rt,
                 "file_url": ud.get("file_url"),
             }
@@ -87,30 +88,55 @@ class FastIndexer:
                         "category": category,
                         "chunk_index": i,
                         "chunk_text": chunk_text,
-                        "chunk_type": "fast_index_plain",
+                        "chunk_type": "rag_prepare_plain",
                         "chunk_weight": 1.0,
                         "embedding": vector,
                     }
                 ).execute()
 
             now_iso = datetime.now(timezone.utc).isoformat()
-            self.db.client.table(UD_META_TABLE).upsert(
-                {
-                    "raw_table": rt,
-                    "raw_id": raw_id,
-                    "doc_id": unified_doc_id,
-                    "ix_vectorized_at": now_iso,
-                    "updated_at": now_iso,
-                },
-                on_conflict="raw_table,raw_id",
-            ).execute()
+            self._write_meta_vectorized(
+                raw_table=rt,
+                raw_id=ud_raw_id,
+                doc_id=unified_doc_id,
+                now_iso=now_iso,
+            )
 
-            logger.info("Successfully fast-indexed unified_doc_id=%s", unified_doc_id)
+            logger.info("Successfully updated search index unified_doc_id=%s", unified_doc_id)
             return True, None
 
         except Exception as e:
-            logger.error("Fast index failed: %s", e, exc_info=True)
+            logger.error("Search index update failed: %s", e, exc_info=True)
             return False, str(e)
+
+    def _write_meta_vectorized(
+        self, *, raw_table: str, raw_id: str, doc_id: str, now_iso: str
+    ) -> None:
+        """09_unified_documents_meta を raw 主キーで更新。upsert の列落ちを避け update→insert にする。"""
+        upd_cols = {
+            "doc_id": doc_id,
+            "ix_vectorized_at": now_iso,
+            "updated_at": now_iso,
+        }
+        upd = (
+            self.db.client.table(UD_META_TABLE)
+            .update(upd_cols)
+            .eq("raw_table", raw_table)
+            .eq("raw_id", raw_id)
+            .select("raw_id")
+            .execute()
+        )
+        if upd.data:
+            return
+        self.db.client.table(UD_META_TABLE).insert(
+            {
+                "raw_table": raw_table,
+                "raw_id": raw_id,
+                "doc_id": doc_id,
+                "ix_vectorized_at": now_iso,
+                "updated_at": now_iso,
+            }
+        ).execute()
 
     def _resolve_or_create_unified_document(
         self,
@@ -144,12 +170,13 @@ class FastIndexer:
         return None
 
     def _create_unified_from_raw(self, raw_table: str, raw_id: str) -> Optional[Dict[str, Any]]:
-        if raw_table not in FAST_INDEX_RAW_TABLES:
+        if raw_table not in RAG_PREPARE_VECTORIZE_RAW_TABLES:
             return None
         raw_row = self._load_raw_row(raw_table, raw_id)
         if not raw_row:
             return None
         doc = {
+            "id": str(raw_id),
             "raw_id": str(raw_id),
             "raw_table": raw_table,
             "person": raw_row.get("person"),
@@ -161,7 +188,7 @@ class FastIndexer:
             "due_date": raw_row.get("due_date"),
             "post_type": raw_row.get("post_type"),
             "ui_data": {},
-            "meta": {"created_by": "rag_prepare_fast_index"},
+            "meta": {"created_by": "rag_prepare_search_index"},
         }
         ins = self.db.client.table("09_unified_documents").insert(doc).execute()
         rows = ins.data or []

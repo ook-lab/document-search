@@ -470,6 +470,7 @@ class GmailService:
             did = ex.data["id"]
             self.db.client.table("09_unified_documents").update(row).eq("id", did).execute()
         else:
+            row["id"] = str(raw_id)
             r = self.db.client.table("09_unified_documents").insert(row).execute()
             did = r.data[0]["id"]
         return did
