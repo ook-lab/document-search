@@ -68,15 +68,21 @@ def index():
 def _run_search_index_register():
     data = request.get_json(silent=True) or {}
     unified_doc_id = (data.get("unified_doc_id") or data.get("doc_id") or "").strip()
-    if not unified_doc_id:
-        return jsonify({"success": False, "error": "Missing unified_doc_id (or doc_id)"}), 400
+    raw_table = (data.get("raw_table") or "").strip()
+    raw_id = (data.get("raw_id") or "").strip()
+    if not unified_doc_id and not (raw_table and raw_id):
+        return jsonify({"success": False, "error": "Missing unified_doc_id or (raw_table, raw_id)"}), 400
 
     FastIndexerClass, _ = get_indexer_tools()
     if not FastIndexerClass:
         return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
 
     indexer = FastIndexerClass()
-    success, err_msg = indexer.process_document(unified_doc_id)
+    success, err_msg = indexer.process_document(
+        unified_doc_id or None,
+        raw_table=raw_table or None,
+        raw_id=raw_id or None,
+    )
 
     if success:
         return jsonify({'success': True})

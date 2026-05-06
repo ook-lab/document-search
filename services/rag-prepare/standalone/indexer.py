@@ -28,21 +28,20 @@ class FastIndexer:
         self.db = RagServiceDB()
         self.embedder = EmbeddingGen()
 
-    def process_document(self, unified_doc_id: str) -> tuple[bool, Optional[str]]:
+    def process_document(
+        self,
+        unified_doc_id: Optional[str] = None,
+        *,
+        raw_table: Optional[str] = None,
+        raw_id: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
         """OCR をスキップし、既存テキストから 10_ix_search_index のみ更新する。"""
         try:
-            res = (
-                self.db.client.table("09_unified_documents")
-                .select(_UD_SELECT)
-                .eq("id", unified_doc_id)
-                .single()
-                .execute()
+            ud = self._resolve_or_create_unified_document(
+                unified_doc_id=unified_doc_id, raw_table=raw_table, raw_id=raw_id
             )
-            if not res.data:
-                logger.error("09_unified_documents not found: %s", unified_doc_id)
-                return False, "09_unified_documents が見つかりません"
-
-            ud = res.data
+            if not ud:
+                return False, "09_unified_documents が見つからず、raw からも作成できません"
             rt = ud.get("raw_table") or ""
             if rt not in FAST_INDEX_RAW_TABLES:
                 logger.error("raw_table out of fast-index scope: %s", rt)
@@ -97,11 +96,13 @@ class FastIndexer:
             now_iso = datetime.now(timezone.utc).isoformat()
             self.db.client.table(UD_META_TABLE).upsert(
                 {
+                    "raw_table": rt,
+                    "raw_id": raw_id,
                     "doc_id": unified_doc_id,
                     "ix_vectorized_at": now_iso,
                     "updated_at": now_iso,
                 },
-                on_conflict="doc_id",
+                on_conflict="raw_table,raw_id",
             ).execute()
 
             logger.info("Successfully fast-indexed unified_doc_id=%s", unified_doc_id)
@@ -110,6 +111,61 @@ class FastIndexer:
         except Exception as e:
             logger.error("Fast index failed: %s", e, exc_info=True)
             return False, str(e)
+
+    def _resolve_or_create_unified_document(
+        self,
+        *,
+        unified_doc_id: Optional[str],
+        raw_table: Optional[str],
+        raw_id: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        if unified_doc_id:
+            res = (
+                self.db.client.table("09_unified_documents")
+                .select(_UD_SELECT)
+                .eq("id", unified_doc_id)
+                .single()
+                .execute()
+            )
+            if res.data:
+                return res.data
+        if raw_table and raw_id:
+            res2 = (
+                self.db.client.table("09_unified_documents")
+                .select(_UD_SELECT)
+                .eq("raw_table", raw_table)
+                .eq("raw_id", raw_id)
+                .limit(1)
+                .execute()
+            )
+            if res2.data:
+                return res2.data[0]
+            return self._create_unified_from_raw(raw_table, raw_id)
+        return None
+
+    def _create_unified_from_raw(self, raw_table: str, raw_id: str) -> Optional[Dict[str, Any]]:
+        if raw_table not in FAST_INDEX_RAW_TABLES:
+            return None
+        raw_row = self._load_raw_row(raw_table, raw_id)
+        if not raw_row:
+            return None
+        doc = {
+            "raw_id": str(raw_id),
+            "raw_table": raw_table,
+            "person": raw_row.get("person"),
+            "source": raw_row.get("source"),
+            "category": raw_row.get("course_name") or raw_row.get("category"),
+            "title": raw_row.get("title") or raw_row.get("file_name"),
+            "file_url": raw_row.get("file_url"),
+            "post_at": raw_row.get("created_at"),
+            "due_date": raw_row.get("due_date"),
+            "post_type": raw_row.get("post_type"),
+            "ui_data": {},
+            "meta": {"created_by": "rag_prepare_fast_index"},
+        }
+        ins = self.db.client.table("09_unified_documents").insert(doc).execute()
+        rows = ins.data or []
+        return rows[0] if rows else None
 
     def _load_raw_row(self, raw_table: str, raw_id: Any) -> Dict[str, Any]:
         try:

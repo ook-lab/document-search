@@ -119,52 +119,30 @@ def fetch_pending_fast_index_docs(
     *,
     meta_limit: int = 500,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """ix_vectorized_at が未設定の 09 行（meta 行なし、または null）を raw で補足表示する。"""
+    """ix_vectorized_at が未設定の meta 行（raw 基準）を一覧表示する。"""
     tables = list(raw_tables)
     if not tables:
         return [], None
 
-    ud_select = (
-        "id, raw_id, raw_table, source, person, category, title, file_url, "
-        "post_at, indexed_at, ui_data, body"
-    )
-
-    pending_ud: List[Dict[str, Any]] = []
     try:
-        page_size = 200
-        for page in range(25):
-            if len(pending_ud) >= meta_limit:
-                break
-            start = page * page_size
-            end = start + page_size - 1
-            res = (
-                db_client.table("09_unified_documents")
-                .select(ud_select)
-                .in_("raw_table", tables)
-                .order("post_at", desc=True)
-                .range(start, end)
-                .execute()
-            )
-            batch: List[Dict[str, Any]] = list(res.data or [])
-            if not batch:
-                break
-            ids = [str(r["id"]) for r in batch if r.get("id")]
-            ix_map = _fetch_meta_ix_map(db_client, ids)
-            for r in batch:
-                if len(pending_ud) >= meta_limit:
-                    break
-                did = str(r["id"])
-                if ix_map.get(did):
-                    continue
-                pending_ud.append(r)
+        meta_res = (
+            db_client.table(UD_META_TABLE)
+            .select("raw_table, raw_id, doc_id, ix_vectorized_at, updated_at")
+            .in_("raw_table", tables)
+            .is_("ix_vectorized_at", "null")
+            .order("updated_at", desc=True)
+            .limit(meta_limit)
+            .execute()
+        )
     except Exception as e:
-        return [], f"09_unified_documents / {UD_META_TABLE} の取得に失敗しました: {e}"
+        return [], f"{UD_META_TABLE} の取得に失敗しました: {e}"
 
-    if not pending_ud:
+    pending_meta = list(meta_res.data or [])
+    if not pending_meta:
         return [], None
 
     by_table: Dict[str, Set[str]] = defaultdict(set)
-    for r in pending_ud:
+    for r in pending_meta:
         rt = r.get("raw_table")
         rid = r.get("raw_id")
         if rt and rid:
@@ -201,16 +179,39 @@ def fetch_pending_fast_index_docs(
             for rid in chunk:
                 raw_extras_by_pair[(rt, rid)] = fetched.get(rid, {})
 
+    ud_by_pair: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for rt, id_set in by_table.items():
+        ids = list(id_set)
+        chunk_size = 80
+        for i in range(0, len(ids), chunk_size):
+            chunk = ids[i : i + chunk_size]
+            try:
+                ud_res = (
+                    db_client.table("09_unified_documents")
+                    .select("id, raw_id, raw_table, source, person, category, title, file_url, post_at, indexed_at, ui_data, body")
+                    .eq("raw_table", rt)
+                    .in_("raw_id", chunk)
+                    .execute()
+                )
+                for row in ud_res.data or []:
+                    rrid = row.get("raw_id")
+                    rrt = row.get("raw_table")
+                    if rrid is not None and rrt:
+                        ud_by_pair[(str(rrt), str(rrid))] = row
+            except Exception:
+                pass
+
     out: List[Dict[str, Any]] = []
-    for ud in pending_ud:
-        rt = ud.get("raw_table")
-        rid = ud.get("raw_id")
+    for m in pending_meta:
+        rt = m.get("raw_table")
+        rid = m.get("raw_id")
         if not rt or not rid:
             continue
         rid_s = str(rid)
         rt_s = str(rt)
         extras = raw_extras_by_pair.get((rt_s, rid_s), {})
         fu = extras.get("file_url")
+        ud = ud_by_pair.get((rt_s, rid_s), {})
 
         has_pdf_md = pdf_md_in_raw(extras.get("pdf_md_content"))
         has_physical_file = raw_row_has_file_backing(fu) or bool(drive_id_from_file_url(fu))
@@ -241,11 +242,21 @@ def fetch_pending_fast_index_docs(
         display_filename = _display_filename(extras, rid_s)
         drive_id = _resolved_drive_id(fu)
 
-        ts = ud.get("post_at") or ud.get("indexed_at") or ""
+        ts = (
+            ud.get("post_at")
+            or ud.get("indexed_at")
+            or m.get("updated_at")
+            or extras.get("pdf_md_updated_at")
+            or ""
+        )
         created_at = str(ts) if ts else ""
+        unified_doc_id = ud.get("id")
+        row_id = str(unified_doc_id) if unified_doc_id else f"{rt_s}:{rid_s}"
 
         enriched = {
-            "id": ud["id"],
+            "id": row_id,
+            "row_id": row_id,
+            "unified_doc_id": str(unified_doc_id) if unified_doc_id else None,
             "raw_id": rid_s,
             "raw_table": rt_s,
             "created_at": created_at,
@@ -255,6 +266,7 @@ def fetch_pending_fast_index_docs(
             "display_filename": display_filename,
             "resolved_drive_id": drive_id,
             "has_09_structured": has_structured_09,
+            "has_09_doc": bool(unified_doc_id),
         }
         out.append(enriched)
 

@@ -188,7 +188,7 @@
                 </thead>
                 <tbody>
                     {% for doc in docs %}
-                    <tr id="row-{{ doc.id }}">
+                    <tr id="row-{{ doc.row_id }}">
                         <td>{{ (doc.created_at or '')[:10] }}</td>
                         <td style="font-size: 13px;">
                             {% if doc.display_segment == 'structured' %}
@@ -209,13 +209,16 @@
                                 <a href="https://drive.google.com/file/d/{{ doc.resolved_drive_id }}/view" target="_blank" rel="noopener">Drive で開く</a>
                             </div>
                             {% endif %}
-                            <div class="meta-id">09 id {{ doc.id }}</div>
+                            <div class="meta-id">
+                                raw {{ doc.raw_table }} / {{ doc.raw_id[:8] }}…
+                                {% if doc.unified_doc_id %}<br>09 id {{ doc.unified_doc_id }}{% endif %}
+                            </div>
                         </td>
                         <td>
                             <div class="actions-cell">
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/embedder/{% if doc.resolved_drive_id %}?drive_id={{ doc.resolved_drive_id }}{% endif %}" target="_blank" rel="noopener">帳票→Markdown抽出＆PDF埋め込み</a>
-                                <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runVectorRegister('{{ doc.id }}', this)">ベクトル化登録</button>
+                                <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runVectorRegister('{{ doc.unified_doc_id or '' }}', '{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">ベクトル化登録</button>
                             </div>
                         </td>
                     </tr>
@@ -232,7 +235,7 @@
     </div>
 
     <script>
-        async function runVectorRegister(id, btn) {
+        async function runVectorRegister(id, rawTable, rawId, btn) {
             const originalText = btn.innerText;
             btn.innerText = '処理中...';
             btn.disabled = true;
@@ -241,7 +244,11 @@
                 const res = await fetch({{ process_post_url|tojson }}, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ unified_doc_id: id })
+                    body: JSON.stringify({
+                        unified_doc_id: id,
+                        raw_table: rawTable,
+                        raw_id: rawId
+                    })
                 });
                 const data = await res.json();
 
