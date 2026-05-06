@@ -20,13 +20,13 @@ on:
     paths:
       - 'services/doc-processor/**'
       - 'scripts/**'
-      - 'shared/processing/**'
+      - 'dms/processing/**'
   pull_request:
     branches: [main, develop]
     paths:
       - 'services/doc-processor/**'
       - 'scripts/**'
-      - 'shared/processing/**'
+      - 'dms/processing/**'
 
 jobs:
   check-web-isolation:
@@ -48,8 +48,8 @@ jobs:
             "DocumentProcessor"
             "UnifiedDocumentPipeline"
             "process_document"
-            "from shared.processing import"
-            "from shared.pipeline import"
+            "from dms.processing import"
+            "from dms.pipeline import"
             "asyncio.run"
             "threading.Thread"
           )
@@ -229,7 +229,7 @@ jobs:
           echo "=========================================="
 
           # processor.py で ExecutionPolicy がインポート・使用されていることを確認
-          if grep -q "from.*execution_policy import\|ExecutionPolicy\|get_execution_policy" shared/processing/processor.py 2>/dev/null; then
+          if grep -q "from.*execution_policy import\|ExecutionPolicy\|get_execution_policy" dms/processing/processor.py 2>/dev/null; then
             echo "✅ ExecutionPolicy is imported in processor.py"
           else
             echo "❌ WARNING: ExecutionPolicy is not imported in processor.py"
@@ -237,7 +237,7 @@ jobs:
           fi
 
           # ExecutionPolicy.can_execute または can_execute_document が呼ばれていることを確認
-          if grep -q "execution_policy.can_execute\|\.can_execute(" shared/processing/processor.py 2>/dev/null; then
+          if grep -q "execution_policy.can_execute\|\.can_execute(" dms/processing/processor.py 2>/dev/null; then
             echo "✅ ExecutionPolicy.can_execute is called in processor.py"
           else
             echo "⚠️  WARNING: ExecutionPolicy.can_execute may not be called"
@@ -270,7 +270,7 @@ jobs:
 
           # 1. continuous_processing_loop の存在チェック
           echo "Checking for continuous_processing_loop..."
-          if grep -rn "continuous_processing_loop" shared/processing/ scripts/ --include="*.py" 2>/dev/null | grep -v "# continuous_processing_loop"; then
+          if grep -rn "continuous_processing_loop" dms/processing/ scripts/ --include="*.py" 2>/dev/null | grep -v "# continuous_processing_loop"; then
             echo "❌ VIOLATION: continuous_processing_loop still exists"
             FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
           else
@@ -290,7 +290,7 @@ jobs:
           # 3. while True の無限ループチェック（processor.py）
           echo ""
           echo "Checking for infinite loops in processor.py..."
-          if grep -n "while True" shared/processing/processor.py 2>/dev/null; then
+          if grep -n "while True" dms/processing/processor.py 2>/dev/null; then
             echo "❌ VIOLATION: Infinite loop found in processor.py"
             FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
           else

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>検索データ準備 | rag-prepare</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --success: #10b981;
+            --amber: #d97706;
+            --teal: #0d9488;
+            --indigo: #4338ca;
+        }
+
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        header {
+            margin-bottom: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 32px;
+            margin: 0;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f1f5f9;
+            text-align: left;
+            padding: 14px 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+        }
+
+        td {
+            padding: 12px;
+            border-top: 1px solid var(--border);
+            font-size: 14px;
+            vertical-align: top;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 7px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+            white-space: nowrap;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
+
+        .btn:disabled {
+            background: #cbd5e1;
+            color: #64748b;
+            cursor: not-allowed;
+        }
+
+        .btn-outline {
+            background: #fff;
+            color: var(--primary);
+            border: 1px solid #c7d2fe;
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background: #eef2ff;
+        }
+
+        .btn-vector {
+            background: var(--success);
+        }
+
+        .btn-vector:hover:not(:disabled) {
+            background: #059669;
+        }
+
+        .actions-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+        }
+
+        .seg-structured { color: var(--indigo); font-weight: 700; }
+        .seg-md_done { color: var(--success); font-weight: 700; }
+        .seg-pending_md { color: var(--amber); font-weight: 700; }
+        .seg-text_only { color: var(--teal); font-weight: 700; }
+
+        .empty-state {
+            padding: 60px;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .meta-id {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>検索データ準備</h1>
+                <div class="subtitle">
+                    ドキュメント処理（doc-processor）とは別経路で、検索用ベクトル（<code>10_ix_search_index</code>）へ登録するための一覧です。
+                    対象は 03–05 の classroom 系と 08（file-only）。正本の本文は <code>raw.pdf_md_content</code>、生成テキストは <code>09_unified_documents</code> / <code>10_ix_search_index</code>。
+                    登録済み判定は補助テーブル <code>09_unified_documents_meta.ix_vectorized_at</code>（ステータスのみ）です。<code>pipeline_meta</code> は参照しません。
+                    PDF ツールのベース URL は <code>FAST_INDEX_PDF_TOOLBOX_BASE</code> 等（末尾スラッシュなし）。
+                </div>
+            </div>
+            <div style="font-size: 14px; color: var(--success); font-weight: 600;">
+                {{ docs|length }} 件の待機中
+            </div>
+        </header>
+
+        {% if list_error %}
+        <div class="card" style="margin-bottom: 20px; border-color: #fecaca; background: #fef2f2; color: #991b1b; padding: 16px 20px; font-size: 14px;">
+            <strong>一覧の取得エラー</strong>（Cloud Run の環境変数・Supabase マイグレーションを確認）<br>
+            <code style="font-size: 12px; word-break: break-all;">{{ list_error }}</code>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            {% if docs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>登録日</th>
+                        <th>区分</th>
+                        <th>ソース / ファイル名</th>
+                        <th>アクション</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in docs %}
+                    <tr id="row-{{ doc.id }}">
+                        <td>{{ (doc.created_at or '')[:10] }}</td>
+                        <td style="font-size: 13px;">
+                            {% if doc.display_segment == 'structured' %}
+                            <span class="seg-structured">構造化済</span>
+                            {% elif doc.display_segment == 'md_done' %}
+                            <span class="seg-md_done">構造化済</span>
+                            {% elif doc.display_segment == 'pending_md' %}
+                            <span class="seg-pending_md">未処理</span>
+                            {% else %}
+                            <span class="seg-text_only">テキストのみ</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong>{{ doc.display_source }}</strong><br>
+                            <span style="font-size: 13px;">{{ doc.display_filename }}</span>
+                            {% if doc.resolved_drive_id %}
+                            <div style="margin-top:6px;font-size:12px;">
+                                <a href="https://drive.google.com/file/d/{{ doc.resolved_drive_id }}/view" target="_blank" rel="noopener">Drive で開く</a>
+                            </div>
+                            {% endif %}
+                            <div class="meta-id">09 id {{ doc.id }}</div>
+                        </td>
+                        <td>
+                            <div class="actions-cell">
+                                <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
+                                <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/embedder/{% if doc.resolved_drive_id %}?drive_id={{ doc.resolved_drive_id }}{% endif %}" target="_blank" rel="noopener">帳票→Markdown抽出＆PDF埋め込み</a>
+                                <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runVectorRegister('{{ doc.id }}', this)">ベクトル化登録</button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div style="font-size: 40px; margin-bottom: 16px;">✨</div>
+                処理待ちのドキュメントはありません。
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        async function runVectorRegister(id, btn) {
+            const originalText = btn.innerText;
+            btn.innerText = '処理中...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch({{ process_post_url|tojson }}, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ unified_doc_id: id })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    btn.innerText = 'ベクトル化済';
+                    setTimeout(() => {
+                        const row = document.getElementById(`row-${id}`);
+                        if (row) row.style.opacity = '0.35';
+                    }, 800);
+                } else {
+                    alert('エラー: ' + data.error);
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信エラーが発生しました');
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

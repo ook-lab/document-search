@@ -29,8 +29,8 @@ sys.path.insert(0, str(ingestion_dir))
 from dotenv import load_dotenv
 load_dotenv(root_dir / ".env")
 
-from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.common.database.client import DatabaseClient
+from dms.common.connectors.google_drive import GoogleDriveConnector
+from dms.common.database.client import DatabaseClient
 from waseda_academy.browser_automation import WasedaAcademyBrowser
 
 

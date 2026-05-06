@@ -38,9 +38,9 @@ root_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(root_dir))
 sys.path.insert(0, str(root_dir / "services" / "data-ingestion"))
 
-from shared.common.database.client import DatabaseClient
-from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.pipeline import UnifiedDocumentPipeline
+from dms.common.database.client import DatabaseClient
+from dms.common.connectors.google_drive import GoogleDriveConnector
+from dms.pipeline import UnifiedDocumentPipeline
 
 
 class FlyerProcessor:

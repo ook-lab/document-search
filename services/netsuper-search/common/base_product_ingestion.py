@@ -10,8 +10,8 @@ from uuid import UUID
 import uuid
 import os
 
-from shared.common.database.client import DatabaseClient
-from shared.ai.llm_client.llm_client import LLMClient
+from dms.common.database.client import DatabaseClient
+from dms.ai.llm_client.llm_client import LLMClient
 from loguru import logger
 from openai import OpenAI
 

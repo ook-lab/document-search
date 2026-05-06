@@ -15,7 +15,7 @@ import os
 import sys
 import subprocess
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from functools import wraps
 
@@ -32,10 +32,15 @@ _file_dir = Path(__file__).resolve().parent
 _project_root = _file_dir.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
+if str(_file_dir) not in sys.path:
+    sys.path.insert(0, str(_file_dir))
 os.environ.setdefault('PROJECT_ROOT', str(_project_root))
 
 # DB クライアントのみインポート（処理系は一切インポートしない）
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
+
+from raw_title_search import raw_ids_for_title_keyword
+from ui_data_markdown import CLASSROOM_RAW_MD_TABLES, ui_data_to_final_markdown
 
 # ========== ビルド情報（環境指紋） ==========
 # 3環境（Cloud Run / localhost / terminal）で同一コードが動いていることを確認するため
@@ -118,43 +123,53 @@ def safe_error_response(error: Exception, status_code: int = 500):
     logger.error(f"ERROR: {error}\n{tb}")
     return jsonify({'success': False, 'error': str(error), 'traceback': tb}), status_code
 
-# raw テーブルごとのタイトルカラム名
-_RAW_TABLE_TITLE_COLUMN = {
-    '01_gmail_01_raw':         'header_subject',
-    '02_gcal_01_raw':          'summary',
-    '05_ikuya_waseaca_01_raw': 'title',
-}
+def _title_from_raw_row(raw_table: str, row: dict) -> Optional[str]:
+    """raw 1行から表示用タイトル相当の文字列を得る（09 は参照しない）。"""
+    if raw_table == "01_gmail_01_raw":
+        return (row.get("header_subject") or "").strip() or None
+    if raw_table == "02_gcal_01_raw":
+        return (row.get("summary") or "").strip() or None
+    fn = (row.get("file_name") or "").strip()
+    tl = (row.get("title") or "").strip()
+    return (fn or tl) or None
+
 
 def _get_document_titles(db, pm_rows):
-    """raw_table からタイトルを取得する。"""
+    """pipeline_meta 行に対応する raw からタイトルを取得する。"""
     if not pm_rows:
         return {}
 
-    by_table = {}
+    by_table: dict = {}
     for r in pm_rows:
-        raw_id = str(r.get('raw_id'))
-        raw_table = r.get('raw_table')
+        raw_id = str(r.get("raw_id"))
+        raw_table = r.get("raw_table")
         if not raw_id or not raw_table:
             continue
-        if raw_table not in by_table:
-            by_table[raw_table] = []
-        by_table[raw_table].append(raw_id)
+        by_table.setdefault(raw_table, []).append(raw_id)
 
-    title_map = {}
+    title_map: dict = {}
     for rt, ids in by_table.items():
-        col = _RAW_TABLE_TITLE_COLUMN.get(rt)
-        if not col:
-            continue
-        try:
-            result = db.client.table(rt).select(f'id, {col}').in_('id', ids).execute()
-            for r in (result.data or []):
-                if r.get(col):
-                    title_map[(str(r['id']), rt)] = r[col]
-        except Exception as e:
-            logger.error(f"{rt} タイトル取得エラー: {e}")
+        uniq = list(dict.fromkeys(ids))
+        chunk_size = 80
+        for i in range(0, len(uniq), chunk_size):
+            chunk = uniq[i : i + chunk_size]
+            try:
+                if rt == "01_gmail_01_raw":
+                    sel = "id, header_subject"
+                elif rt == "02_gcal_01_raw":
+                    sel = "id, summary"
+                else:
+                    sel = "id, title, file_name"
+                result = db.client.table(rt).select(sel).in_("id", chunk).execute()
+                for row in result.data or []:
+                    rid = str(row.get("id"))
+                    t = _title_from_raw_row(rt, row)
+                    if t:
+                        title_map[(rid, rt)] = t
+            except Exception as e:
+                logger.error(f"{rt} タイトル取得エラー: {e}")
 
     return title_map
-
 
 
 # ========== ルートエンドポイント ==========
@@ -271,7 +286,7 @@ def search_documents():
     - category: 絞り込み（省略時は全体）
     - classification: origin_app（省略時は全体）
     - status: 処理ステータス（省略時は全体）
-    - q: キーワード（09_unified_documents.title の部分一致）
+    - q: キーワード（各 raw の title / file_name / subject 相当の部分一致。09 は使わない）
     - limit: 取得件数上限（デフォルト100、最大500）
     """
     try:
@@ -284,17 +299,11 @@ def search_documents():
         q              = request.args.get('q', '').strip()
         limit          = min(int(request.args.get('limit', 100)), 500)
 
-        # キーワード検索: 09_unified_documents.title で raw_id を絞り込む
         raw_id_filter = None
         if q:
-            try:
-                ud_result = db.client.table('09_unified_documents').select('raw_id') \
-                    .ilike('title', f'%{q}%').execute()
-                if not ud_result.data:
-                    return jsonify({'success': True, 'documents': [], 'count': 0})
-                raw_id_filter = [str(r['raw_id']) for r in ud_result.data]
-            except Exception as e:
-                logger.warning(f"title 検索エラー: {e}")
+            raw_id_filter = raw_ids_for_title_keyword(db, q)
+            if raw_id_filter is not None and len(raw_id_filter) == 0:
+                return jsonify({"success": True, "documents": [], "count": 0})
 
         # pipeline_meta を検索
         query = db.client.table('pipeline_meta').select(
@@ -322,7 +331,7 @@ def search_documents():
         result = query.order('created_at', desc=True).limit(limit).execute()
         pm_rows = result.data or []
 
-        # 09_unified_documents と raw_tables からタイトルを取得
+        # 各 raw からタイトルを取得
         title_map = _get_document_titles(db, pm_rows)
 
         documents = []
@@ -347,63 +356,6 @@ def search_documents():
     except Exception as e:
         logger.error(f"ドキュメント検索エラー: {e}")
         return safe_error_response(e)
-
-@app.route('/internal/fast_index', methods=['POST'])
-def fast_index():
-    """軽量版高速インデックス実行"""
-    try:
-        from shared.fast_index import FastIndexer
-
-        data = request.json
-        pipeline_id = data.get('pipeline_id')
-        if not pipeline_id:
-            return jsonify({'error': 'Missing pipeline_id'}), 400
-
-        indexer = FastIndexer()
-        success, err_msg = indexer.process_document(pipeline_id)
-
-        if success:
-            return jsonify({'success': True, 'message': f'Document {pipeline_id} indexed successfully'})
-        return jsonify({'success': False, 'error': err_msg or 'Indexing failed'}), 500
-    except Exception as e:
-        logger.error(f"Fast index API error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/fast-index-ui')
-def fast_index_ui():
-    """軽量版プロセッサー専用画面（fast-index 一覧）"""
-    from shared.fast_index import (
-        FAST_INDEX_RAW_TABLES,
-        fetch_pending_fast_index_docs,
-        resolve_pdf_toolbox_base,
-    )
-
-    db = DatabaseClient(use_service_role=True)
-    list_error = None
-    try:
-        pending_docs, list_error = fetch_pending_fast_index_docs(
-            db.client, list(FAST_INDEX_RAW_TABLES)
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch pending docs: {e}")
-        pending_docs, list_error = [], str(e)
-
-    _fh = (request.headers.get("X-Forwarded-Host") or "").strip()
-    req_host = (_fh.split(",")[0].strip() if _fh else "") or (request.host or "").strip()
-    toolbox = resolve_pdf_toolbox_base(request_host=req_host or None)
-    if not toolbox and os.environ.get("K_SERVICE"):
-        logger.warning(
-            "PDF ツールのベース URL を決められませんでした（環境変数 FAST_INDEX_PDF_TOOLBOX_BASE 等、"
-            "または Cloud Run の *-{プロジェクト番号}.{リージョン}.run.app 形式のホストが必要です）。"
-            "カスタムドメインのみの場合は FAST_INDEX_PDF_TOOLBOX_BASE を設定してください。"
-        )
-    return render_template(
-        "fast_index.html",
-        docs=pending_docs or [],
-        list_error=list_error,
-        pdf_toolbox_base=toolbox,
-        fast_index_post_url="/internal/fast_index",
-    )
 
 
 # ========== 処理監視ダッシュボード ==========
@@ -697,7 +649,7 @@ def get_queue_status_api():
         pm_result = pm_q.order('created_at', desc=False).limit(100).execute()
         pm_rows = pm_result.data or []
 
-        # 09_unified_documents と raw_tables からタイトルを取得（無題防止）
+        # 各 raw からタイトルを取得（無題防止）
         title_map = _get_document_titles(db, pm_rows)
 
         queued_docs = []
@@ -1049,7 +1001,7 @@ def get_blocked_documents():
         result = query.order('updated_at', desc=True).limit(limit).execute()
         blocked_docs = result.data or []
 
-        # 09_unified_documents と raw_tables からタイトルを取得
+        # 各 raw からタイトルを取得
         if blocked_docs:
             title_map = _get_document_titles(db, blocked_docs)
             for doc in blocked_docs:
@@ -1104,7 +1056,7 @@ def get_failed_documents():
         result = query.order('updated_at', desc=True).limit(limit).execute()
         failed_docs = result.data or []
 
-        # 09_unified_documents と raw_tables からタイトルを取得
+        # 各 raw からタイトルを取得
         if failed_docs:
             title_map = _get_document_titles(db, failed_docs)
             for doc in failed_docs:
@@ -1184,8 +1136,8 @@ def classify_documents():
                 logger.warning(f"raw table {rt} 取得エラー: {e}")
 
         # Stage A と Google Drive コネクタをインポート
-        from shared.pipeline.stage_a.a3_entry_point import A3EntryPoint
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.pipeline.stage_a.a3_entry_point import A3EntryPoint
+        from dms.common.connectors.google_drive import GoogleDriveConnector
 
         drive = GoogleDriveConnector()
         a3 = A3EntryPoint()
@@ -1391,20 +1343,40 @@ def update_doc_type():
         if not category:
             return jsonify({'success': False, 'error': 'category が必要です'}), 400
 
-        # pipeline_meta の raw_id/raw_table を取得して 09_unified_documents を更新
-        pm_result = db.client.table('pipeline_meta').select('raw_id, raw_table') \
-            .in_('id', doc_ids).execute()
+        # pipeline_meta の raw 行の category を更新（09 は触らない）
+        pm_result = (
+            db.client.table("pipeline_meta")
+            .select("raw_id, raw_table")
+            .in_("id", doc_ids)
+            .execute()
+        )
 
         if not pm_result.data:
             return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
 
-        raw_ids = [str(r['raw_id']) for r in pm_result.data if r.get('raw_id')]
-        result = db.client.table('09_unified_documents').update({
-            'category': category
-        }).in_('raw_id', raw_ids).execute()
+        updated_count = 0
+        for row in pm_result.data:
+            rid, rt = row.get("raw_id"), row.get("raw_table")
+            if not rid or not rt:
+                continue
+            try:
+                up = (
+                    db.client.table(rt)
+                    .update({"category": category})
+                    .eq("id", rid)
+                    .execute()
+                )
+                if up.data:
+                    updated_count += len(up.data)
+            except Exception as ex:
+                logger.warning("[update-doc-type] raw 更新スキップ: %s %s %s", rt, rid, ex)
 
-        updated_count = len(result.data) if result.data else 0
-        logger.info(f"[update-doc-type] {updated_count}件の category を '{category}' に変更: {doc_ids}")
+        try:
+            db.client.table("pipeline_meta").update({"category": category}).in_("id", doc_ids).execute()
+        except Exception as ex:
+            logger.warning("[update-doc-type] pipeline_meta.category 同期スキップ: %s", ex)
+
+        logger.info(f"[update-doc-type] {updated_count}件の raw.category を '{category}' に変更: {doc_ids}")
 
         return jsonify({
             'success': True,
@@ -1457,19 +1429,19 @@ def set_pending():
 
 @app.route('/internal/reprocess-g', methods=['POST'])
 def reprocess_g():
-    """G17 または G22 から再処理（Stage J/K も更新）
+    """G17 または G22 から再処理し、最終 Markdown を 03–05 系 raw の pdf_md_content に保存する。
 
     【責務】
-    - DBに保存済みの中間データを使って指定ステージから再実行
-    - G22: g21_articles → G22 → g22_ai_extracted 更新 → J/K 更新
-    - G17: g14_reconstructed_tables → G17 → g17_table_analyses 更新 → J/K 更新
+    - 中間は pipeline_meta に既にある列のみ更新（09 には書かない）
+    - 正本の最終 MD: raw.pdf_md_content / pdf_md_updated_at
+
+    検索インデックス（10_ix）は検索データ準備側。
 
     【パラメータ】
-    - doc_id: 対象ドキュメントID
+    - doc_id: pipeline_meta.id
     - start_stage: 'G17' または 'G22'
     """
     import json as _json
-    import os as _os
 
     try:
         db = DatabaseClient(use_service_role=True)
@@ -1482,7 +1454,6 @@ def reprocess_g():
         if start_stage not in ('G17', 'G22'):
             return jsonify({'success': False, 'error': 'start_stage は G17 または G22 を指定してください'}), 400
 
-        # pipeline_meta からドキュメント情報と中間データを取得（doc_id は pipeline_meta.id）
         pm_result = db.client.table('pipeline_meta').select(
             'id, raw_id, raw_table, person, source, owner_id, '
             'g14_reconstructed_tables, g21_articles, g17_table_analyses, g22_ai_extracted'
@@ -1492,16 +1463,30 @@ def reprocess_g():
             return jsonify({'success': False, 'error': 'ドキュメントが見つかりません'}), 404
 
         pm = pm_result.data[0]
-        raw_id    = pm['raw_id']
+        raw_id = pm['raw_id']
         raw_table = pm['raw_table']
 
-        # 09_unified_documents から ui_data と title を取得
-        ud_result = db.client.table('09_unified_documents').select(
-            'id, title, category, ui_data'
-        ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
-        ud = ud_result.data[0] if ud_result.data else {}
+        if raw_table not in CLASSROOM_RAW_MD_TABLES:
+            return jsonify({
+                'success': False,
+                'error': f'reprocess-g は {sorted(CLASSROOM_RAW_MD_TABLES)} のみ対応です（現在 raw_table={raw_table}）',
+            }), 400
 
-
+        # 09 への書き込みはしない。マージ用に 09 があれば ui_data だけ読む（任意）。
+        ud: dict = {}
+        try:
+            ud_result = (
+                db.client.table('09_unified_documents')
+                .select('ui_data')
+                .eq('raw_id', raw_id)
+                .eq('raw_table', raw_table)
+                .limit(1)
+                .execute()
+            )
+            if ud_result.data:
+                ud = ud_result.data[0]
+        except Exception as e:
+            logger.warning('[reprocess-g] 09 参照スキップ（マージベース空）: %s', e)
 
         def _parse_json_col(val):
             if val is None:
@@ -1510,7 +1495,8 @@ def reprocess_g():
                 return _json.loads(val)
             return val
 
-        # ===== G22 再処理 =====
+        merged_ui_data: dict = {}
+
         if start_stage == 'G22':
             g21_raw = pm.get('g21_articles')
             if not g21_raw:
@@ -1521,35 +1507,23 @@ def reprocess_g():
 
             articles = _parse_json_col(g21_raw) or []
 
-            from shared.pipeline.stage_g.g22_text_ai_processor import G22TextAIProcessor
+            from dms.pipeline.stage_g.g22_text_ai_processor import G22TextAIProcessor
+
             g22 = G22TextAIProcessor(document_id=doc_id)
             g22_result = g22.process(articles)
 
             if not g22_result.get('success'):
                 return jsonify({'success': False, 'error': f'G22 処理失敗: {g22_result.get("error", "不明")}'}), 500
 
-            # pipeline_meta の g22_ai_extracted を更新
             db.client.table('pipeline_meta').update({
                 'g22_ai_extracted': g22_result
             }).eq('id', doc_id).execute()
 
-            # 09_unified_documents の ui_data を更新
-            try:
-                ui_data = _parse_json_col(ud.get('ui_data')) or {}
-                ui_data['timeline'] = g22_result.get('calendar_events', [])
-                ui_data['actions']  = g22_result.get('tasks', [])
-                ui_data['notices']  = g22_result.get('notices', [])
-                db.client.table('09_unified_documents').update(
-                    {'ui_data': ui_data}
-                ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
-            except Exception as e:
-                logger.warning(f'ui_data 更新エラー（継続）: {e}')
+            merged_ui_data = _parse_json_col(ud.get('ui_data')) or {}
+            merged_ui_data['timeline'] = g22_result.get('calendar_events', [])
+            merged_ui_data['actions'] = g22_result.get('tasks', [])
+            merged_ui_data['notices'] = g22_result.get('notices', [])
 
-            g17_output = _parse_json_col(pm.get('g17_table_analyses')) or []
-            g21_output = articles
-            g22_output = g22_result
-
-        # ===== G17 再処理 =====
         else:
             g14_raw = pm.get('g14_reconstructed_tables')
             if not g14_raw:
@@ -1560,18 +1534,18 @@ def reprocess_g():
 
             g14_data = _parse_json_col(g14_raw) or []
 
-            from shared.pipeline.stage_g.g17_table_ai_processor import G17TableAIProcessor
+            from dms.pipeline.stage_g.g17_table_ai_processor import G17TableAIProcessor
+
             g17 = G17TableAIProcessor(document_id=doc_id)
             g17_result = g17.process(g14_data)
 
             if not g17_result.get('success'):
                 return jsonify({'success': False, 'error': f'G17 処理失敗: {g17_result.get("error", "不明")}'}), 500
 
-            g17_output = g17_result.get('table_analyses', [])
+            g17_analyses = g17_result.get('table_analyses', [])
 
-            # pipeline_meta の g17_table_analyses を更新
             db.client.table('pipeline_meta').update({
-                'g17_table_analyses': g17_output
+                'g17_table_analyses': g17_analyses
             }).eq('id', doc_id).execute()
 
             def _to_ui_tables(table_analyses):
@@ -1580,148 +1554,48 @@ def reprocess_g():
                     sections = analysis.get('sections', [])
                     section_data = sections[0].get('data', []) if sections else []
                     result.append({
-                        'table_id':   analysis.get('table_id', ''),
+                        'table_id': analysis.get('table_id', ''),
                         'table_type': analysis.get('table_type', 'structured'),
                         'description': analysis.get('description', ''),
-                        'headers':    [],
-                        'rows':       section_data,
-                        'sections':   sections,
-                        'metadata':   sections[0].get('metadata', {}) if sections else analysis.get('metadata', {}),
+                        'headers': [],
+                        'rows': section_data,
+                        'sections': sections,
+                        'metadata': sections[0].get('metadata', {}) if sections else analysis.get('metadata', {}),
                     })
                 return result
-            ui_tables = _to_ui_tables(g17_output)
 
-            # 09_unified_documents の ui_data を更新
-            try:
-                ui_data = _parse_json_col(ud.get('ui_data')) or {}
-                ui_data['tables'] = ui_tables
-                db.client.table('09_unified_documents').update(
-                    {'ui_data': ui_data}
-                ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
-            except Exception as e:
-                logger.warning(f'ui_data 更新エラー（継続）: {e}')
+            ui_tables = _to_ui_tables(g17_analyses)
+            merged_ui_data = _parse_json_col(ud.get('ui_data')) or {}
+            merged_ui_data['tables'] = ui_tables
 
-            g17_output = ui_tables
-
-            g21_output = _parse_json_col(pm.get('g21_articles')) or []
-            g22_output = _parse_json_col(pm.get('g22_ai_extracted')) or {}
-
-        # ===== G31: 09_unified_documents を更新し unified_doc_id を取得 =====
-        from shared.pipeline.stage_g.g31_unified_writer import G31UnifiedWriter
-
-        # 最新 ui_data を DB から再取得（G17/G22 の更新を反映）
-        refreshed_ud = db.client.table('09_unified_documents').select(
-            'id, title, category, ui_data'
-        ).eq('raw_id', raw_id).eq('raw_table', raw_table).execute()
-        updated_ud = refreshed_ud.data[0] if refreshed_ud.data else ud
-        updated_ui_data = _parse_json_col(updated_ud.get('ui_data'))
-
-        # G31 用 raw_data を pipeline_meta から構築
-        raw_data_for_g31 = {
-            'id':       pm['id'],
-            'raw_id':   raw_id,
-            'raw_table': raw_table,
-            'person':   pm.get('person'),
-            'source':   pm.get('source'),
-            'title':    updated_ud.get('title'),
-            'category': updated_ud.get('category'),
-            'owner_id': pm.get('owner_id'),
-        }
-
-        g31 = G31UnifiedWriter(db_client=db)
-        g31_result = g31.process(
-            raw_data=raw_data_for_g31,
-            raw_table=raw_table,
-            ui_data=updated_ui_data,
+        md_text = ui_data_to_final_markdown(merged_ui_data)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        raw_up = (
+            db.client.table(raw_table)
+            .update({'pdf_md_content': md_text, 'pdf_md_updated_at': now_iso})
+            .eq('id', raw_id)
+            .execute()
         )
-        if not g31_result.get('success'):
-            return jsonify({'success': False, 'error': f'G31 失敗: {g31_result.get("error")}'}), 500
+        if not raw_up.data:
+            return jsonify({'success': False, 'error': 'raw 行の pdf_md_content 更新に失敗しました'}), 500
 
-        unified_doc_id = g31_result['doc_id']
-        logger.info(f'[reprocess-g] G31 完了: unified_doc_id={unified_doc_id}')
+        logger.info(
+            '[reprocess-g] raw MD 保存完了 raw_table=%s raw_id=%s len=%s',
+            raw_table,
+            raw_id,
+            len(md_text or ''),
+        )
 
-        # ===== Stage J: チャンク生成 =====
-        from shared.common.processing.metadata_chunker import MetadataChunker
-        file_name = updated_ud.get('title') or 'unknown'
-
-        document_data = {
-            'file_name': file_name,
-            'doc_type':  updated_ud.get('category'),
-            'text_blocks': [
-                {'title': a.get('title', ''), 'content': a.get('body', '')}
-                for a in g21_output
-                if a.get('body', '').strip()
-            ],
-            'structured_tables': [
-                {
-                    'table_title': t.get('description', t.get('table_title', '')),
-                    'headers':     t.get('headers', []),
-                    'rows':        t.get('rows', []),
-                    'metadata':    t.get('metadata', {}),
-                }
-                for t in g17_output
-                if t.get('rows')
-            ],
-            'calendar_events': [
-                {'event_date': e.get('date', ''), 'event_time': e.get('time', ''), 'event_name': e.get('event', ''), 'location': e.get('location', '')}
-                for e in g22_output.get('calendar_events', [])
-            ],
-            'tasks': [
-                {'task_name': t.get('item', ''), 'deadline': t.get('deadline', ''), 'description': t.get('description', '')}
-                for t in g22_output.get('tasks', [])
-            ],
-            'notices': [
-                {'category': n.get('category', ''), 'content': n.get('content', '')}
-                for n in g22_output.get('notices', [])
-            ],
-        }
-
-        all_chunks = MetadataChunker().create_metadata_chunks(document_data)
-        logger.info(f'[reprocess-g] {start_stage} 全チャンク生成: {len(all_chunks)}件')
-
-        new_chunks = all_chunks
-        logger.info(f'[reprocess-g] {start_stage} 全チャンク再挿入: {len(new_chunks)}件')
-
-        # 全チャンク削除（unified_doc_id = 09_unified_documents.id を使用）
-        try:
-            db.client.table('10_ix_search_index').delete().eq('doc_id', unified_doc_id).execute()
-        except Exception as e:
-            logger.warning(f'既存チャンク削除エラー（継続）: {e}')
-
-        if not new_chunks:
-            logger.info(f'[reprocess-g] {start_stage} 対象チャンクなし、スキップ')
-            return jsonify({
-                'success': True,
-                'message': f'{start_stage} から再処理完了（チャンクなし）',
-                'doc_id': doc_id,
-                'chunks_saved': 0,
-                'start_stage': start_stage,
-            })
-
-        # ===== Stage K: Embedding =====
-        from shared.ai.llm_client.llm_client import LLMClient
-        from shared.pipeline.stage_k_embedding import StageKEmbedding
-
-        llm_client = LLMClient()
-        stage_k = StageKEmbedding(llm_client=llm_client, db_client=db)
-        k_result = stage_k.embed_and_save(unified_doc_id, new_chunks)
-
-        if not k_result.get('success'):
-            errors = k_result.get('errors', [])
-            saved = k_result.get('saved_count', 0)
-            failed = k_result.get('failed_count', 0)
-            # 部分成功（1件以上保存済み）は警告扱いで続行
-            if saved > 0:
-                logger.warning(f'[reprocess-g] Stage K 部分失敗: {saved}件成功, {failed}件失敗. errors={errors}')
-            else:
-                return jsonify({'success': False, 'error': f'Stage K 全失敗: {errors}'}), 500
-
-        logger.info(f'[reprocess-g] 完了: {start_stage} → {doc_id} ({k_result.get("saved_count", 0)} chunks)')
         return jsonify({
             'success': True,
-            'message': f'{start_stage} から再処理完了',
+            'message': (
+                f'{start_stage} から再処理し、{raw_table} の pdf_md_content に最終 MD を保存しました。'
+                '検索インデックスは検索データ準備で行ってください。'
+            ),
             'doc_id': doc_id,
-            'chunks_saved': k_result.get('saved_count', 0),
+            'raw_id': str(raw_id),
+            'raw_table': raw_table,
+            'markdown_length': len(md_text or ''),
             'start_stage': start_stage,
         })
 

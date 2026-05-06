@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import japanize_matplotlib  # 日本語フォント対応
 
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 
 
 OUTPUT_DIR = Path("reports")

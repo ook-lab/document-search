@@ -6,13 +6,10 @@ import os
 import sys
 from pathlib import Path
 
-# 同梱 shared/ を優先しつつ、ローカルでルートスクリプトを使う場合はルートも追加
+# doc-search 専用パッケージ docsearch のみ（パイプライン dms/ とは無関係・コードも別実装）。
 _service_dir = Path(__file__).resolve().parent
-project_root = _service_dir.parent.parent
 if str(_service_dir) not in sys.path:
     sys.path.insert(0, str(_service_dir))
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -35,12 +32,12 @@ def get_clients():
     if db_client is None:
         print("[INFO] クライアントを初期化中...")
         # 遅延import（起動高速化）
-        from shared.common.database.client import DatabaseClient
-        from shared.ai.llm_client.llm_client import LLMClient
-        from shared.common.utils.query_expansion import QueryExpander
+        from docsearch.db import DocSearchDB
+        from docsearch.llm import DocSearchLLM
+        from docsearch.query_expansion import QueryExpander
 
-        db_client = DatabaseClient(use_service_role=True)
-        llm_client = LLMClient()
+        db_client = DocSearchDB(use_service_role=True)
+        llm_client = DocSearchLLM()
         query_expander = QueryExpander(llm_client=llm_client)
         print("[INFO] クライアント初期化完了")
 
@@ -120,8 +117,8 @@ def search_documents():
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
 
         # ユーザーコンテキストを読み込み、関連情報を抽出（検索用：軽量）
-        from shared.common.utils.context_extractor import ContextExtractor
-        from shared.common.config.yaml_loader import load_user_context
+        from docsearch.context import ContextExtractor
+        from docsearch.user_context import load_user_context
 
         user_context = load_user_context()
         context_extractor = ContextExtractor(user_context)
@@ -279,7 +276,7 @@ def generate_answer():
         # リクエストID生成（このリクエスト内の全AI呼び出しを紐づける）
         request_id = str(_uuid.uuid4())
 
-        from shared.common.config.model_tiers import ResearchFlow
+        from docsearch.models import ResearchFlow
         flow_config = ResearchFlow.get_flow(flow_id)
         steps = flow_config.get('steps')
         rounds = flow_config.get('rounds', 1)
@@ -390,8 +387,8 @@ def _answer_1step(llm_client, model_name: str, query: str, context: str, log_con
     抽象化・根拠なし断定は禁止。各根拠にSourceを付けて出力する。
     """
     try:
-        from shared.common.utils.context_extractor import ContextExtractor
-        from shared.common.config.yaml_loader import load_user_context
+        from docsearch.context import ContextExtractor
+        from docsearch.user_context import load_user_context
         user_context = load_user_context()
         ctx_extractor = ContextExtractor(user_context)
         extracted = ctx_extractor.extract_relevant_context(query, include_schedules=True)
@@ -490,8 +487,8 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
     Evidenceなき記述禁止。ここで初めて抽象化OK。
     """
     try:
-        from shared.common.utils.context_extractor import ContextExtractor
-        from shared.common.config.yaml_loader import load_user_context
+        from docsearch.context import ContextExtractor
+        from docsearch.user_context import load_user_context
         user_context = load_user_context()
         ctx_extractor = ContextExtractor(user_context)
         extracted = ctx_extractor.extract_relevant_context(query, include_schedules=True)
@@ -676,8 +673,8 @@ def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, 
     Evidenceがある内容のみ記載。曖昧な点は明示。
     """
     try:
-        from shared.common.utils.context_extractor import ContextExtractor
-        from shared.common.config.yaml_loader import load_user_context
+        from docsearch.context import ContextExtractor
+        from docsearch.user_context import load_user_context
 
         user_context = load_user_context()
         context_extractor = ContextExtractor(user_context)
@@ -1429,8 +1426,8 @@ def get_workspaces():
       doc-search は別ホストのため衝突しない
     """
     try:
-        from shared.common.database.client import DatabaseClient
-        db = DatabaseClient(use_service_role=True)
+        from docsearch.db import DocSearchDB
+        db = DocSearchDB(use_service_role=True)
 
         # person 一覧を取得（09_unified_documents ベース）
         query = db.client.table('09_unified_documents').select('person').execute()

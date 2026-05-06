@@ -8,7 +8,7 @@ _project_root = Path(__file__).resolve().parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 
 # Supabase接続（Service Role Keyを使用）
 db_client = DatabaseClient(use_service_role=True)

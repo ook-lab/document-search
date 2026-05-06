@@ -1,5 +1,5 @@
 """
-Streamlit + Supabase auth for kakeibo review UI (no shared.common).
+Streamlit + Supabase auth for kakeibo review UI (no dms.common).
 """
 from __future__ import annotations
 

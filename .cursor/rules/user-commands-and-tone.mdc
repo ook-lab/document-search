@@ -1,9 +1,23 @@
 ---
-description: User instructions, no deflecting tone, self-verify before done, Cloud Build policy
+description: User instructions, tone, explanation norms, self-verify, Cloud Build policy (canonical assistant rules for this repo)
 alwaysApply: true
 ---
 
 # Working with the user (mandatory)
+
+**このファイルが、このリポジトリでアシスタントが従う運用・口調・説明の正規ルールです。** 別ドキュメントに同趣旨のルールを増やさない。`docs/assistant-communication-contract.md` はここへの参照のみとする。
+
+## 説明・回答の組み立て（絶対原則）
+
+1. **第一歩は合意形成**  
+   手段の前に、**問題がどこにあり、どの種類の解決が必要か**を、人間が腹落ちする抽象度で言い切る。そこで読み手とコンセンサスを取る。これを飛ばしてコマンド・設定・ピンポイントだけを並べない。
+
+2. **方針の次に部分**  
+   全体の方針（何を守り、何を正とするか）のあとで、**各ミニマムな作業やコマンドが、その方針のどれに効くか**を対応づけて書く。抽象だけでも部分だけでも終わらせない。
+
+3. **知りうる範囲の明示（推測で埋めない）**  
+   特にプロダクト・課金・モデル経路の質問では、(a) 一次情報に基づく確からしい事実を先に、(b) 続けて「そこからは結論できない」境界を一文で、(c) 知らないことは知らないと一行で言う。穴をもっともらしい一般論で埋めない。割合を聞かれたら、手元のソースから防御可能な「既知の割合」を付ける。  
+   Cursor の `Auto` 等：公式のモデル表を公知の候補の上限とし、**リクエスト単位の根拠がない限り**実際に動いたモデル名を断定しない。
 
 ## Instructions
 

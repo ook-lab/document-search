@@ -32,8 +32,8 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from loguru import logger
-from shared.common.database.client import DatabaseClient
-from shared.pipeline.stage_g.g18_candidate_extractor import G18CandidateExtractor
+from dms.common.database.client import DatabaseClient
+from dms.pipeline.stage_g.g18_candidate_extractor import G18CandidateExtractor
 
 
 def fetch_docs(db, args):

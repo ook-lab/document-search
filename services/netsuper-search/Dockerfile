@@ -9,7 +9,7 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-COPY shared/ /app/shared/
+COPY dms/ /app/dms/
 COPY scripts/ /app/scripts/
 COPY services/netsuper-search/ /app/services/netsuper-search/
 

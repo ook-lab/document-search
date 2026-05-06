@@ -127,7 +127,7 @@ class AuthService:
             - 開発時はservice_roleを使用（RLSバイパス）
         """
         try:
-            from shared.common.database.client import DatabaseClient
+            from dms.common.database.client import DatabaseClient
             # 開発用：service_roleで接続
             return DatabaseClient(use_service_role=True)
 

@@ -20,8 +20,8 @@ from typing import Dict, List, Tuple
 
 # 収集対象ディレクトリ
 TARGET_DIRS = [
-    'shared/pipeline',
-    'shared/ai',
+    'dms/pipeline',
+    'dms/ai',
     'config',  # プロンプトテンプレート
 ]
 

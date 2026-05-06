@@ -9,7 +9,7 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-COPY shared/ /app/shared/
+COPY dms/ /app/dms/
 COPY services/gmail-service/ /app/services/gmail-service/
 
 ENV PYTHONPATH=/app:/app/services/gmail-service

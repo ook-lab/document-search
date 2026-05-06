@@ -23,7 +23,7 @@ from threading import Thread
 from flask import Flask, request, jsonify, render_template, Response
 from dotenv import load_dotenv
 
-# リポジトリルート（shared 同梱先）。pipeline_debug は services/doc_processor 配下。
+# リポジトリルート（dms パッケージ）。pipeline_debug は services/doc_processor 配下。
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -31,14 +31,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # .env を読み込み
 load_dotenv(PROJECT_ROOT / '.env')
 
-# shared.pipeline.__init__.py の壊れたインポートを回避
+# dms.pipeline.__init__.py の壊れたインポートを回避
 import types
-_pipeline_pkg = types.ModuleType('shared.pipeline')
-_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'shared' / 'pipeline')]
-_pipeline_pkg.__package__ = 'shared.pipeline'
-sys.modules.setdefault('shared', types.ModuleType('shared'))
-sys.modules['shared'].__path__ = [str(PROJECT_ROOT / 'shared')]
-sys.modules['shared.pipeline'] = _pipeline_pkg
+_pipeline_pkg = types.ModuleType('dms.pipeline')
+_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'dms' / 'pipeline')]
+_pipeline_pkg.__package__ = 'dms.pipeline'
+sys.modules.setdefault('dms', types.ModuleType('dms'))
+sys.modules['dms'].__path__ = [str(PROJECT_ROOT / 'dms')]
+sys.modules['dms.pipeline'] = _pipeline_pkg
 
 from loguru import logger
 
@@ -291,8 +291,8 @@ def session_diagnosis(session_id):
 
     # TypeAnalyzer パターン・Gatekeeper 定数をソースから直接インポート（コピーなし）
     try:
-        from shared.pipeline.stage_a.a5_type_analyzer import A5TypeAnalyzer
-        from shared.pipeline.stage_a.a5_gatekeeper import A5Gatekeeper
+        from dms.pipeline.stage_a.a5_type_analyzer import A5TypeAnalyzer
+        from dms.pipeline.stage_a.a5_gatekeeper import A5Gatekeeper
         ta = A5TypeAnalyzer()
         gk_cls = A5Gatekeeper()
         meta_patterns = {
@@ -417,7 +417,7 @@ def test_drive():
     if not GDRIVE_DEBUG_FOLDER_ID:
         return jsonify({'error': 'GDRIVE_DEBUG_FOLDER_ID 未設定'}), 500
     try:
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
         drive = GoogleDriveConnector()
         about = drive.service.about().get(fields='user').execute()
         email = about['user']['emailAddress']
@@ -535,7 +535,7 @@ def _ensure_drive_folder(session_id: str, drive_state: dict):
     if drive_state.get('folder_id'):
         return True  # 既に作成済み
     try:
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
         drive = GoogleDriveConnector()
         about = drive.service.about().get(fields='user').execute()
         logger.info(f"[Drive] 認証アカウント: {about['user']['emailAddress']}")

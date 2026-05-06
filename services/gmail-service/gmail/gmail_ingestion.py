@@ -29,11 +29,11 @@ from dotenv import load_dotenv
 load_dotenv(root_dir / ".env")
 
 # HTML to Screenshot utility
-from shared.common.utils.html_screenshot import HTMLScreenshotGenerator
+from dms.common.utils.html_screenshot import HTMLScreenshotGenerator
 
-from shared.common.connectors.gmail_connector import GmailConnector
-from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.common.database.client import DatabaseClient
+from dms.common.connectors.gmail_connector import GmailConnector
+from dms.common.connectors.google_drive import GoogleDriveConnector
+from dms.common.database.client import DatabaseClient
 
 
 class GmailIngestionPipeline:
@@ -353,7 +353,7 @@ class GmailIngestionPipeline:
 
         # Base64埋め込み画像をリサイズ（モバイル対応）
         try:
-            from shared.common.utils.html_screenshot import HTMLScreenshotGenerator
+            from dms.common.utils.html_screenshot import HTMLScreenshotGenerator
             screenshot_gen = HTMLScreenshotGenerator()
             html_content = screenshot_gen._resize_embedded_images(html_content, max_height=300)
             logger.info(f"HTML内のBase64画像をリサイズしました（max_height=300px）")
@@ -593,14 +593,7 @@ class GmailIngestionPipeline:
                 raw_result = self.db.client.table('01_gmail_01_raw').insert(raw_row).execute()
                 raw_id = raw_result.data[0]['id'] if raw_result.data else None
                 if raw_id:
-                    self.db.client.table('pipeline_meta').insert({
-                        'raw_id':            raw_id,
-                        'raw_table':         '01_gmail_01_raw',
-                        'person':            _person_str,
-                        'source':            self.config['import_settings']['workspace'],
-                        'processing_status': 'pending',
-                        'owner_id':          self.owner_id,
-                    }).execute()
+                    # Gmail はパイプライン（pipeline_meta）対象外。raw のみが正本。
                     result['document_ids'].append(raw_id)
                     logger.info(f"Supabase保存完了（メール + 添付 {len(attachment_info_list)}件）: {subject}")
                 else:

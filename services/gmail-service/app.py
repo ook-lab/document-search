@@ -21,7 +21,7 @@ if str(_here) not in sys.path:
 load_dotenv(_repo / ".env")
 load_dotenv(_here / ".env")
 
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 from processing import GmailService
 
 
@@ -78,14 +78,9 @@ def create_app() -> Flask:
         rows = (q.execute()).data or []
 
         if rows:
-            ids = [r["id"] for r in rows]
-            pm = (db.client.table("pipeline_meta")
-                  .select("raw_id, processing_status")
-                  .eq("raw_table", "01_gmail_01_raw")
-                  .in_("raw_id", ids).execute())
-            sm = {p["raw_id"]: p["processing_status"] for p in (pm.data or [])}
+            # Gmail は pipeline_meta 対象外。状態はこのサービス内の処理結果で管理する。
             for r in rows:
-                r["processing_status"] = sm.get(r["id"], "none")
+                r["processing_status"] = "none"
                 att = r.get("attachments") or []
                 r["image_count"] = sum(
                     1 for a in att if (a.get("mime_type") or "").startswith("image/"))
@@ -105,7 +100,7 @@ def create_app() -> Flask:
     @a.route("/api/gmail/labels")
     def api_labels():
         try:
-            from shared.common.connectors.gmail_connector import GmailConnector
+            from dms.common.connectors.gmail_connector import GmailConnector
             ue = os.getenv("GMAIL_DM_USER_EMAIL") or os.getenv("GMAIL_USER_EMAIL")
             if not ue:
                 return jsonify({"error": "GMAIL_USER_EMAIL not set"}), 500

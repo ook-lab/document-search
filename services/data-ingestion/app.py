@@ -15,8 +15,8 @@ load_dotenv(root_dir / '.env')
 
 from flask import Flask, Response, request, jsonify, render_template, stream_with_context
 import runner
-from shared.common.database.client import DatabaseClient
-from shared.common.connectors.google_drive import GoogleDriveConnector
+from dms.common.database.client import DatabaseClient
+from dms.common.connectors.google_drive import GoogleDriveConnector
 
 app = Flask(__name__)
 

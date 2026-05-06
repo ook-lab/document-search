@@ -8,7 +8,7 @@ COPY services/doc-processor/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # パイプライン共有コード（本番イメージにはワーカー用 scripts は含めない＝ローカル CLI のみ）
-COPY shared/ ./shared/
+COPY dms/ ./dms/
 
 # 目視レビュー UI（review/ の blueprints / services / templates のみ同梱。Gmail クリーナは gmail-service へ）
 COPY services/doc-processor/review/blueprints ./services/doc_processor/bundled/review/blueprints

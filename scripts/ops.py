@@ -56,7 +56,7 @@ if str(_root_dir) not in sys.path:
     sys.path.insert(0, str(_root_dir))
 
 from loguru import logger
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 
 
 # ============================================================
@@ -230,7 +230,7 @@ def cmd_stop(args):
         print("\n[ERROR] ops_requests テーブルが存在しません")
         print("  マイグレーションを実行してください: supabase db push")
         print("\n  緊急時の直接停止（非推奨）:")
-        print("  python -c \"from shared.common.database.client import DatabaseClient; DatabaseClient().client.table('worker_state').update({'stop_requested': True}).eq('id', 1).execute()\"")
+        print("  python -c \"from dms.common.database.client import DatabaseClient; DatabaseClient().client.table('worker_state').update({'stop_requested': True}).eq('id', 1).execute()\"")
         return 1
 
     return 0

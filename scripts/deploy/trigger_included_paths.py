@@ -3,9 +3,9 @@ Cloud Build trigger name -> single includedFiles glob.
 
 Rules:
 - Use only services/<name>/** or portal-app/** or my-calendar-app/** by default.
-- Do not include shared/** (avoids monorepo-wide builds on every shared edit).
-- For shared-only rebuilds, create a separate GCP trigger with a narrow glob
-  (e.g. services/kakeibo/kakeibo_lib/**), never a broad shared/** that fans out to all apps.
+- Do not include dms/** (avoids monorepo-wide builds on every dms/ edit).
+- For dms-only rebuilds, create a separate GCP trigger with a narrow glob
+  (e.g. services/kakeibo/kakeibo_lib/**), never a broad dms/** that fans out to all apps.
 
 pdf-toolbox Cloud Run: trigger names ocr-editor / pdf-splitter / pdf-toolbox
 all map to the same path services/pdf-toolbox/**.

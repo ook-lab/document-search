@@ -595,7 +595,6 @@
                 <a href="/">Run Requests</a>
                 <a href="/documents/review">ドキュメントビューア</a>
                 <a href="/emails/inbox">メール受信トレイ</a>
-                <a href="/fast-index-ui">高速インデックス</a>
                 <a href="/pipeline">パイプラインスタジオ</a>
             </div>
         </div>
@@ -1944,7 +1943,7 @@
             const btnG22 = document.getElementById('btn-g22-' + docId);
             const statusEl = document.getElementById('reprocess-status-' + docId);
 
-            if (!confirm(`「${docName}」を ${stage} から再処理しますか？\n\n・G17: 表AIを再実行（表の解析結果を更新）\n・G22: テキストAIを再実行（タスク・スケジュール・注意事項を更新）\n\nいずれも検索インデックス（J/K）も更新されます。`)) {
+            if (!confirm(`「${docName}」を ${stage} から再処理しますか？\n\n・G17: 表AIを再実行（表の解析結果を更新）\n・G22: テキストAIを再実行（タスク・スケジュール・注意事項を更新）\n\n09（G31）まで反映します。検索用ベクトルは検索データ準備側で別途更新してください。`)) {
                 return;
             }
 
@@ -1963,10 +1962,10 @@
 
                 if (data.success) {
                     if (statusEl) {
-                        statusEl.textContent = `✅ 完了 (${data.chunks_saved ?? '?'} chunks)`;
+                        statusEl.textContent = '✅ 完了（09 反映）';
                         statusEl.style.color = '#10b981';
                     }
-                    showMessage('success', `✅ ${stage} 再処理完了: ${docName} (${data.chunks_saved ?? '?'} chunks)`);
+                    showMessage('success', `✅ ${stage} 再処理完了: ${docName} — ${data.message || '09 まで反映'}`);
                 } else {
                     if (statusEl) { statusEl.textContent = `❌ ${data.error}`; statusEl.style.color = '#ef4444'; }
                     showMessage('error', `❌ ${stage} 再処理失敗: ${data.error}`);

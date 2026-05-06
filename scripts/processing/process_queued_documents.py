@@ -44,10 +44,10 @@ if str(_root_dir) not in sys.path:
 
 from loguru import logger
 
-# shared モジュールからインポート
-from shared.pipeline.pipeline_manager import PipelineManager
-from shared.common.database.client import DatabaseClient
-from shared.logging import setup_master_logging
+# dms パッケージからインポート
+from dms.pipeline.pipeline_manager import PipelineManager
+from dms.common.database.client import DatabaseClient
+from dms.logging import setup_master_logging
 
 
 def print_stats(processor: PipelineManager, source: str):
@@ -83,7 +83,7 @@ def print_dry_run_targets(processor: PipelineManager, source: str, limit: int, d
 
     if doc_id:
         # 単一ドキュメント
-        from shared.common.database.client import DatabaseClient
+        from dms.common.database.client import DatabaseClient
         db = DatabaseClient(use_service_role=True)
         result = db.client.table('pipeline_meta')\
             .select('id, raw_id, raw_table, person, source, processing_status')\

@@ -13,8 +13,8 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-# モノレポ共通パッケージ（ルート shared/）
-COPY shared/ /app/shared/
+# モノレポ共通パッケージ（ルート dms/）
+COPY dms/ /app/dms/
 
 # スクリプト (scripts パッケージ) をコピー
 COPY scripts/ /app/scripts/

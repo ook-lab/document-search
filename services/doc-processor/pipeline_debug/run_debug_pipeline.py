@@ -37,40 +37,40 @@ from typing import Dict, Any, Optional, List, Set
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# shared.pipeline.__init__.py の壊れたインポート（旧pipeline.py）を回避
+# dms.pipeline.__init__.py の壊れたインポート（旧pipeline.py）を回避
 # 個別サブパッケージ（stage_a, stage_b, ...）は正常にインポート可能
 import types
-_pipeline_pkg = types.ModuleType('shared.pipeline')
-_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'shared' / 'pipeline')]
-_pipeline_pkg.__package__ = 'shared.pipeline'
-sys.modules.setdefault('shared', types.ModuleType('shared'))
-sys.modules['shared'].__path__ = [str(PROJECT_ROOT / 'shared')]
-sys.modules['shared.pipeline'] = _pipeline_pkg
+_pipeline_pkg = types.ModuleType('dms.pipeline')
+_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'dms' / 'pipeline')]
+_pipeline_pkg.__package__ = 'dms.pipeline'
+sys.modules.setdefault('dms', types.ModuleType('dms'))
+sys.modules['dms'].__path__ = [str(PROJECT_ROOT / 'dms')]
+sys.modules['dms.pipeline'] = _pipeline_pkg
 
 from loguru import logger
 
 # ステージ コントローラーのインポート
-from shared.pipeline.stage_a import A3EntryPoint
-from shared.pipeline.stage_b import B1Controller
+from dms.pipeline.stage_a import A3EntryPoint
+from dms.pipeline.stage_b import B1Controller
 # B90 Layer Purge 削除: 各ステージで抽出＋削除を統合
 
 # サブステージ クラスのインポート（Stage D）
-from shared.pipeline.stage_d.d3_vector_line_extractor import D3VectorLineExtractor
-from shared.pipeline.stage_d.d5_raster_line_detector import D5RasterLineDetector
-from shared.pipeline.stage_d.d8_grid_analyzer import D8GridAnalyzer
-from shared.pipeline.stage_d.d9_cell_identifier import D9CellIdentifier
-from shared.pipeline.stage_d.d10_image_slicer import D10ImageSlicer
+from dms.pipeline.stage_d.d3_vector_line_extractor import D3VectorLineExtractor
+from dms.pipeline.stage_d.d5_raster_line_detector import D5RasterLineDetector
+from dms.pipeline.stage_d.d8_grid_analyzer import D8GridAnalyzer
+from dms.pipeline.stage_d.d9_cell_identifier import D9CellIdentifier
+from dms.pipeline.stage_d.d10_image_slicer import D10ImageSlicer
 
 # Stage E コントローラー（E1〜E40 全処理を内包）
-from shared.pipeline.stage_e import E1Controller as E1ControllerFull
+from dms.pipeline.stage_e import E1Controller as E1ControllerFull
 
 # サブステージ クラスのインポート（Stage F）
-from shared.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
-from shared.pipeline.stage_f.f3_smart_date_normalizer import F3SmartDateNormalizer
-from shared.pipeline.stage_f.f5_logical_table_joiner import F5LogicalTableJoiner
+from dms.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
+from dms.pipeline.stage_f.f3_smart_date_normalizer import F3SmartDateNormalizer
+from dms.pipeline.stage_f.f5_logical_table_joiner import F5LogicalTableJoiner
 
 # Stage G コントローラー（G11/G17/G21/G22 含む全処理）
-from shared.pipeline.stage_g import G1Controller as G1ControllerFull
+from dms.pipeline.stage_g import G1Controller as G1ControllerFull
 
 
 class DebugPipeline:
@@ -581,7 +581,7 @@ class DebugPipeline:
         # ────────────────────────────────────────────────────────────────
 
         # D1 Controller を使用してマルチページ統合処理
-        from shared.pipeline.stage_d import D1Controller
+        from dms.pipeline.stage_d import D1Controller
         d1 = D1Controller()
 
         # 全Dサブステージが揃っているかで分岐（揃っている→マルチページ、部分→シングルページデバッグ）

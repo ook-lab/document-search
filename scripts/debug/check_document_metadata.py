@@ -9,7 +9,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from shared.common.db_client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 
 def check_document(doc_id: str):
     """ドキュメントのmetadataを確認"""

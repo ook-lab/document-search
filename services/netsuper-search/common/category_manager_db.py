@@ -9,7 +9,7 @@ Streamlit Cloud対応のため、設定をSupabaseテーブルに保存します
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from loguru import logger
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 
 
 class CategoryManagerDB:

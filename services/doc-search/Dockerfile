@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 5. 必要なモジュールとアプリケーションファイルをコピー
 COPY services/doc-search/app.py .
 COPY services/doc-search/templates/ ./templates/
-COPY services/doc-search/shared/ ./shared/
+COPY services/doc-search/docsearch/ ./docsearch/
 
 # パイプライン処理は doc-processor またはリポジトリルートで
 # scripts/processing/process_queued_documents.py を実行する（本イメージは検索 Web のみ）。

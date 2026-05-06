@@ -1,4 +1,4 @@
-"""Text-only Gemini for kakeibo product generalization (no shared.ai)."""
+"""Text-only Gemini for kakeibo product generalization (no dms.ai)."""
 from __future__ import annotations
 
 import os

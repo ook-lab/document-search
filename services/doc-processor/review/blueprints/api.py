@@ -156,7 +156,7 @@ def list_documents():
         source: source フィルタ
         category: category フィルタ
         review_status: pending / reviewed / all（仮想フィールド、latest_correction_idから導出）
-        search: 検索クエリ（09_unified_documents.title で部分一致）
+        search: 検索クエリ（各 raw のタイトル相当で部分一致）
         processing_status: 処理ステータスフィルタ
         limit: 取得件数（デフォルト50）
     """
@@ -321,7 +321,7 @@ def preview_document(doc_id: str):
             }), 404
 
         # Google Driveからダウンロード
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
         drive_connector = GoogleDriveConnector()
 
         temp_dir = tempfile.gettempdir()
@@ -533,7 +533,7 @@ def delete_document(doc_id: str):
         file_id = _m.group(1) if _m else None
         if file_id:
             try:
-                from shared.common.connectors.google_drive import GoogleDriveConnector
+                from dms.common.connectors.google_drive import GoogleDriveConnector
                 drive_connector = GoogleDriveConnector()
                 drive_connector.trash_file(file_id)
             except Exception as e:
@@ -698,7 +698,7 @@ def bulk_delete_documents():
                 'details': {}
             }), 400
 
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
         drive_connector = GoogleDriveConnector()
 
         success_count = 0
@@ -847,7 +847,7 @@ def get_email_html(email_id: str):
             )
 
         # Google DriveからHTMLをダウンロード
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
         drive_connector = GoogleDriveConnector()
 
         temp_dir = tempfile.gettempdir()
@@ -1021,7 +1021,7 @@ def delete_email(email_id: str):
         if message_id:
             try:
                 import os
-                from shared.common.connectors.gmail_connector import GmailConnector
+                from dms.common.connectors.gmail_connector import GmailConnector
                 user_email_addr = os.getenv('GMAIL_USER_EMAIL', '')
                 if user_email_addr:
                     gmail_connector = GmailConnector(user_email_addr)
@@ -1033,7 +1033,7 @@ def delete_email(email_id: str):
         file_id = email.get('source_id')
         if file_id:
             try:
-                from shared.common.connectors.google_drive import GoogleDriveConnector
+                from dms.common.connectors.google_drive import GoogleDriveConnector
                 drive_connector = GoogleDriveConnector()
                 drive_connector.trash_file(file_id)
             except Exception as e:
@@ -1120,8 +1120,8 @@ def bulk_delete_emails():
             }), 400
 
         import os
-        from shared.common.connectors.google_drive import GoogleDriveConnector
-        from shared.common.connectors.gmail_connector import GmailConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.gmail_connector import GmailConnector
 
         drive_connector = GoogleDriveConnector()
         user_email_addr = os.getenv('GMAIL_USER_EMAIL', '')

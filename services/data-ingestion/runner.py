@@ -33,7 +33,7 @@ def _get_db():
             sys.path.insert(0, str(PROJECT_ROOT))
         from dotenv import load_dotenv
         load_dotenv(PROJECT_ROOT / ".env")
-        from shared.common.database.client import DatabaseClient
+        from dms.common.database.client import DatabaseClient
         _db = DatabaseClient(use_service_role=True)
     return _db
 

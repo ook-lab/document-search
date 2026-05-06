@@ -14,11 +14,11 @@
 
 ## Root `cloudbuild.yaml` (batch: doc-processor + html-to-a4)
 
-The repository root file builds two services in one pipeline. Keep it for manual or special batch deploys if you need it, but **do not** mirror the same branch with overlapping triggers. If you use a root trigger, narrow **`includedFiles`** in the console (for example only the two service directories), and avoid **`shared/**`** alone so a shared edit does not fan out to unrelated services.
+The repository root file builds two services in one pipeline. Keep it for manual or special batch deploys if you need it, but **do not** mirror the same branch with overlapping triggers. If you use a root trigger, narrow **`includedFiles`** in the console (for example only the two service directories), and avoid **`dms/**`** alone so a change under `dms/` does not fan out to unrelated services.
 
-## Shared libraries
+## Monorepo library (`dms/`)
 
-Default trigger filters in `trigger_included_paths.py` **exclude** `shared/**`. If you need a rebuild when only shared code changes, create a **separate** trigger with a **narrow** glob (e.g. `shared/kakeibo/**`), not `shared/**` for all apps.
+Default trigger filters in `trigger_included_paths.py` **exclude** `dms/**`. If you need a rebuild when only `dms/` code changes, create a **separate** trigger with a **narrow** glob (e.g. `dms/pipeline/stage_h/**`), not `dms/**` for all apps.
 
 ## pdf-toolbox family (one Cloud Run service)
 

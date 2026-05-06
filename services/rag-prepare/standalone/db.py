@@ -1,4 +1,4 @@
-"""Supabase client for rag-prepare only (no monorepo `shared/`)."""
+"""Supabase client for rag-prepare only (no monorepo ``dms/``)."""
 from __future__ import annotations
 
 import os

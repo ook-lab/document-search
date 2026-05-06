@@ -1,6 +1,6 @@
 """
 Kakeibo 用 Google Drive クライアント
-Kakeibo で必要な操作のみを実装（shared.common.connectors 不要）
+Kakeibo で必要な操作のみを実装（dms.common.connectors 不要）
 """
 import io
 import os

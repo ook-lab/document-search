@@ -16,7 +16,7 @@ try {
     Write-Host "1. Docker イメージをビルド"
     Write-Host "============================================"
 
-    # ビルドコンテキストはプロジェクトルート（shared/ をコピーするため）
+    # ビルドコンテキストはプロジェクトルート（dms/ をコピーするため）
     # --config で Dockerfile パスを指定、ソース . で .gcloudignore 適用
     gcloud builds submit . `
         --region=$REGION `

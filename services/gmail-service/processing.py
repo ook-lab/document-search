@@ -24,7 +24,7 @@ _repo = Path(__file__).resolve().parents[2]
 if str(_repo) not in sys.path:
     sys.path.insert(0, str(_repo))
 
-from shared.common.database.client import DatabaseClient
+from dms.common.database.client import DatabaseClient
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def _ocr_image_bytes(client, image_bytes: bytes, mime_type: str) -> str:
 
 
 def _download_drive_bytes(file_id: str) -> tuple[bytes, str]:
-    from shared.common.connectors.google_drive import GoogleDriveConnector
+    from dms.common.connectors.google_drive import GoogleDriveConnector
     from googleapiclient.http import MediaIoBaseDownload
     drive = GoogleDriveConnector()
     meta = drive.service.files().get(
@@ -255,8 +255,8 @@ class GmailService:
     # ---------------------------------------------------------------
     def fetch(self, mail_type: str = "DM", query: str | None = None,
               max_results: int = 50) -> dict:
-        from shared.common.connectors.gmail_connector import GmailConnector
-        from shared.common.connectors.google_drive import GoogleDriveConnector
+        from dms.common.connectors.gmail_connector import GmailConnector
+        from dms.common.connectors.google_drive import GoogleDriveConnector
 
         mt = mail_type.upper()
         user_email = os.getenv(f"GMAIL_{mt}_USER_EMAIL") or os.getenv("GMAIL_USER_EMAIL")
@@ -386,12 +386,7 @@ class GmailService:
         }
         res = self.db.client.table("01_gmail_01_raw").insert(raw_row).execute()
         raw_id = res.data[0]["id"] if res.data else None
-        if raw_id and owner_id:
-            self.db.client.table("pipeline_meta").insert({
-                "raw_id": raw_id, "raw_table": "01_gmail_01_raw",
-                "person": "宜紀", "source": "Gmail",
-                "processing_status": "pending", "owner_id": owner_id,
-            }).execute()
+        # Gmail は pipeline_meta 対象外。raw のみが正本。
 
     # ---------------------------------------------------------------
     # 2. Process: OCR -> MD -> 09 -> chunk -> 10_ix
@@ -547,7 +542,7 @@ class GmailService:
         return all_results
 
     # ---------------------------------------------------------------
-    # 4. Delete: cascade 10_ix -> 09 -> pipeline_meta -> 01_raw
+    # 4. Delete: cascade 10_ix -> 09 -> 01_raw
     # ---------------------------------------------------------------
     def delete(self, raw_ids: list[str]) -> dict:
         deleted = 0
@@ -560,8 +555,6 @@ class GmailService:
                 for doc in (unified.data or []):
                     self.db.client.table("10_ix_search_index").delete().eq("doc_id", doc["id"]).execute()
                     self.db.client.table("09_unified_documents").delete().eq("id", doc["id"]).execute()
-                self.db.client.table("pipeline_meta").delete().eq(
-                    "raw_id", rid).eq("raw_table", "01_gmail_01_raw").execute()
                 self.db.client.table("01_gmail_01_raw").delete().eq("id", rid).execute()
                 deleted += 1
             except Exception as e:
@@ -572,16 +565,6 @@ class GmailService:
     # Helpers
     # ---------------------------------------------------------------
     def _set_status(self, raw_id: str, status: str, error: str | None = None):
-        u: dict[str, Any] = {"processing_status": status}
-        if status == "processing":
-            u["started_at"] = datetime.now(timezone.utc).isoformat()
-        elif status == "completed":
-            u["completed_at"] = datetime.now(timezone.utc).isoformat()
-        elif status == "error":
-            u["error_message"] = (error or "")[:2000]
-            u["failed_at"] = datetime.now(timezone.utc).isoformat()
-        try:
-            self.db.client.table("pipeline_meta").update(u).eq(
-                "raw_id", raw_id).eq("raw_table", "01_gmail_01_raw").execute()
-        except Exception as e:
-            logger.warning("pipeline_meta update: %s", e)
+        # Gmail は pipeline_meta 対象外。処理状態は raw の外で管理する（このサービス内ログのみ）。
+        _ = (raw_id, status, error)
+        return

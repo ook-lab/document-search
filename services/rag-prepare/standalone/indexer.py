@@ -1,8 +1,8 @@
 """
 軽量 fast-index（rag-prepare standalone）: 既存本文から 10_ix_search_index のみ更新し、
-pipeline_meta.vectorized_at を記録する。
+09_unified_documents_meta.ix_vectorized_at（ステータスのみ）を記録する。
 
-ベクトル化済み判定は processing_status ではなく vectorized_at を使う。
+pipeline_meta は読まない・更新しない。
 """
 from __future__ import annotations
 
@@ -14,10 +14,13 @@ from typing import Any, Dict, List, Optional
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen
 from standalone.scope import FAST_INDEX_RAW_TABLES
+from standalone.ud_meta import UD_META_TABLE
 
 logger = logging.getLogger(__name__)
 
 DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
+
+_UD_SELECT = "id, raw_id, raw_table, person, source, category, title, file_url"
 
 
 class FastIndexer:
@@ -25,44 +28,45 @@ class FastIndexer:
         self.db = RagServiceDB()
         self.embedder = EmbeddingGen()
 
-    def process_document(self, pipeline_id: str) -> tuple[bool, Optional[str]]:
+    def process_document(self, unified_doc_id: str) -> tuple[bool, Optional[str]]:
         """OCR をスキップし、既存テキストから 10_ix_search_index のみ更新する。"""
         try:
             res = (
-                self.db.client.table("pipeline_meta")
-                .select("*")
-                .eq("id", pipeline_id)
+                self.db.client.table("09_unified_documents")
+                .select(_UD_SELECT)
+                .eq("id", unified_doc_id)
                 .single()
                 .execute()
             )
             if not res.data:
-                logger.error("Document not found: %s", pipeline_id)
-                return False, "pipeline_meta が見つかりません"
+                logger.error("09_unified_documents not found: %s", unified_doc_id)
+                return False, "09_unified_documents が見つかりません"
 
-            doc = res.data
-            rt = doc.get("raw_table") or ""
+            ud = res.data
+            rt = ud.get("raw_table") or ""
             if rt not in FAST_INDEX_RAW_TABLES:
-                logger.error(
-                    "fast-index は raw_table が許可セット内の pipeline_meta のみ対象です: %s",
-                    rt,
-                )
+                logger.error("raw_table out of fast-index scope: %s", rt)
                 return False, "この raw_table は fast-index の対象外です"
 
-            raw_id = doc.get("raw_id")
+            raw_id = ud.get("raw_id")
             if not raw_id:
-                logger.error("pipeline_meta.raw_id がありません: %s", pipeline_id)
+                logger.error("09.raw_id がありません: %s", unified_doc_id)
                 return False, "raw_id がありません"
 
-            full_markdown, md_err = self._resolve_markdown(doc)
+            ctx = {
+                "raw_id": raw_id,
+                "raw_table": rt,
+                "file_url": ud.get("file_url"),
+            }
+            full_markdown, md_err = self._resolve_markdown(ctx)
             if not full_markdown:
-                logger.error("インデックス用の本文がありません: %s", pipeline_id)
+                logger.error("インデックス用の本文がありません: %s", unified_doc_id)
                 return False, md_err or "インデックス用の本文がありません（raw / pdf_md_content）"
 
-            unified = self._ensure_unified_document(doc, full_markdown)
-            unified_doc_id = unified["id"]
-            person = unified.get("person") or doc.get("person")
-            source = unified.get("source") or doc.get("source")
-            category = unified.get("category") or doc.get("raw_table")
+            unified_doc_id = str(ud["id"])
+            person = ud.get("person")
+            source = ud.get("source")
+            category = ud.get("category") or rt
 
             self.db.client.table("09_unified_documents").update({"body": full_markdown}).eq(
                 "id", unified_doc_id
@@ -91,74 +95,21 @@ class FastIndexer:
                 ).execute()
 
             now_iso = datetime.now(timezone.utc).isoformat()
-            self.db.client.table("pipeline_meta").update(
+            self.db.client.table(UD_META_TABLE).upsert(
                 {
-                    "vectorized_at": now_iso,
+                    "doc_id": unified_doc_id,
+                    "ix_vectorized_at": now_iso,
                     "updated_at": now_iso,
-                }
-            ).eq("id", pipeline_id).execute()
+                },
+                on_conflict="doc_id",
+            ).execute()
 
-            logger.info("Successfully fast-indexed: %s", pipeline_id)
+            logger.info("Successfully fast-indexed unified_doc_id=%s", unified_doc_id)
             return True, None
 
         except Exception as e:
             logger.error("Fast index failed: %s", e, exc_info=True)
             return False, str(e)
-
-    def _ensure_unified_document(self, pm: Dict[str, Any], body: str) -> Dict[str, Any]:
-        raw_id = pm["raw_id"]
-        raw_table = pm["raw_table"]
-        ud_res = (
-            self.db.client.table("09_unified_documents")
-            .select("id, person, source, category")
-            .eq("raw_id", raw_id)
-            .eq("raw_table", raw_table)
-            .limit(1)
-            .execute()
-        )
-        ud_rows = ud_res.data or []
-        if ud_rows:
-            return ud_rows[0]
-
-        raw_row = self._load_raw_row(raw_table, raw_id)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        doc = {
-            "raw_id": str(raw_id),
-            "raw_table": raw_table,
-            "person": pm.get("person") or raw_row.get("person"),
-            "source": pm.get("source") or raw_row.get("source"),
-            "category": raw_row.get("course_name") or raw_row.get("category") or raw_table,
-            "title": raw_row.get("title") or raw_row.get("file_name"),
-            "file_url": raw_row.get("file_url"),
-            "snippet": None,
-            "post_at": raw_row.get("created_at"),
-            "due_date": raw_row.get("due_date"),
-            "post_type": raw_row.get("post_type"),
-            "body": body,
-            "ui_data": {
-                "sections": [
-                    {
-                        "title": raw_row.get("title") or raw_row.get("file_name") or "本文",
-                        "body": body,
-                    }
-                ]
-            },
-            "meta": {
-                "fast_index_created": True,
-                "pipeline_meta_id": pm.get("id"),
-                "created_at": now_iso,
-            },
-        }
-        inserted = self.db.client.table("09_unified_documents").insert(doc).execute()
-        rows = inserted.data or []
-        if not rows:
-            raise RuntimeError("09_unified_documents の作成に失敗しました")
-        logger.info(
-            "Created 09_unified_documents for fast-index: raw_id=%s raw_table=%s",
-            raw_id,
-            raw_table,
-        )
-        return rows[0]
 
     def _load_raw_row(self, raw_table: str, raw_id: Any) -> Dict[str, Any]:
         try:
@@ -175,12 +126,14 @@ class FastIndexer:
             logger.warning("raw row load failed: table=%s id=%s error=%s", raw_table, raw_id, e)
             return {}
 
-    def _drive_id_from_pm_or_raw(self, pm: Dict[str, Any]) -> Optional[str]:
-        did = (pm.get("drive_file_id") or "").strip()
-        if did:
-            return did
-        raw_table = pm.get("raw_table")
-        raw_id = pm.get("raw_id")
+    def _drive_id_from_ctx(self, ctx: Dict[str, Any]) -> Optional[str]:
+        fu = ctx.get("file_url")
+        if fu:
+            m = DRIVE_URL_RE.search(str(fu))
+            if m:
+                return m.group(1)
+        raw_table = ctx.get("raw_table")
+        raw_id = ctx.get("raw_id")
         if not raw_table or not raw_id:
             return None
         try:
@@ -196,19 +149,20 @@ class FastIndexer:
             return None
         if not raw:
             return None
-        fu = raw.get("file_url")
-        if not fu:
+        fu2 = raw.get("file_url")
+        if not fu2:
             return None
-        m = DRIVE_URL_RE.search(str(fu))
+        m = DRIVE_URL_RE.search(str(fu2))
         return m.group(1) if m else None
 
-    def _resolve_markdown(self, pm: Dict[str, Any]) -> tuple[str, Optional[str]]:
-        raw_table = pm.get("raw_table")
-        raw_id = pm.get("raw_id")
+    def _resolve_markdown(self, ctx: Dict[str, Any]) -> tuple[str, Optional[str]]:
+        raw_table = ctx.get("raw_table")
+        raw_id = ctx.get("raw_id")
         if raw_table and raw_id:
-            raw_row = self._load_raw_row(raw_table, raw_id)
-            sections = []
+            raw_row = self._load_raw_row(str(raw_table), raw_id)
+            sections: List[str] = []
 
+            # Stage F ではファイル外テキストを本文に混ぜない。検索データ準備で raw メタと PDF MD を統合する。
             external = self._raw_external_markdown(raw_row)
             if external:
                 sections.append("# ファイル外テキスト\n\n" + external)
@@ -220,13 +174,13 @@ class FastIndexer:
             if sections:
                 return "\n\n".join(sections).strip(), None
 
-        drive_id = self._drive_id_from_pm_or_raw(pm)
+        drive_id = self._drive_id_from_ctx(ctx)
         if drive_id:
             msg = (
                 "PDF（Drive）由来の本文はこのサービスでは未対応です。"
                 " raw.pdf_md_content を設定するか、別経路でテキスト化してください。"
             )
-            logger.error("%s drive_file_id=%s", msg, drive_id)
+            logger.error("%s drive_id=%s", msg, drive_id)
             return "", msg
         return "", None
 

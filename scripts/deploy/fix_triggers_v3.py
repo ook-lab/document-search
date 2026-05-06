@@ -2,7 +2,7 @@
 Cloud Build トリガーの includedFiles を「サービスディレクトリのみ」に揃える。
 
 方針（ユーザー要件）:
-- 変更のあったアプリ配下だけをビルド対象にする（shared/** で全サービス連鎖させない）
+- 変更のあったアプリ配下だけをビルド対象にする（dms/** で全サービス連鎖させない）
 - 同一 included パスに複数トリガーがある場合は canonical 以外を disabled にする
   （例: ocr-editor / pdf-splitter / pdf-toolbox → いずれも services/pdf-toolbox/**）
 - ルート cloudbuild.yaml 用トリガーは手動運用（README 参照）。このスクリプトでは export/import しない。

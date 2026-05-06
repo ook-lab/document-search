@@ -1,4 +1,4 @@
-"""Supabase for netsuper-search (no monorepo shared/)."""
+"""Supabase for netsuper-search (no monorepo dms/)."""
 from __future__ import annotations
 
 import os

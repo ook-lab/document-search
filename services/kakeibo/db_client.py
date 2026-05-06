@@ -1,6 +1,6 @@
 """
 Kakeibo DB クライアント
-Supabase への直接接続（shared.common 不要）
+Supabase への直接接続（dms.common 不要）
 """
 import os
 from supabase import create_client, Client

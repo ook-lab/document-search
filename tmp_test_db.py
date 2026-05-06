@@ -7,7 +7,7 @@ sys.path.insert(0, str(root_dir))
 try:
     from dotenv import load_dotenv
     load_dotenv(root_dir / ".env")
-    from shared.common.database.client import DatabaseClient
+    from dms.common.database.client import DatabaseClient
     db = DatabaseClient(use_service_role=True)
     print("Database client initialized successfully")
     # Test a simple query

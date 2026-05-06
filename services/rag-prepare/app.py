@@ -42,7 +42,7 @@ def index():
         raw_tables = list(FAST_INDEX_RAW_TABLES)
         pending_docs, list_error = fetch_pending_fast_index_docs(db.client, raw_tables)
         if list_error:
-            logger.error("fast-index 一覧: %s", list_error)
+            logger.error("検索データ準備 一覧: %s", list_error)
     except Exception as e:
         logger.error(f"Failed to fetch pending docs: {e}")
         list_error = str(e)
@@ -58,25 +58,25 @@ def index():
         )
 
     return render_template(
-        "fast_index.html",
+        "search_data_prep.html",
         docs=pending_docs,
         list_error=list_error,
         pdf_toolbox_base=toolbox,
-        fast_index_post_url="/process",
+        process_post_url="/process",
     )
 
-def _run_fast_index():
+def _run_search_index_register():
     data = request.get_json(silent=True) or {}
-    pipeline_id = data.get('pipeline_id')
-    if not pipeline_id:
-        return jsonify({'success': False, 'error': 'Missing pipeline_id'}), 400
+    unified_doc_id = (data.get("unified_doc_id") or data.get("doc_id") or "").strip()
+    if not unified_doc_id:
+        return jsonify({"success": False, "error": "Missing unified_doc_id (or doc_id)"}), 400
 
     FastIndexerClass, _ = get_indexer_tools()
     if not FastIndexerClass:
         return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
 
     indexer = FastIndexerClass()
-    success, err_msg = indexer.process_document(pipeline_id)
+    success, err_msg = indexer.process_document(unified_doc_id)
 
     if success:
         return jsonify({'success': True})
@@ -85,7 +85,7 @@ def _run_fast_index():
 @app.route('/process', methods=['POST'])
 @app.route('/internal/fast_index', methods=['POST'])
 def process():
-    return _run_fast_index()
+    return _run_search_index_register()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

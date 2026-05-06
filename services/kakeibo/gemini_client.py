@@ -1,6 +1,6 @@
 """
 Kakeibo 用 Gemini クライアント
-レシート OCR（画像→JSON）とテキスト生成のみを実装（shared.ai 不要）
+レシート OCR（画像→JSON）とテキスト生成のみを実装（dms.ai 不要）
 """
 import json
 import os

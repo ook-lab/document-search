@@ -1,0 +1,365 @@
+"""Supabase 検索専用クライアント（unified_search_v2 経路のみ）。"""
+from __future__ import annotations
+
+import asyncio
+import re
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from loguru import logger
+from supabase import Client, create_client
+
+from docsearch.config import settings
+
+
+class DocSearchDB:
+    def __init__(self, *, use_service_role: bool = True):
+        if not settings.SUPABASE_URL:
+            raise ValueError("SUPABASE_URL が未設定です")
+        if use_service_role:
+            if not settings.SUPABASE_SERVICE_ROLE_KEY:
+                raise ValueError("SUPABASE_SERVICE_ROLE_KEY が未設定です")
+            self.client: Client = create_client(
+                settings.SUPABASE_URL,
+                settings.SUPABASE_SERVICE_ROLE_KEY,
+            )
+            self._is_service_role = True
+        else:
+            raise ValueError("doc-search は service_role 接続のみ想定です")
+
+    def get_workspace_hierarchy(self) -> Dict[str, Dict[str, List[str]]]:
+        try:
+            response = self.client.table("09_unified_documents").select("person, source, category").execute()
+            hierarchy: Dict[str, Dict[str, set]] = {}
+            for doc in response.data or []:
+                person = doc.get("person")
+                source = doc.get("source")
+                cat = doc.get("category")
+                if person and source:
+                    hierarchy.setdefault(person, {}).setdefault(source, set())
+                    if cat:
+                        hierarchy[person][source].add(cat)
+            return {
+                p: {s: sorted(list(cats)) for s, cats in sorted(srcs.items())}
+                for p, srcs in sorted(hierarchy.items())
+            }
+        except Exception as e:
+            logger.error("get_workspace_hierarchy: {}", e)
+            return {}
+
+    def _apply_date_filter(self, results: List[Dict[str, Any]], date_filter: str) -> List[Dict[str, Any]]:
+        now = datetime.now()
+        filtered_results: List[Dict[str, Any]] = []
+        for result in results:
+            document_date_str = result.get("document_date")
+            if not document_date_str:
+                if date_filter == "recent":
+                    indexed_at_str = result.get("indexed_at")
+                    if indexed_at_str:
+                        try:
+                            indexed_at = datetime.fromisoformat(indexed_at_str.replace("Z", "+00:00"))
+                            if (now - indexed_at).days <= 30:
+                                filtered_results.append(result)
+                        except Exception:
+                            pass
+                continue
+            try:
+                document_date = datetime.strptime(document_date_str, "%Y-%m-%d")
+            except Exception:
+                continue
+            if date_filter == "today":
+                if document_date.date() == now.date():
+                    filtered_results.append(result)
+            elif date_filter == "this_week":
+                week_start = now - timedelta(days=now.weekday())
+                week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+                if document_date >= week_start:
+                    filtered_results.append(result)
+            elif date_filter == "this_month":
+                if document_date.year == now.year and document_date.month == now.month:
+                    filtered_results.append(result)
+            elif date_filter == "recent":
+                if (now - document_date).days <= 30:
+                    filtered_results.append(result)
+        return filtered_results
+
+    def _filter_chunks_for_context(
+        self,
+        chunks: List[Dict[str, Any]],
+        query: str,
+        best_chunk_id: Optional[str],
+        keywords: List[str],
+        non_table_weight_threshold: float = 1.0,
+    ) -> List[Dict[str, Any]]:
+        table_chunks = [c for c in chunks if (c.get("chunk_type") or "").startswith("table_")]
+        other_chunks = [c for c in chunks if not (c.get("chunk_type") or "").startswith("table_")]
+        relevant_tables: List[Dict[str, Any]] = []
+        if keywords and table_chunks:
+            for chunk in table_chunks:
+                content = chunk.get("chunk_text") or ""
+                if any(kw in content for kw in keywords):
+                    relevant_tables.append(chunk)
+            if not relevant_tables:
+                best = [c for c in table_chunks if str(c.get("id")) == str(best_chunk_id)] if best_chunk_id else []
+                relevant_tables = best if best else table_chunks[:1]
+        else:
+            relevant_tables = table_chunks[:1] if table_chunks else []
+        filtered_other = [c for c in other_chunks if (c.get("chunk_weight") or 0) >= non_table_weight_threshold]
+        return relevant_tables + filtered_other
+
+    def _calc_time_score(self, document_date: Optional[str], date_range: Optional[str]) -> float:
+        if not document_date or not date_range or ".." not in date_range:
+            return 0.0
+        try:
+            from datetime import date as date_type
+
+            start_str, end_str = date_range.split("..", 1)
+            start = date_type.fromisoformat(start_str.strip())
+            end = date_type.fromisoformat(end_str.strip()) if end_str.strip() else date_type(9999, 12, 31)
+            doc_dt = date_type.fromisoformat(document_date[:10])
+            if start <= doc_dt <= end:
+                return 1.0
+            dist = (start - doc_dt).days if doc_dt < start else (doc_dt - end).days
+            if dist <= 7:
+                return 0.7
+            if dist <= 30:
+                return 0.3
+            return 0.0
+        except Exception:
+            return 0.0
+
+    def _calculate_keyword_match_score(self, title: str, keywords: List[str], query: str) -> float:
+        normalized_query = query.replace("？", "").replace("?", "").replace("の内容は", "").replace("内容", "").strip()
+        for kw in keywords:
+            if "（" in kw or "(" in kw:
+                if kw in title:
+                    return 1.0
+        matched_keywords = [kw for kw in keywords if kw in title]
+        if not matched_keywords:
+            return 0.0
+        match_count = len(matched_keywords)
+        total_keywords = len(keywords)
+        if match_count == total_keywords:
+            return 0.95
+        if match_count >= 2:
+            return 0.90
+        return 0.85
+
+    def _extract_date(self, query: str) -> Optional[str]:
+        current_year = datetime.now().year
+        match = re.search(r"(\d{4})-(\d{2})-(\d{2})", query)
+        if match:
+            try:
+                date_obj = datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+                return date_obj.strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        match = re.search(r"(\d{1,2})/(\d{1,2})", query)
+        if match:
+            month, day = int(match.group(1)), int(match.group(2))
+            try:
+                return datetime(current_year, month, day).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        match = re.search(r"(\d{1,2})月(\d{1,2})日", query)
+        if match:
+            month, day = int(match.group(1)), int(match.group(2))
+            try:
+                return datetime(current_year, month, day).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        return None
+
+    def _extract_keywords(self, query: str) -> List[str]:
+        keywords: List[str] = []
+        keywords.extend(re.findall(r"[（(]([^）)]+)[）)]", query))
+        keywords.extend(re.findall(r"[\w一-龠ぁ-んァ-ヶー]+[（(][^）)]+[）)]", query))
+        cleaned_query = query
+        for particle in ["の", "は", "を", "が", "に", "へ", "と", "から", "まで", "で", "？", "?"]:
+            cleaned_query = cleaned_query.replace(particle, " ")
+        words = re.findall(r"[一-龠ァ-ヶー]{2,}", cleaned_query)
+        keywords.extend(words)
+        keywords = [kw.strip() for kw in keywords if kw.strip()]
+        return list(set(keywords))
+
+    async def search_documents(
+        self,
+        query: str,
+        embedding: List[float],
+        limit: int = 50,
+        sources: Optional[List[str]] = None,
+        persons: Optional[List[str]] = None,
+        category: Optional[List[str]] = None,
+        date_filter: Optional[str] = None,
+        threshold: float = 0.4,
+        date_range: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        rpc_params = {
+            "query_text": query,
+            "query_embedding": embedding,
+            "match_threshold": -1.0,
+            "match_count": limit,
+            "vector_weight": 0.7,
+            "fulltext_weight": 0.3,
+            "filter_sources": sources,
+            "filter_chunk_types": None,
+            "filter_persons": persons,
+            "filter_category": category,
+        }
+        logger.debug("unified_search_v2: sources={} persons={}", sources, persons)
+        response = self.client.rpc("unified_search_v2", rpc_params).execute()
+        results = response.data if response.data else []
+        if date_filter:
+            results = self._apply_date_filter(results, date_filter)
+
+        final_results: List[Dict[str, Any]] = []
+        for result in results:
+            raw_date = result.get("post_at") or result.get("start_at")
+            document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
+            final_results.append(
+                {
+                    "id": result.get("doc_id"),
+                    "title": result.get("title"),
+                    "source": result.get("source"),
+                    "person": result.get("person"),
+                    "category": result.get("category"),
+                    "from_name": result.get("from_name"),
+                    "from_email": result.get("from_email"),
+                    "snippet": result.get("snippet"),
+                    "post_at": result.get("post_at"),
+                    "start_at": result.get("start_at"),
+                    "end_at": result.get("end_at"),
+                    "due_date": result.get("due_date"),
+                    "location": result.get("location"),
+                    "file_url": result.get("file_url"),
+                    "ui_data": result.get("ui_data"),
+                    "meta": result.get("meta"),
+                    "indexed_at": result.get("indexed_at"),
+                    "document_date": document_date,
+                    "chunk_content": result.get("best_chunk_text"),
+                    "chunk_id": result.get("best_chunk_id"),
+                    "chunk_index": result.get("best_chunk_index"),
+                    "chunk_type": result.get("best_chunk_type"),
+                    "similarity": result.get("combined_score", 0),
+                    "raw_similarity": result.get("raw_similarity", 0),
+                    "weighted_similarity": result.get("weighted_similarity", 0),
+                    "fulltext_score": result.get("fulltext_score", 0),
+                    "title_matched": result.get("title_matched", False),
+                    "chunk_score": result.get("combined_score", 0),
+                    "large_chunk_id": result.get("doc_id"),
+                    "small_chunk_id": result.get("best_chunk_id"),
+                }
+            )
+
+        keywords = self._extract_keywords(query)
+
+        if self._is_service_role:
+            for doc_result in final_results:
+                doc_id = doc_result.get("id")
+                if not doc_id:
+                    continue
+                try:
+                    chunks_response = (
+                        self.client.table("10_ix_search_index")
+                        .select("id, chunk_index, chunk_text, chunk_type, chunk_weight")
+                        .eq("doc_id", doc_id)
+                        .order("chunk_weight", desc=True)
+                        .execute()
+                    )
+                    if chunks_response.data:
+                        raw_chunks = chunks_response.data
+                        doc_result["all_chunks"] = self._filter_chunks_for_context(
+                            raw_chunks,
+                            query=query,
+                            best_chunk_id=doc_result.get("chunk_id"),
+                            keywords=keywords,
+                        )
+                    else:
+                        doc_result["all_chunks"] = []
+                except Exception as e:
+                    logger.warning("chunk fetch doc_id={}: {}", doc_id, e)
+                    doc_result["all_chunks"] = []
+        else:
+            for doc_result in final_results:
+                doc_result["all_chunks"] = []
+
+        for doc in final_results:
+            if keywords:
+                kw_boost = self._calculate_keyword_match_score(doc.get("title", ""), keywords, query)
+                doc["similarity"] = doc.get("similarity", 0) + kw_boost * 0.2
+
+        delta = settings.DATE_RANGE_THRESHOLD_DELTA
+        effective_threshold = threshold - (float(delta) if date_range else 0.0)
+        cutoff = [r for r in final_results if r.get("similarity", 0) >= effective_threshold]
+        final_results = cutoff if cutoff else final_results[:3]
+        final_results.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+
+        eps = settings.REL_SIM_MIX_EPS
+        n = len(final_results)
+        for rank, doc in enumerate(final_results):
+            rel_rank = 1.0 - (rank / (n - 1)) if n > 1 else 1.0
+            if eps > 0.0:
+                sim_norm = max(0.0, min(1.0, doc.get("similarity", 0)))
+                rel = (1.0 - eps) * rel_rank + eps * sim_norm
+            else:
+                rel = rel_rank
+            rel = max(0.0, min(1.0, rel))
+            ts = self._calc_time_score(doc.get("document_date"), date_range)
+            doc["time_score"] = ts
+            doc["rel"] = rel
+            doc["final_score"] = max(0.0, min(1.0, 0.75 * rel + 0.25 * ts))
+            if ts > 0:
+                doc["is_date_matched"] = True
+
+        final_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+        return final_results
+
+    def search_documents_sync(
+        self,
+        query: str,
+        embedding: List[float],
+        limit: int = 50,
+        sources: Optional[List[str]] = None,
+        persons: Optional[List[str]] = None,
+        category: Optional[List[str]] = None,
+        date_filter: Optional[str] = None,
+        threshold: float = 0.4,
+        date_range: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        try:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    return loop.run_until_complete(
+                        self.search_documents(
+                            query,
+                            embedding,
+                            limit,
+                            sources,
+                            persons,
+                            category,
+                            date_filter,
+                            threshold,
+                            date_range,
+                        )
+                    )
+            except RuntimeError:
+                pass
+            return asyncio.run(
+                self.search_documents(
+                    query,
+                    embedding,
+                    limit,
+                    sources,
+                    persons,
+                    category,
+                    date_filter,
+                    threshold,
+                    date_range,
+                )
+            )
+        except Exception as e:
+            logger.exception("search_documents_sync failed: {}", e)
+            raise

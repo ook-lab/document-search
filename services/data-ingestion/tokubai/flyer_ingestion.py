@@ -27,8 +27,8 @@ sys.path.insert(0, str(root_dir))
 from dotenv import load_dotenv
 load_dotenv(root_dir / ".env")
 
-from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.common.database.client import DatabaseClient
+from dms.common.connectors.google_drive import GoogleDriveConnector
+from dms.common.database.client import DatabaseClient
 from tokubai.tokubai_scraper import TokubaiScraper
 
 

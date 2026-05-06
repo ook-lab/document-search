@@ -1,4 +1,4 @@
-"""Supabase for ai-cost-tracker (no monorepo shared/)."""
+"""Supabase for ai-cost-tracker (no monorepo dms/)."""
 from __future__ import annotations
 
 import os

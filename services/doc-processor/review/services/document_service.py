@@ -4,14 +4,26 @@ doc-review アプリ固有のドキュメント操作
 
 設計方針:
 - テーブル: pipeline_meta（レビュー管理・パイプライン状態）
-- タイトル: 09_unified_documents.title（file_name 相当）
+- タイトル: 各 raw の title / file_name / subject 相当（09 は正本に使わない）
 - 絞り込み軸: person, source, category
 - review_status は仮想フィールドとして latest_correction_id から導出
   - reviewed ⇔ latest_correction_id IS NOT NULL
   - pending  ⇔ latest_correction_id IS NULL
 """
+import sys
+from collections import defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Dict, Any, Optional
+
 from loguru import logger
+
+_dp_root = Path(__file__).resolve().parents[2]
+if str(_dp_root) not in sys.path:
+    sys.path.insert(0, str(_dp_root))
+
+from raw_title_search import raw_ids_for_title_keyword
+from ui_data_markdown import CLASSROOM_RAW_MD_TABLES, ui_data_to_final_markdown
 
 
 def derive_review_status(document: Dict[str, Any]) -> str:
@@ -27,35 +39,50 @@ def derive_review_status(document: Dict[str, Any]) -> str:
     return 'reviewed' if document.get('latest_correction_id') else 'pending'
 
 
-def _fetch_titles(db_client, docs: List[Dict[str, Any]]) -> None:
-    """
-    pipeline_meta のリストに 09_unified_documents.title を file_name として付与
+def _title_from_raw_row(raw_table: str, row: Dict[str, Any]) -> Optional[str]:
+    if raw_table == "01_gmail_01_raw":
+        return (row.get("header_subject") or "").strip() or None
+    if raw_table == "02_gcal_01_raw":
+        return (row.get("summary") or "").strip() or None
+    fn = (row.get("file_name") or "").strip()
+    tl = (row.get("title") or "").strip()
+    return (fn or tl) or None
 
-    Args:
-        db_client: DatabaseClient インスタンス
-        docs: pipeline_meta レコードのリスト（in-place 更新）
-    """
+
+def _fetch_titles(db_client, docs: List[Dict[str, Any]]) -> None:
+    """pipeline_meta 行に対応する raw から file_name（表示用）を付与する。"""
     if not docs:
         return
-    raw_ids = list({doc['raw_id'] for doc in docs if doc.get('raw_id')})
-    if not raw_ids:
-        return
-    try:
-        response = (
-            db_client.client
-            .table('09_unified_documents')
-            .select('raw_id, raw_table, title')
-            .in_('raw_id', raw_ids)
-            .execute()
-        )
-        title_map = {
-            (r['raw_id'], r['raw_table']): r['title']
-            for r in (response.data or [])
-        }
-        for doc in docs:
-            doc['file_name'] = title_map.get((doc.get('raw_id'), doc.get('raw_table')))
-    except Exception as e:
-        logger.warning(f"Failed to fetch titles from 09_unified_documents: {e}")
+    by_table: Dict[str, List[str]] = defaultdict(list)
+    for doc in docs:
+        rid = doc.get("raw_id")
+        rt = doc.get("raw_table")
+        if rid and rt:
+            by_table[str(rt)].append(str(rid))
+    title_map: Dict[tuple, str] = {}
+    for rt, ids in by_table.items():
+        uniq = list(dict.fromkeys(ids))
+        chunk_size = 80
+        for i in range(0, len(uniq), chunk_size):
+            chunk = uniq[i : i + chunk_size]
+            try:
+                if rt == "01_gmail_01_raw":
+                    sel = "id, header_subject"
+                elif rt == "02_gcal_01_raw":
+                    sel = "id, summary"
+                else:
+                    sel = "id, title, file_name"
+                response = db_client.client.table(rt).select(sel).in_("id", chunk).execute()
+                for row in response.data or []:
+                    rid = str(row.get("id"))
+                    t = _title_from_raw_row(rt, row)
+                    if t:
+                        title_map[(rid, rt)] = t
+            except Exception as e:
+                logger.warning("raw タイトル取得失敗: %s %s", rt, e)
+    for doc in docs:
+        key = (str(doc.get("raw_id")), doc.get("raw_table"))
+        doc["file_name"] = title_map.get(key)
 
 
 def get_documents_with_review_status(
@@ -78,29 +105,18 @@ def get_documents_with_review_status(
         source: source フィルタ
         category: category フィルタ
         review_status: 'reviewed', 'pending', 'all', または None
-        search_query: 検索クエリ（09_unified_documents.title で部分一致）
+        search_query: 検索クエリ（各 raw の title / file_name / subject で部分一致）
         processing_status: 処理ステータスフィルタ
 
     Returns:
         review_status フィールドを付与したドキュメントリスト
     """
     try:
-        # search_query がある場合は 09_unified_documents.title で raw_id を絞り込む
         raw_id_filter = None
-        if search_query:
-            try:
-                sr = (
-                    db_client.client
-                    .table('09_unified_documents')
-                    .select('raw_id')
-                    .ilike('title', f'%{search_query}%')
-                    .execute()
-                )
-                if not sr.data:
-                    return []
-                raw_id_filter = [r['raw_id'] for r in sr.data]
-            except Exception as e:
-                logger.warning(f"Failed to search 09_unified_documents.title: {e}")
+        if search_query and str(search_query).strip():
+            raw_id_filter = raw_ids_for_title_keyword(db_client, search_query)
+            if raw_id_filter is not None and len(raw_id_filter) == 0:
+                return []
 
         query = db_client.client.table('pipeline_meta').select('*')
 
@@ -183,30 +199,34 @@ def get_emails_with_review_status(
         if not emails:
             return []
 
-        # 09_unified_documents から display_* フィールドを結合
         raw_ids = [str(e['raw_id']) for e in emails if e.get('raw_id')]
-        ud_map: Dict[str, Dict] = {}
+        raw_map: Dict[str, Dict] = {}
         if raw_ids:
             try:
-                ud_res = (
-                    db_client.client
-                    .table('09_unified_documents')
-                    .select('raw_id, title, from_name, from_email, snippet, body, post_at')
-                    .eq('raw_table', '01_gmail_01_raw')
-                    .in_('raw_id', raw_ids)
-                    .execute()
-                )
-                ud_map = {str(r['raw_id']): r for r in (ud_res.data or [])}
+                chunk_size = 80
+                for i in range(0, len(raw_ids), chunk_size):
+                    chunk = raw_ids[i : i + chunk_size]
+                    rw = (
+                        db_client.client
+                        .table("01_gmail_01_raw")
+                        .select(
+                            "id, header_subject, from_name, from_email, snippet, body_plain, sent_at"
+                        )
+                        .in_("id", chunk)
+                        .execute()
+                    )
+                    for r in rw.data or []:
+                        raw_map[str(r["id"])] = r
             except Exception as e:
-                logger.warning(f"09_unified_documents 結合失敗（継続）: {e}")
+                logger.warning(f"01_gmail_01_raw 結合失敗（継続）: {e}")
 
         for email in emails:
-            ud = ud_map.get(str(email.get('raw_id')), {})
-            email['display_subject']      = ud.get('title') or ''
-            email['display_sender']       = ud.get('from_name') or ''
-            email['display_sender_email'] = ud.get('from_email') or ''
-            email['display_sent_at']      = ud.get('post_at') or email.get('created_at', '')
-            email['display_snippet']      = ud.get('body') or ud.get('snippet') or ''
+            rw = raw_map.get(str(email.get('raw_id')), {})
+            email['display_subject'] = (rw.get('header_subject') or '').strip()
+            email['display_sender'] = (rw.get('from_name') or '').strip()
+            email['display_sender_email'] = (rw.get('from_email') or '').strip()
+            email['display_sent_at'] = rw.get('sent_at') or email.get('created_at', '')
+            email['display_snippet'] = (rw.get('body_plain') or rw.get('snippet') or '').strip()
             email['doc_type']             = email.get('category', '')
             email['review_status']        = derive_review_status(email)
             email['is_reviewed']          = email['review_status'] == 'reviewed'
@@ -285,21 +305,25 @@ def update_stage_g_result(
     Stage G の解析結果を保存
 
     - pipeline_meta.processing_status を 'completed' に更新
-    - 09_unified_documents.ui_data / meta に構造化データを保存
-
-    Args:
-        db_client: DatabaseClient インスタンス
-        document_id: pipeline_meta.id
-        ui_data: Stage G の ui_data（UI用構造化データ）
-        final_metadata: G11/G14/G17/G21/G22 の出力
-
-    Returns:
-        成功した場合 True
+    - 03–05 classroom raw の pdf_md_content に最終 MD（ui_data から生成）を保存
+    - 09 には書かない（中間 JSON は pipeline_meta 側の責務）
     """
     try:
         logger.info(f"[DocumentService] Stage G 結果を保存: {document_id}")
 
-        # pipeline_meta を completed に更新
+        pm_sel = (
+            db_client.client
+            .table("pipeline_meta")
+            .select("id, raw_id, raw_table, processing_status")
+            .eq("id", document_id)
+            .limit(1)
+            .execute()
+        )
+        if not pm_sel.data:
+            logger.warning(f"[DocumentService] pipeline_meta 不在: {document_id}")
+            return False
+        pm0 = pm_sel.data[0]
+
         pm_response = (
             db_client.client
             .table('pipeline_meta')
@@ -313,46 +337,44 @@ def update_stage_g_result(
             return False
 
         pm = pm_response.data[0]
+        raw_id = pm.get('raw_id') or pm0.get('raw_id')
+        raw_table = pm.get('raw_table') or pm0.get('raw_table')
 
-        # 09_unified_documents に ui_data と meta を保存
-        meta = {}
         if final_metadata:
             g11 = final_metadata.get('g11_output', [])
             g14 = final_metadata.get('g14_output', [])
             g17 = final_metadata.get('g17_output', [])
             g21 = final_metadata.get('g21_output', [])
             g22 = final_metadata.get('g22_output', {})
-            if g11: meta['g11_output'] = g11
-            if g14: meta['g14_output'] = g14
-            if g17: meta['g17_output'] = g17
-            if g21: meta['g21_output'] = g21
-            if g22: meta['g22_output'] = g22
-
             logger.info(f"[DocumentService] G-11: {len(g11)}表")
             logger.info(f"[DocumentService] G-14: {len(g14)}表")
             logger.info(f"[DocumentService] G-17: {len(g17)}表")
             logger.info(f"[DocumentService] G-21: {len(g21)}記事")
             logger.info(f"[DocumentService] G-22: イベント{len(g22.get('calendar_events', []))}件")
 
-        ud_update = {'ui_data': ui_data}
-        if meta:
-            ud_update['meta'] = meta
-
-        ud_response = (
-            db_client.client
-            .table('09_unified_documents')
-            .update(ud_update)
-            .eq('raw_id', pm['raw_id'])
-            .eq('raw_table', pm['raw_table'])
-            .execute()
-        )
-
-        if ud_response.data:
-            logger.info(f"[DocumentService] Stage G 結果保存成功: {document_id}")
-            return True
+        if raw_table in CLASSROOM_RAW_MD_TABLES and raw_id:
+            md = ui_data_to_final_markdown(ui_data)
+            now_iso = datetime.now(timezone.utc).isoformat()
+            raw_res = (
+                db_client.client
+                .table(raw_table)
+                .update({"pdf_md_content": md, "pdf_md_updated_at": now_iso})
+                .eq("id", raw_id)
+                .execute()
+            )
+            if not raw_res.data:
+                logger.warning(
+                    "[DocumentService] raw pdf_md 更新失敗: %s %s", raw_table, raw_id
+                )
+                return False
         else:
-            logger.warning(f"[DocumentService] 09_unified_documents 更新失敗: {document_id}")
-            return False
+            logger.info(
+                "[DocumentService] classroom 03–05 以外のため raw MD スキップ: raw_table=%s",
+                raw_table,
+            )
+
+        logger.info(f"[DocumentService] Stage G 結果保存成功: {document_id}")
+        return True
 
     except Exception as e:
         logger.error(f"[DocumentService] Stage G 結果保存エラー: {e}", exc_info=True)

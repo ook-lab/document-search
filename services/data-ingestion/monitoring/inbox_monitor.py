@@ -23,10 +23,10 @@ import traceback
 # パス設定
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shared.common.connectors.google_drive import GoogleDriveConnector
-from shared.common.database.client import DatabaseClient
-from shared.common.processors.pdf import calculate_content_hash
-from shared.pipeline import UnifiedDocumentPipeline
+from dms.common.connectors.google_drive import GoogleDriveConnector
+from dms.common.database.client import DatabaseClient
+from dms.common.processors.pdf import calculate_content_hash
+from dms.pipeline import UnifiedDocumentPipeline
 
 # ログ設定
 log_dir = Path('logs')
