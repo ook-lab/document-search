@@ -749,10 +749,9 @@
                     </button>
                 </div>
 
-                <!-- ✅ フィルターチップ -->
                 <div class="filter-chips" id="filterChips">
-                    <button class="chip chip-filter" onclick="openFilterSheet()">
-                        ⚙️ 絞り込み
+                    <button type="button" class="chip chip-filter" onclick="openFilterSheet()">
+                        ⚙️ 検索範囲
                     </button>
                     <div id="activeFilters" class="active-filters"></div>
                 </div>
@@ -790,21 +789,21 @@
             <div class="bottom-sheet-overlay" id="filterSheetOverlay" onclick="closeFilterSheet()"></div>
             <div class="bottom-sheet" id="filterSheet">
                 <div class="sheet-header">
-                    <h3>検索条件を選択</h3>
+                    <h3>検索範囲の指定</h3>
                     <button class="btn-close" onclick="closeFilterSheet()">×</button>
                 </div>
                 <div class="sheet-content">
                     <div class="filter-section">
                         <div class="filter-section-header">
-                            <h4>ワークスペース別フィルタ</h4>
+                            <h4>ワークスペース・ソース</h4>
                             <button class="btn-clear" onclick="clearAllFilters()">すべて解除</button>
                         </div>
                         <!-- 階層構造（アコーディオン）が動的に生成される -->
                         <div id="hierarchyFilters" class="hierarchy-container"></div>
                     </div>
                 </div>
-                <button class="btn btn-primary btn-apply" onclick="applyFilters()">
-                    決定して検索
+                <button type="button" class="btn btn-secondary btn-apply" onclick="applyFilters()">
+                    この範囲で決定
                 </button>
             </div>
 
@@ -1129,8 +1128,6 @@
             console.log('[フィルタ適用]', { selectedPersons, selectedSources, selectedCategories });
             updateFilterChips();
             closeFilterSheet();
-            const query = document.getElementById('queryInput').value.trim();
-            if (query) performSearch();
         }
 
         function updateFilterChips() {

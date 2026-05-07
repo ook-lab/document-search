@@ -28,17 +28,31 @@ class DocSearchDB:
             raise ValueError("doc-search は service_role 接続のみ想定です")
 
     def get_workspace_hierarchy(self) -> Dict[str, Dict[str, List[str]]]:
+        """09 から person→source→category の階層を構築。PostgREST の 1000 行既定を超える場合はページング。"""
         try:
-            response = self.client.table("09_unified_documents").select("person, source, category").execute()
             hierarchy: Dict[str, Dict[str, set]] = {}
-            for doc in response.data or []:
-                person = doc.get("person")
-                source = doc.get("source")
-                cat = doc.get("category")
-                if person and source:
+            offset = 0
+            page_size = 1000
+            while True:
+                response = (
+                    self.client.table("09_unified_documents")
+                    .select("person, source, category")
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                )
+                batch = response.data or []
+                for doc in batch:
+                    person = (doc.get("person") or "").strip()
+                    source = (doc.get("source") or "").strip()
+                    cat = doc.get("category")
+                    if not person or not source:
+                        continue
                     hierarchy.setdefault(person, {}).setdefault(source, set())
                     if cat:
                         hierarchy[person][source].add(cat)
+                if len(batch) < page_size:
+                    break
+                offset += page_size
             return {
                 p: {s: sorted(list(cats)) for s, cats in sorted(srcs.items())}
                 for p, srcs in sorted(hierarchy.items())

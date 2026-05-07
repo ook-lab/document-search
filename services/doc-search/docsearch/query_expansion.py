@@ -36,10 +36,20 @@ class QueryExpander:
                 model_name="gemini-2.5-flash-lite",
             )
             if not response.get("success"):
-                return self._fallback_expansion(query)
+                return {
+                    "original_query": query,
+                    "expanded_query": query,
+                    "keywords": [query],
+                    "expansion_applied": False,
+                }
             expanded_text = (response.get("content") or "").strip()
             if not expanded_text:
-                return self._fallback_expansion(query)
+                return {
+                    "original_query": query,
+                    "expanded_query": query,
+                    "keywords": [query],
+                    "expansion_applied": False,
+                }
             keywords = [kw.strip() for kw in expanded_text.split() if kw.strip()]
             keywords = list(dict.fromkeys(keywords))[:max_keywords]
             expanded_query = " ".join(keywords)
@@ -51,7 +61,12 @@ class QueryExpander:
             }
         except Exception as e:
             logger.error("expand_query: {}", e, exc_info=True)
-            return self._fallback_expansion(query)
+            return {
+                "original_query": query,
+                "expanded_query": query,
+                "keywords": [query],
+                "expansion_applied": False,
+            }
 
     def _should_expand(self, query: str) -> bool:
         if len(query) > 100:
@@ -77,22 +92,3 @@ class QueryExpander:
 
 【拡張キーワード（スペース区切り）】
 """
-
-    def _fallback_expansion(self, query: str) -> Dict[str, Any]:
-        expansion_rules = {
-            "予定": ["予定", "スケジュール", "行事", "イベント", "日程", "カレンダー"],
-            "議事録": ["議事録", "会議", "決定事項", "議題", "協議"],
-            "時間割": ["時間割", "授業", "科目", "スケジュール", "クラス"],
-            "連絡": ["連絡", "お知らせ", "通知", "案内"],
-        }
-        keywords = [query]
-        for key, related_words in expansion_rules.items():
-            if key in query:
-                keywords.extend([w for w in related_words if w not in keywords])
-        expanded_query = " ".join(keywords)
-        return {
-            "original_query": query,
-            "expanded_query": expanded_query,
-            "keywords": keywords,
-            "expansion_applied": True,
-        }

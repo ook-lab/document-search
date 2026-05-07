@@ -72,13 +72,23 @@ class QueryExpander:
 
             if not response.get('success'):
                 logger.warning(f"[クエリ拡張] LLM呼び出し失敗: {response.get('error')}")
-                return self._fallback_expansion(query)
+                return {
+                    "original_query": query,
+                    "expanded_query": query,
+                    "keywords": [query],
+                    "expansion_applied": False,
+                }
 
             expanded_text = response.get('content', '').strip()
 
             if not expanded_text:
                 logger.warning("[クエリ拡張] 空の応答")
-                return self._fallback_expansion(query)
+                return {
+                    "original_query": query,
+                    "expanded_query": query,
+                    "keywords": [query],
+                    "expansion_applied": False,
+                }
 
             # キーワードを抽出（スペース区切り）
             keywords = [kw.strip() for kw in expanded_text.split() if kw.strip()]
@@ -103,7 +113,12 @@ class QueryExpander:
 
         except Exception as e:
             logger.error(f"[クエリ拡張] エラー: {e}", exc_info=True)
-            return self._fallback_expansion(query)
+            return {
+                "original_query": query,
+                "expanded_query": query,
+                "keywords": [query],
+                "expansion_applied": False,
+            }
 
     def _should_expand(self, query: str) -> bool:
         """
@@ -168,39 +183,3 @@ class QueryExpander:
 【拡張キーワード（スペース区切り）】
 """
         return prompt
-
-    def _fallback_expansion(self, query: str) -> Dict[str, Any]:
-        """
-        LLMが使えない場合のフォールバック（ルールベース拡張）
-
-        Args:
-            query: 元のクエリ
-
-        Returns:
-            拡張結果
-        """
-        # ルールベースの簡易拡張
-        expansion_rules = {
-            "予定": ["予定", "スケジュール", "行事", "イベント", "日程", "カレンダー"],
-            "議事録": ["議事録", "会議", "決定事項", "議題", "協議"],
-            "時間割": ["時間割", "授業", "科目", "スケジュール", "クラス"],
-            "連絡": ["連絡", "お知らせ", "通知", "案内"],
-        }
-
-        keywords = [query]  # 元のクエリを最初に含める
-
-        # クエリに含まれるキーワードに対応する拡張語を追加
-        for key, related_words in expansion_rules.items():
-            if key in query:
-                keywords.extend([w for w in related_words if w not in keywords])
-
-        expanded_query = " ".join(keywords)
-
-        logger.info(f"[クエリ拡張] フォールバック適用: '{query}' → '{expanded_query}'")
-
-        return {
-            "original_query": query,
-            "expanded_query": expanded_query,
-            "keywords": keywords,
-            "expansion_applied": True
-        }

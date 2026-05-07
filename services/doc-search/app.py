@@ -113,7 +113,7 @@ def search_documents():
 
         print(f"[DEBUG] 検索リクエスト: query='{query}', limit={limit}, persons={persons}, sources={sources}, categories={categories}, threshold={threshold}")
 
-        if not query:
+        if not str(query).strip():
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
 
         # ユーザーコンテキストを読み込み、関連情報を抽出（検索用：軽量）
