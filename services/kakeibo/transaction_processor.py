@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 from supabase import Client
 
-from config import DEFAULT_OWNER_ID, SUPABASE_URL, SUPABASE_KEY
+from config import SUPABASE_ADMIN_USER_ID, SUPABASE_URL, SUPABASE_KEY
 from gemini_client import GeminiClient
 import httpx
 
@@ -313,7 +313,7 @@ class TransactionProcessor:
             "ocr_model":           model_name,
             "workspace":           "household",
             "is_verified":         False,
-            "owner_id":            DEFAULT_OWNER_ID,
+            "owner_id":            SUPABASE_ADMIN_USER_ID,
         }
         result = self.db.table("Rawdata_RECEIPT_shops").insert(data).execute()
         return result.data[0]["id"]
@@ -337,7 +337,7 @@ class TransactionProcessor:
             "quantity":      quantity,
             "marks_text":    marks_text,
             "discount_text": discount_text,
-            "owner_id":      DEFAULT_OWNER_ID,
+            "owner_id":      SUPABASE_ADMIN_USER_ID,
         }
         data["unit_price"] = _ni(data["unit_price"])
         data["quantity"]   = _ni(data["quantity"])
@@ -385,7 +385,7 @@ class TransactionProcessor:
             "drive_file_id": drive_file_id,
             "receipt_id":    receipt_id,
             "status":        "success",
-            "owner_id":      DEFAULT_OWNER_ID,
+            "owner_id":      SUPABASE_ADMIN_USER_ID,
         }
         if model_name: data["ocr_model"] = model_name
         res = self.db.table("99_lg_image_proc_log").upsert(data, on_conflict="file_name").execute()
@@ -397,7 +397,7 @@ class TransactionProcessor:
             "drive_file_id": drive_file_id,
             "status":        "failed",
             "error_message": error_info.get("message", error_info.get("error")),
-            "owner_id":      DEFAULT_OWNER_ID,
+            "owner_id":      SUPABASE_ADMIN_USER_ID,
         }
         if model_name:  data["ocr_model"]  = model_name
         if receipt_id:  data["receipt_id"] = receipt_id
@@ -503,7 +503,7 @@ class TransactionProcessor:
             "calculated_matches_actual":  matches,
             "tax_8_diff":                 calc_8  - act_8,
             "tax_10_diff":                calc_10 - act_10,
-            "owner_id":                   DEFAULT_OWNER_ID,
+            "owner_id":                   SUPABASE_ADMIN_USER_ID,
         }
         url = f"{SUPABASE_URL}/rest/v1/60_ag_receipt_summary"
         with httpx.Client() as client:

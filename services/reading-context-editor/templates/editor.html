@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>読み込みコンテキスト エディタ</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 1rem; background: #f6f7f9; }
+    h1 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+    .toolbar input[type="text"], .toolbar select { min-width: 12rem; padding: 0.35rem 0.5rem; }
+    button { padding: 0.35rem 0.65rem; cursor: pointer; }
+    .err { color: #b00020; margin: 0.5rem 0; }
+    .ok { color: #0a6; margin: 0.5rem 0; }
+    .layout { display: flex; gap: 1rem; align-items: flex-start; }
+    @media (max-width: 900px) { .layout { flex-direction: column; } }
+    .col { flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 0.75rem; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .col h2 { font-size: 0.95rem; margin: 0 0 0.5rem; color: #333; }
+    .col-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.75rem; }
+    .block { border: 1px solid #ddd; border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; background: #fafafa; }
+    .block header { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+    .block-title { flex: 1; padding: 0.25rem 0.4rem; }
+    .pair-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.35rem; margin-bottom: 0.35rem; align-items: center; }
+    .pair-row input { width: 100%; box-sizing: border-box; padding: 0.25rem; }
+    .grid-wrap { overflow-x: auto; }
+    .grid-table { border-collapse: collapse; width: 100%; }
+    .grid-table td { border: 1px solid #ccc; padding: 2px; }
+    .grid-table input { width: 100%; min-width: 4rem; box-sizing: border-box; padding: 0.25rem; border: none; background: #fff; }
+    .text-block textarea {
+      width: 100%; max-width: 100%; box-sizing: border-box;
+      min-height: 8rem; padding: 0.5rem; resize: vertical; font: inherit;
+    }
+    .muted { font-size: 0.8rem; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>読み込みコンテキスト エディタ</h1>
+  <p class="muted">左: 1対1の対応表（2列）と 2×2以上の表。右: 内容ごとのテキスト（幅は画面いっぱいに追従）。保存で JSON / Markdown を生成して Supabase に書き込みます。</p>
+
+  <div class="toolbar">
+    <select id="personSelect" aria-label="人を選択"></select>
+    <button type="button" id="btnAddPerson">人を追加</button>
+    <select id="profileSelect" aria-label="保存済みプロフィール"></select>
+    <button type="button" id="btnLoad">読み込み</button>
+    <button type="button" id="btnNew">新規</button>
+    <label>タイトル <input type="text" id="docTitle" placeholder="例: 基本情報" /></label>
+    <button type="button" id="btnSave">保存</button>
+  </div>
+  <div id="msg"></div>
+
+  <div class="layout">
+    <section class="col" aria-labelledby="lbl-tables">
+      <h2 id="lbl-tables">表（左）</h2>
+      <div class="col-actions">
+        <button type="button" id="addPair">1対1の対応表を追加</button>
+        <button type="button" id="addGrid">2×2以上の表を追加</button>
+      </div>
+      <div id="tablesRoot"></div>
+    </section>
+    <section class="col" aria-labelledby="lbl-text">
+      <h2 id="lbl-text">テキスト（右）</h2>
+      <div class="col-actions">
+        <button type="button" id="addText">テキスト欄を追加</button>
+      </div>
+      <div id="textRoot"></div>
+    </section>
+  </div>
+
+  <script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const msg = $("msg");
+  const tablesRoot = $("tablesRoot");
+  const textRoot = $("textRoot");
+  const personSelect = $("personSelect");
+  let currentId = null;
+
+  function uid() {
+    return crypto.randomUUID();
+  }
+
+  function show(text, ok) {
+    msg.innerHTML = text ? `<div class="${ok ? "ok" : "err"}">${escapeHtml(text)}</div>` : "";
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  function newPairBlock() {
+    const id = uid();
+    const el = document.createElement("div");
+    el.className = "block";
+    el.dataset.blockId = id;
+    el.dataset.kind = "pair";
+    el.innerHTML = `
+      <header>
+        <span class="muted">1対1の対応表</span>
+        <button type="button" class="btn-del-tbl">表を削除</button>
+      </header>
+      <div class="pair-rows"></div>
+      <button type="button" class="btn-add-pair-row">行を追加</button>
+    `;
+    el.querySelector(".btn-del-tbl").onclick = () => el.remove();
+    el.querySelector(".btn-add-pair-row").onclick = () => addPairRow(el.querySelector(".pair-rows"));
+    addPairRow(el.querySelector(".pair-rows"));
+    addPairRow(el.querySelector(".pair-rows"));
+    return el;
+  }
+
+  function addPairRow(container) {
+    const row = document.createElement("div");
+    row.className = "pair-row";
+    row.innerHTML = `
+      <input type="text" class="pc0" placeholder="左" />
+      <input type="text" class="pc1" placeholder="右" />
+      <button type="button" class="btn-del-row">行削除</button>
+    `;
+    row.querySelector(".btn-del-row").onclick = () => row.remove();
+    container.appendChild(row);
+  }
+
+  function newGridBlock() {
+    const id = uid();
+    const el = document.createElement("div");
+    el.className = "block";
+    el.dataset.blockId = id;
+    el.dataset.kind = "grid";
+    el.innerHTML = `
+      <header>
+        <span class="muted">2×2以上の表</span>
+        <input type="text" class="block-title tbl-title" placeholder="表の見出し（任意）" />
+        <button type="button" class="btn-del-tbl">表を削除</button>
+      </header>
+      <div class="grid-wrap"><table class="grid-table"><tbody class="grid-body"></tbody></table></div>
+      <div style="margin-top:0.35rem;display:flex;gap:0.35rem;flex-wrap:wrap;">
+        <button type="button" class="btn-grid-add-row">行を追加</button>
+        <button type="button" class="btn-grid-add-col">列を追加</button>
+      </div>
+    `;
+    const body = el.querySelector(".grid-body");
+    el.querySelector(".btn-del-tbl").onclick = () => el.remove();
+    el.querySelector(".btn-grid-add-row").onclick = () => gridAddRow(el);
+    el.querySelector(".btn-grid-add-col").onclick = () => gridAddCol(el);
+    gridAddRow(el);
+    gridAddRow(el);
+    return el;
+  }
+
+  function gridDataColCount(tr) {
+    let n = 0;
+    tr.querySelectorAll("td").forEach((td) => {
+      if (td.querySelector("input.gc")) n++;
+    });
+    return n;
+  }
+
+  function gridDims(el) {
+    const body = el.querySelector(".grid-body");
+    const rows = body.querySelectorAll("tr");
+    const nR = rows.length;
+    const nC = nR ? gridDataColCount(rows[0]) : 0;
+    return { body, rows, nR, nC };
+  }
+
+  function gridAddRow(el, silent) {
+    const { body, nC } = gridDims(el);
+    const cols = Math.max(2, nC || 2);
+    const tr = document.createElement("tr");
+    for (let c = 0; c < cols; c++) {
+      const td = document.createElement("td");
+      td.innerHTML = `<input type="text" class="gc" />`;
+      tr.appendChild(td);
+    }
+    const tdAct = document.createElement("td");
+    tdAct.style.border = "none";
+    tdAct.style.width = "2.5rem";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "行削除";
+    btn.onclick = () => {
+      if (body.querySelectorAll("tr").length <= 1) return;
+      tr.remove();
+    };
+    tdAct.appendChild(btn);
+    tr.appendChild(tdAct);
+    body.appendChild(tr);
+  }
+
+  function gridAddCol(el, silent) {
+    const { body, nR, nC } = gridDims(el);
+    const rows = body.querySelectorAll("tr");
+    if (!rows.length) {
+      gridAddRow(el);
+      gridAddRow(el);
+      return gridAddCol(el, silent);
+    }
+    rows.forEach((tr) => {
+      const cells = tr.querySelectorAll("td");
+      const last = cells[cells.length - 1];
+      if (last && last.querySelector("button")) {
+        const td = document.createElement("td");
+        td.innerHTML = `<input type="text" class="gc" />`;
+        tr.insertBefore(td, last);
+      } else {
+        const td = document.createElement("td");
+        td.innerHTML = `<input type="text" class="gc" />`;
+        tr.appendChild(td);
+      }
+    });
+  }
+
+  function newTextBlock() {
+    const id = uid();
+    const el = document.createElement("div");
+    el.className = "block";
+    el.dataset.blockId = id;
+    el.dataset.kind = "text";
+    el.innerHTML = `
+      <header>
+        <span class="muted">テキスト</span>
+        <input type="text" class="block-title tx-title" placeholder="見出し（任意）" />
+        <button type="button" class="btn-del-txt">欄を削除</button>
+      </header>
+      <textarea class="tx-body" placeholder="本文（幅はコンテナに合わせて全文を表示）"></textarea>
+    `;
+    el.querySelector(".btn-del-txt").onclick = () => el.remove();
+    return el;
+  }
+
+  function serialize() {
+    const title = $("docTitle").value.trim();
+    const tables = [];
+    tablesRoot.querySelectorAll(".block").forEach((b) => {
+      const kind = b.dataset.kind;
+      if (kind === "pair") {
+        const rows = [];
+        b.querySelectorAll(".pair-row").forEach((r) => {
+          rows.push([r.querySelector(".pc0").value, r.querySelector(".pc1").value]);
+        });
+        tables.push({
+          id: b.dataset.blockId,
+          kind: "pair",
+          rows,
+        });
+      } else if (kind === "grid") {
+        const tblTitle = (b.querySelector(".tbl-title") || {}).value || "";
+        const cells = [];
+        b.querySelectorAll(".grid-body tr").forEach((tr) => {
+          const row = [];
+          tr.querySelectorAll("td").forEach((td) => {
+            const inp = td.querySelector("input.gc");
+            if (inp) row.push(inp.value);
+          });
+          cells.push(row);
+        });
+        tables.push({
+          id: b.dataset.blockId,
+          kind: "grid",
+          title: tblTitle,
+          cells,
+        });
+      }
+    });
+    const text_sections = [];
+    textRoot.querySelectorAll(".block").forEach((b) => {
+      if (b.dataset.kind !== "text") return;
+      text_sections.push({
+        id: b.dataset.blockId,
+        title: (b.querySelector(".tx-title") || {}).value || "",
+        body: (b.querySelector(".tx-body") || {}).value || "",
+      });
+    });
+    return { version: 1, title, tables, text_sections };
+  }
+
+  function clearEditorUI() {
+    $("docTitle").value = "";
+    tablesRoot.innerHTML = "";
+    textRoot.innerHTML = "";
+  }
+
+  function renderFromDoc(doc) {
+    clearEditorUI();
+    $("docTitle").value = doc.title || "";
+    (doc.tables || []).forEach((t) => {
+      if (t.kind === "pair") {
+        const el = newPairBlock();
+        el.dataset.blockId = t.id || uid();
+        el.querySelector(".pair-rows").innerHTML = "";
+        (t.rows || [["", ""]]).forEach(([a, b]) => {
+          addPairRow(el.querySelector(".pair-rows"));
+          const rows = el.querySelectorAll(".pair-row");
+          const last = rows[rows.length - 1];
+          last.querySelector(".pc0").value = a || "";
+          last.querySelector(".pc1").value = b || "";
+        });
+        tablesRoot.appendChild(el);
+      } else if (t.kind === "grid") {
+        const el = newGridBlock();
+        el.dataset.blockId = t.id || uid();
+        el.querySelector(".tbl-title").value = t.title || "";
+        el.querySelector(".grid-body").innerHTML = "";
+        const cells = (t.cells && t.cells.length) ? t.cells : [["", ""], ["", ""]];
+        const maxC = Math.max(2, ...cells.map((r) => (Array.isArray(r) ? r.length : 0)));
+        cells.forEach((row) => {
+          gridAddRow(el);
+          const trs = el.querySelectorAll(".grid-body tr");
+          const tr = trs[trs.length - 1];
+          const inputs = tr.querySelectorAll("input.gc");
+          const rv = Array.isArray(row) ? row : [];
+          for (let i = 0; i < inputs.length; i++) {
+            inputs[i].value = rv[i] !== undefined && rv[i] !== null ? String(rv[i]) : "";
+          }
+        });
+        let cur = el.querySelector(".grid-body tr") ? gridDataColCount(el.querySelector(".grid-body tr")) : 0;
+        while (cur < maxC) {
+          gridAddCol(el);
+          cur++;
+        }
+        tablesRoot.appendChild(el);
+      }
+    });
+    (doc.text_sections || []).forEach((s) => {
+      const el = newTextBlock();
+      el.dataset.blockId = s.id || uid();
+      el.querySelector(".tx-title").value = s.title || "";
+      el.querySelector(".tx-body").value = s.body || "";
+      textRoot.appendChild(el);
+    });
+  }
+
+  $("addPair").onclick = () => tablesRoot.appendChild(newPairBlock());
+  $("addGrid").onclick = () => tablesRoot.appendChild(newGridBlock());
+  $("addText").onclick = () => textRoot.appendChild(newTextBlock());
+
+  $("btnNew").onclick = () => {
+    currentId = null;
+    clearEditorUI();
+    show("新規（未保存）", true);
+  };
+
+  async function refreshProfileList() {
+    const person = personSelect.value;
+    const url = person ? ("/api/profiles?person_name=" + encodeURIComponent(person)) : "/api/profiles";
+    const res = await fetch(url);
+    const j = await res.json();
+    const sel = $("profileSelect");
+    sel.innerHTML = "";
+    if (!j.success) {
+      show(j.error || "一覧取得に失敗", false);
+      return;
+    }
+    const opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = "— プロフィールを選択 —";
+    sel.appendChild(opt0);
+    (j.profiles || []).forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = (p.title || "(無題)") + " · " + (p.updated_at || "").slice(0, 19);
+      sel.appendChild(o);
+    });
+  }
+
+  async function refreshPersons() {
+    const res = await fetch("/api/persons");
+    const j = await res.json();
+    personSelect.innerHTML = "";
+    if (!j.success) {
+      show(j.error || "人一覧取得に失敗", false);
+      return;
+    }
+    const opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = "— 人を選択 —";
+    personSelect.appendChild(opt0);
+    (j.persons || []).forEach((name) => {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name;
+      personSelect.appendChild(o);
+    });
+  }
+
+  $("btnLoad").onclick = async () => {
+    const id = $("profileSelect").value;
+    if (!id) {
+      show("プロフィールを選んでください", false);
+      return;
+    }
+    show("読み込み中…", true);
+    const res = await fetch("/api/profile/" + encodeURIComponent(id));
+    const j = await res.json();
+    if (!j.success || !j.profile) {
+      show(j.error || "読み込み失敗", false);
+      return;
+    }
+    currentId = j.profile.id;
+    if (j.profile.person_name) {
+      const exists = Array.from(personSelect.options).some((o) => o.value === j.profile.person_name);
+      if (!exists) {
+        const o = document.createElement("option");
+        o.value = j.profile.person_name;
+        o.textContent = j.profile.person_name;
+        personSelect.appendChild(o);
+      }
+      personSelect.value = j.profile.person_name;
+    }
+    $("docTitle").value = j.profile.title || "";
+    const ed = j.profile.editor_document || {};
+    renderFromDoc(ed);
+    $("profileSelect").value = id;
+    show("読み込みました", true);
+  };
+
+  $("btnSave").onclick = async () => {
+    show("保存中…", true);
+    if (!personSelect.value) {
+      show("先に人を選択または追加してください", false);
+      return;
+    }
+    const editor_document = serialize();
+    const body = {
+      id: currentId,
+      person_name: personSelect.value,
+      title: $("docTitle").value.trim(),
+      editor_document,
+    };
+    const res = await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json();
+    if (!j.success) {
+      show(j.error || "保存失敗", false);
+      return;
+    }
+    currentId = j.profile.id;
+    await refreshPersons();
+    personSelect.value = j.profile.person_name || personSelect.value;
+    await refreshProfileList();
+    $("profileSelect").value = currentId;
+    show("保存しました（ai_payload_json / ai_payload_md を生成済み）", true);
+  };
+
+  personSelect.onchange = async () => {
+    currentId = null;
+    $("profileSelect").value = "";
+    clearEditorUI();
+    await refreshProfileList();
+  };
+
+  $("btnAddPerson").onclick = async () => {
+    const name = prompt("人の名前を入力してください");
+    if (!name) return;
+    const v = name.trim();
+    if (!v) return;
+    await refreshPersons();
+    const exists = Array.from(personSelect.options).some((o) => o.value === v);
+    if (!exists) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v;
+      personSelect.appendChild(o);
+    }
+    personSelect.value = v;
+    await refreshProfileList();
+  };
+
+  (async () => {
+    await refreshPersons();
+    await refreshProfileList();
+  })();
+})();
+  </script>
+</body>
+</html>

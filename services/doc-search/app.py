@@ -4,6 +4,7 @@ Flask Web Application
 """
 import os
 import sys
+import re
 from pathlib import Path
 
 # doc-search 専用パッケージ docsearch のみ（パイプライン dms/ とは無関係・コードも別実装）。
@@ -11,8 +12,8 @@ _service_dir = Path(__file__).resolve().parent
 if str(_service_dir) not in sys.path:
     sys.path.insert(0, str(_service_dir))
 
-from typing import Dict, List, Any, Optional
-from datetime import datetime
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 
@@ -116,46 +117,39 @@ def search_documents():
         if not str(query).strip():
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
 
-        # ユーザーコンテキストを読み込み、関連情報を抽出（検索用：軽量）
-        from docsearch.context import ContextExtractor
-        from docsearch.user_context import load_user_context
-
-        user_context = load_user_context()
-        context_extractor = ContextExtractor(user_context)
-        extracted_context = context_extractor.extract_relevant_context(
+        # Step1: 質問をAIで正規化（Gemini 2.5 Flash-Lite固定）
+        today = datetime.now().strftime('%Y-%m-%d')
+        selected_persons = persons if isinstance(persons, list) else []
+        refined = _refine_query(
+            llm_client,
             query,
-            include_schedules=False  # 検索時はスケジュール不要
+            today,
+            person_names=selected_persons,
+            log_context={'app': 'doc-search', 'stage': 'search-refine'},
         )
-        context_string = context_extractor.build_search_context_string(extracted_context)
+        refined_query = refined.get("query", query)
+        date_range = refined.get("date_range", "")
+        print(f"[INFO] 検索正規化: '{query}' -> '{refined_query}' / date_range={date_range}")
 
         # クエリ拡張を適用（有効な場合）
-        expanded_query = query
+        expanded_query = refined_query
         expansion_info = None
-
-        # ユーザーコンテキストがあればクエリに追加
-        if context_string:
-            expanded_query = f"{query} {context_string}"
-            print(f"[DEBUG] コンテキスト追加: '{query}' → '{expanded_query}'")
 
         if enable_query_expansion:
             expansion_result = query_expander.expand_query(expanded_query)
             if expansion_result.get('expansion_applied'):
                 expanded_query = expansion_result.get('expanded_query', expanded_query)
                 expansion_info = {
-                    'original': query,
+                    'original': refined_query,
                     'expanded': expanded_query,
                     'keywords': expansion_result.get('keywords', [])
                 }
-                print(f"[DEBUG] クエリ拡張適用: '{query}' → '{expanded_query}'")
+                print(f"[DEBUG] クエリ拡張適用: '{refined_query}' → '{expanded_query}'")
             else:
                 print(f"[DEBUG] クエリ拡張スキップ: '{expanded_query}'")
 
-        # Embeddingを生成（拡張されたクエリを使用）
+        # Step2: OpenAIでベクトル化
         embedding = llm_client.generate_embedding(expanded_query)
-
-        # ✅ 時系列フィルタを検出
-        date_filter = _detect_date_filter(query)
-        print(f"[DEBUG] 時系列フィルタ検出: {date_filter}")
 
         # ✅ クエリタイプを検出
         query_type_info = _detect_query_type(query)
@@ -194,7 +188,7 @@ def search_documents():
             except Exception as e:
                 print(f"[WARNING] クロスリファレンス検索エラー: {e}")
 
-        # ベクトル検索を実行
+        # Step3: 機械でベクトル検索
         results = db_client.search_documents_sync(
             expanded_query,
             embedding,
@@ -202,10 +196,11 @@ def search_documents():
             sources=sources if sources else None,
             persons=persons if persons else None,
             category=categories if categories else None,
-            date_filter=date_filter,
             threshold=threshold,
         )
-        results = _filter_calendar_results_by_attendance_intent(results, query)
+        results = _filter_calendar_results_by_attendance_intent(results, refined_query)
+        # Step4: 機械で日付一致加点（ベクトル類似度は維持）
+        results = _apply_date_match_bonus(results, date_range, refined_query)
 
         # GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
         cal_results   = [d for d in results if d.get('source') == 'Googleカレンダー']
@@ -229,7 +224,9 @@ def search_documents():
             'success': True,
             'results': results,
             'count': len(results),
-            'query_type': query_type_info  # クエリタイプ情報を含める
+            'query_type': query_type_info,  # クエリタイプ情報を含める
+            'refined_query': refined_query,
+            'date_range': date_range,
         }
 
         # クエリ拡張情報を含める（デバッグ用）
@@ -264,11 +261,14 @@ def generate_answer():
 
         data = request.get_json()
         query = data.get('query', '')
+        documents = data.get('documents') or []
         flow_id = data.get('flow', 'single-25-lite')
         max_context_chars = int(data.get('max_context_chars') or 30000)
         persons    = data.get('persons', [])
         sources    = data.get('sources', [])
         categories = data.get('categories', [])
+        client_refined_query = (data.get('refined_query') or '').strip()
+        client_date_range = (data.get('date_range') or '').strip()
 
         if not query:
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
@@ -283,31 +283,42 @@ def generate_answer():
 
         today = datetime.now().strftime('%Y-%m-%d')
 
-        # Step0: クエリ改善（Flash-lite固定）
-        refined = _refine_query(
-            llm_client, query, today,
-            log_context={'app': 'doc-search', 'stage': 'search-refine', 'session_id': request_id},
-        )
-        refined_query = refined["query"]
-        date_range = refined["date_range"]
-        print(f"[INFO] クエリ改善: '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
+        # Step1: クエリ改善（Flash-lite固定）※検索結果から渡されていればそれを優先
+        if client_refined_query:
+            refined_query = client_refined_query
+            date_range = client_date_range
+            print(f"[INFO] クエリ改善(検索受け渡し): '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
+        else:
+            selected_persons = persons if isinstance(persons, list) else []
+            refined = _refine_query(
+                llm_client, query, today,
+                person_names=selected_persons,
+                log_context={'app': 'doc-search', 'stage': 'search-refine', 'session_id': request_id},
+            )
+            refined_query = refined["query"]
+            date_range = refined["date_range"]
+            print(f"[INFO] クエリ改善: '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
         print(f"[INFO] フィルタ: persons={persons}, sources={sources}, categories={categories}", flush=True)
 
-        # RAG検索
-        embedding = llm_client.generate_embedding(refined_query)
-        search_limit = max(10, max_context_chars // 2000)
-        search_results = db_client.search_documents_sync(
-            refined_query, embedding, limit=search_limit,
-            sources=sources if sources else None,
-            persons=persons if persons else None,
-            category=categories if categories else None,
-            date_range=date_range,
-        )
-        search_results = _filter_calendar_results_by_attendance_intent(
-            search_results,
-            f"{query} {refined_query}",
-        )
-        print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
+        # Step2-4: 検索結果が渡されていればそれを優先、なければサーバで実行
+        if isinstance(documents, list) and documents:
+            search_results = list(documents)
+            print(f"[INFO] RAG検索(検索受け渡し): {len(search_results)}件", flush=True)
+        else:
+            embedding = llm_client.generate_embedding(refined_query)
+            search_limit = max(10, max_context_chars // 2000)
+            search_results = db_client.search_documents_sync(
+                refined_query, embedding, limit=search_limit,
+                sources=sources if sources else None,
+                persons=persons if persons else None,
+                category=categories if categories else None,
+            )
+            search_results = _filter_calendar_results_by_attendance_intent(
+                search_results,
+                f"{query} {refined_query}",
+            )
+            search_results = _apply_date_match_bonus(search_results, date_range, refined_query)
+            print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
         # コンテキスト構築・切り詰め
         context = _build_context(search_results)
@@ -386,21 +397,7 @@ def _answer_1step(llm_client, model_name: str, query: str, context: str, log_con
 
     抽象化・根拠なし断定は禁止。各根拠にSourceを付けて出力する。
     """
-    try:
-        from docsearch.context import ContextExtractor
-        from docsearch.user_context import load_user_context
-        user_context = load_user_context()
-        ctx_extractor = ContextExtractor(user_context)
-        extracted = ctx_extractor.extract_relevant_context(query, include_schedules=True)
-        user_ctx = ctx_extractor.build_answer_context_string(extracted)
-    except Exception:
-        user_ctx = ""
-
-    prompt_parts = []
-    if user_ctx:
-        prompt_parts.append(user_ctx)
-
-    prompt_parts.append(f"""あなたはRAG回答エンジンです。
+    prompt_parts = [f"""あなたはRAG回答エンジンです。
 以下の文書チャンクを使い、ユーザーの質問に回答してください。
 
 【質問】
@@ -427,7 +424,7 @@ Evidence:
 
 不確実性:
 <不足情報や条件。なければ「なし」>
-""")
+"""]
 
     response = llm_client.call_model(
         tier="ui_response",
@@ -486,21 +483,7 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
 
     Evidenceなき記述禁止。ここで初めて抽象化OK。
     """
-    try:
-        from docsearch.context import ContextExtractor
-        from docsearch.user_context import load_user_context
-        user_context = load_user_context()
-        ctx_extractor = ContextExtractor(user_context)
-        extracted = ctx_extractor.extract_relevant_context(query, include_schedules=True)
-        user_ctx = ctx_extractor.build_answer_context_string(extracted)
-    except Exception:
-        user_ctx = ""
-
-    prompt_parts = []
-    if user_ctx:
-        prompt_parts.append(user_ctx)
-
-    prompt_parts.append(f"""以下のEvidenceリストを基に、ユーザーの質問に回答してください。
+    prompt_parts = [f"""以下のEvidenceリストを基に、ユーザーの質問に回答してください。
 
 【質問】
 {query}
@@ -525,7 +508,7 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
 
 不確実性:
 <なければ「なし」>
-""")
+"""]
 
     response = llm_client.call_model(
         tier="ui_response",
@@ -538,7 +521,13 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
     return ''
 
 
-def _refine_query(llm_client, query: str, today: str, log_context: dict = None) -> Dict[str, Any]:
+def _refine_query(
+    llm_client,
+    query: str,
+    today: str,
+    person_names: Optional[List[str]] = None,
+    log_context: dict = None,
+) -> Dict[str, Any]:
     """
     Step0: クエリ改善（Flash-lite固定）
 
@@ -553,15 +542,32 @@ def _refine_query(llm_client, query: str, today: str, log_context: dict = None) 
     """
     import json as _json
     max_len = int(len(query) * 1.5)
-    prompt = f"""以下の質問を、検索に適した形に整形し、JSON1行で出力してください。
+    from docsearch.user_context import load_person_reading_contexts
+    selected = [p.strip() for p in (person_names or []) if isinstance(p, str) and p.strip()]
+    context_rows = load_person_reading_contexts(selected)
+    blocks: List[str] = []
+    for row in context_rows:
+        md = (row.get("ai_payload_md") or "").strip()
+        if not md:
+            continue
+        person = row.get("person_name") or ""
+        blocks.append(f"[PERSON: {person}]\n{md[:6000]}")
+    rc_block = "\n\n".join(blocks).strip()
+    rc_block = f"\n【読み込みコンテキスト】\n{rc_block}\n" if rc_block else "\n【読み込みコンテキスト】\nなし\n"
+
+    prompt = f"""以下の質問を、検索と回答で共通利用する正規化質問に整形し、JSON1行で出力してください。
 
 【ルール】
 - 相対日（来週/今週/明日/〇月〇日など）は今日の日付を基準に絶対日付レンジ（YYYY-MM-DD）に変換する
+- 「来週」「〇日の週」は週レンジを日曜起点で解釈する（開始=日曜, 終了=次の日曜）
+- コンテキストはここでのみ参照する（下流で再読しない）
 - queryフィールド: 整形後の質問（最大{max_len}字、自然語を保つ・ISO日付を混ぜない）
 - date_rangeフィールド: 日付レンジ（YYYY-MM-DD..YYYY-MM-DD）、日付なければ空文字
 - JSON以外の出力禁止
 
 今日の日付: {today}
+対象の人: {", ".join(selected) if selected else "未指定"}
+{rc_block}
 元の質問: {query}
 出力例: {{"query":"来週月曜のテストの範囲は","date_range":"2026-03-09..2026-03-09"}}
 出力:"""
@@ -577,10 +583,16 @@ def _refine_query(llm_client, query: str, today: str, log_context: dict = None) 
         content = content.replace('```json', '').replace('```', '').strip()
         try:
             result = _json.loads(content)
-            return {
+            out = {
                 "query": result.get("query", query),
                 "date_range": result.get("date_range", ""),
             }
+            out["date_range"] = _normalize_week_range_by_rule(
+                query=query,
+                today=today,
+                date_range=out["date_range"],
+            )
+            return out
         except Exception:
             pass
     return {"query": query, "date_range": ""}
@@ -672,24 +684,7 @@ def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, 
     Topic別証拠束を基にユーザー向けの自然文にまとめる。
     Evidenceがある内容のみ記載。曖昧な点は明示。
     """
-    try:
-        from docsearch.context import ContextExtractor
-        from docsearch.user_context import load_user_context
-
-        user_context = load_user_context()
-        context_extractor = ContextExtractor(user_context)
-        extracted_context = context_extractor.extract_relevant_context(
-            query, include_schedules=True
-        )
-        user_context_prompt = context_extractor.build_answer_context_string(extracted_context)
-    except Exception:
-        user_context_prompt = ""
-
-    prompt_parts = []
-    if user_context_prompt:
-        prompt_parts.append(user_context_prompt)
-
-    prompt_parts.append(f"""以下のTopic別証拠束を基に、ユーザーの質問に回答してください。
+    prompt_parts = [f"""以下のTopic別証拠束を基に、ユーザーの質問に回答してください。
 
 【質問】
 {query}
@@ -707,7 +702,7 @@ def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, 
 - 長さは内容に応じて調整する（不要な冗長は避け、必要な情報は省略しない）
 
 【回答】
-""")
+"""]
 
     prompt = "\n".join(prompt_parts)
     response = llm_client.call_model(
@@ -965,6 +960,159 @@ def _detect_cross_reference(query: str) -> Optional[str]:
         return match.group(1)
 
     return None
+
+
+def _parse_date_range(date_range: str) -> Tuple[Optional[date], Optional[date]]:
+    if not date_range or ".." not in date_range:
+        return None, None
+    try:
+        start_s, end_s = date_range.split("..", 1)
+        return datetime.strptime(start_s.strip(), "%Y-%m-%d").date(), datetime.strptime(end_s.strip(), "%Y-%m-%d").date()
+    except Exception:
+        return None, None
+
+
+def _to_sunday_start(d: date) -> date:
+    # Python weekday: Mon=0 ... Sun=6
+    return d - timedelta(days=(d.weekday() + 1) % 7)
+
+
+def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> str:
+    """
+    週の解釈をユーザー指定に固定:
+    - 来週: 次の日曜〜その次の日曜
+    - 何日の週: その日を含む日曜〜次の日曜（当日が日曜なら当日〜次の日曜）
+    """
+    q = (query or "").strip()
+    if not q:
+        return date_range
+    try:
+        base_today = datetime.strptime(today, "%Y-%m-%d").date()
+    except Exception:
+        base_today = datetime.now().date()
+
+    # 来週
+    if "来週" in q:
+        this_sunday = _to_sunday_start(base_today)
+        start = this_sunday + timedelta(days=7)
+        end = start + timedelta(days=7)
+        return f"{start.isoformat()}..{end.isoformat()}"
+
+    # 「X月Y日の週」または「Y日の週」
+    m = re.search(r"(?:(\d{1,2})月\s*)?(\d{1,2})日(?:を含む)?の?週", q)
+    if m:
+        month = int(m.group(1)) if m.group(1) else base_today.month
+        day = int(m.group(2))
+        year = base_today.year
+        try:
+            d = date(year, month, day)
+        except Exception:
+            return date_range
+        start = _to_sunday_start(d)
+        end = start + timedelta(days=7)
+        return f"{start.isoformat()}..{end.isoformat()}"
+
+    return date_range
+
+
+def _extract_document_date(doc: Dict[str, Any]) -> Optional[date]:
+    signals = doc.get("date_signals") or {}
+    for d in signals.get("normalized_dates") or []:
+        try:
+            return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+        except Exception:
+            continue
+    candidates = [
+        doc.get("document_date"),
+        doc.get("post_at"),
+        doc.get("start_at"),
+        doc.get("date"),
+    ]
+    for v in candidates:
+        if not isinstance(v, str) or not v.strip():
+            continue
+        s = v.strip()[:10]
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            continue
+    return None
+
+
+def _apply_date_match_bonus(results: List[Dict[str, Any]], date_range: str, query: str = "") -> List[Dict[str, Any]]:
+    """
+    加点ルール:
+    - ピッタリ同日/同レンジ内: +0.35
+    - 前後1週間: +0.20
+    - 前後2週間 または 指定月一致: +0.10
+    """
+    start_d, end_d = _parse_date_range(date_range)
+    if not results:
+        return results
+    q = query or ""
+    month_m = re.search(r"(\d{1,2})月", q)
+    specified_month = int(month_m.group(1)) if month_m else None
+
+    ranked: List[Dict[str, Any]] = []
+    for doc in results:
+        base = float(doc.get("similarity") or doc.get("score") or 0.0)
+        bonus = 0.0
+        if start_d and end_d:
+            signals = doc.get("date_signals") or {}
+            # 単日群（09行単位）
+            for ds in signals.get("normalized_dates") or []:
+                try:
+                    dd = datetime.strptime(str(ds)[:10], "%Y-%m-%d").date()
+                except Exception:
+                    continue
+                if start_d <= dd <= end_d:
+                    bonus = max(bonus, 0.35)
+                else:
+                    dist = min(abs((dd - start_d).days), abs((dd - end_d).days))
+                    if dist <= 7:
+                        bonus = max(bonus, 0.20)
+                    elif dist <= 14:
+                        bonus = max(bonus, 0.10)
+                    elif specified_month and dd.month == specified_month:
+                        bonus = max(bonus, 0.10)
+            # 範囲群（09行単位）
+            for rg in signals.get("normalized_ranges") or []:
+                try:
+                    rs = datetime.strptime(str(rg.get("start"))[:10], "%Y-%m-%d").date()
+                    re_ = datetime.strptime(str(rg.get("end"))[:10], "%Y-%m-%d").date()
+                except Exception:
+                    continue
+                if rs <= end_d and re_ >= start_d:
+                    bonus = max(bonus, 0.35)
+            # 月粒度（day:null）
+            if specified_month:
+                for pd in signals.get("partial_dates") or []:
+                    try:
+                        if int(pd.get("month") or 0) == specified_month:
+                            bonus = max(bonus, 0.10)
+                    except Exception:
+                        continue
+            # 互換: signals がない古い行向け
+            if bonus == 0.0:
+                dd = _extract_document_date(doc)
+                if dd:
+                    if start_d <= dd <= end_d:
+                        bonus = 0.35
+                    else:
+                        dist = min(abs((dd - start_d).days), abs((dd - end_d).days))
+                        if dist <= 7:
+                            bonus = 0.20
+                        elif dist <= 14:
+                            bonus = 0.10
+                        elif specified_month and dd.month == specified_month:
+                            bonus = 0.10
+        d = dict(doc)
+        d["date_bonus"] = bonus
+        d["final_score"] = round(base + bonus, 6)
+        ranked.append(d)
+
+    ranked.sort(key=lambda x: x.get("final_score", 0.0), reverse=True)
+    return ranked
 
 
 def _detect_query_type(query: str) -> Dict[str, Any]:

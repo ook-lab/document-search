@@ -35,6 +35,7 @@ _SERVICE_RULES: tuple[tuple[str, str], ...] = (
     ("kakeibo-ui", "services/kakeibo/**"),
     ("kakeibo", "services/kakeibo/**"),
     ("rag-prepare", "services/rag-prepare/**"),
+    ("reading-context-editor", "services/reading-context-editor/**"),
     ("tenshoku-tool", "services/tenshoku-tool/**"),
     ("portal-app", "portal-app/**"),
     ("portal-deploy", "portal-app/**"),

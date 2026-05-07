@@ -15,7 +15,7 @@ from config import (
     GEMINI_MODEL_EASY, GEMINI_MODEL_HARD,
     GEMINI_TEMPERATURE, GEMINI_PROMPT,
     MONEYFORWARD_FOLDER_ID, MONEYFORWARD_PROCESSED_ID,
-    SUPABASE_URL, SUPABASE_KEY, DEFAULT_OWNER_ID
+    SUPABASE_URL, SUPABASE_KEY, SUPABASE_ADMIN_USER_ID
 )
 
 try:
@@ -558,7 +558,7 @@ def bulk_exclude():
         updates.append({
             "transaction_id": tx_id,
             "is_excluded": True,
-            # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+            # "owner_id": SUPABASE_ADMIN_USER_ID  # 一時無効
         })
 
     # httpxを使ってPostgRESTを直接叩く（一括）
@@ -1333,7 +1333,7 @@ def create_transaction():
         "memo": "消込用に手動作成",
         "is_target": True,
         "is_transfer": False,
-        # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+        # "owner_id": SUPABASE_ADMIN_USER_ID  # 一時無効
     }
 
     # httpxを使ってPostgRESTを直接叩く（スキーマキャッシュ遅延をスキップするため return=minimal を指定）
@@ -1432,7 +1432,7 @@ def toggle_view_target():
     payload = {
         "transaction_id": tx_id,
         "view_target": new_target,
-        # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+        # "owner_id": SUPABASE_ADMIN_USER_ID  # 一時無効
     }
 
     # httpxを使ってPostgRESTを直接叩く
@@ -1888,7 +1888,7 @@ def merge_execute():
         "memo": "UI上で手動合算",
         "is_target": True,
         "is_transfer": False,
-        # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+        # "owner_id": SUPABASE_ADMIN_USER_ID  # 一時無効
     }
 
     # httpxを使ってPostgRESTを直接叩く（新しい行を追加）
@@ -1915,7 +1915,7 @@ def merge_execute():
                 "transaction_id": tid,
                 "is_excluded": True,
                 "note": f"合算ID:{new_id} へ統合",
-                # "owner_id": DEFAULT_OWNER_ID  # 一時無効
+                # "owner_id": SUPABASE_ADMIN_USER_ID  # 一時無効
             })
 
         headers["Prefer"] = "return=minimal, resolution=merge-duplicates"

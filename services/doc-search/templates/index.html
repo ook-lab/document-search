@@ -1235,6 +1235,8 @@
                     body: JSON.stringify({
                         query,
                         documents: currentDocuments,
+                        refined_query: searchData.refined_query || '',
+                        date_range: searchData.date_range || '',
                         flow: selectedFlow,
                         max_context_chars: parseInt(document.getElementById('maxContextInput').value) || null,
                         persons: selectedPersons,

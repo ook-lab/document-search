@@ -25,7 +25,7 @@ GEMINI_TEMPERATURE  = 0.1
 # ── Supabase ─────────────────────────────────────────────
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
-DEFAULT_OWNER_ID = os.getenv("DEFAULT_OWNER_ID")
+SUPABASE_ADMIN_USER_ID = os.getenv("SUPABASE_ADMIN_USER_ID")
 
 # ── OCR プロンプト ─────────────────────────────────────────
 # flash-lite でも確実に動作するよう、シンプル・具体的・出力形式固定で設計。

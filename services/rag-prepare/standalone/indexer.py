@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen
+from standalone.date_signals import build_date_signals
 from standalone.scope import RAG_PREPARE_VECTORIZE_RAW_TABLES
 from standalone.ud_meta import UD_META_TABLE
 
@@ -20,13 +21,13 @@ logger = logging.getLogger(__name__)
 
 DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
 
-_UD_SELECT = "id, raw_id, raw_table, person, source, category, title, file_url"
+_UD_SELECT = "id, raw_id, raw_table, person, source, category, title, file_url, post_at, start_at, end_at, due_date, ui_data, meta, body"
 
 
 class RagPrepareSearchIndexer:
     def __init__(self) -> None:
         self.db = RagServiceDB()
-        self.embedder = EmbeddingGen()
+        self.embedder: Optional[EmbeddingGen] = None
 
     def process_document(
         self,
@@ -68,12 +69,22 @@ class RagPrepareSearchIndexer:
             source = ud.get("source")
             category = ud.get("category") or rt
 
-            self.db.client.table("09_unified_documents").update({"body": full_markdown}).eq(
-                "id", unified_doc_id
-            ).execute()
+            # 09 行単位の日付シグナルを生成して meta に保持（検索専用の参照データ）
+            current_meta = ud.get("meta") if isinstance(ud.get("meta"), dict) else {}
+            row_for_signals = dict(ud)
+            row_for_signals["body"] = full_markdown
+            date_signals = build_date_signals(row_for_signals)
+            new_meta = dict(current_meta)
+            new_meta["date_signals"] = date_signals
+
+            self.db.client.table("09_unified_documents").update(
+                {"body": full_markdown, "meta": new_meta}
+            ).eq("id", unified_doc_id).execute()
 
             chunks = self._plain_chunks(full_markdown, chunk_size=1200)
             self.db.client.table("10_ix_search_index").delete().eq("doc_id", unified_doc_id).execute()
+            if self.embedder is None:
+                self.embedder = EmbeddingGen()
 
             for i, chunk_text in enumerate(chunks):
                 chunk_text = (chunk_text or "").replace("\u0000", "").strip()
@@ -108,6 +119,83 @@ class RagPrepareSearchIndexer:
         except Exception as e:
             logger.error("Search index update failed: %s", e, exc_info=True)
             return False, str(e)
+
+    def process_date_signals_for_document(
+        self,
+        unified_doc_id: Optional[str] = None,
+        *,
+        raw_table: Optional[str] = None,
+        raw_id: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """09 の meta.date_signals だけ更新（インデックス再生成なし）。"""
+        try:
+            ud = self._resolve_or_create_unified_document(
+                unified_doc_id=unified_doc_id, raw_table=raw_table, raw_id=raw_id
+            )
+            if not ud:
+                return False, "09_unified_documents が見つかりません"
+            ds = build_date_signals(ud)
+            meta = ud.get("meta") if isinstance(ud.get("meta"), dict) else {}
+            new_meta = dict(meta)
+            new_meta["date_signals"] = ds
+            self.db.client.table("09_unified_documents").update({"meta": new_meta}).eq("id", ud["id"]).execute()
+            return True, None
+        except Exception as e:
+            logger.error("date_signals update failed: %s", e, exc_info=True)
+            return False, str(e)
+
+    def backfill_date_signals(
+        self,
+        *,
+        limit: int = 200,
+        person: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        既存 09 行に date_signals を付与（インデックス更新はしない）。
+        """
+        updated = 0
+        skipped = 0
+        errors: List[str] = []
+        offset = 0
+        page = min(max(limit, 1), 1000)
+        while updated + skipped < limit:
+            q = (
+                self.db.client.table("09_unified_documents")
+                .select("id,title,post_at,start_at,end_at,due_date,ui_data,meta,body,person,source")
+                .range(offset, offset + page - 1)
+            )
+            if person:
+                q = q.eq("person", person)
+            if source:
+                q = q.eq("source", source)
+            try:
+                res = q.execute()
+            except Exception as e:
+                errors.append(f"fetch failed: {e}")
+                break
+            rows = res.data or []
+            if not rows:
+                break
+            for row in rows:
+                if updated + skipped >= limit:
+                    break
+                try:
+                    meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+                    if isinstance(meta.get("date_signals"), dict):
+                        skipped += 1
+                        continue
+                    ds = build_date_signals(row)
+                    new_meta = dict(meta)
+                    new_meta["date_signals"] = ds
+                    self.db.client.table("09_unified_documents").update({"meta": new_meta}).eq("id", row["id"]).execute()
+                    updated += 1
+                except Exception as e:
+                    errors.append(f"id={row.get('id')}: {e}")
+            offset += page
+            if len(rows) < page:
+                break
+        return {"success": len(errors) == 0, "updated": updated, "skipped": skipped, "errors": errors}
 
     def _write_meta_vectorized(
         self, *, raw_table: str, raw_id: str, doc_id: str, now_iso: str

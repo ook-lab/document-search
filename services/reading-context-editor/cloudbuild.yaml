@@ -1,45 +1,47 @@
 steps:
-  # キャッシュ用に既存イメージを pull（失敗しても続行）
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
     args:
       - '-c'
-      - 'docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest || true'
+      - 'docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/reading-context-editor:latest || true'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '--cache-from'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/reading-context-editor:latest'
       - '-t'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/reading-context-editor:latest'
       - '-f'
-      - 'services/kakeibo/Dockerfile'
+      - 'services/reading-context-editor/Dockerfile'
       - '.'
+    dir: '.'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/reading-context-editor:latest'
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'kakeibo-ui'
-      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
+      - 'reading-context-editor'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/reading-context-editor:latest'
       - '--region=asia-northeast1'
       - '--allow-unauthenticated'
-      - '--timeout=3600'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GCP_PROJECT_ID=$PROJECT_ID'
       - '--remove-env-vars=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_KEY,SUPABASE_ADMIN_USER_ID'
       - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_ADMIN_USER_ID=SUPABASE_ADMIN_USER_ID:latest'
+      - '--timeout=120'
 
 images:
-  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/reading-context-editor:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
   substitutionOption: ALLOW_LOOSE
+
+timeout: 1200s

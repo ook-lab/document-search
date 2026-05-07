@@ -88,9 +88,53 @@ def _run_search_index_register():
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': err_msg or 'Processing failed'})
 
+
+def _run_date_signals_single():
+    data = request.get_json(silent=True) or {}
+    unified_doc_id = (data.get("unified_doc_id") or data.get("doc_id") or "").strip()
+    raw_table = (data.get("raw_table") or "").strip()
+    raw_id = (data.get("raw_id") or "").strip()
+    if not unified_doc_id and not (raw_table and raw_id):
+        return jsonify({"success": False, "error": "Missing unified_doc_id or (raw_table, raw_id)"}), 400
+    IndexerClass, _ = get_indexer_tools()
+    if not IndexerClass:
+        return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
+    indexer = IndexerClass()
+    success, err_msg = indexer.process_date_signals_for_document(
+        unified_doc_id or None,
+        raw_table=raw_table or None,
+        raw_id=raw_id or None,
+    )
+    if success:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': err_msg or 'Processing failed'})
+
+
+def _run_date_signals_backfill():
+    data = request.get_json(silent=True) or {}
+    limit = int(data.get("limit") or 200)
+    person = (data.get("person") or "").strip() or None
+    source = (data.get("source") or "").strip() or None
+    IndexerClass, _ = get_indexer_tools()
+    if not IndexerClass:
+        return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
+    indexer = IndexerClass()
+    result = indexer.backfill_date_signals(limit=limit, person=person, source=source)
+    return jsonify(result)
+
 @app.route('/process', methods=['POST'])
 def process():
     return _run_search_index_register()
+
+
+@app.route('/process-date-signals', methods=['POST'])
+def process_date_signals():
+    return _run_date_signals_single()
+
+
+@app.route('/backfill-date-signals', methods=['POST'])
+def backfill_date_signals():
+    return _run_date_signals_backfill()
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

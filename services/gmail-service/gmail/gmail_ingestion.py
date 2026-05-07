@@ -68,10 +68,10 @@ class GmailIngestionPipeline:
             raise ValueError(f"user_emailが指定されていません。GMAIL_{self.mail_type}_USER_EMAILを.envに設定するか、引数で指定してください。")
 
         # Phase 3: owner_id を取得（必須）
-        self.owner_id = owner_id or os.getenv('DEFAULT_OWNER_ID')
+        self.owner_id = owner_id or os.getenv('SUPABASE_ADMIN_USER_ID')
         if not self.owner_id:
             raise ValueError(
-                "owner_id が指定されていません。引数で指定するか、DEFAULT_OWNER_ID を .env に設定してください。"
+                "owner_id が指定されていません。引数で指定するか、SUPABASE_ADMIN_USER_ID を .env に設定してください。"
             )
 
         # 設定ファイルの読み込み

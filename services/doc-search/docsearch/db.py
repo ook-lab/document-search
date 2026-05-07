@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -121,23 +121,132 @@ class DocSearchDB:
         filtered_other = [c for c in other_chunks if (c.get("chunk_weight") or 0) >= non_table_weight_threshold]
         return relevant_tables + filtered_other
 
-    def _calc_time_score(self, document_date: Optional[str], date_range: Optional[str]) -> float:
-        if not document_date or not date_range or ".." not in date_range:
+    def _parse_yyyy_mm_dd(self, s: Optional[str]) -> Optional[str]:
+        if not s or not isinstance(s, str):
+            return None
+        t = s.strip()
+        if len(t) >= 10:
+            t = t[:10]
+        try:
+            _ = date_type.fromisoformat(t)
+            return t
+        except Exception:
+            return None
+
+    def _build_date_signals(self, row: Dict[str, Any], base_year: Optional[int] = None) -> Dict[str, Any]:
+        """
+        09行単位の日付情報を構築する。
+        既存 meta.date_signals / meta.all_dates を優先し、無ければ構造化列から補完。
+        """
+        meta = row.get("meta") or {}
+        ui_data = row.get("ui_data") or {}
+        existing = meta.get("date_signals") if isinstance(meta, dict) else None
+        out: Dict[str, Any] = {
+            "normalized_dates": [],
+            "normalized_ranges": [],
+            "partial_dates": [],
+        }
+        if isinstance(existing, dict):
+            out["normalized_dates"] = list(existing.get("normalized_dates") or [])
+            out["normalized_ranges"] = list(existing.get("normalized_ranges") or [])
+            out["partial_dates"] = list(existing.get("partial_dates") or [])
+
+        # 既存 all_dates 互換
+        if isinstance(meta, dict):
+            for d in meta.get("all_dates") or []:
+                iso = self._parse_yyyy_mm_dd(str(d))
+                if iso:
+                    out["normalized_dates"].append(iso)
+
+        # 構造化カラムから補完
+        for key in ("post_at", "start_at", "end_at", "due_date", "document_date"):
+            iso = self._parse_yyyy_mm_dd(str(row.get(key) or ""))
+            if iso:
+                out["normalized_dates"].append(iso)
+
+        # start/end が同時にあればレンジ
+        start_iso = self._parse_yyyy_mm_dd(str(row.get("start_at") or ""))
+        end_iso = self._parse_yyyy_mm_dd(str(row.get("end_at") or ""))
+        if start_iso and end_iso:
+            out["normalized_ranges"].append(
+                {"start": start_iso, "end": end_iso, "source_text": "start_at/end_at"}
+            )
+
+        # ui_data.timeline の date 補完（構造化済みだけ）
+        if isinstance(ui_data, dict):
+            for tl in ui_data.get("timeline") or []:
+                if not isinstance(tl, dict):
+                    continue
+                iso = self._parse_yyyy_mm_dd(str(tl.get("date") or ""))
+                if iso:
+                    out["normalized_dates"].append(iso)
+
+        # 「5月号」のような月粒度
+        title = str(row.get("title") or "")
+        m = re.search(r"(\d{1,2})月号", title)
+        if m:
+            month = int(m.group(1))
+            y = base_year or datetime.now().year
+            out["partial_dates"].append(
+                {"year": y, "month": month, "day": None, "text": m.group(0), "granularity": "month"}
+            )
+
+        # normalize unique/sort
+        out["normalized_dates"] = sorted({d for d in out["normalized_dates"] if self._parse_yyyy_mm_dd(d)})
+        seen_ranges = set()
+        norm_ranges = []
+        for r in out["normalized_ranges"]:
+            if not isinstance(r, dict):
+                continue
+            s = self._parse_yyyy_mm_dd(str(r.get("start") or ""))
+            e = self._parse_yyyy_mm_dd(str(r.get("end") or ""))
+            if not s or not e:
+                continue
+            k = (s, e, str(r.get("source_text") or ""))
+            if k in seen_ranges:
+                continue
+            seen_ranges.add(k)
+            norm_ranges.append({"start": s, "end": e, "source_text": k[2]})
+        out["normalized_ranges"] = norm_ranges
+        return out
+
+    def _calc_time_score(self, doc: Dict[str, Any], date_range: Optional[str], query: Optional[str] = None) -> float:
+        if not date_range or ".." not in date_range:
             return 0.0
         try:
-            from datetime import date as date_type
-
             start_str, end_str = date_range.split("..", 1)
             start = date_type.fromisoformat(start_str.strip())
             end = date_type.fromisoformat(end_str.strip()) if end_str.strip() else date_type(9999, 12, 31)
-            doc_dt = date_type.fromisoformat(document_date[:10])
-            if start <= doc_dt <= end:
-                return 1.0
-            dist = (start - doc_dt).days if doc_dt < start else (doc_dt - end).days
-            if dist <= 7:
-                return 0.7
-            if dist <= 30:
-                return 0.3
+            signals = doc.get("date_signals") or {}
+            # 1) 単日一致
+            for d in signals.get("normalized_dates") or []:
+                try:
+                    doc_dt = date_type.fromisoformat(str(d)[:10])
+                except Exception:
+                    continue
+                if start <= doc_dt <= end:
+                    return 1.0
+                dist = (start - doc_dt).days if doc_dt < start else (doc_dt - end).days
+                if dist <= 7:
+                    return max(0.7, 0.0)
+                if dist <= 14:
+                    return max(0.3, 0.0)
+            # 2) レンジ重なり
+            for r in signals.get("normalized_ranges") or []:
+                try:
+                    rs = date_type.fromisoformat(str(r.get("start"))[:10])
+                    re_ = date_type.fromisoformat(str(r.get("end"))[:10])
+                except Exception:
+                    continue
+                if rs <= end and re_ >= start:
+                    return 1.0
+            # 3) 月粒度一致
+            month_m = re.search(r"(\d{1,2})月", query or "")
+            if month_m:
+                qm = int(month_m.group(1))
+                for p in signals.get("partial_dates") or []:
+                    if int(p.get("month") or 0) == qm:
+                        return max(0.3, 0.0)
             return 0.0
         except Exception:
             return 0.0
@@ -230,9 +339,18 @@ class DocSearchDB:
         for result in results:
             raw_date = result.get("post_at") or result.get("start_at")
             document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
+            # 09行単位の date_signals を構築（検索時利用のみ。書き込みはしない）
+            base_year = None
+            if document_date:
+                try:
+                    base_year = date_type.fromisoformat(document_date).year
+                except Exception:
+                    base_year = None
+            date_signals = self._build_date_signals(result, base_year=base_year)
+            doc_id = result.get("doc_id")
             final_results.append(
                 {
-                    "id": result.get("doc_id"),
+                    "id": doc_id,
                     "title": result.get("title"),
                     "source": result.get("source"),
                     "person": result.get("person"),
@@ -248,6 +366,7 @@ class DocSearchDB:
                     "file_url": result.get("file_url"),
                     "ui_data": result.get("ui_data"),
                     "meta": result.get("meta"),
+                    "date_signals": date_signals,
                     "indexed_at": result.get("indexed_at"),
                     "document_date": document_date,
                     "chunk_content": result.get("best_chunk_text"),
@@ -318,7 +437,7 @@ class DocSearchDB:
             else:
                 rel = rel_rank
             rel = max(0.0, min(1.0, rel))
-            ts = self._calc_time_score(doc.get("document_date"), date_range)
+            ts = self._calc_time_score(doc, date_range, query=query)
             doc["time_score"] = ts
             doc["rel"] = rel
             doc["final_score"] = max(0.0, min(1.0, 0.75 * rel + 0.25 * ts))
