@@ -78,6 +78,7 @@ class Settings:
     DATE_RANGE_THRESHOLD_DELTA: float = float(os.getenv("DATE_RANGE_THRESHOLD_DELTA", "0.0"))
     # rel に similarity を少し混ぜる割合（0.0=混ぜない）
     REL_SIM_MIX_EPS: float = float(os.getenv("REL_SIM_MIX_EPS", "0.0"))
+    UNIFIED_SEARCH_RPC_MATCH_COUNT: int = int(os.getenv("UNIFIED_SEARCH_RPC_MATCH_COUNT", "80"))
 
     # データディレクトリ
     DATA_DIR: Path = Path("/tmp/data")

@@ -170,6 +170,10 @@ class ReportGenerator:
             "filter_chunk_types": None,
             "filter_persons": None,
             "filter_category": None,
+            "filter_date_start": None,
+            "filter_date_end": None,
+            "calendar_filter_date_start": None,
+            "calendar_filter_date_end": None,
         }
         response = self.db.client.rpc("unified_search_v2", rpc_params).execute()
         rows = response.data or []

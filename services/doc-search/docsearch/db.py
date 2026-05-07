@@ -213,6 +213,7 @@ class DocSearchDB:
         return out
 
     def _calc_time_score(self, doc: Dict[str, Any], date_range: Optional[str], query: Optional[str] = None) -> float:
+        # 日付の当たり判定は ix_search_dates（検索用集約）のみ。document_date には寄せない。
         if not date_range or ".." not in date_range:
             return 0.0
         try:
@@ -235,11 +236,11 @@ class DocSearchDB:
                 else:
                     dist = min(abs((doc_dt - start).days), abs((doc_dt - end).days))
                     if dist <= 7:
-                        best = max(best, 0.7)
+                        best = max(best, 0.55)
                     elif dist <= 14:
-                        best = max(best, 0.3)
+                        best = max(best, 0.28)
                     elif specified_month and doc_dt.month == specified_month:
-                        best = max(best, 0.3)
+                        best = max(best, 0.22)
             return best
         except Exception:
             return 0.0
@@ -309,18 +310,30 @@ class DocSearchDB:
         date_filter: Optional[str] = None,
         threshold: float = 0.4,
         date_range: Optional[str] = None,
+        filter_date_start: Optional[date_type] = None,
+        filter_date_end: Optional[date_type] = None,
+        calendar_filter_date_start: Optional[date_type] = None,
+        calendar_filter_date_end: Optional[date_type] = None,
+        rpc_match_count: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        mc = rpc_match_count if rpc_match_count is not None else settings.UNIFIED_SEARCH_RPC_MATCH_COUNT
         rpc_params = {
             "query_text": query,
             "query_embedding": embedding,
             "match_threshold": -1.0,
-            "match_count": limit,
+            "match_count": mc,
             "vector_weight": 0.7,
             "fulltext_weight": 0.3,
             "filter_sources": sources,
             "filter_chunk_types": None,
             "filter_persons": persons,
             "filter_category": category,
+            "filter_date_start": filter_date_start.isoformat() if filter_date_start else None,
+            "filter_date_end": filter_date_end.isoformat() if filter_date_end else None,
+            "calendar_filter_date_start": calendar_filter_date_start.isoformat()
+            if calendar_filter_date_start
+            else None,
+            "calendar_filter_date_end": calendar_filter_date_end.isoformat() if calendar_filter_date_end else None,
         }
         logger.debug("unified_search_v2: sources={} persons={}", sources, persons)
         response = self.client.rpc("unified_search_v2", rpc_params).execute()
@@ -445,6 +458,11 @@ class DocSearchDB:
         date_filter: Optional[str] = None,
         threshold: float = 0.4,
         date_range: Optional[str] = None,
+        filter_date_start: Optional[date_type] = None,
+        filter_date_end: Optional[date_type] = None,
+        calendar_filter_date_start: Optional[date_type] = None,
+        calendar_filter_date_end: Optional[date_type] = None,
+        rpc_match_count: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         try:
             try:
@@ -463,6 +481,11 @@ class DocSearchDB:
                             date_filter,
                             threshold,
                             date_range,
+                            filter_date_start,
+                            filter_date_end,
+                            calendar_filter_date_start,
+                            calendar_filter_date_end,
+                            rpc_match_count,
                         )
                     )
             except RuntimeError:
@@ -478,6 +501,11 @@ class DocSearchDB:
                     date_filter,
                     threshold,
                     date_range,
+                    filter_date_start,
+                    filter_date_end,
+                    calendar_filter_date_start,
+                    calendar_filter_date_end,
+                    rpc_match_count,
                 )
             )
         except Exception as e:

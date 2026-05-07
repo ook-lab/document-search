@@ -1254,6 +1254,7 @@
                         documents: currentDocuments,
                         refined_query: searchData.refined_query || '',
                         date_range: searchData.date_range || '',
+                        intent_spec: searchData.intent_spec || {},
                         flow: selectedFlow,
                         max_context_chars: parseInt(document.getElementById('maxContextInput').value) || null,
                         persons: selectedPersons,
@@ -1270,6 +1271,9 @@
 
                 if (!answerData.refined_query && searchData.refined_query) {
                     answerData.refined_query = searchData.refined_query;
+                }
+                if ((!answerData.intent_spec || Object.keys(answerData.intent_spec).length === 0) && searchData.intent_spec) {
+                    answerData.intent_spec = searchData.intent_spec;
                 }
                 displayAnswer(answerData);
                 displayDocuments(currentDocuments);
@@ -1298,8 +1302,18 @@
             answerSection.style.display = 'block';
 
             const refined = (data.refined_query || '').trim();
+            const spec = data.intent_spec && typeof data.intent_spec === 'object' ? data.intent_spec : null;
+            const instr = spec && typeof spec.resolved_instruction_ja === 'string' ? spec.resolved_instruction_ja.trim() : '';
+            const lines = [];
             if (refined) {
-                refinedBox.textContent = refined;
+                lines.push(refined);
+            }
+            if (instr) {
+                lines.push(instr);
+            }
+            const block = lines.join('\n\n').trim();
+            if (block) {
+                refinedBox.textContent = block;
                 refinedSection.style.display = 'block';
             } else {
                 refinedBox.textContent = '';

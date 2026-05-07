@@ -38,6 +38,8 @@ class Settings:
     SUPABASE_ADMIN_USER_ID: str = os.getenv("SUPABASE_ADMIN_USER_ID", "")
     DATE_RANGE_THRESHOLD_DELTA: float = float(os.getenv("DATE_RANGE_THRESHOLD_DELTA", "0.0"))
     REL_SIM_MIX_EPS: float = float(os.getenv("REL_SIM_MIX_EPS", "0.0"))
+    # unified_search_v2 の LIMIT。画面で返す件数とは別（期間内で並べ替えたあと何件まで返すか）。
+    UNIFIED_SEARCH_RPC_MATCH_COUNT: int = int(os.getenv("UNIFIED_SEARCH_RPC_MATCH_COUNT", "80"))
 
 
 settings = Settings()

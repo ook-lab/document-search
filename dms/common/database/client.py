@@ -3,8 +3,9 @@ Database Client
 Supabaseデータベースへの接続と操作を管理
 """
 import re
-from typing import Dict, Any, List, Optional
 import asyncio
+from datetime import date as date_type
+from typing import Dict, Any, List, Optional
 from loguru import logger
 from supabase import create_client, Client
 from dms.common.config.settings import settings
@@ -264,6 +265,11 @@ class DatabaseClient:
         date_filter: Optional[str] = None,
         threshold: float = 0.4,
         date_range: Optional[str] = None,
+        filter_date_start: Optional[date_type] = None,
+        filter_date_end: Optional[date_type] = None,
+        calendar_filter_date_start: Optional[date_type] = None,
+        calendar_filter_date_end: Optional[date_type] = None,
+        rpc_match_count: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         ハイブリッド検索: 09_unified_documents + 10_ix_search_index を使用。
@@ -283,17 +289,26 @@ class DatabaseClient:
             検索結果のリスト（final_score 降順）
         """
         try:
+            mc = rpc_match_count if rpc_match_count is not None else settings.UNIFIED_SEARCH_RPC_MATCH_COUNT
             rpc_params = {
                 "query_text": query,
                 "query_embedding": embedding,
                 "match_threshold": -1.0,
-                "match_count": limit,
+                "match_count": mc,
                 "vector_weight": 0.7,
                 "fulltext_weight": 0.3,
                 "filter_sources": sources,
                 "filter_chunk_types": None,
                 "filter_persons": persons,
                 "filter_category": category,
+                "filter_date_start": filter_date_start.isoformat() if filter_date_start else None,
+                "filter_date_end": filter_date_end.isoformat() if filter_date_end else None,
+                "calendar_filter_date_start": calendar_filter_date_start.isoformat()
+                if calendar_filter_date_start
+                else None,
+                "calendar_filter_date_end": calendar_filter_date_end.isoformat()
+                if calendar_filter_date_end
+                else None,
             }
 
             print(f"[DEBUG] unified_search_v2 呼び出し: query='{query}', sources={sources}, persons={persons}, category={category}")
@@ -459,6 +474,11 @@ class DatabaseClient:
         date_filter: Optional[str] = None,
         threshold: float = 0.4,
         date_range: Optional[str] = None,
+        filter_date_start: Optional[date_type] = None,
+        filter_date_end: Optional[date_type] = None,
+        calendar_filter_date_start: Optional[date_type] = None,
+        calendar_filter_date_end: Optional[date_type] = None,
+        rpc_match_count: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
         同期版の search_documents（Flask エンドポイント用）
@@ -484,14 +504,44 @@ class DatabaseClient:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     result = loop.run_until_complete(
-                        self.search_documents(query, embedding, limit, sources, persons, category, date_filter, threshold, date_range)
+                        self.search_documents(
+                            query,
+                            embedding,
+                            limit,
+                            sources,
+                            persons,
+                            category,
+                            date_filter,
+                            threshold,
+                            date_range,
+                            filter_date_start,
+                            filter_date_end,
+                            calendar_filter_date_start,
+                            calendar_filter_date_end,
+                            rpc_match_count,
+                        )
                     )
                     return result
             except RuntimeError:
                 pass
 
             return asyncio.run(
-                self.search_documents(query, embedding, limit, sources, persons, category, date_filter, threshold, date_range)
+                self.search_documents(
+                    query,
+                    embedding,
+                    limit,
+                    sources,
+                    persons,
+                    category,
+                    date_filter,
+                    threshold,
+                    date_range,
+                    filter_date_start,
+                    filter_date_end,
+                    calendar_filter_date_start,
+                    calendar_filter_date_end,
+                    rpc_match_count,
+                )
             )
         except Exception as e:
             print(f"[ERROR] search_documents_sync 失敗: {e}")
