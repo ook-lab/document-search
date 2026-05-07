@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen
-from standalone.date_signals import build_date_signals
+from standalone.date_signals import build_date_signals, build_ix_search_date_list
 from standalone.scope import RAG_PREPARE_VECTORIZE_RAW_TABLES
 from standalone.ud_meta import UD_META_TABLE
 
@@ -21,7 +21,10 @@ logger = logging.getLogger(__name__)
 
 DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
 
-_UD_SELECT = "id, raw_id, raw_table, person, source, category, title, file_url, post_at, start_at, end_at, due_date, ui_data, meta, body"
+_UD_SELECT = (
+    "id, raw_id, raw_table, person, source, category, title, file_url, post_at, start_at, end_at, due_date, "
+    "snippet, from_name, from_email, location, post_type, ui_data, meta, body, ix_date_signals, ix_search_dates"
+)
 
 
 class RagPrepareSearchIndexer:
@@ -69,17 +72,30 @@ class RagPrepareSearchIndexer:
             source = ud.get("source")
             category = ud.get("category") or rt
 
-            # 09 行単位の日付シグナルを生成して meta に保持（検索専用の参照データ）
-            current_meta = ud.get("meta") if isinstance(ud.get("meta"), dict) else {}
-            row_for_signals = dict(ud)
-            row_for_signals["body"] = full_markdown
-            date_signals = build_date_signals(row_for_signals)
-            new_meta = dict(current_meta)
-            new_meta["date_signals"] = date_signals
+            raw_row = self._load_raw_row(rt, ud_raw_id)
+            sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_markdown)
+            self.db.client.table("09_unified_documents").update(sync_updates).eq("id", unified_doc_id).execute()
 
+            ud_fresh = (
+                self.db.client.table("09_unified_documents")
+                .select(_UD_SELECT)
+                .eq("id", unified_doc_id)
+                .single()
+                .execute()
+                .data
+            )
+            if not ud_fresh:
+                return False, "09 を再読込できません"
+
+            date_signals = build_date_signals(ud_fresh, merge_meta_date_signals=False, extra_text="")
+            ix_dates = build_ix_search_date_list(ud_fresh, date_signals)
             self.db.client.table("09_unified_documents").update(
-                {"body": full_markdown, "meta": new_meta}
+                {"ix_date_signals": date_signals, "ix_search_dates": ix_dates}
             ).eq("id", unified_doc_id).execute()
+
+            person = ud_fresh.get("person") or person
+            source = ud_fresh.get("source") or source
+            category = ud_fresh.get("category") or category
 
             chunks = self._plain_chunks(full_markdown, chunk_size=1200)
             self.db.client.table("10_ix_search_index").delete().eq("doc_id", unified_doc_id).execute()
@@ -127,18 +143,44 @@ class RagPrepareSearchIndexer:
         raw_table: Optional[str] = None,
         raw_id: Optional[str] = None,
     ) -> tuple[bool, Optional[str]]:
-        """09 の meta.date_signals だけ更新（インデックス再生成なし）。"""
+        """09 に raw 由来を同期したうえで ix_date_signals のみ更新（ベクトルは触らない）。"""
         try:
             ud = self._resolve_or_create_unified_document(
                 unified_doc_id=unified_doc_id, raw_table=raw_table, raw_id=raw_id
             )
             if not ud:
                 return False, "09_unified_documents が見つかりません"
-            ds = build_date_signals(ud)
-            meta = ud.get("meta") if isinstance(ud.get("meta"), dict) else {}
-            new_meta = dict(meta)
-            new_meta["date_signals"] = ds
-            self.db.client.table("09_unified_documents").update({"meta": new_meta}).eq("id", ud["id"]).execute()
+            rt = ud.get("raw_table") or ""
+            rid = ud.get("raw_id")
+            if not rt or rid is None or not str(rid).strip():
+                return False, "raw_table / raw_id がありません"
+            rid_s = str(rid).strip()
+            ctx = {"raw_id": rid_s, "raw_table": rt, "file_url": ud.get("file_url")}
+            md, md_err = self._resolve_markdown(ctx)
+            raw_row = self._load_raw_row(rt, rid_s)
+            body_existing = str(ud.get("body") or "").strip()
+            full_md = (md or "").strip() or body_existing
+            if not full_md:
+                return False, md_err or "本文がありません（raw / 09.body）"
+
+            sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_md)
+            self.db.client.table("09_unified_documents").update(sync_updates).eq("id", ud["id"]).execute()
+
+            ud_fresh = (
+                self.db.client.table("09_unified_documents")
+                .select(_UD_SELECT)
+                .eq("id", ud["id"])
+                .single()
+                .execute()
+                .data
+            )
+            if not ud_fresh:
+                return False, "09 を再読込できません"
+            ds = build_date_signals(ud_fresh, merge_meta_date_signals=False, extra_text="")
+            ix_dates = build_ix_search_date_list(ud_fresh, ds)
+            self.db.client.table("09_unified_documents").update(
+                {"ix_date_signals": ds, "ix_search_dates": ix_dates}
+            ).eq("id", ud["id"]).execute()
             return True, None
         except Exception as e:
             logger.error("date_signals update failed: %s", e, exc_info=True)
@@ -150,6 +192,7 @@ class RagPrepareSearchIndexer:
         limit: int = 200,
         person: Optional[str] = None,
         source: Optional[str] = None,
+        force: bool = False,
     ) -> Dict[str, Any]:
         """
         既存 09 行に date_signals を付与（インデックス更新はしない）。
@@ -162,7 +205,7 @@ class RagPrepareSearchIndexer:
         while updated + skipped < limit:
             q = (
                 self.db.client.table("09_unified_documents")
-                .select("id,title,post_at,start_at,end_at,due_date,ui_data,meta,body,person,source")
+                .select(_UD_SELECT)
                 .range(offset, offset + page - 1)
             )
             if person:
@@ -181,14 +224,33 @@ class RagPrepareSearchIndexer:
                 if updated + skipped >= limit:
                     break
                 try:
-                    meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
-                    if isinstance(meta.get("date_signals"), dict):
+                    ix_d = row.get("ix_search_dates") or []
+                    if not force and isinstance(ix_d, list) and len(ix_d) > 0:
                         skipped += 1
                         continue
-                    ds = build_date_signals(row)
-                    new_meta = dict(meta)
-                    new_meta["date_signals"] = ds
-                    self.db.client.table("09_unified_documents").update({"meta": new_meta}).eq("id", row["id"]).execute()
+                    rt = row.get("raw_table") or ""
+                    rid = row.get("raw_id")
+                    extra = ""
+                    if rt and rid is not None and str(rid).strip():
+                        ctx = {
+                            "raw_id": str(rid).strip(),
+                            "raw_table": rt,
+                            "file_url": row.get("file_url"),
+                        }
+                        md, _ = self._resolve_markdown(ctx)
+                        extra = (md or "").strip()
+                    body = str(row.get("body") or "").strip()
+                    text_for_dates = body or extra
+                    if not text_for_dates:
+                        errors.append(f"id={row.get('id')}: 本文なし")
+                        continue
+                    row_for = dict(row)
+                    row_for["body"] = text_for_dates
+                    ds = build_date_signals(row_for, merge_meta_date_signals=False, extra_text="")
+                    ix_dates = build_ix_search_date_list(row_for, ds)
+                    self.db.client.table("09_unified_documents").update(
+                        {"ix_date_signals": ds, "ix_search_dates": ix_dates}
+                    ).eq("id", row["id"]).execute()
                     updated += 1
                 except Exception as e:
                     errors.append(f"id={row.get('id')}: {e}")
@@ -196,6 +258,46 @@ class RagPrepareSearchIndexer:
             if len(rows) < page:
                 break
         return {"success": len(errors) == 0, "updated": updated, "skipped": skipped, "errors": errors}
+
+    @staticmethod
+    def _sync_09_from_raw_row(ud: Dict[str, Any], raw_row: Dict[str, Any], full_markdown: str) -> Dict[str, Any]:
+        """raw 行の分かる範囲で 09 の列を上書きし、統合 MD を body に載せる（meta は触らない）。"""
+        updates: Dict[str, Any] = {"body": full_markdown}
+        if not raw_row:
+            return updates
+
+        def _set_str(key: str, value: Any) -> None:
+            if value is None:
+                return
+            s = str(value).strip()
+            if s:
+                updates[key] = value if not isinstance(value, str) else s
+
+        for key in (
+            "person",
+            "source",
+            "file_url",
+            "snippet",
+            "from_name",
+            "from_email",
+            "location",
+            "post_type",
+        ):
+            _set_str(key, raw_row.get(key))
+
+        cat = raw_row.get("course_name") or raw_row.get("category")
+        _set_str("category", cat)
+
+        tit = raw_row.get("title") or raw_row.get("file_name")
+        _set_str("title", tit)
+
+        if raw_row.get("created_at") is not None:
+            updates["post_at"] = raw_row["created_at"]
+        for key in ("due_date", "start_at", "end_at"):
+            if raw_row.get(key) is not None:
+                updates[key] = raw_row[key]
+
+        return updates
 
     def _write_meta_vectorized(
         self, *, raw_table: str, raw_id: str, doc_id: str, now_iso: str

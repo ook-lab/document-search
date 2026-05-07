@@ -1,9 +1,12 @@
 """09 行単位の日付シグナル生成（パイプライン非依存）。"""
 from __future__ import annotations
 
+import json
 import re
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Tuple
+import unicodedata
+import calendar
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 
 def _safe_date(s: str) -> Optional[date]:
@@ -91,55 +94,94 @@ def _extract_partial_dates(text: str, base: date) -> List[Dict[str, Any]]:
     return out
 
 
+def _coerce_day(v: Any) -> Optional[date]:
+    """PostgREST / Python から来る日付を date に正規化。"""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date) and not isinstance(v, datetime):
+        return v
+    if isinstance(v, str) and len(v) >= 10:
+        return _safe_date(v[:10])
+    return None
+
+
 def _base_date(row: Dict[str, Any]) -> date:
     for key in ("post_at", "start_at", "end_at", "due_date"):
-        v = row.get(key)
-        if isinstance(v, str) and len(v) >= 10:
-            d = _safe_date(v[:10])
-            if d:
-                return d
+        d = _coerce_day(row.get(key))
+        if d:
+            return d
     return datetime.now().date()
 
 
-def build_date_signals(row: Dict[str, Any]) -> Dict[str, Any]:
-    """09 row -> date_signals dict."""
+def _coerce_meta(meta: Any) -> Dict[str, Any]:
+    if meta is None:
+        return {}
+    if isinstance(meta, dict):
+        return meta
+    if isinstance(meta, str) and meta.strip():
+        try:
+            loaded = json.loads(meta)
+            return loaded if isinstance(loaded, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def build_date_signals(
+    row: Dict[str, Any],
+    *,
+    extra_text: str = "",
+    merge_meta_date_signals: bool = True,
+) -> Dict[str, Any]:
+    """09 行の構造化情報＋本文から date_signals 形の dict を組み立てる。
+
+    ``extra_text`` は全文に相当する本文の追補のみ（例: 09.body 未反映の取り込み用）。
+    ``merge_meta_date_signals`` が False のとき、meta 内の旧 date_signals は取り込まない（ix_date_signals 用）。
+    """
     base = _base_date(row)
-    meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+    meta = _coerce_meta(row.get("meta"))
     body = str(row.get("body") or "")
     title = str(row.get("title") or "")
     ui_data = row.get("ui_data")
 
-    text_parts = [title, body]
+    text_parts = [title, body, (extra_text or "").strip()]
     if isinstance(ui_data, dict):
         for tl in ui_data.get("timeline") or []:
             if isinstance(tl, dict):
                 text_parts.append(str(tl.get("date") or ""))
                 text_parts.append(str(tl.get("event") or ""))
     text = "\n".join(text_parts)
+    text = unicodedata.normalize("NFKC", text)
 
     normalized_dates: List[str] = []
     normalized_ranges: List[Dict[str, str]] = []
     partial_dates: List[Dict[str, Any]] = []
 
-    existing = meta.get("date_signals") if isinstance(meta, dict) else None
-    if isinstance(existing, dict):
-        normalized_dates.extend([str(x) for x in (existing.get("normalized_dates") or [])])
-        normalized_ranges.extend([x for x in (existing.get("normalized_ranges") or []) if isinstance(x, dict)])
-        partial_dates.extend([x for x in (existing.get("partial_dates") or []) if isinstance(x, dict)])
+    if merge_meta_date_signals:
+        existing = meta.get("date_signals") if isinstance(meta, dict) else None
+        if isinstance(existing, dict):
+            normalized_dates.extend([str(x) for x in (existing.get("normalized_dates") or [])])
+            normalized_ranges.extend(
+                [x for x in (existing.get("normalized_ranges") or []) if isinstance(x, dict)]
+            )
+            partial_dates.extend([x for x in (existing.get("partial_dates") or []) if isinstance(x, dict)])
 
     # 既存 all_dates 互換
     normalized_dates.extend([str(x) for x in (meta.get("all_dates") or [])])
 
     # 構造化列
     for key in ("post_at", "start_at", "end_at", "due_date"):
-        v = row.get(key)
-        if isinstance(v, str) and len(v) >= 10 and _safe_date(v[:10]):
-            normalized_dates.append(v[:10])
-    if isinstance(row.get("start_at"), str) and isinstance(row.get("end_at"), str):
-        s = row.get("start_at", "")[:10]
-        e = row.get("end_at", "")[:10]
-        if _safe_date(s) and _safe_date(e):
-            normalized_ranges.append({"start": s, "end": e, "source_text": "start_at/end_at"})
+        cd = _coerce_day(row.get(key))
+        if cd:
+            normalized_dates.append(cd.isoformat())
+    s_d = _coerce_day(row.get("start_at"))
+    e_d = _coerce_day(row.get("end_at"))
+    if s_d and e_d:
+        normalized_ranges.append(
+            {"start": s_d.isoformat(), "end": e_d.isoformat(), "source_text": "start_at/end_at"}
+        )
 
     # 本文抽出
     normalized_dates.extend(_extract_iso_dates(text))
@@ -186,4 +228,60 @@ def build_date_signals(row: Dict[str, Any]) -> Dict[str, Any]:
         "normalized_ranges": normalized_ranges,
         "partial_dates": partial_dates,
     }
+
+
+def build_ix_search_date_list(
+    row: Dict[str, Any],
+    signals: Dict[str, Any],
+    *,
+    max_range_span: int = 400,
+) -> List[str]:
+    """
+    検索加点用 date[] に載せる全日（重複除去・昇順 ISO 文字列）。
+    09 の日付列・signals の単日・レンジ（日単位展開）・月粒度（その月の全日）を集約する。
+    """
+    acc: set[date] = set()
+
+    for key in ("post_at", "start_at", "end_at", "due_date"):
+        d = _coerce_day(row.get(key))
+        if d:
+            acc.add(d)
+
+    for s in signals.get("normalized_dates") or []:
+        d = _safe_date(str(s)[:10])
+        if d:
+            acc.add(d)
+
+    for r in signals.get("normalized_ranges") or []:
+        if not isinstance(r, dict):
+            continue
+        sa = _safe_date(str(r.get("start") or "")[:10])
+        ea = _safe_date(str(r.get("end") or "")[:10])
+        if not sa or not ea or ea < sa:
+            continue
+        n = 0
+        cur = sa
+        while cur <= ea and n < max_range_span:
+            acc.add(cur)
+            cur = cur + timedelta(days=1)
+            n += 1
+
+    for p in signals.get("partial_dates") or []:
+        if not isinstance(p, dict):
+            continue
+        try:
+            y = int(p.get("year"))
+            m = int(p.get("month"))
+        except Exception:
+            continue
+        if m < 1 or m > 12:
+            continue
+        _, last = calendar.monthrange(y, m)
+        for day in range(1, last + 1):
+            try:
+                acc.add(date(y, m, day))
+            except Exception:
+                pass
+
+    return sorted({d.isoformat() for d in acc})
 

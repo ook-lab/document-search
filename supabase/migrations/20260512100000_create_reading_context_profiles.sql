@@ -18,6 +18,9 @@ CREATE INDEX IF NOT EXISTS reading_context_profiles_owner_idx
 CREATE INDEX IF NOT EXISTS reading_context_profiles_owner_updated_idx
     ON public.reading_context_profiles (owner_id, updated_at DESC);
 
+CREATE INDEX IF NOT EXISTS reading_context_profiles_owner_person_idx
+    ON public.reading_context_profiles (owner_id, person_name, updated_at DESC);
+
 COMMENT ON TABLE public.reading_context_profiles IS '読み込みコンテキスト: エディタ状態 + AI 向け JSON/Markdown';
 COMMENT ON COLUMN public.reading_context_profiles.person_name IS 'このコンテキストが紐づく人の名前';
 COMMENT ON COLUMN public.reading_context_profiles.editor_document IS '{"version":1,"tables":[pair|grid],"text_sections":[{title,body}]}';

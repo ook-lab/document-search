@@ -1015,30 +1015,6 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
     return date_range
 
 
-def _extract_document_date(doc: Dict[str, Any]) -> Optional[date]:
-    signals = doc.get("date_signals") or {}
-    for d in signals.get("normalized_dates") or []:
-        try:
-            return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
-        except Exception:
-            continue
-    candidates = [
-        doc.get("document_date"),
-        doc.get("post_at"),
-        doc.get("start_at"),
-        doc.get("date"),
-    ]
-    for v in candidates:
-        if not isinstance(v, str) or not v.strip():
-            continue
-        s = v.strip()[:10]
-        try:
-            return datetime.strptime(s, "%Y-%m-%d").date()
-        except Exception:
-            continue
-    return None
-
-
 def _apply_date_match_bonus(results: List[Dict[str, Any]], date_range: str, query: str = "") -> List[Dict[str, Any]]:
     """
     加点ルール:
@@ -1058,54 +1034,23 @@ def _apply_date_match_bonus(results: List[Dict[str, Any]], date_range: str, quer
         base = float(doc.get("similarity") or doc.get("score") or 0.0)
         bonus = 0.0
         if start_d and end_d:
-            signals = doc.get("date_signals") or {}
-            # 単日群（09行単位）
-            for ds in signals.get("normalized_dates") or []:
-                try:
-                    dd = datetime.strptime(str(ds)[:10], "%Y-%m-%d").date()
-                except Exception:
-                    continue
-                if start_d <= dd <= end_d:
-                    bonus = max(bonus, 0.35)
-                else:
-                    dist = min(abs((dd - start_d).days), abs((dd - end_d).days))
-                    if dist <= 7:
-                        bonus = max(bonus, 0.20)
-                    elif dist <= 14:
-                        bonus = max(bonus, 0.10)
-                    elif specified_month and dd.month == specified_month:
-                        bonus = max(bonus, 0.10)
-            # 範囲群（09行単位）
-            for rg in signals.get("normalized_ranges") or []:
-                try:
-                    rs = datetime.strptime(str(rg.get("start"))[:10], "%Y-%m-%d").date()
-                    re_ = datetime.strptime(str(rg.get("end"))[:10], "%Y-%m-%d").date()
-                except Exception:
-                    continue
-                if rs <= end_d and re_ >= start_d:
-                    bonus = max(bonus, 0.35)
-            # 月粒度（day:null）
-            if specified_month:
-                for pd in signals.get("partial_dates") or []:
+            days = doc.get("ix_search_dates") or []
+            if isinstance(days, list):
+                for raw_d in days:
                     try:
-                        if int(pd.get("month") or 0) == specified_month:
-                            bonus = max(bonus, 0.10)
+                        dd = datetime.strptime(str(raw_d)[:10], "%Y-%m-%d").date()
                     except Exception:
                         continue
-            # 互換: signals がない古い行向け
-            if bonus == 0.0:
-                dd = _extract_document_date(doc)
-                if dd:
                     if start_d <= dd <= end_d:
-                        bonus = 0.35
+                        bonus = max(bonus, 0.35)
                     else:
                         dist = min(abs((dd - start_d).days), abs((dd - end_d).days))
                         if dist <= 7:
-                            bonus = 0.20
+                            bonus = max(bonus, 0.20)
                         elif dist <= 14:
-                            bonus = 0.10
+                            bonus = max(bonus, 0.10)
                         elif specified_month and dd.month == specified_month:
-                            bonus = 0.10
+                            bonus = max(bonus, 0.10)
         d = dict(doc)
         d["date_bonus"] = bonus
         d["final_score"] = round(base + bonus, 6)

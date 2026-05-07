@@ -230,6 +230,18 @@
             font-weight: 600;
         }
 
+        .refined-query-box {
+            background: #fafafa;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px 18px;
+            font-size: 15px;
+            line-height: 1.65;
+            color: #1e293b;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         .document-list {
             display: grid;
             gap: 15px;
@@ -824,6 +836,11 @@
                     <div class="answer-box" id="answerBox"></div>
                 </div>
 
+                <div id="refinedQuerySection" style="display: none;">
+                    <h2 class="section-title">正規化済み質問</h2>
+                    <div class="refined-query-box" id="refinedQueryBox"></div>
+                </div>
+
                 <!-- 検索結果 -->
                 <div id="documentsSection" style="display: none;">
                     <h2 class="section-title">関連文書</h2>
@@ -1251,7 +1268,9 @@
                     throw new Error(answerData.error || '回答生成に失敗しました');
                 }
 
-                // 結果表示
+                if (!answerData.refined_query && searchData.refined_query) {
+                    answerData.refined_query = searchData.refined_query;
+                }
                 displayAnswer(answerData);
                 displayDocuments(currentDocuments);
                 showResults();
@@ -1266,6 +1285,8 @@
         function displayAnswer(data) {
             const answerBox = document.getElementById('answerBox');
             const answerSection = document.getElementById('answerSection');
+            const refinedSection = document.getElementById('refinedQuerySection');
+            const refinedBox = document.getElementById('refinedQueryBox');
 
             const modelInfo = `モデル: ${data.provider} / ${data.model}`;
 
@@ -1275,6 +1296,15 @@
             `;
 
             answerSection.style.display = 'block';
+
+            const refined = (data.refined_query || '').trim();
+            if (refined) {
+                refinedBox.textContent = refined;
+                refinedSection.style.display = 'block';
+            } else {
+                refinedBox.textContent = '';
+                refinedSection.style.display = 'none';
+            }
         }
 
         function displayDocuments(documents) {
@@ -1428,6 +1458,7 @@
         function hideResults() {
             document.getElementById('resultsSection').classList.remove('active');
             document.getElementById('answerSection').style.display = 'none';
+            document.getElementById('refinedQuerySection').style.display = 'none';
             document.getElementById('documentsSection').style.display = 'none';
         }
 

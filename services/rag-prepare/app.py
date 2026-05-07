@@ -115,11 +115,12 @@ def _run_date_signals_backfill():
     limit = int(data.get("limit") or 200)
     person = (data.get("person") or "").strip() or None
     source = (data.get("source") or "").strip() or None
+    force = bool(data.get("force"))
     IndexerClass, _ = get_indexer_tools()
     if not IndexerClass:
         return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
     indexer = IndexerClass()
-    result = indexer.backfill_date_signals(limit=limit, person=person, source=source)
+    result = indexer.backfill_date_signals(limit=limit, person=person, source=source, force=force)
     return jsonify(result)
 
 @app.route('/process', methods=['POST'])
