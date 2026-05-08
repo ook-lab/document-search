@@ -20,10 +20,33 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
+# カレンダー主軸（date_range / calendar_primary）の開始・終了から、RPC filter_date 用に広げる暦日数（1暦月は使わずこの値のみ）
+SEARCH_CALENDAR_MARGIN_DAYS = 30
+
 # クライアントの遅延初期化（Cloud Run起動高速化）
 db_client = None
 llm_client = None
 query_expander = None
+
+
+def _to_halfwidth_digits(s: str) -> str:
+    """全角数字を半角に（週・日付の正規表現がマッチするようにする）。"""
+    if not s:
+        return s
+    return str(s).translate(str.maketrans("０１２３４５６７８９", "0123456789"))
+
+
+def _query_implies_calendar_week(query: str) -> bool:
+    q = _to_halfwidth_digits((query or "").strip())
+    if not q:
+        return False
+    if "来週" in q:
+        return True
+    if "明日" in q and "から" in q and ("一週間" in q or "1週間" in q):
+        return True
+    if re.search(r"(?:(\d{1,2})月\s*)?(\d{1,2})日(?:を含む)?の?週", q):
+        return True
+    return bool(re.search(r"\d{1,2}/\d{1,2}(?:を含む)?の?週", q))
 
 
 def _parse_date_range_bounds(date_range: str) -> Tuple[Optional[date], Optional[date]]:
@@ -42,10 +65,32 @@ def _format_date_range_bounds(start_d: date, end_d: date) -> str:
     return f"{start_d.isoformat()}..{end_d.isoformat()}"
 
 
+def _canonical_date_range_literal(date_range: str) -> str:
+    """パースに成功したときだけ YYYY-MM-DD..YYYY-MM-DD の1形式。失敗時は空文字。"""
+    a, b = _parse_date_range_bounds((date_range or "").strip())
+    if a is None or b is None:
+        return ""
+    return _format_date_range_bounds(a, b)
+
+
+def _apply_mandatory_search_query_range(refined_query: str, date_range: str) -> str:
+    """
+    date_range がパース可能なとき、検索用文字列の先頭に date_range と同一のリテラルを1回だけ付与する。
+    付与はこの関数のみで行い、LLM の任意生成に依存しない。
+    """
+    lit = _canonical_date_range_literal(date_range)
+    if not lit:
+        return (refined_query or "").strip()
+    rq = (refined_query or "").strip()
+    if rq == lit or rq.startswith(lit + " "):
+        return rq
+    return f"{lit} {rq}".strip()
+
+
 def _focal_range_string_for_scoring(refined_date_range: str, wide_lo: date, wide_hi: date) -> str:
     """
     RPC 用の広い窓とは別に、加点の主軸として使う狭いレンジ。
-    正規化で日付レンジが付いていればそれを使い、無ければ広い窓に合わせる（傾斜が潰れないようにする）。
+    正規化で日付レンジが付いていればそれを使い、無ければ広い窓の両端を使う（加点の解像度を保つ）。
     """
     t = (refined_date_range or "").strip()
     if t and ".." in t:
@@ -69,7 +114,8 @@ def _calendar_rpc_date_bounds(refined_date_range: str) -> Tuple[Optional[date], 
 def _fill_intent_spec_ranges(intent_spec: Dict[str, Any], date_range: str, context_days: int = 14) -> None:
     """
     intent_spec に日付レンジを補完する。
-    document_context_range が空で calendar_primary_range が一日なら前後 context_days 日を付与。
+    calendar が複数日（週など）のときは document_context_range を主軸の前後 SEARCH_CALENDAR_MARGIN_DAYS 暦日にする。
+    calendar が単日で document が空のときは focal の前後 context_days 日。
     """
     if not isinstance(intent_spec, dict):
         return
@@ -84,7 +130,9 @@ def _fill_intent_spec_ranges(intent_spec: Dict[str, Any], date_range: str, conte
     if start_d is None or end_d is None:
         return
     if start_d != end_d:
-        intent_spec["document_context_range"] = cal
+        lo = start_d - timedelta(days=SEARCH_CALENDAR_MARGIN_DAYS)
+        hi = end_d + timedelta(days=SEARCH_CALENDAR_MARGIN_DAYS)
+        intent_spec["document_context_range"] = _format_date_range_bounds(lo, hi)
         return
     focal = start_d
     lo = focal - timedelta(days=context_days)
@@ -97,6 +145,9 @@ def _fill_intent_spec_ranges(intent_spec: Dict[str, Any], date_range: str, conte
 
 def _normalize_intent_spec_dict(raw: Any, query: str, date_range: str) -> Dict[str, Any]:
     """LLM 出力を intent_spec 形に正す。欠損は補う。"""
+    lit = _canonical_date_range_literal(date_range)
+    if lit:
+        date_range = lit
     spec: Dict[str, Any]
     if isinstance(raw, dict):
         spec = dict(raw)
@@ -111,7 +162,33 @@ def _normalize_intent_spec_dict(raw: Any, query: str, date_range: str) -> Dict[s
     if not (spec.get("calendar_primary_range") or "").strip() and date_range:
         spec["calendar_primary_range"] = date_range.strip()
     _fill_intent_spec_ranges(spec, date_range)
-    if not (spec.get("resolved_instruction_ja") or "").strip():
+    dr_clean = (date_range or "").strip()
+    week_instruction_forced = False
+    if _query_implies_calendar_week(query) and dr_clean and ".." in dr_clean:
+        a, b = _parse_date_range_bounds(dr_clean)
+        if a is not None and b is not None and (b - a).days >= 6:
+            spec["calendar_primary_range"] = dr_clean
+            cur = a
+            fds: List[str] = []
+            while cur <= b:
+                fds.append(cur.isoformat())
+                cur += timedelta(days=1)
+            spec["focal_dates"] = fds
+            _fill_intent_spec_ranges(spec, dr_clean)
+            doc_rng = (spec.get("document_context_range") or "").strip()
+            if not doc_rng:
+                doc_rng = _format_date_range_bounds(
+                    a - timedelta(days=SEARCH_CALENDAR_MARGIN_DAYS),
+                    b + timedelta(days=SEARCH_CALENDAR_MARGIN_DAYS),
+                )
+            spec["resolved_instruction_ja"] = (
+                f"(1) 質問の意図（原文）: {query}\n"
+                f"(2) 暦の区間 {a.isoformat()} から {b.isoformat()} までに該当する予定・イベントを、根拠付きで列挙せよ（この区間外を主答えにしてはならない）。\n"
+                f"(3) 関連文書は暦の区間 {doc_rng} と日付が重なるチャンクのみを根拠として用いよ。\n"
+                f"(4) 不足は不確実性に書け。"
+            )
+            week_instruction_forced = True
+    if not week_instruction_forced and not (spec.get("resolved_instruction_ja") or "").strip():
         spec["resolved_instruction_ja"] = (
             "ユーザーの発話を手がかりに、文書群から答えを構成せよ。\n"
             f"元の質問: {query}\n"
@@ -262,6 +339,11 @@ def search_documents():
         intent_spec = refined.get("intent_spec")
         if not isinstance(intent_spec, dict):
             intent_spec = {}
+        lit0 = _canonical_date_range_literal(date_range)
+        if lit0:
+            date_range = lit0
+        intent_spec = _normalize_intent_spec_dict(intent_spec, query, date_range)
+        refined_query = _apply_mandatory_search_query_range(refined_query, date_range)
         print(f"[INFO] 検索正規化: '{query}' -> '{refined_query}' / date_range={date_range}", flush=True)
 
         # クエリ拡張を適用（有効な場合）
@@ -280,6 +362,8 @@ def search_documents():
                 print(f"[DEBUG] クエリ拡張適用: '{refined_query}' → '{expanded_query}'")
             else:
                 print(f"[DEBUG] クエリ拡張スキップ: '{expanded_query}'")
+
+        expanded_query = _apply_mandatory_search_query_range(expanded_query, date_range)
 
         # Step2: ベクトル化（表記クエリ + intent の手順文を連結。全文検索側の query_text は expanded_query のまま）
         embedding = llm_client.generate_embedding(_embedding_from_refine(expanded_query, intent_spec))
@@ -436,8 +520,12 @@ def generate_answer():
         # Step1: クエリ改善（Flash-lite固定）※検索結果から渡されていればそれを優先
         if client_refined_query:
             refined_query = client_refined_query
-            date_range = client_date_range
-            intent_spec = _normalize_intent_spec_dict(client_intent_spec, query, date_range)
+            date_range = _normalize_week_range_by_rule(
+                query=query,
+                today=today,
+                date_range=client_date_range,
+            )
+            intent_spec = client_intent_spec if isinstance(client_intent_spec, dict) else {}
             print(f"[INFO] クエリ改善(検索受け渡し): '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
         else:
             selected_persons = persons if isinstance(persons, list) else []
@@ -452,6 +540,13 @@ def generate_answer():
             if not isinstance(intent_spec, dict):
                 intent_spec = {}
             print(f"[INFO] クエリ改善: '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
+
+        lit_ans = _canonical_date_range_literal(date_range)
+        if lit_ans:
+            date_range = lit_ans
+        intent_spec = _normalize_intent_spec_dict(intent_spec, query, date_range)
+        refined_query = _apply_mandatory_search_query_range(refined_query, date_range)
+
         query_for_llm = _query_with_intent_for_prompt(query, intent_spec)
         print(f"[INFO] フィルタ: persons={persons}, sources={sources}, categories={categories}", flush=True)
 
@@ -727,7 +822,7 @@ def _refine_query(
 出力は JSON オブジェクト 1 個のみ（前後に説明文を付けない）。
 
 【必須キー】
-- query: 検索ベクトル用の自然語（助詞や記号だけ削って終わりにしない。趣旨が増えるように書く）
+- query: 検索ベクトル用の自然語（趣旨・人物・種別のみ。date_range が空でないときは query に YYYY-MM-DD 形式の暦や「を含む週」「5/9から一週間」「明日から一週間」等の暦口語を含めない。暦の区間は date_range のキーだけに置く。サーバは date_range と同一の "YYYY-MM-DD..YYYY-MM-DD" リテラルを検索用文字列の先頭へ1回だけ機械的に付与する）
 - date_range: 質問の主軸となる暦日レンジ "YYYY-MM-DD..YYYY-MM-DD"。日付が無ければ ""
 - intent_spec: 下流モデル向けの固定スキーマ（必ずオブジェクト）
   - version: 1（整数）
@@ -739,11 +834,15 @@ def _refine_query(
       (4) 最終回答の形（列挙・比較・要約など）
   - focal_dates: 主眼の日付の配列（各要素 YYYY-MM-DD）
   - calendar_primary_range: カレンダー検索の主レンジ "YYYY-MM-DD..YYYY-MM-DD"（無ければ ""）
-  - document_context_range: 関連文書を拾う暦レンジ。単日の予定質問では focal の前後約14日が妥当。不明なら ""（空ならサーバが補完可）
+  - document_context_range: 関連文書用。空のときサーバが補う。calendar_primary が複数日（週など）のときは **calendar の開始日から {SEARCH_CALENDAR_MARGIN_DAYS} 暦日前、終了日から {SEARCH_CALENDAR_MARGIN_DAYS} 暦日後**（1暦月は使わない）。単一日のみのときは focal の前後約14日
 
-【日付ルール】
+【日付ルール】（はい／いいえで検算できることのみ書く）
+- すべての暦は **YYYY-MM-DD**（JSON の date_range / calendar_primary_range / focal_dates）
 - 相対日は今日 {today} を基準に絶対化する
-- 「来週」「〇日の週」は週レンジを日曜起点（開始=日曜, 終了=次の日曜）
+- 「明日から一週間」「明日から1週間」は **開始=明日、終了=明日+7暦日**（例: 今日が 2026-05-08 なら **2026-05-09..2026-05-16**）。「5/9から一週間」のような口語だけを resolved_instruction に残してはならない（サーバが上書きする）
+- 「来週」「M月D日の週」「M/Dの週」「D日の週」はいずれも **週＝その日が属する週の日曜からちょうど7日後の日曜まで**（終端は開始+7日）。例: 2026年で「5/11の週」は **2026-05-10..2026-05-17**（5/10が日曜、5/17が次の日曜）
+- RPC の広い検索窓（filter_date）は **date_range の開始日から {SEARCH_CALENDAR_MARGIN_DAYS} 暦日前、終了日から {SEARCH_CALENDAR_MARGIN_DAYS} 暦日後**。暦1か月は使わない
+- date_range が空でないとき、query に暦の区間を書いてはならない（暦は date_range のみ）
 - 読み込みコンテキストはここでのみ参照する
 
 今日の日付: {today}
@@ -752,7 +851,7 @@ def _refine_query(
 元の質問: {query}
 
 参考（構造の例。内容は質問に合わせて変えよ。今日が {today} のとき）:
-{{"query":"本日の予定と前後2週の関連文書を列挙する","date_range":"{today}..{today}","intent_spec":{{"version":1,"task":"schedule_day_with_related_context","resolved_instruction_ja":"(1) ユーザーは本日の予定を把握したい。(2) カレンダー由来の情報から calendar_primary_range に含まれる日の予定・イベントをすべて抽出する。(3) 提出物・連絡・参加・宿題など予定に関連しうる文書は、document_context_range と日付が重なるものを抽出する。(4) (2)(3)を統合し時系列で列挙して答え、不足は不確実性に書く。","focal_dates":["{today}"],"calendar_primary_range":"{today}..{today}","document_context_range":""}}}}
+{{"query":"予定・提出・連絡の列挙","date_range":"{today}..{today}","intent_spec":{{"version":1,"task":"schedule_day_with_related_context","resolved_instruction_ja":"(1) ユーザーは本日の予定を把握したい。(2) カレンダー由来の情報から calendar_primary_range に含まれる日の予定・イベントをすべて抽出する。(3) 提出物・連絡・参加・宿題など予定に関連しうる文書は、document_context_range と日付が重なるものを抽出する。(4) (2)(3)を統合し時系列で列挙して答え、不足は不確実性に書く。","focal_dates":["{today}"],"calendar_primary_range":"{today}..{today}","document_context_range":""}}}}
 出力:"""
     response = llm_client.call_model(
         tier="ui_response",
@@ -781,15 +880,20 @@ def _refine_query(
                     raw_spec = _json.loads(raw_spec)
                 except Exception:
                     raw_spec = {}
-            intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
-            cal = (intent_spec.get("calendar_primary_range") or "").strip()
+            cal = ""
+            if isinstance(raw_spec, dict):
+                cal = (raw_spec.get("calendar_primary_range") or "").strip()
             if not dr and cal and ".." in cal:
                 dr = _normalize_week_range_by_rule(
                     query=query,
                     today=today,
                     date_range=cal,
                 )
-                intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
+            lit = _canonical_date_range_literal(dr)
+            if lit:
+                dr = lit
+            intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
+            q = _apply_mandatory_search_query_range(q, dr)
             return {"query": q, "date_range": dr, "intent_spec": intent_spec}
         except Exception:
             pass
@@ -1178,15 +1282,16 @@ def _to_sunday_start(d: date) -> date:
 
 def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> str:
     """
-    週の解釈をユーザー指定に固定:
-    - 来週: 次の日曜〜その次の日曜
-    - 何日の週: その日を含む日曜〜次の日曜（当日が日曜なら当日〜次の日曜）
+    暦の固定化（返すのは常に YYYY-MM-DD..YYYY-MM-DD の2端）:
+    - 来週: 次の日曜〜その7日後の日曜
+    - 明日から一週間: 開始=明日、終了=明日+7暦日（例: 今日が 2026-05-08 なら 2026-05-09..2026-05-16）
+    - 「M/Dの週」「M月D日の週」: その日を含む週の日曜から+7日後の日曜（例: 2026年「5/11の週」→ 2026-05-10..2026-05-17）
     """
-    q = (query or "").strip()
+    q = _to_halfwidth_digits((query or "").strip())
     if not q:
         return date_range
     try:
-        base_today = datetime.strptime(today, "%Y-%m-%d").date()
+        base_today = datetime.strptime(_to_halfwidth_digits(str(today).strip()[:10]), "%Y-%m-%d").date()
     except Exception:
         base_today = datetime.now().date()
 
@@ -1194,6 +1299,26 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
     if "来週" in q:
         this_sunday = _to_sunday_start(base_today)
         start = this_sunday + timedelta(days=7)
+        end = start + timedelta(days=7)
+        return f"{start.isoformat()}..{end.isoformat()}"
+
+    # 明日から一週間（終了=明日+7暦日。例: 今日 2026-05-08 → 2026-05-09..2026-05-16）
+    if "明日" in q and "から" in q and ("一週間" in q or "1週間" in q):
+        start = base_today + timedelta(days=1)
+        end = start + timedelta(days=7)
+        return f"{start.isoformat()}..{end.isoformat()}"
+
+    # 「M/Dの週」「M/Dを含む週」（西暦年は today の年。パース不能なら date_range をそのまま返す）
+    m_slash = re.search(r"(\d{1,2})/(\d{1,2})(?:を含む)?の?週", q)
+    if m_slash:
+        month = int(m_slash.group(1))
+        day = int(m_slash.group(2))
+        year = base_today.year
+        try:
+            d = date(year, month, day)
+        except Exception:
+            return date_range
+        start = _to_sunday_start(d)
         end = start + timedelta(days=7)
         return f"{start.isoformat()}..{end.isoformat()}"
 
@@ -1217,7 +1342,7 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
 def _ix_search_dates_parsed(doc: Dict[str, Any]) -> List[date]:
     """
     09_unified_documents.ix_search_dates（検索用にフラット化した日付集約）だけを使う。
-    document_date や post_at 単体には寄せない（集約と二重解釈になるため）。
+    document_date や post_at 単体は使わない（集約と二重解釈になるため）。
     """
     out: List[date] = []
     raw = doc.get("ix_search_dates") or []
@@ -1235,7 +1360,7 @@ def _resolve_retrieval_date_window(user_query: str, refined_date_range: str, tod
     """
     検索に使う暦の窓（閉区間）を決める。
     - 去年・昨年: 前年の1/1〜12/31
-    - 正規化で日付レンジが付いているとき（固定の日・週・月など）: その範囲の前後約30日
+    - date_range が YYYY-MM-DD..YYYY-MM-DD でパースできたとき: 開始日から SEARCH_CALENDAR_MARGIN_DAYS 暦日前、終了日から同数暦日後（1暦月は使わない）
     - それ以外: 今日を起点に前後約1年
     """
     q = (user_query or "").strip()
@@ -1248,7 +1373,7 @@ def _resolve_retrieval_date_window(user_query: str, refined_date_range: str, tod
 
     s, e = _parse_date_range_bounds(refined_date_range or "")
     if s is not None and e is not None:
-        return s - timedelta(days=30), e + timedelta(days=30)
+        return s - timedelta(days=SEARCH_CALENDAR_MARGIN_DAYS), e + timedelta(days=SEARCH_CALENDAR_MARGIN_DAYS)
 
     try:
         t0 = date.fromisoformat(str(today).strip()[:10])
