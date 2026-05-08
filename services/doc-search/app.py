@@ -262,6 +262,15 @@ def _calendar_premise_lines(rows: List[Dict[str, Any]], max_lines: int = 30) -> 
     return out
 
 
+def _strip_existing_calendar_premise_block(text: str) -> str:
+    """検索→回答で refined_query を受け渡すとき、既に付いた【前提知識】を削って二重注入を防ぐ。"""
+    s = (text or "").strip()
+    marker = "【前提知識】"
+    if not s or marker not in s:
+        return s
+    return s.split(marker, 1)[0].rstrip()
+
+
 def _inject_calendar_premise_into_query(
     refined_query: str,
     target_date_range: str,
@@ -271,7 +280,7 @@ def _inject_calendar_premise_into_query(
     正規化質問に「対象日付」と「機械ヒットしたカレンダー予定」を前提知識として付与する。
     検索窓（広い filter_date_*）はここに書かない。
     """
-    base = (refined_query or "").strip()
+    base = _strip_existing_calendar_premise_block(refined_query)
     tdr = (target_date_range or "").strip()
     lines = _calendar_premise_lines(calendar_rows)
     if not tdr and not lines:
@@ -323,6 +332,49 @@ def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _parse_row_date_field(val: Any) -> Optional[date]:
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    s = str(val).strip()
+    if len(s) >= 10:
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _calendar_event_overlaps_range(row: Dict[str, Any], lo: date, hi: date) -> bool:
+    """イベントが閉区間 [lo, hi] と暦日で重なるか。ix_search_dates は列が太いことがあり使わない。"""
+    sa = row.get("start_at")
+    ea = row.get("end_at")
+    s_d = _parse_row_date_field(sa)
+    e_d = _parse_row_date_field(ea)
+    end_missing = ea is None or (isinstance(ea, str) and not ea.strip())
+    if s_d is not None and e_d is not None:
+        if s_d <= hi and e_d >= lo:
+            return True
+    if s_d is not None and (end_missing or e_d is None):
+        if lo <= s_d <= hi:
+            return True
+    pa = _parse_row_date_field(row.get("post_at"))
+    if pa is not None and lo <= pa <= hi:
+        return True
+    du = _parse_row_date_field(row.get("due_date"))
+    if du is not None and lo <= du <= hi:
+        return True
+    d0 = _calendar_row_date_str(row)
+    if d0:
+        try:
+            d = date.fromisoformat(d0)
+            return lo <= d <= hi
+        except ValueError:
+            pass
+    return False
+
+
 def _machine_hit_calendar_rows(
     db_client,
     date_range: str,
@@ -357,22 +409,21 @@ def _machine_hit_calendar_rows(
 
     start = s.isoformat()
     end = e.isoformat()
-    # 完全重なり判定（start/end）と単日列の双方を拾う。
+    # 片側だけの lte / gte は「終了日以前の全イベント」等になり誤爆するため禁止。
+    # 区間重なり or 単一時刻が閉区間内 or post_at / due_date が閉区間内。
     q = q.or_(
         ",".join(
             [
                 f"and(start_at.not.is.null,end_at.not.is.null,start_at.lte.{end},end_at.gte.{start})",
-                f"start_at.gte.{start}",
-                f"start_at.lte.{end}",
-                f"post_at.gte.{start}",
-                f"post_at.lte.{end}",
-                f"due_date.gte.{start}",
-                f"due_date.lte.{end}",
+                f"and(start_at.not.is.null,start_at.gte.{start},start_at.lte.{end})",
+                f"and(post_at.not.is.null,post_at.gte.{start},post_at.lte.{end})",
+                f"and(due_date.not.is.null,due_date.gte.{start},due_date.lte.{end})",
             ]
         )
     )
     resp = q.limit(limit).execute()
     rows = resp.data or []
+    rows = [r for r in rows if _calendar_event_overlaps_range(r, s, e)]
     rows.sort(key=lambda r: (_calendar_row_date_str(r), str(r.get("title") or "")))
     return rows
 
