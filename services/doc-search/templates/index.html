@@ -1348,6 +1348,17 @@
             documentsSection.style.display = 'block';
         }
 
+        /** 検索APIの combined_score。カレンダー行は「類似度」ではなく検索並び用スコアであることを明示する。 */
+        function renderScoreBadge(doc) {
+            const v = Number(doc.similarity || 0).toFixed(2);
+            if (doc.source === 'Googleカレンダー') {
+                const tip = '1イベント1行。値はその行の代表チャンクに対するハイブリッド検索スコア（文書全体の類似度ではありません）';
+                return `<span class="similarity-badge" title="${escapeHtml(tip)}">検索スコア: ${v}</span>`;
+            }
+            const tip = '文書内でクエリに最も近い1チャンクのスコアです（文書全体のベクトル平均ではありません）';
+            return `<span class="similarity-badge" title="${escapeHtml(tip)}">類似度: ${v}</span>`;
+        }
+
         function renderClassroomPost(doc) {
             // タイトル（09_unified_documents.title）
             let title = doc.title || '';
@@ -1406,7 +1417,7 @@
                 <div class="document-card">
                     ${title ? `<div class="document-title">📘 ${escapeHtml(title)}</div>` : ''}
                     <div class="document-meta">
-                        <span class="similarity-badge">類似度: ${(doc.similarity || 0).toFixed(2)}</span>
+                        ${renderScoreBadge(doc)}
                         <span style="color: #1565c0; font-weight: 500;">📚 ${escapeHtml(postType)}</span>
                     </div>
                     <div class="classroom-post">
@@ -1441,7 +1452,7 @@
                 <div class="document-card">
                     <div class="document-title">${escapeHtml(title)}</div>
                     <div class="document-meta">
-                        <span class="similarity-badge">類似度: ${(doc.similarity || 0).toFixed(2)}</span>
+                        ${renderScoreBadge(doc)}
                     </div>
                     <div class="document-content">
                         ${escapeHtml(displayText)}

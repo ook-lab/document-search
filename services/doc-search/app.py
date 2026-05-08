@@ -235,6 +235,148 @@ def _query_with_intent_for_prompt(user_query: str, intent_spec: Optional[Dict[st
     )
 
 
+def _calendar_row_date_str(row: Dict[str, Any]) -> str:
+    """カレンダー行の代表日（YYYY-MM-DD）を返す。取れない場合は空文字。"""
+    raw = row.get("start_at") or row.get("post_at") or row.get("due_date")
+    if raw is None:
+        return ""
+    if isinstance(raw, datetime):
+        return raw.date().isoformat()
+    s = str(raw).strip()
+    return s[:10] if len(s) >= 10 else ""
+
+
+def _calendar_premise_lines(rows: List[Dict[str, Any]], max_lines: int = 30) -> List[str]:
+    """
+    機械ヒットしたカレンダー予定を、質問前提へ注入するための箇条書きへ整形。
+    """
+    out: List[str] = []
+    for row in rows[:max_lines]:
+        d = _calendar_row_date_str(row)
+        title = str(row.get("title") or "（無題予定）").strip()
+        location = str(row.get("location") or "").strip()
+        if location:
+            out.append(f"- {d} {title} @ {location}")
+        else:
+            out.append(f"- {d} {title}")
+    return out
+
+
+def _inject_calendar_premise_into_query(
+    refined_query: str,
+    target_date_range: str,
+    calendar_rows: List[Dict[str, Any]],
+) -> str:
+    """
+    正規化質問に「対象日付」と「機械ヒットしたカレンダー予定」を前提知識として付与する。
+    検索窓（広い filter_date_*）はここに書かない。
+    """
+    base = (refined_query or "").strip()
+    tdr = (target_date_range or "").strip()
+    lines = _calendar_premise_lines(calendar_rows)
+    if not tdr and not lines:
+        return base
+    premise_parts: List[str] = []
+    if tdr:
+        premise_parts.append(f"対象日付: {tdr}")
+    if lines:
+        premise_parts.append("機械ヒットしたカレンダー予定:")
+        premise_parts.extend(lines)
+    premise = "\n".join(premise_parts).strip()
+    if not premise:
+        return base
+    if base:
+        return f"{base}\n\n【前提知識】\n{premise}"
+    return f"【前提知識】\n{premise}"
+
+
+def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
+    """09_unified_documents のカレンダー行を検索結果形式へ変換。"""
+    raw_date = row.get("start_at") or row.get("post_at")
+    document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
+    return {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "source": row.get("source"),
+        "person": row.get("person"),
+        "category": row.get("category"),
+        "snippet": row.get("snippet"),
+        "post_at": row.get("post_at"),
+        "start_at": row.get("start_at"),
+        "end_at": row.get("end_at"),
+        "due_date": row.get("due_date"),
+        "location": row.get("location"),
+        "file_url": row.get("file_url"),
+        "ui_data": row.get("ui_data"),
+        "meta": row.get("meta"),
+        "document_date": document_date,
+        "ix_search_dates": row.get("ix_search_dates") or [],
+        "chunk_content": row.get("snippet") or row.get("title") or "",
+        "chunk_id": None,
+        "chunk_index": None,
+        "chunk_type": "calendar_row",
+        "all_chunks": [],
+        "document_body": "",
+        "similarity": 1.0,
+        "final_score": 1.0,
+        "is_date_matched": True,
+    }
+
+
+def _machine_hit_calendar_rows(
+    db_client,
+    date_range: str,
+    persons: Optional[List[str]] = None,
+    sources: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    limit: int = 200,
+) -> List[Dict[str, Any]]:
+    """
+    カレンダーのみ機械ヒット（非ベクトル）。
+    source='Googleカレンダー' かつ対象日付レンジに重なる行を取得する。
+    """
+    s, e = _parse_date_range_bounds((date_range or "").strip())
+    if s is None or e is None:
+        return []
+    # ソース指定があり、Googleカレンダーが含まれないなら空で返す。
+    if isinstance(sources, list) and sources and ("Googleカレンダー" not in sources):
+        return []
+
+    q = (
+        db_client.client.table("09_unified_documents")
+        .select(
+            "id, title, source, person, category, snippet, post_at, start_at, end_at, due_date, "
+            "location, file_url, ui_data, meta, ix_search_dates"
+        )
+        .eq("source", "Googleカレンダー")
+    )
+    if persons:
+        q = q.in_("person", persons)
+    if categories:
+        q = q.in_("category", categories)
+
+    start = s.isoformat()
+    end = e.isoformat()
+    # 完全重なり判定（start/end）と単日列の双方を拾う。
+    q = q.or_(
+        ",".join(
+            [
+                f"and(start_at.not.is.null,end_at.not.is.null,start_at.lte.{end},end_at.gte.{start})",
+                f"start_at.gte.{start}",
+                f"start_at.lte.{end}",
+                f"post_at.gte.{start}",
+                f"post_at.lte.{end}",
+                f"due_date.gte.{start}",
+                f"due_date.lte.{end}",
+            ]
+        )
+    )
+    resp = q.limit(limit).execute()
+    rows = resp.data or []
+    rows.sort(key=lambda r: (_calendar_row_date_str(r), str(r.get("title") or "")))
+    return rows
+
+
 def get_clients():
     """クライアントを初回アクセス時に初期化（遅延読み込み）"""
     global db_client, llm_client, query_expander
@@ -346,6 +488,14 @@ def search_documents():
             date_range = lit0
         intent_spec = _normalize_intent_spec_dict(intent_spec, query, date_range)
         refined_query = _apply_mandatory_search_query_range(refined_query, date_range)
+        calendar_rows = _machine_hit_calendar_rows(
+            db_client=db_client,
+            date_range=date_range,
+            persons=persons if isinstance(persons, list) else None,
+            sources=sources if isinstance(sources, list) else None,
+            categories=categories if isinstance(categories, list) else None,
+        )
+        refined_query = _inject_calendar_premise_into_query(refined_query, date_range, calendar_rows)
         print(f"[INFO] 検索正規化: '{query}' -> '{refined_query}' / date_range={date_range}", flush=True)
 
         # クエリ拡張を適用（有効な場合）
@@ -412,11 +562,16 @@ def search_documents():
         window_s = _format_date_range_bounds(lo, hi)
         focal_s = _focal_range_string_for_scoring(date_range, lo, hi)
         cal_lo, cal_hi = _calendar_rpc_date_bounds(date_range)
+        vector_sources = sources if sources else None
+        if isinstance(vector_sources, list):
+            vector_sources = [s for s in vector_sources if s != "Googleカレンダー"]
+            vector_sources = vector_sources if vector_sources else ["__NO_VECTOR_SOURCE__"]
+
         results = db_client.search_documents_sync(
             expanded_query,
             embedding,
             limit,
-            sources=sources if sources else None,
+            sources=vector_sources,
             persons=persons if persons else None,
             category=categories if categories else None,
             threshold=threshold,
@@ -434,10 +589,11 @@ def search_documents():
         # Step4: 日付加点は主軸（狭い）レンジに対する傾斜。広い窓は RPC の絞り込み専用。
         results = _apply_date_match_bonus(results, focal_s, refined_query)
 
-        # GOOGLE_CALENDAR を先頭に引き上げ（同スコア帯では最優先）
-        cal_results   = [d for d in results if d.get('source') == 'Googleカレンダー']
-        other_results = [d for d in results if d.get('source') != 'Googleカレンダー']
-        results = cal_results + other_results
+        # カレンダーは機械ヒットの結果だけを使う（非ベクトル）。
+        machine_calendar_docs = [_calendar_row_to_result_doc(r) for r in calendar_rows]
+        existing_ids = {str(d.get("id")) for d in results}
+        machine_calendar_docs = [d for d in machine_calendar_docs if str(d.get("id")) not in existing_ids]
+        results = machine_calendar_docs + [d for d in results if d.get("source") != "Googleカレンダー"]
 
         # ✅ クロスリファレンス結果を先頭に追加
         if cross_reference_results:
@@ -548,6 +704,14 @@ def generate_answer():
             date_range = lit_ans
         intent_spec = _normalize_intent_spec_dict(intent_spec, query, date_range)
         refined_query = _apply_mandatory_search_query_range(refined_query, date_range)
+        calendar_rows_answer = _machine_hit_calendar_rows(
+            db_client=db_client,
+            date_range=date_range,
+            persons=persons if isinstance(persons, list) else None,
+            sources=sources if isinstance(sources, list) else None,
+            categories=categories if isinstance(categories, list) else None,
+        )
+        refined_query = _inject_calendar_premise_into_query(refined_query, date_range, calendar_rows_answer)
 
         query_for_llm = _query_with_intent_for_prompt(query, intent_spec)
         print(f"[INFO] フィルタ: persons={persons}, sources={sources}, categories={categories}", flush=True)
@@ -564,11 +728,15 @@ def generate_answer():
             window_s = _format_date_range_bounds(lo, hi)
             focal_s = _focal_range_string_for_scoring(date_range, lo, hi)
             cal_lo, cal_hi = _calendar_rpc_date_bounds(date_range)
+            vector_sources = sources if sources else None
+            if isinstance(vector_sources, list):
+                vector_sources = [s for s in vector_sources if s != "Googleカレンダー"]
+                vector_sources = vector_sources if vector_sources else ["__NO_VECTOR_SOURCE__"]
             search_results = db_client.search_documents_sync(
                 refined_query,
                 embedding,
                 search_limit,
-                sources=sources if sources else None,
+                sources=vector_sources,
                 persons=persons if persons else None,
                 category=categories if categories else None,
                 date_range=focal_s or None,
@@ -583,6 +751,10 @@ def generate_answer():
                 f"{query} {embed_t}",
             )
             search_results = _apply_date_match_bonus(search_results, focal_s, refined_query)
+            machine_calendar_docs = [_calendar_row_to_result_doc(r) for r in calendar_rows_answer]
+            existing_ids = {str(d.get("id")) for d in search_results}
+            machine_calendar_docs = [d for d in machine_calendar_docs if str(d.get("id")) not in existing_ids]
+            search_results = machine_calendar_docs + [d for d in search_results if d.get("source") != "Googleカレンダー"]
             print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
         # コンテキスト構築・切り詰め
