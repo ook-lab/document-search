@@ -105,6 +105,7 @@ class DocSearchDB:
         best_chunk_id: Optional[str],
         keywords: List[str],
         non_table_weight_threshold: float = 1.0,
+        max_other_chunks: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         table_chunks = [c for c in chunks if (c.get("chunk_type") or "").startswith("table_")]
         other_chunks = [c for c in chunks if not (c.get("chunk_type") or "").startswith("table_")]
@@ -120,6 +121,10 @@ class DocSearchDB:
         else:
             relevant_tables = table_chunks[:1] if table_chunks else []
         filtered_other = [c for c in other_chunks if (c.get("chunk_weight") or 0) >= non_table_weight_threshold]
+        # 週レンジなどで「複数日が別チャンクに分散」しているとき、絞り込みで取りこぼさないよう上限で制御する。
+        filtered_other.sort(key=lambda x: (x.get("chunk_weight") or 0), reverse=True)
+        if max_other_chunks is not None:
+            filtered_other = filtered_other[:max_other_chunks]
         return relevant_tables + filtered_other
 
     def _parse_yyyy_mm_dd(self, s: Optional[Any]) -> Optional[str]:
@@ -369,6 +374,7 @@ class DocSearchDB:
                     "ix_search_dates": result.get("ix_search_dates") or [],
                     "indexed_at": result.get("indexed_at"),
                     "document_date": document_date,
+                    "document_body": "",
                     "chunk_content": result.get("best_chunk_text"),
                     "chunk_id": result.get("best_chunk_id"),
                     "chunk_index": result.get("best_chunk_index"),
@@ -387,10 +393,40 @@ class DocSearchDB:
         keywords = self._extract_keywords(query)
 
         if self._is_service_role:
+            week_mode = False
+            if date_range and ".." in date_range:
+                try:
+                    a_s, b_s = date_range.split("..", 1)
+                    a = date_type.fromisoformat(a_s.strip())
+                    b = date_type.fromisoformat(b_s.strip())
+                    if (b - a).days >= 6:
+                        week_mode = True
+                except Exception:
+                    week_mode = False
+
+            non_table_thr = 0.0 if week_mode else 1.0
+            max_other = 40 if week_mode else None
+
             for doc_result in final_results:
                 doc_id = doc_result.get("id")
                 if not doc_id:
                     continue
+                try:
+                    body_response = (
+                        self.client.table("09_unified_documents")
+                        .select("body")
+                        .eq("id", doc_id)
+                        .limit(1)
+                        .execute()
+                    )
+                    if body_response.data:
+                        doc_result["document_body"] = (body_response.data[0].get("body") or "")
+                    else:
+                        doc_result["document_body"] = ""
+                except Exception as e:
+                    logger.warning("body fetch doc_id={}: {}", doc_id, e)
+                    doc_result["document_body"] = ""
+
                 try:
                     chunks_response = (
                         self.client.table("10_ix_search_index")
@@ -406,6 +442,8 @@ class DocSearchDB:
                             query=query,
                             best_chunk_id=doc_result.get("chunk_id"),
                             keywords=keywords,
+                            non_table_weight_threshold=non_table_thr,
+                            max_other_chunks=max_other,
                         )
                     else:
                         doc_result["all_chunks"] = []

@@ -13,6 +13,7 @@ if str(_service_dir) not in sys.path:
     sys.path.insert(0, str(_service_dir))
 
 from typing import Dict, List, Any, Optional, Tuple
+from collections import OrderedDict
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
@@ -22,6 +23,7 @@ CORS(app)
 
 # カレンダー主軸（date_range / calendar_primary）の開始・終了から、RPC filter_date 用に広げる暦日数（1暦月は使わずこの値のみ）
 SEARCH_CALENDAR_MARGIN_DAYS = 30
+EXTRA_CHUNK_SCORE_THRESHOLD = 0.4
 
 # クライアントの遅延初期化（Cloud Run起動高速化）
 db_client = None
@@ -584,7 +586,10 @@ def generate_answer():
             print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
         # コンテキスト構築・切り詰め
-        context = _build_context(search_results)
+        context = _build_context(
+            search_results,
+            focal_date_range=date_range if date_range and ".." in date_range else None,
+        )
         if len(context) > max_context_chars:
             context = context[:max_context_chars]
         print(f"[INFO] コンテキスト: {len(context)}字 / フロー: {flow_id}", flush=True)
@@ -1497,48 +1502,230 @@ def _detect_query_type(query: str) -> Dict[str, Any]:
     }
 
 
-def _build_context(documents: List[Dict[str, Any]]) -> str:
+def _event_calendar_day(doc: Dict[str, Any]) -> Optional[date]:
+    """カレンダー等のイベント日（YYYY-MM-DD）。取れなければ None。"""
+    raw = doc.get("start_at") or doc.get("post_at")
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw.date()
+    s = str(raw).strip()
+    if len(s) >= 10:
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _calendar_doc_in_focal(doc: Dict[str, Any], focal_lo: Optional[date], focal_hi: Optional[date]) -> bool:
+    """Googleカレンダー行をコンテキストに載せるか。主軸レンジが無ければ日付が取れた行のみ載せる。"""
+    if doc.get("source") != "Googleカレンダー":
+        return False
+    evt = _event_calendar_day(doc)
+    if evt is None:
+        return focal_lo is None and focal_hi is None
+    if focal_lo is None or focal_hi is None:
+        return True
+    return focal_lo <= evt <= focal_hi
+
+
+def _build_context(documents: List[Dict[str, Any]], focal_date_range: Optional[str] = None) -> str:
     """
-    検索結果からコンテキストを構築。
-    all_chunks の chunk_text を連結して使用。
+    コンテキスト構築（回答用）。
+
+    - Googleカレンダー: 主軸レンジ focal_date_range（YYYY-MM-DD..YYYY-MM-DD）にイベント日が入る行のみ。
+      各イベントは best チャンク全文のみ（ all_chunks の連結はしない）。
+    - それ以外: 文書横断でスコア上位のチャンクを最大5件選び、各チャンク全文を渡す。
+      同一 doc_id に複数あれば 1 ブロックにまとめる。5件が5文書に分散していればブロックは5つ。
     """
     if not documents:
         return "関連する文書が見つかりませんでした。"
 
-    context_parts = []
+    focal_lo: Optional[date]
+    focal_hi: Optional[date]
+    focal_lo, focal_hi = _parse_date_range_bounds(focal_date_range or "")
+
+    ctx_parts: List[str] = []
     total_chars = 0
+    sep = "─" * 60
 
-    for doc_idx, doc in enumerate(documents, 1):
-        title         = doc.get('title', '無題')
-        source        = doc.get('source', '不明')
-        similarity    = doc.get('similarity', 0)
-        document_date = doc.get('document_date', '')
-        date_matched  = doc.get('is_date_matched', False)
-
-        all_chunks = doc.get('all_chunks', [])
-        if all_chunks:
-            parts = [chunk.get('chunk_text', '') for chunk in all_chunks if chunk.get('chunk_text', '')]
-            full_text = "\n\n".join(parts)
-        else:
-            full_text = doc.get('chunk_content', '')
-
+    # ── A: カレンダー（主軸日内のイベントのみ・チャンク全文は1本）
+    cal_docs = [d for d in documents if _calendar_doc_in_focal(d, focal_lo, focal_hi)]
+    for doc in cal_docs:
+        title = doc.get("title", "無題")
+        source = doc.get("source", "不明")
+        similarity = doc.get("similarity", 0)
+        document_date = doc.get("document_date", "")
+        date_matched = doc.get("is_date_matched", False)
         date_tag = "（日付一致✓）" if date_matched else ""
-        is_calendar = (source == 'Googleカレンダー')
-        block_header = "【カレンダー確定情報】" if is_calendar else f"【文書{doc_idx}】"
-        context_part = f"""{block_header}{date_tag}
+        full_text = (doc.get("chunk_content") or "").strip()
+        if not full_text:
+            continue
+        ctx_parts.append(
+            f"""【カレンダー確定情報】{date_tag}
 タイトル: {title}
 ソース: {source}
 日付: {document_date}
 スコア: {similarity:.3f}
 
 {full_text}
-{"─" * 60}"""
-
-        context_parts.append(context_part)
+{sep}"""
+        )
         total_chars += len(full_text)
 
-    final_context = "\n\n".join(context_parts)
-    print(f"[DEBUG] コンテキスト: {len(documents)} 件 / {total_chars} 文字")
+    # ── B: 非カレンダー・ベスト5チャンク（全文）
+    candidates: List[Tuple[float, Dict[str, Any], Optional[Dict[str, Any]], str]] = []
+    for doc in documents:
+        if doc.get("source") == "Googleカレンダー":
+            continue
+        doc_score = float(doc.get("final_score", doc.get("similarity", 0)))
+        chunks = doc.get("all_chunks") or []
+        if chunks:
+            for ch in chunks:
+                txt = (ch.get("chunk_text") or "").strip()
+                if not txt:
+                    continue
+                w = float(ch.get("chunk_weight") or 0)
+                candidates.append((doc_score * (w + 1e-6), doc, ch, txt))
+        else:
+            txt = (doc.get("chunk_content") or "").strip()
+            if txt:
+                candidates.append((doc_score, doc, None, txt))
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+
+    picked: List[Tuple[Dict[str, Any], Optional[Dict[str, Any]], str]] = []
+    seen_chunk_keys: set[str] = set()
+    for _score, doc, ch, txt in candidates:
+        if len(picked) >= 5:
+            break
+        ck = (
+            f"{doc.get('id')}:{ch.get('id')}"
+            if ch and ch.get("id") is not None
+            else f"{doc.get('id')}:best_chunk"
+        )
+        if ck in seen_chunk_keys:
+            continue
+        seen_chunk_keys.add(ck)
+        picked.append((doc, ch, txt))
+
+    # top5 チャンクから「統合MDを使う文書トップ3」を選ぶ（同数時は最大チャンクスコア）
+    doc_stats: Dict[str, Dict[str, Any]] = {}
+    for rank, (_score, doc, _ch, _txt) in enumerate(candidates):
+        if rank >= 5:
+            break
+        did = str(doc.get("id") or "")
+        if not did:
+            continue
+        st = doc_stats.setdefault(did, {"count": 0, "best": 0.0, "doc": doc})
+        st["count"] += 1
+        st["best"] = max(float(st["best"]), float(_score))
+    top3_doc_ids = {
+        did
+        for did, _st in sorted(
+            doc_stats.items(),
+            key=lambda x: (-int(x[1]["count"]), -float(x[1]["best"])),
+        )[:3]
+    }
+
+    # top5 チャンクを doc_id ごとに保持（出現順）
+    grouped: "OrderedDict[str, List[Tuple[Dict[str, Any], Optional[Dict[str, Any]], str]]]" = OrderedDict()
+    for doc, ch, txt in picked:
+        did = str(doc.get("id") or "")
+        grouped.setdefault(did, []).append((doc, ch, txt))
+
+    doc_block_idx = 0
+    used_doc_ids: set[str] = set()
+    for _did, rows in grouped.items():
+        if _did not in top3_doc_ids:
+            continue
+        doc0 = rows[0][0]
+        used_doc_ids.add(_did)
+        doc_block_idx += 1
+        title = doc0.get("title", "無題")
+        source = doc0.get("source", "不明")
+        similarity = doc0.get("similarity", 0)
+        document_date = doc0.get("document_date", "")
+        date_matched = doc0.get("is_date_matched", False)
+        date_tag = "（日付一致✓）" if date_matched else ""
+
+        body_text = (doc0.get("document_body") or "").strip()
+        if body_text:
+            full_text = body_text
+        else:
+            # 統合MDが取れない場合のみ、同文書内の top5 チャンク全文で代替する。
+            chunk_sections: List[str] = []
+            for _doc, ch, txt in rows:
+                label = ""
+                if ch:
+                    idx = ch.get("chunk_index")
+                    ctype = ch.get("chunk_type") or ""
+                    label = f"[chunk_index={idx} type={ctype}]\n"
+                chunk_sections.append(f"{label}{txt}")
+            full_text = "\n\n---\n\n".join(chunk_sections)
+        ctx_parts.append(
+            f"""【文書{doc_block_idx}: 統合MD】{date_tag}
+タイトル: {title}
+ソース: {source}
+日付: {document_date}
+スコア: {similarity:.3f}
+
+{full_text}
+{sep}"""
+        )
+        total_chars += len(full_text)
+
+    # top3 文書に入らないチャンクは、件数固定にせず「閾値以上」を追加する。
+    extra_chunk_idx = 0
+    extra_seen_keys: set[str] = set()
+    for cand_score, doc, ch, txt in candidates:
+        if cand_score < EXTRA_CHUNK_SCORE_THRESHOLD:
+            continue
+        did = str(doc.get("id") or "")
+        if did in used_doc_ids:
+            continue
+        ck = (
+            f"{did}:{ch.get('id')}"
+            if ch and ch.get("id") is not None
+            else f"{did}:best_chunk"
+        )
+        if ck in extra_seen_keys:
+            continue
+        extra_seen_keys.add(ck)
+        extra_chunk_idx += 1
+        title = doc.get("title", "無題")
+        source = doc.get("source", "不明")
+        similarity = doc.get("similarity", 0)
+        document_date = doc.get("document_date", "")
+        date_matched = doc.get("is_date_matched", False)
+        date_tag = "（日付一致✓）" if date_matched else ""
+        label = ""
+        if ch:
+            idx = ch.get("chunk_index")
+            ctype = ch.get("chunk_type") or ""
+            label = f"[chunk_index={idx} type={ctype}]\n"
+        full_text = f"{label}{txt}"
+        ctx_parts.append(
+            f"""【追補チャンク{extra_chunk_idx}】{date_tag}
+タイトル: {title}
+ソース: {source}
+日付: {document_date}
+スコア: {similarity:.3f}
+採用スコア: {cand_score:.3f}
+
+{full_text}
+{sep}"""
+        )
+        total_chars += len(full_text)
+
+    if not ctx_parts:
+        return "関連する文書が見つかりませんでした。"
+
+    final_context = "\n\n".join(ctx_parts)
+    print(
+        f"[DEBUG] コンテキスト: calendar={len(cal_docs)} md_docs={len(used_doc_ids)} extra_chunks={extra_chunk_idx} chars≈{total_chars}"
+    )
 
     return final_context
 
