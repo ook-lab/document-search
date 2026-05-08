@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from datetime import datetime, timedelta, date as date_type
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,39 @@ from loguru import logger
 from supabase import Client, create_client
 
 from docsearch.config import settings
+
+
+def _coerce_embedding_list(val: Any) -> Optional[List[float]]:
+    """PostgREST / pgvector の embedding を float リストへ。"""
+    if val is None:
+        return None
+    if isinstance(val, (list, tuple)):
+        try:
+            return [float(x) for x in val]
+        except (TypeError, ValueError):
+            return None
+    if isinstance(val, str):
+        s = val.strip()
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        if not s:
+            return None
+        try:
+            return [float(x.strip()) for x in s.split(",") if x.strip()]
+        except ValueError:
+            return None
+    return None
+
+
+def _cosine_similarity(q: List[float], v: List[float]) -> float:
+    if len(q) != len(v) or not q:
+        return 0.0
+    dot = sum(a * b for a, b in zip(q, v))
+    nq = math.sqrt(sum(a * a for a in q))
+    nv = math.sqrt(sum(b * b for b in v))
+    if nq == 0.0 or nv == 0.0:
+        return 0.0
+    return dot / (nq * nv)
 
 
 class DocSearchDB:
@@ -430,15 +464,32 @@ class DocSearchDB:
                 try:
                     chunks_response = (
                         self.client.table("10_ix_search_index")
-                        .select("id, chunk_index, chunk_text, chunk_type, chunk_weight")
+                        .select("id, chunk_index, chunk_text, chunk_type, chunk_weight, embedding")
                         .eq("doc_id", doc_id)
                         .order("chunk_weight", desc=True)
                         .execute()
                     )
                     if chunks_response.data:
                         raw_chunks = chunks_response.data
+                        qemb = _coerce_embedding_list(embedding)
+                        enriched: List[Dict[str, Any]] = []
+                        for ch in raw_chunks:
+                            row = {k: v for k, v in ch.items() if k != "embedding"}
+                            cvec = _coerce_embedding_list(ch.get("embedding"))
+                            if qemb and cvec and len(qemb) == len(cvec):
+                                row["chunk_vector_similarity"] = _cosine_similarity(qemb, cvec)
+                            else:
+                                row["chunk_vector_similarity"] = None
+                            enriched.append(row)
+                        doc_result["index_chunks_all"] = sorted(
+                            enriched,
+                            key=lambda x: (
+                                x.get("chunk_index") if x.get("chunk_index") is not None else 0,
+                                str(x.get("id") or ""),
+                            ),
+                        )
                         doc_result["all_chunks"] = self._filter_chunks_for_context(
-                            raw_chunks,
+                            enriched,
                             query=query,
                             best_chunk_id=doc_result.get("chunk_id"),
                             keywords=keywords,
@@ -446,13 +497,16 @@ class DocSearchDB:
                             max_other_chunks=max_other,
                         )
                     else:
+                        doc_result["index_chunks_all"] = []
                         doc_result["all_chunks"] = []
                 except Exception as e:
                     logger.warning("chunk fetch doc_id={}: {}", doc_id, e)
+                    doc_result["index_chunks_all"] = []
                     doc_result["all_chunks"] = []
         else:
             for doc_result in final_results:
                 doc_result["all_chunks"] = []
+                doc_result["index_chunks_all"] = []
 
         for doc in final_results:
             if keywords:

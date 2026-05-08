@@ -235,6 +235,19 @@ def _query_with_intent_for_prompt(user_query: str, intent_spec: Optional[Dict[st
     )
 
 
+def _llm_question_with_calendar_premise(query_for_llm: str, refined_query: str) -> str:
+    """【前提知識】付き refined を回答プロンプトに載せる（UI にだけ出して LLM に渡さないと Evidence が空になる）。"""
+    q = (query_for_llm or "").strip()
+    r = (refined_query or "").strip()
+    if not r or "【前提知識】" not in r:
+        return q
+    return (
+        f"{q}\n\n"
+        "【正規化済み質問・前提（機械ヒットのカレンダー箇条書きは事実として回答し、Evidence に引用してよい）】\n"
+        f"{r}"
+    )
+
+
 def _calendar_row_date_str(row: Dict[str, Any]) -> str:
     """カレンダー行の代表日（YYYY-MM-DD）を返す。取れない場合は空文字。"""
     raw = row.get("start_at") or row.get("post_at") or row.get("due_date")
@@ -260,6 +273,82 @@ def _calendar_premise_lines(rows: List[Dict[str, Any]], max_lines: int = 30) -> 
         else:
             out.append(f"- {d} {title}")
     return out
+
+
+def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    検索結果1件につき 10_ix_search_index の全チャンクをフラット化する。
+    類似度はチャンク embedding とクエリ埋め込みのコサイン類似度（chunk_vector_similarity）。
+    並び: その降順、同点は doc_id、chunk_index。
+    """
+    flat: List[Dict[str, Any]] = []
+    for doc in results:
+        doc_id = str(doc.get("id") or "")
+        try:
+            sim_doc = float(doc.get("similarity")) if doc.get("similarity") is not None else None
+        except (TypeError, ValueError):
+            sim_doc = None
+        chunks = doc.get("index_chunks_all")
+        if isinstance(chunks, list) and chunks:
+            for ch in chunks:
+                cid_raw = ch.get("id")
+                cid_s = str(cid_raw) if cid_raw is not None else ""
+                cvs = ch.get("chunk_vector_similarity")
+                try:
+                    row_sim = float(cvs) if cvs is not None else None
+                except (TypeError, ValueError):
+                    row_sim = None
+                flat.append(
+                    {
+                        "doc_id": doc_id,
+                        "chunk_id": cid_s or None,
+                        "similarity": row_sim,
+                        "chunk_index": ch.get("chunk_index"),
+                        "chunk_text": (ch.get("chunk_text") or "").strip(),
+                    }
+                )
+        else:
+            cc = (doc.get("chunk_content") or "").strip()
+            if not cc and doc.get("title"):
+                cc = str(doc.get("title") or "").strip()
+            if cc or doc.get("source") == "Googleカレンダー":
+                cid_raw = doc.get("chunk_id")
+                flat.append(
+                    {
+                        "doc_id": doc_id,
+                        "chunk_id": str(cid_raw) if cid_raw is not None else None,
+                        "similarity": sim_doc,
+                        "chunk_index": doc.get("chunk_index"),
+                        "chunk_text": cc,
+                    }
+                )
+
+    def _idx_key(r: Dict[str, Any]) -> int:
+        v = r.get("chunk_index")
+        if v is None:
+            return 1_000_000_000
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 1_000_000_000
+
+    def _sim_key(r: Dict[str, Any]) -> float:
+        s = r.get("similarity")
+        if s is None:
+            return -1.0
+        try:
+            return float(s)
+        except (TypeError, ValueError):
+            return -1.0
+
+    flat.sort(
+        key=lambda r: (
+            -_sim_key(r),
+            str(r.get("doc_id") or ""),
+            _idx_key(r),
+        )
+    )
+    return flat
 
 
 def _strip_existing_calendar_premise_block(text: str) -> str:
@@ -659,6 +748,10 @@ def search_documents():
 
         print(f"[DEBUG] 最終検索結果: {len(results)} 件返却")
 
+        vector_hit_chunks = _flatten_vector_hit_chunks(results)
+        for r in results:
+            r.pop("index_chunks_all", None)
+
         response_data = {
             'success': True,
             'results': results,
@@ -667,6 +760,7 @@ def search_documents():
             'refined_query': refined_query,
             'date_range': date_range,
             'intent_spec': intent_spec,
+            'vector_hit_chunks': vector_hit_chunks,
         }
 
         # クエリ拡張情報を含める（デバッグ用）
@@ -765,11 +859,18 @@ def generate_answer():
         refined_query = _inject_calendar_premise_into_query(refined_query, date_range, calendar_rows_answer)
 
         query_for_llm = _query_with_intent_for_prompt(query, intent_spec)
+        answer_llm_query = _llm_question_with_calendar_premise(query_for_llm, refined_query)
         print(f"[INFO] フィルタ: persons={persons}, sources={sources}, categories={categories}", flush=True)
 
         # Step2-4: 検索結果が渡されていればそれを優先、なければサーバで実行
         if isinstance(documents, list) and documents:
             search_results = list(documents)
+            machine_calendar_docs = [_calendar_row_to_result_doc(r) for r in calendar_rows_answer]
+            existing_ids = {str(d.get("id")) for d in search_results}
+            machine_calendar_docs = [d for d in machine_calendar_docs if str(d.get("id")) not in existing_ids]
+            search_results = machine_calendar_docs + [
+                d for d in search_results if d.get("source") != "Googleカレンダー"
+            ]
             print(f"[INFO] RAG検索(検索受け渡し): {len(search_results)}件", flush=True)
         else:
             embed_t = _embedding_from_refine(refined_query, intent_spec)
@@ -822,7 +923,7 @@ def generate_answer():
             # 1段: 回答生成+Evidence同時
             print(f"[INFO] 1段実行 ({steps[0]})", flush=True)
             answer = _answer_1step(
-                llm_client, steps[0], query_for_llm, context,
+                llm_client, steps[0], answer_llm_query, context,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
 
@@ -836,7 +937,7 @@ def generate_answer():
             )
             print(f"[INFO] 2段Step2 ({steps[1]}): 内容依存", flush=True)
             answer = _answer_from_evidence(
-                llm_client, steps[1], query_for_llm, evidence_list,
+                llm_client, steps[1], answer_llm_query, evidence_list,
                 log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
             )
 
@@ -845,20 +946,20 @@ def generate_answer():
             step1_limit = int(max_context_chars * 0.4)
             print(f"[INFO] 3段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
             step1_output = _compress_step1(
-                llm_client, steps[0], query_for_llm, context, step1_limit,
+                llm_client, steps[0], answer_llm_query, context, step1_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
 
             step2_limit = int(step1_limit * 0.33)
             print(f"[INFO] 3段Step2 ({steps[1]}): →{step2_limit}字上限", flush=True)
             step2_output = _compress_step2(
-                llm_client, steps[1], query_for_llm, step1_output, step2_limit,
+                llm_client, steps[1], answer_llm_query, step1_output, step2_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
             )
 
             print(f"[INFO] 3段Step3 ({steps[2]}): 内容依存", flush=True)
             answer = _compress_step3(
-                llm_client, steps[2], query_for_llm, step2_output,
+                llm_client, steps[2], answer_llm_query, step2_output,
                 log_context={'app': 'doc-search', 'stage': 'search-step3', 'session_id': request_id},
             )
 
@@ -900,6 +1001,7 @@ def _answer_1step(llm_client, model_name: str, query: str, context: str, log_con
 
 【ルール】
 - Evidenceが存在する内容のみ回答する（新しい主張の創作禁止）
+- 「正規化済み質問・前提」内の【前提知識】・機械ヒット箇条書きは根拠として扱い、Evidence にそのまま引用してよい（Source は Googleカレンダー / タイトル）
 - 根拠なし断定禁止
 - Evidenceは原文から1〜2文抜粋し、Sourceを必ず付ける
 - 不明・不足情報は「不確実性」欄に明示する
@@ -985,6 +1087,7 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
 
 【ルール】
 - Evidenceがある内容のみ回答する（創作禁止）
+- 「正規化済み質問・前提」内の機械ヒット箇条書きは根拠として回答に含めてよい
 - 不確実・不足情報は「不確実性」欄に明示する
 - 見出し・箇条書きを活用して読みやすく整形する
 - 重要情報（期限・場所・提出方法）は太字で強調する
@@ -1776,13 +1879,19 @@ def _build_context(documents: List[Dict[str, Any]], focal_date_range: Optional[s
     # ── A: カレンダー（主軸日内のイベントのみ・チャンク全文は1本）
     cal_docs = [d for d in documents if _calendar_doc_in_focal(d, focal_lo, focal_hi)]
     for doc in cal_docs:
-        title = doc.get("title", "無題")
+        title = doc.get("title") or "無題"
         source = doc.get("source", "不明")
         similarity = doc.get("similarity", 0)
         document_date = doc.get("document_date", "")
         date_matched = doc.get("is_date_matched", False)
         date_tag = "（日付一致✓）" if date_matched else ""
         full_text = (doc.get("chunk_content") or "").strip()
+        if not full_text:
+            loc = (doc.get("location") or "").strip()
+            dd = document_date or ""
+            t_syn = (doc.get("title") or "").strip()
+            bits = [x for x in (dd, t_syn, f"@{loc}" if loc else "") if x]
+            full_text = " ".join(bits).strip()
         if not full_text:
             continue
         ctx_parts.append(
