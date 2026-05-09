@@ -149,10 +149,12 @@ def _suppress_calendar_facts_for_integrated_query(user_query: str, date_range_li
     return False
 
 
-def _merge_ordered_rag_input(part1_question: str, part2_unified_md: str, part3_other_chunks: str, max_chars: int) -> str:
+def _merge_ordered_rag_input(
+    part1_question: str, part2_unified_md: str, part3_other_chunks: str, max_chars: int
+) -> Tuple[str, Dict[str, Any]]:
     """
     回答系 LLM へ渡す文字列を１→２→３の順で連結し、max_chars を超えるときは末尾から切る（先頭＝質問を優先）。
-    max_chars は当面「文字数」の上限とみなす。
+    max_chars は当面「文字数」の上限とみなす。戻り値のメタは UI 表示用。
     """
     s1 = (part1_question or "").strip()
     s2 = (part2_unified_md or "").strip()
@@ -161,9 +163,26 @@ def _merge_ordered_rag_input(part1_question: str, part2_unified_md: str, part3_o
     blk2 = f"【２｜類似度順・統合MD】\n{s2 if s2 else '（該当なし）'}"
     blk3 = f"【３｜類似度順・抽出チャンク】\n{s3 if s3 else '（該当なし）'}"
     full = f"{blk1}\n\n{blk2}\n\n{blk3}"
-    if max_chars <= 0 or len(full) <= max_chars:
-        return full
-    return full[:max_chars]
+    full_len = len(full)
+    if max_chars <= 0 or full_len <= max_chars:
+        out = full
+        truncated = False
+        dropped = 0
+    else:
+        out = full[:max_chars]
+        truncated = True
+        dropped = full_len - max_chars
+    meta: Dict[str, Any] = {
+        "full_length_before_cut": full_len,
+        "max_context_chars": max_chars,
+        "truncated": truncated,
+        "sent_length": len(out),
+        "cut_dropped_chars": dropped,
+        "cut_position_note": f"先頭から {len(out)} 文字までがモデル入力。{full_len} 文字目以降は切り捨て。"
+        if truncated
+        else "切り捨てなし（全文がモデル入力）",
+    }
+    return out, meta
 
 
 def _fill_intent_spec_ranges(intent_spec: Dict[str, Any], date_range: str, context_days: int = 14) -> None:
@@ -1124,7 +1143,7 @@ def generate_answer():
             search_results,
             focal_date_range=date_range if date_range and ".." in date_range else None,
         )
-        ordered_rag_blob = _merge_ordered_rag_input(
+        ordered_rag_blob, rag_input_meta = _merge_ordered_rag_input(
             answer_llm_query,
             part2_unified,
             part3_chunks,
@@ -1193,6 +1212,8 @@ def generate_answer():
             'refined_query': refined_query,
             'date_range': date_range,
             'intent_spec': intent_spec,
+            'ordered_rag_blob': ordered_rag_blob,
+            'rag_input_meta': rag_input_meta,
         })
 
     except Exception as e:

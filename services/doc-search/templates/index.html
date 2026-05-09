@@ -289,6 +289,37 @@
             font-size: 13px;
         }
 
+        .rag-llm-input-meta {
+            font-size: 13px;
+            color: #0f172a;
+            margin-bottom: 10px;
+            padding: 10px 12px;
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 6px;
+            line-height: 1.55;
+        }
+
+        .rag-llm-input-meta.truncated {
+            background: #fee2e2;
+            border-color: #fca5a5;
+        }
+
+        .rag-llm-input-pre {
+            margin: 0;
+            padding: 12px 14px;
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: min(70vh, 720px);
+            overflow: auto;
+            font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+        }
+
         .document-list {
             display: grid;
             gap: 15px;
@@ -894,6 +925,13 @@
                     <div class="vector-chunks-list" id="vectorChunksList"></div>
                 </div>
 
+                <div id="ragLlmInputSection" style="display: none;">
+                    <h2 class="section-title">回答生成に送った入力（そのまま）</h2>
+                    <p class="vector-chunks-note">【１｜質問】→【２｜統合MD】→【３｜抽出チャンク】をこの順で連結した文字列です。入力上限で末尾が切れているときは、下の本文の末尾が打ち切り位置です。</p>
+                    <div id="ragLlmInputMeta" class="rag-llm-input-meta"></div>
+                    <pre class="rag-llm-input-pre" id="ragLlmInputPre"></pre>
+                </div>
+
                 <!-- 検索結果 -->
                 <div id="documentsSection" style="display: none;">
                     <h2 class="section-title">関連文書</h2>
@@ -1330,6 +1368,7 @@
                 }
                 displayAnswer(answerData);
                 displayVectorHitChunks(searchData.vector_hit_chunks || []);
+                displayRagLlmInput(answerData);
                 displayDocuments(currentDocuments);
                 showResults();
 
@@ -1369,6 +1408,38 @@
                         <div class="vector-chunk-body">${text}</div>
                     </div>`;
             }).join('');
+        }
+
+        function displayRagLlmInput(data) {
+            const sec = document.getElementById('ragLlmInputSection');
+            const metaEl = document.getElementById('ragLlmInputMeta');
+            const pre = document.getElementById('ragLlmInputPre');
+            const blob = typeof data.ordered_rag_blob === 'string' ? data.ordered_rag_blob : '';
+            const meta = data.rag_input_meta && typeof data.rag_input_meta === 'object' ? data.rag_input_meta : {};
+            if (!blob) {
+                sec.style.display = 'none';
+                metaEl.textContent = '';
+                pre.textContent = '';
+                return;
+            }
+            sec.style.display = 'block';
+            const truncated = !!meta.truncated;
+            metaEl.className = 'rag-llm-input-meta' + (truncated ? ' truncated' : '');
+            const lines = [
+                `モデルに送った文字数: ${meta.sent_length != null ? meta.sent_length : blob.length} 字`,
+                `連結後の全文長（切断前）: ${meta.full_length_before_cut != null ? meta.full_length_before_cut : '—'} 字`,
+                `入力上限 max_context_chars: ${meta.max_context_chars != null ? meta.max_context_chars : '—'}`,
+                truncated
+                    ? `末尾切断: はい（未送信 ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字）→ 下の末尾が打ち切り位置`
+                    : '末尾切断: いいえ（全文送信）',
+            ];
+            metaEl.textContent = lines.join('\n');
+            let body = blob;
+            if (truncated) {
+                body +=
+                    '\n\n────────\n※ 入力上限のため、ここより後ろの原文はモデルに渡っていません（未送信）。';
+            }
+            pre.textContent = body;
         }
 
         function displayAnswer(data) {
@@ -1569,6 +1640,7 @@
             document.getElementById('answerSection').style.display = 'none';
             document.getElementById('refinedQuerySection').style.display = 'none';
             document.getElementById('vectorChunksSection').style.display = 'none';
+            document.getElementById('ragLlmInputSection').style.display = 'none';
             document.getElementById('documentsSection').style.display = 'none';
         }
 
