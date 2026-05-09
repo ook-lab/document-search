@@ -2334,7 +2334,7 @@ def _doc_similarity_value(doc: Dict[str, Any]) -> float:
 
 
 def _vector_similarity_for_top3_ranking(doc: Dict[str, Any]) -> float:
-    """（2）の文書並びには similarity（ベクトル系）のみ使う（日付加点の final_score は混ぜない）。"""
+    """（2）の並び順。doc['similarity'] のみ（DB では当該文書のチャンク類似度の最大）。final_score は混ぜない。"""
     s = doc.get("similarity")
     if s is None:
         return float("-inf")
@@ -2349,7 +2349,8 @@ def _build_context_sections(
 ) -> Tuple[str, str]:
     """
     （2）（3）のみ返すタプル。（1）は呼び出し側で質問へ付与済みである前提。
-    （2）類似度順トップ3文書の統合MD（見出し・メタ付きのブロック連結）。
+    （2）文書の similarity（DB ではチャンク類似度の最大）の高い順に最大3件の統合MD本文のみを連結する。
+        タイトル・類似度の数値・罫線ブロックなどのラッパーは付けない（統合MDそのものだけ）。
     （3）類似度順の全文書の index_chunks から、（2）の連結テキストにチャンク全文が含まれないもののみ。
     判定は NFKC＋空白正規化後の部分文字列一致（短すぎるチャンクは誤判定回避のため【３】に残す）。
     Googleカレンダー行は含めない（質問【１】側の統合文を参照）。
@@ -2370,30 +2371,15 @@ def _build_context_sections(
     )
     top3 = ordered_by_sim[:3]
 
-    blocks2: List[str] = []
+    integrated_md_bodies: List[str] = []
 
-    doc_block_idx = 0
     for doc in top3:
         did = str(doc.get("id") or "")
         if not did:
             continue
-        title = doc.get("title", "無題")
-        source = doc.get("source", "不明")
-        similarity_val = doc.get("similarity")
-        if similarity_val is None:
-            similarity_val = _doc_similarity_value(doc)
-        document_date = doc.get("document_date", "")
-        date_matched = doc.get("is_date_matched", False)
-        date_tag = "（日付一致✓）" if date_matched else ""
 
         body_text = (doc.get("document_body") or "").strip()
         chunks_pairs = _indexed_chunks_ordered_for_context(doc)
-        doc_block_idx += 1
-        try:
-            sim_str = float(similarity_val)
-            sim_disp = f"{sim_str:.3f}"
-        except (TypeError, ValueError):
-            sim_disp = str(similarity_val)
 
         if body_text:
             full_text = body_text
@@ -2406,18 +2392,9 @@ def _build_context_sections(
                 continue
             full_text = snippet
 
-        blocks2.append(
-            f"""【類似度トップの文書（統合MD）{doc_block_idx}／3】{date_tag}
-タイトル: {title}
-ソース: {source}
-日付: {document_date}
-類似度: {sim_disp}
+        integrated_md_bodies.append(full_text)
 
-{full_text}
-{sep}"""
-        )
-
-    seg2 = "\n\n".join(blocks2).strip()
+    seg2 = "\n\n---\n\n".join(integrated_md_bodies).strip()
     seg2_norm = _norm_for_rag_chunk_dedup(seg2)
 
     extras_idx = 0
@@ -2475,13 +2452,13 @@ def _build_context_sections(
         for ch, txt in _indexed_chunks_ordered_for_context(doc):
             _emit_extra_chunk(doc, ch, txt)
 
-    if not blocks2 and not blocks3:
+    if not integrated_md_bodies and not blocks3:
         return "", ""
 
     seg3 = "\n\n".join(blocks3).strip()
-    total_chars_estimate = sum(len(x) for x in blocks2) + sum(len(x) for x in blocks3)
+    total_chars_estimate = sum(len(x) for x in integrated_md_bodies) + sum(len(x) for x in blocks3)
     print(
-        f"[DEBUG] （2）（3）: 統合MDブロック≤3／実数={min(3,len(top3))} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
+        f"[DEBUG] （2）（3）: 統合MD本文≤3件／実数={len(integrated_md_bodies)} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
         flush=True,
     )
 
