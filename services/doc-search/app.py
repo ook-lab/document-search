@@ -1154,50 +1154,58 @@ def generate_answer():
             flush=True,
         )
 
+        llm_prompt_trace: List[Dict[str, Any]] = []
+
         # フロー別実行
         if rounds == 1:
             # 1段: 回答生成+Evidence同時
             print(f"[INFO] 1段実行 ({steps[0]})", flush=True)
-            answer = _answer_1step(
+            answer, p1 = _answer_1step(
                 llm_client, steps[0], ordered_rag_blob,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
+            llm_prompt_trace.append({"stage": "回答+Evidence（1段）", "model": steps[0], "prompt": p1})
 
         elif rounds == 2:
             # 2段: Evidence整理 → 回答生成
             step1_limit = int(max_context_chars * 0.33)
             print(f"[INFO] 2段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
-            evidence_list = _evidence_1step(
+            evidence_list, p1 = _evidence_1step(
                 llm_client, steps[0], ordered_rag_blob, step1_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
+            llm_prompt_trace.append({"stage": "Evidence抽出（2段・Step1）", "model": steps[0], "prompt": p1})
             print(f"[INFO] 2段Step2 ({steps[1]}): 内容依存", flush=True)
-            answer = _answer_from_evidence(
+            answer, p2 = _answer_from_evidence(
                 llm_client, steps[1], answer_llm_query, evidence_list,
                 log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
             )
+            llm_prompt_trace.append({"stage": "回答生成（2段・Step2）", "model": steps[1], "prompt": p2})
 
         else:
             # 3段: Evidence抽出 → 論点整理 → 最終回答
             step1_limit = int(max_context_chars * 0.4)
             print(f"[INFO] 3段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
-            step1_output = _compress_step1(
+            step1_output, p1 = _compress_step1(
                 llm_client, steps[0], ordered_rag_blob, step1_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
+            llm_prompt_trace.append({"stage": "Evidenceノート（3段・Step1）", "model": steps[0], "prompt": p1})
 
             step2_limit = int(step1_limit * 0.33)
             print(f"[INFO] 3段Step2 ({steps[1]}): →{step2_limit}字上限", flush=True)
-            step2_output = _compress_step2(
+            step2_output, p2 = _compress_step2(
                 llm_client, steps[1], answer_llm_query, step1_output, step2_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
             )
+            llm_prompt_trace.append({"stage": "論点整理（3段・Step2）", "model": steps[1], "prompt": p2})
 
             print(f"[INFO] 3段Step3 ({steps[2]}): 内容依存", flush=True)
-            answer = _compress_step3(
+            answer, p3 = _compress_step3(
                 llm_client, steps[2], answer_llm_query, step2_output,
                 log_context={'app': 'doc-search', 'stage': 'search-step3', 'session_id': request_id},
             )
+            llm_prompt_trace.append({"stage": "最終回答（3段・Step3）", "model": steps[2], "prompt": p3})
 
         if not answer:
             return jsonify({'success': False, 'error': '回答生成に失敗しました'}), 500
@@ -1214,6 +1222,7 @@ def generate_answer():
             'intent_spec': intent_spec,
             'ordered_rag_blob': ordered_rag_blob,
             'rag_input_meta': rag_input_meta,
+            'llm_prompt_trace': llm_prompt_trace,
         })
 
     except Exception as e:
@@ -1222,11 +1231,14 @@ def generate_answer():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-def _answer_1step(llm_client, model_name: str, ordered_rag_blob: str, log_context: dict = None) -> str:
+def _answer_1step(
+    llm_client, model_name: str, ordered_rag_blob: str, log_context: dict = None
+) -> Tuple[str, str]:
     """
     1段: 回答生成+Evidence抽出を同時実行
 
     抽象化・根拠なし断定は禁止。各根拠にSourceを付けて出力する。
+    戻り値: (モデル応答本文, call_model に渡したプロンプト全文)
     """
     prompt_parts = [f"""あなたはRAG回答エンジンです。
 以下の入力は【１→２→３の順】で並んでいます。長い場合は末尾が省略されています。この内容だけを材料に質問へ回答してください。
@@ -1256,23 +1268,27 @@ Evidence:
 <不足情報や条件。なければ「なし」>
 """]
 
+    full_prompt = "\n".join(prompt_parts)
     response = llm_client.call_model(
         tier="ui_response",
-        prompt="\n".join(prompt_parts),
+        prompt=full_prompt,
         model_name=model_name,
         log_context=log_context,
     )
     if response.get('success'):
-        return response.get('content', '').strip()
-    return ''
+        return response.get('content', '').strip(), full_prompt
+    return '', full_prompt
 
 
-def _evidence_1step(llm_client, model_name: str, ordered_rag_blob: str, output_limit: int, log_context: dict = None) -> str:
+def _evidence_1step(
+    llm_client, model_name: str, ordered_rag_blob: str, output_limit: int, log_context: dict = None
+) -> Tuple[str, str]:
     """
     2段Step1: Evidence整理+Topicタグ付け（抽象化禁止）
 
     原文から使える情報を抜き出し、Topicラベルを付けて並べる。
     要約・言い換え禁止。Source必須。
+    戻り値: (抽出テキスト, call_model に渡したプロンプト全文)
     """
     prompt = f"""あなたはRAGのEvidence抽出器です。
 以下は【１→２→３の順】の質問および参照資料です。末尾が省略されている場合があります。この中から回答に使える情報を抽出してください。
@@ -1304,15 +1320,18 @@ Confidence: <0〜1>
         log_context=log_context,
     )
     if response.get('success'):
-        return response.get('content', '').strip()
-    return ordered_rag_blob[:output_limit]
+        return response.get('content', '').strip(), prompt
+    return ordered_rag_blob[:output_limit], prompt
 
 
-def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list: str, log_context: dict = None) -> str:
+def _answer_from_evidence(
+    llm_client, model_name: str, query: str, evidence_list: str, log_context: dict = None
+) -> Tuple[str, str]:
     """
     2段Step2: EvidenceリストからユーザーへのRAG回答を生成
 
     Evidenceなき記述禁止。ここで初めて抽象化OK。
+    戻り値: (回答本文, call_model に渡したプロンプト全文)
     """
     prompt_parts = [f"""以下のEvidenceリストを基に、ユーザーの質問に回答してください。
 
@@ -1343,15 +1362,16 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
 <なければ「なし」>
 """]
 
+    full_prompt = "\n".join(prompt_parts)
     response = llm_client.call_model(
         tier="ui_response",
-        prompt="\n".join(prompt_parts),
+        prompt=full_prompt,
         model_name=model_name,
         log_context=log_context,
     )
     if response.get('success'):
-        return response.get('content', '').strip()
-    return ''
+        return response.get('content', '').strip(), full_prompt
+    return '', full_prompt
 
 
 def _regenerate_step0_dates_after_failure(
@@ -1591,12 +1611,15 @@ def _refine_query(
     return {"query": query, "date_range": "", "intent_spec": sp}
 
 
-def _compress_step1(llm_client, model_name: str, ordered_rag_blob: str, output_limit: int, log_context: dict = None) -> str:
+def _compress_step1(
+    llm_client, model_name: str, ordered_rag_blob: str, output_limit: int, log_context: dict = None
+) -> Tuple[str, str]:
     """
     Step1: Evidenceノート生成（抽象要約禁止）
 
     各文書から質問に関連する情報を抜粋・構造化する。
     重複をまとめ、必ずSourceを付ける。
+    戻り値: (抽出テキスト, call_model に渡したプロンプト全文)
     """
     prompt = f"""以下は【１→２→３の順】の質問および参照資料です。末尾が省略されている場合があります。質問（１）に関連する情報を構造化して抽出してください。
 
@@ -1625,16 +1648,19 @@ def _compress_step1(llm_client, model_name: str, ordered_rag_blob: str, output_l
         log_context=log_context,
     )
     if response.get('success'):
-        return response.get('content', '').strip()
-    return ordered_rag_blob[:output_limit]
+        return response.get('content', '').strip(), prompt
+    return ordered_rag_blob[:output_limit], prompt
 
 
-def _compress_step2(llm_client, model_name: str, query: str, step1_output: str, output_limit: int, log_context: dict = None) -> str:
+def _compress_step2(
+    llm_client, model_name: str, query: str, step1_output: str, output_limit: int, log_context: dict = None
+) -> Tuple[str, str]:
     """
     Step2: 論点別証拠束への再編（抽象化最小）
 
     Step1のEvidenceノートを論点(Topic)ごとに再編成する。
     新しい主張の創作禁止。根拠は必ず残す。
+    戻り値: (再編成テキスト, call_model に渡したプロンプト全文)
     """
     prompt = f"""以下のEvidenceノートを、論点(Topic)ごとに再編成してください。
 
@@ -1665,16 +1691,19 @@ def _compress_step2(llm_client, model_name: str, query: str, step1_output: str, 
         log_context=log_context,
     )
     if response.get('success'):
-        return response.get('content', '').strip()
-    return step1_output[:output_limit]
+        return response.get('content', '').strip(), prompt
+    return step1_output[:output_limit], prompt
 
 
-def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, log_context: dict = None) -> str:
+def _compress_step3(
+    llm_client, model_name: str, query: str, step2_output: str, log_context: dict = None
+) -> Tuple[str, str]:
     """
     Step3: 最終回答生成（ここで初めて抽象化OK）
 
     Topic別証拠束を基にユーザー向けの自然文にまとめる。
     Evidenceがある内容のみ記載。曖昧な点は明示。
+    戻り値: (回答本文, call_model に渡したプロンプト全文)
     """
     prompt_parts = [f"""以下のTopic別証拠束を基に、ユーザーの質問に回答してください。
 
@@ -1705,8 +1734,8 @@ def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, 
         log_context=log_context,
     )
     if response.get('success'):
-        return response.get('content', '').strip()
-    return ''
+        return response.get('content', '').strip(), prompt
+    return '', prompt
 
 
 def _format_table_to_markdown(table_data: Dict[str, Any]) -> str:

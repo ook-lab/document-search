@@ -919,17 +919,17 @@
                     <div class="refined-query-box" id="refinedQueryBox"></div>
                 </div>
 
+                <div id="ragLlmInputSection" style="display: none;">
+                    <h2 class="section-title">回答生成でモデルに送った全文</h2>
+                    <p class="vector-chunks-note">上段は【１】〜【３】の参照ブロック（プロンプト内の【入力】と同じ）。その下に、ルール・網羅指示を含む <strong>call_model に渡したプロンプト全文</strong>（フローに応じ1回または複数回）をそのまま載せます。</p>
+                    <div id="ragLlmInputMeta" class="rag-llm-input-meta"></div>
+                    <pre class="rag-llm-input-pre" id="ragLlmInputPre"></pre>
+                </div>
+
                 <div id="vectorChunksSection" style="display: none;">
                     <h2 class="section-title">検索にかかったチャンク（全文）</h2>
                     <p class="vector-chunks-note">各行は、文書の本文を小さく区切った<strong>チャンク</strong>の1つです。文書の類似度は、<strong>その文書に含まれるチャンクの類似度のうちいちばん大きいもの</strong>です。この一覧は、チャンクの類似度が高い順です。</p>
                     <div class="vector-chunks-list" id="vectorChunksList"></div>
-                </div>
-
-                <div id="ragLlmInputSection" style="display: none;">
-                    <h2 class="section-title">回答生成に送った入力（そのまま）</h2>
-                    <p class="vector-chunks-note">【１｜質問】→【２｜統合MD】→【３｜抽出チャンク】をこの順で連結した文字列です。入力上限で末尾が切れているときは、下の本文の末尾が打ち切り位置です。</p>
-                    <div id="ragLlmInputMeta" class="rag-llm-input-meta"></div>
-                    <pre class="rag-llm-input-pre" id="ragLlmInputPre"></pre>
                 </div>
 
                 <!-- 検索結果 -->
@@ -1416,7 +1416,8 @@
             const pre = document.getElementById('ragLlmInputPre');
             const blob = typeof data.ordered_rag_blob === 'string' ? data.ordered_rag_blob : '';
             const meta = data.rag_input_meta && typeof data.rag_input_meta === 'object' ? data.rag_input_meta : {};
-            if (!blob) {
+            const trace = Array.isArray(data.llm_prompt_trace) ? data.llm_prompt_trace : [];
+            if (!blob && trace.length === 0) {
                 sec.style.display = 'none';
                 metaEl.textContent = '';
                 pre.textContent = '';
@@ -1426,20 +1427,32 @@
             const truncated = !!meta.truncated;
             metaEl.className = 'rag-llm-input-meta' + (truncated ? ' truncated' : '');
             const lines = [
-                `モデルに送った文字数: ${meta.sent_length != null ? meta.sent_length : blob.length} 字`,
-                `連結後の全文長（切断前）: ${meta.full_length_before_cut != null ? meta.full_length_before_cut : '—'} 字`,
+                `【１〜３】ブロックの送信文字数: ${meta.sent_length != null ? meta.sent_length : (blob ? blob.length : 0)} 字`,
+                `【１〜３】連結後の全文長（切断前）: ${meta.full_length_before_cut != null ? meta.full_length_before_cut : '—'} 字`,
                 `入力上限 max_context_chars: ${meta.max_context_chars != null ? meta.max_context_chars : '—'}`,
                 truncated
-                    ? `末尾切断: はい（未送信 ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字）→ 下の末尾が打ち切り位置`
-                    : '末尾切断: いいえ（全文送信）',
+                    ? `【１〜３】末尾切断: はい（未送信 ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字）`
+                    : '【１〜３】末尾切断: いいえ',
+                `モデル API 呼び出し回数（プロンプト全文の塊）: ${trace.length} 回`,
             ];
             metaEl.textContent = lines.join('\n');
-            let body = blob;
-            if (truncated) {
-                body +=
-                    '\n\n────────\n※ 入力上限のため、ここより後ろの原文はモデルに渡っていません（未送信）。';
+            const chunks = [];
+            chunks.push('========== 【１〜３】参照ブロック（プロンプト内「【入力】」に埋め込まれた本文） ==========');
+            chunks.push(blob || '（参照ブロックなし）');
+            if (truncated && blob) {
+                chunks.push(
+                    '\n────────\n※ 入力上限のため、【１〜３】のこの先はモデルに渡っていません（未送信）。',
+                );
             }
-            pre.textContent = body;
+            for (let i = 0; i < trace.length; i++) {
+                const t = trace[i] || {};
+                const stage = t.stage != null ? String(t.stage) : `呼び出し ${i + 1}`;
+                const model = t.model != null ? String(t.model) : '—';
+                const promptText = typeof t.prompt === 'string' ? t.prompt : '';
+                chunks.push(`\n========== ${stage}（モデル: ${model}）==========`);
+                chunks.push(promptText);
+            }
+            pre.textContent = chunks.join('\n');
         }
 
         function displayAnswer(data) {
