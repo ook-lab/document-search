@@ -2349,9 +2349,9 @@ def _build_context_sections(
 ) -> Tuple[str, str]:
     """
     （2）（3）のみ返すタプル。（1）は呼び出し側で質問へ付与済みである前提。
-    （2）文書の similarity（DB ではチャンク類似度の最大）の高い順に、document_body（統合MD）が非空の文書から最大3件
-        の本文だけを連結する。document_body が無い文書は【２】に載せずスキップし、順位を下って3件に達するまで拾う。
-        チャンク連結・chunk_content 代替はしない。
+    （2）類似度上位ちょうど3文書（カレンダー除く）のみを対象にする。各文書の document_body（統合MD）が非空なら
+        その本文を同順で連結する。1〜3位に body が無い文書があっても、4位以下で穴埋めしない（フォールバック禁止）。
+        チャンク連結・chunk_content 代替もしない。
     （3）類似度順の全文書の index_chunks から、（2）の連結テキストにチャンク全文が含まれないもののみ。
     判定は NFKC＋空白正規化後の部分文字列一致（短すぎるチャンクは誤判定回避のため【３】に残す）。
     Googleカレンダー行は含めない（質問【１】側の統合文を参照）。
@@ -2372,9 +2372,7 @@ def _build_context_sections(
     )
     integrated_md_bodies: List[str] = []
 
-    for doc in ordered_by_sim:
-        if len(integrated_md_bodies) >= 3:
-            break
+    for doc in ordered_by_sim[:3]:
         did = str(doc.get("id") or "")
         if not did:
             continue
@@ -2447,7 +2445,7 @@ def _build_context_sections(
     seg3 = "\n\n".join(blocks3).strip()
     total_chars_estimate = sum(len(x) for x in integrated_md_bodies) + sum(len(x) for x in blocks3)
     print(
-        f"[DEBUG] （2）（3）: 統合MD（document_body）≤3件／実数={len(integrated_md_bodies)} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
+        f"[DEBUG] （2）（3）: 統合MD（類似度1〜3位の document_body のみ）件数={len(integrated_md_bodies)} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
         flush=True,
     )
 
