@@ -921,7 +921,7 @@
 
                 <div id="ragLlmInputSection" style="display: none;">
                     <h2 class="section-title">回答生成でモデルに送った全文</h2>
-                    <p class="vector-chunks-note"><strong>本体は「モデル呼び出し」ブロック</strong>です（ルール・網羅指示・【入力】込みの <code>call_model</code> 引数と同一）。【１】〜【３】だけを並べた文字列は入力の一部に過ぎず、文字数制限の意味もモデルが読む内容も取れないため、<strong>末尾の参考</strong>に回します。</p>
+                    <p class="vector-chunks-note"><strong>本体は「モデル呼び出し」ブロック</strong>です（ルール・網羅指示・【入力】込みの <code>call_model</code> 引数と同一）。そのプロンプトの <strong>【入力】</strong>に【１】〜【３】が埋まっている場合は、末尾の参照欄は<strong>同一テキストの二重表示になるため省略</strong>します（多段フローでどのプロンプトにも【１〜３】全文が現れないときだけ末尾に出します）。</p>
                     <div id="ragLlmInputMeta" class="rag-llm-input-meta"></div>
                     <pre class="rag-llm-input-pre" id="ragLlmInputPre"></pre>
                 </div>
@@ -1432,6 +1432,8 @@
                 if (pc != null && pc !== '') sumPrompt += Number(pc);
                 else if (typeof trace[i].prompt === 'string') sumPrompt += trace[i].prompt.length;
             }
+            const blobEmbeddedInTrace =
+                Boolean(blob) && trace.some((t) => typeof t.prompt === 'string' && t.prompt.includes(blob));
             const lines = [
                 `モデル API 呼び出し: ${trace.length} 回（各回のプロンプト全文＝ルール＋【入力】込み。これが実際の送信内容）`,
                 trace.length
@@ -1442,6 +1444,9 @@
                 truncated
                     ? `【１〜３】切断で未送信: ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字`
                     : '【１〜３】切断: なし',
+                blobEmbeddedInTrace
+                    ? '末尾参照欄: プロンプト内【入力】と同一のため省略（スクロールの二重表示を避ける）'
+                    : '末尾参照欄: いずれのプロンプトにも【１〜３】全文が無い場合のみ、下に raw を表示',
             ];
             metaEl.textContent = lines.join('\n');
             const chunks = [];
@@ -1455,12 +1460,21 @@
                 chunks.push(`\n--- ${stage} / モデル: ${model} / この呼び出しのプロンプト ${nch} 字 ---\n`);
                 chunks.push(promptText);
             }
-            chunks.push('\n\n========== 参考:【１〜３】参照ブロック単体（上記プロンプトの【入力】内と同じ。単体だけでは意味が足りない） ==========');
-            chunks.push(blob || '（なし）');
-            if (truncated && blob) {
+            if (blobEmbeddedInTrace) {
                 chunks.push(
-                    '\n────────\n※ max_context_chars により、【１〜３】はここで打ち切り済み。上のプロンプト内の【入力】もこの長さで止まっている。',
+                    '\n\n========== 【１〜３】参照ブロック（API の ordered_rag_blob） ==========\n' +
+                        '上記いずれかのプロンプトの【入力】に全文が含まれているため、ここでは重複表示しません。',
                 );
+            } else {
+                chunks.push(
+                    '\n\n========== 参考:【１〜３】参照ブロック単体（多段フロー等で上記プロンプトに全文が無いときのみ） ==========',
+                );
+                chunks.push(blob || '（なし）');
+                if (truncated && blob) {
+                    chunks.push(
+                        '\n────────\n※ max_context_chars により、【１〜３】はここで打ち切り済み。上のプロンプト内の【入力】もこの長さで止まっている。',
+                    );
+                }
             }
             pre.textContent = chunks.join('\n');
         }
