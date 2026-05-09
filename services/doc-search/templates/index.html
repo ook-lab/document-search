@@ -889,8 +889,8 @@
                 </div>
 
                 <div id="vectorChunksSection" style="display: none;">
-                    <h2 class="section-title">ベクトル検索ヒットチャンク（全文）</h2>
-                    <p class="vector-chunks-note">類似度は<strong>チャンク embedding とクエリ埋め込みのコサイン類似度</strong>です。一覧はその降順（同点は文書ID・chunk_index）。カレンダー等インデックス無しは文書スコアのみ表示されます。</p>
+                    <h2 class="section-title">検索にかかったチャンク（全文）</h2>
+                    <p class="vector-chunks-note">各行は、文書の本文を小さく区切った<strong>チャンク</strong>の1つです。文書の類似度は、<strong>その文書に含まれるチャンクの類似度のうちいちばん大きいもの</strong>です。この一覧は、チャンクの類似度が高い順です。</p>
                     <div class="vector-chunks-list" id="vectorChunksList"></div>
                 </div>
 
@@ -1355,13 +1355,15 @@
                     : '—';
                 const cid = r.chunk_id ? escapeHtml(String(r.chunk_id)) : '（なし）';
                 const did = escapeHtml(String(r.doc_id || ''));
-                const idx = r.chunk_index != null && r.chunk_index !== '' ? `#${r.chunk_index}` : '';
+                const ordInDoc = r.chunk_index != null && r.chunk_index !== ''
+                    ? escapeHtml(String(r.chunk_index))
+                    : '';
                 const text = escapeHtml(r.chunk_text || '');
                 return `
                     <div class="vector-chunk-card">
                         <div class="vector-chunk-meta">
-                            <span><strong>文書ID</strong> ${did}</span>
-                            <span><strong>チャンクID</strong> ${cid} ${idx}</span>
+                            <span><strong>文書の番号</strong> ${did}</span>
+                            <span><strong>チャンクの番号</strong> ${cid}${ordInDoc ? ` <strong>文書内の順</strong> ${ordInDoc}` : ''}</span>
                             <span><strong>類似度</strong> ${sim}</span>
                         </div>
                         <div class="vector-chunk-body">${text}</div>
@@ -1413,7 +1415,6 @@
             } else {
                 documentList.innerHTML = documents.map(doc => {
                     try {
-                        // source が GOOGLE_CLASSROOM の場合は Classroom 投稿レイアウトで表示
                         const isClassroom = doc.source === 'GOOGLE_CLASSROOM';
 
                         if (isClassroom) {
@@ -1431,23 +1432,24 @@
             documentsSection.style.display = 'block';
         }
 
-        /** 検索APIの combined_score。カレンダー行は「類似度」ではなく検索並び用スコアであることを明示する。 */
         function renderScoreBadge(doc) {
-            const v = Number(doc.similarity || 0).toFixed(2);
+            if (doc.similarity == null || doc.similarity === '') {
+                const tip = 'この文書ではチャンクごとの類似度を計算できませんでした。';
+                return `<span class="similarity-badge" title="${escapeHtml(tip)}">類似度: —</span>`;
+            }
+            const v = Number(doc.similarity).toFixed(2);
             if (doc.source === 'Googleカレンダー') {
-                const tip = '1イベント1行。値はその行の代表チャンクに対するハイブリッド検索スコア（文書全体の類似度ではありません）';
+                const tip = '機械ヒット（ベクトル検索ではない）。並び用の固定スコアです。';
                 return `<span class="similarity-badge" title="${escapeHtml(tip)}">検索スコア: ${v}</span>`;
             }
-            const tip = '文書内でクエリに最も近い1チャンクのスコアです（文書全体のベクトル平均ではありません）';
+            const tip = '文書内で類似度がいちばん高いチャンクの類似度です。足切りもこの数で行います。';
             return `<span class="similarity-badge" title="${escapeHtml(tip)}">類似度: ${v}</span>`;
         }
 
         function renderClassroomPost(doc) {
-            // タイトル（09_unified_documents.title）
             let title = doc.title || '';
             if (title.length > 50) title = title.substring(0, 50) + '...';
 
-            // 本文: snippet → chunk_content の順に使用
             const bodyText = (doc.snippet && doc.snippet.trim())
                 ? doc.snippet
                 : (doc.chunk_content || '');
@@ -1521,7 +1523,6 @@
             let title = doc.title || 'ドキュメント';
             if (title.length > 100) title = title.substring(0, 100) + '...';
 
-            // 表示テキスト: snippet → chunk_content の順に使用
             const displayText = doc.snippet || truncateText(doc.chunk_content || '', 200);
 
             // file_url があればリンクボタンを表示

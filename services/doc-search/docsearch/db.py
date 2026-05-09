@@ -251,81 +251,6 @@ class DocSearchDB:
                     continue
         return out
 
-    def _calc_time_score(self, doc: Dict[str, Any], date_range: Optional[str], query: Optional[str] = None) -> float:
-        # 日付の当たり判定は ix_search_dates（検索用集約）のみ。document_date には寄せない。
-        if not date_range or ".." not in date_range:
-            return 0.0
-        try:
-            start_str, end_str = date_range.split("..", 1)
-            start = date_type.fromisoformat(start_str.strip())
-            end = date_type.fromisoformat(end_str.strip()) if end_str.strip() else date_type(9999, 12, 31)
-            days = doc.get("ix_search_dates") or []
-            if not isinstance(days, list) or not days:
-                return 0.0
-            month_m = re.search(r"(\d{1,2})月", query or "")
-            specified_month = int(month_m.group(1)) if month_m else None
-            best = 0.0
-            for raw_d in days:
-                try:
-                    doc_dt = date_type.fromisoformat(str(raw_d)[:10])
-                except Exception:
-                    continue
-                if start <= doc_dt <= end:
-                    best = max(best, 1.0)
-                else:
-                    dist = min(abs((doc_dt - start).days), abs((doc_dt - end).days))
-                    if dist <= 7:
-                        best = max(best, 0.55)
-                    elif dist <= 14:
-                        best = max(best, 0.28)
-                    elif specified_month and doc_dt.month == specified_month:
-                        best = max(best, 0.22)
-            return best
-        except Exception:
-            return 0.0
-
-    def _calculate_keyword_match_score(self, title: str, keywords: List[str], query: str) -> float:
-        normalized_query = query.replace("？", "").replace("?", "").replace("の内容は", "").replace("内容", "").strip()
-        for kw in keywords:
-            if "（" in kw or "(" in kw:
-                if kw in title:
-                    return 1.0
-        matched_keywords = [kw for kw in keywords if kw in title]
-        if not matched_keywords:
-            return 0.0
-        match_count = len(matched_keywords)
-        total_keywords = len(keywords)
-        if match_count == total_keywords:
-            return 0.95
-        if match_count >= 2:
-            return 0.90
-        return 0.85
-
-    def _extract_date(self, query: str) -> Optional[str]:
-        current_year = datetime.now().year
-        match = re.search(r"(\d{4})-(\d{2})-(\d{2})", query)
-        if match:
-            try:
-                date_obj = datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-                return date_obj.strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        match = re.search(r"(\d{1,2})/(\d{1,2})", query)
-        if match:
-            month, day = int(match.group(1)), int(match.group(2))
-            try:
-                return datetime(current_year, month, day).strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        match = re.search(r"(\d{1,2})月(\d{1,2})日", query)
-        if match:
-            month, day = int(match.group(1)), int(match.group(2))
-            try:
-                return datetime(current_year, month, day).strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        return None
-
     def _extract_keywords(self, query: str) -> List[str]:
         keywords: List[str] = []
         keywords.extend(re.findall(r"[（(]([^）)]+)[）)]", query))
@@ -355,6 +280,13 @@ class DocSearchDB:
         calendar_filter_date_end: Optional[date_type] = None,
         rpc_match_count: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        """
+        構成との対応:
+        （1）範囲フィルタ＋RPC の日付窓＋ベクトルで候補を取り、このあと類似度しきい値で足切りし、順序は類似度のみ
+            （件数上限は RPC の match_count と呼び出し側の truncate）。
+        （2）主軸日付への近さによる加点・final_score 再構成は行わず、呼び出し側（例: app._apply_date_match_bonus）に委ねる。
+        （3）サービスロール時は各文書の全インデックスチャンクと質問ベクトルの類似度を付け、その最大を文書の similarity とする。
+        """
         mc = rpc_match_count if rpc_match_count is not None else settings.UNIFIED_SEARCH_RPC_MATCH_COUNT
         rpc_params = {
             "query_text": query,
@@ -413,6 +345,8 @@ class DocSearchDB:
                     "chunk_id": result.get("best_chunk_id"),
                     "chunk_index": result.get("best_chunk_index"),
                     "chunk_type": result.get("best_chunk_type"),
+                    # 検索側の合成スコア。画面に出す類似度とは別に、参照用で残す。
+                    "rpc_hybrid_score": float(result.get("combined_score") or 0),
                     "similarity": result.get("combined_score", 0),
                     "raw_similarity": result.get("raw_similarity", 0),
                     "weighted_similarity": result.get("weighted_similarity", 0),
@@ -444,6 +378,12 @@ class DocSearchDB:
             for doc_result in final_results:
                 doc_id = doc_result.get("id")
                 if not doc_id:
+                    continue
+                if doc_result.get("source") == "Googleカレンダー":
+                    doc_result["document_body"] = ""
+                    doc_result["index_chunks_all"] = []
+                    doc_result["all_chunks"] = []
+                    doc_result["max_chunk_vector_similarity"] = None
                     continue
                 try:
                     body_response = (
@@ -496,47 +436,64 @@ class DocSearchDB:
                             non_table_weight_threshold=non_table_thr,
                             max_other_chunks=max_other,
                         )
+                        sims_mc = [
+                            float(x["chunk_vector_similarity"])
+                            for x in enriched
+                            if x.get("chunk_vector_similarity") is not None
+                        ]
+                        doc_result["max_chunk_vector_similarity"] = max(sims_mc) if sims_mc else None
                     else:
                         doc_result["index_chunks_all"] = []
                         doc_result["all_chunks"] = []
+                        doc_result["max_chunk_vector_similarity"] = None
                 except Exception as e:
                     logger.warning("chunk fetch doc_id={}: {}", doc_id, e)
                     doc_result["index_chunks_all"] = []
                     doc_result["all_chunks"] = []
+                    doc_result["max_chunk_vector_similarity"] = None
         else:
             for doc_result in final_results:
                 doc_result["all_chunks"] = []
                 doc_result["index_chunks_all"] = []
+                doc_result["max_chunk_vector_similarity"] = None
 
         for doc in final_results:
-            if keywords:
-                kw_boost = self._calculate_keyword_match_score(doc.get("title", ""), keywords, query)
-                doc["similarity"] = doc.get("similarity", 0) + kw_boost * 0.2
+            rpc = float(doc.get("rpc_hybrid_score", doc.get("similarity", 0)) or 0)
+            doc["rpc_hybrid_score"] = rpc
+            mcv = doc.get("max_chunk_vector_similarity")
+            if mcv is not None:
+                try:
+                    # 文書の類似度 = その文書内のチャンクの類似度の最大
+                    doc["similarity"] = float(mcv)
+                    doc["similarity_basis"] = "max_chunk_in_doc"
+                except (TypeError, ValueError):
+                    doc["similarity"] = None
+                    doc["similarity_basis"] = "no_chunk_similarity"
+            else:
+                # チャンクごとの類似度が一つも計算できない文書は数を付けない
+                doc["similarity"] = None
+                doc["similarity_basis"] = "no_chunk_similarity"
 
         delta = settings.DATE_RANGE_THRESHOLD_DELTA
         effective_threshold = threshold - (float(delta) if date_range else 0.0)
-        cutoff = [r for r in final_results if r.get("similarity", 0) >= effective_threshold]
-        final_results = cutoff if cutoff else final_results[:3]
-        final_results.sort(key=lambda x: x.get("similarity", 0), reverse=True)
+        cutoff = [
+            r
+            for r in final_results
+            if r.get("similarity") is not None and float(r["similarity"]) >= effective_threshold
+        ]
+        final_results = cutoff
+        final_results.sort(key=lambda x: float(x["similarity"]), reverse=True)
 
-        eps = settings.REL_SIM_MIX_EPS
-        n = len(final_results)
-        for rank, doc in enumerate(final_results):
-            rel_rank = 1.0 - (rank / (n - 1)) if n > 1 else 1.0
-            if eps > 0.0:
-                sim_norm = max(0.0, min(1.0, doc.get("similarity", 0)))
-                rel = (1.0 - eps) * rel_rank + eps * sim_norm
-            else:
-                rel = rel_rank
-            rel = max(0.0, min(1.0, rel))
-            ts = self._calc_time_score(doc, date_range, query=query)
-            doc["time_score"] = ts
-            doc["rel"] = rel
-            doc["final_score"] = max(0.0, min(1.0, 0.75 * rel + 0.25 * ts))
-            if ts > 0:
-                doc["is_date_matched"] = True
+        # 並び順は類似度のみ。日付は app 側 _apply_date_match_bonus で加点する。
+        for doc in final_results:
+            sim = doc.get("similarity")
+            try:
+                doc["final_score"] = float(sim) if sim is not None else None
+            except (TypeError, ValueError):
+                doc["final_score"] = None
+            doc.setdefault("time_score", 0.0)
+            doc.pop("rel", None)
 
-        final_results.sort(key=lambda x: x.get("final_score", 0), reverse=True)
         return final_results
 
     def search_documents_sync(
