@@ -180,7 +180,7 @@
             <table>
                 <thead>
                     <tr>
-                        <th>登録日</th>
+                        <th>投稿・送信日</th>
                         <th>区分</th>
                         <th>ソース / ファイル名</th>
                         <th>アクション</th>
@@ -189,7 +189,7 @@
                 <tbody>
                     {% for doc in docs %}
                     <tr id="row-{{ doc.row_id }}">
-                        <td>{{ (doc.created_at or '')[:10] }}</td>
+                        <td>{{ (doc.display_post_at or '')[:10] }}</td>
                         <td style="font-size: 13px;">
                             {% if doc.display_segment == 'structured' %}
                             <span class="seg-structured">構造化済</span>

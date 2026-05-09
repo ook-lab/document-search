@@ -89,6 +89,32 @@ def _resolved_drive_id(file_url: Optional[str]) -> Optional[str]:
     return drive_id_from_file_url(file_url)
 
 
+def _raw_select_columns(raw_table: str) -> str:
+    """08_file_only は created_at / due_date が無い。"""
+    common = "id, file_url, file_name, title, source, pdf_md_content, pdf_md_updated_at"
+    if raw_table == "08_file_only_01_raw":
+        return common
+    return f"{common}, created_at, due_date"
+
+
+def _display_post_at_str(ud: Dict[str, Any], extras: Dict[str, Any]) -> str:
+    """一覧の日付列用。投稿・送信に近い時刻のみ（09 indexed_at や meta 更新日は使わない）。"""
+    for key in ("post_at", "start_at", "end_at"):
+        v = ud.get(key)
+        if v:
+            return str(v)
+    v = extras.get("created_at")
+    if v:
+        return str(v)
+    v = extras.get("due_date")
+    if v:
+        return str(v)
+    v = extras.get("pdf_md_updated_at")
+    if v:
+        return str(v)
+    return ""
+
+
 def _fetch_meta_ix_map(db_client: Any, doc_ids: Sequence[str]) -> Dict[str, Optional[str]]:
     out: Dict[str, Optional[str]] = {}
     chunk_size = 100
@@ -158,15 +184,13 @@ def fetch_pending_search_data_prep_docs(
             try:
                 raw_res = (
                     db_client.table(rt)
-                    .select(
-                        "id, file_url, file_name, title, source, pdf_md_content, pdf_md_updated_at"
-                    )
+                    .select(_raw_select_columns(rt))
                     .in_("id", chunk)
                     .execute()
                 )
                 for row in raw_res.data or []:
                     if row.get("id") is not None:
-                        fetched[str(row["id"])] = {
+                        entry: Dict[str, Any] = {
                             "file_url": row.get("file_url"),
                             "file_name": row.get("file_name"),
                             "title": row.get("title"),
@@ -174,6 +198,10 @@ def fetch_pending_search_data_prep_docs(
                             "pdf_md_content": row.get("pdf_md_content"),
                             "pdf_md_updated_at": row.get("pdf_md_updated_at"),
                         }
+                        if rt != "08_file_only_01_raw":
+                            entry["created_at"] = row.get("created_at")
+                            entry["due_date"] = row.get("due_date")
+                        fetched[str(row["id"])] = entry
             except Exception:
                 fetched = {}
             for rid in chunk:
@@ -188,7 +216,10 @@ def fetch_pending_search_data_prep_docs(
             try:
                 ud_res = (
                     db_client.table("09_unified_documents")
-                    .select("id, raw_id, raw_table, source, person, category, title, file_url, post_at, indexed_at, ui_data, body")
+                    .select(
+                        "id, raw_id, raw_table, source, person, category, title, file_url, "
+                        "post_at, start_at, end_at, due_date, ui_data, body"
+                    )
                     .eq("raw_table", rt)
                     .in_("raw_id", chunk)
                     .execute()
@@ -242,14 +273,7 @@ def fetch_pending_search_data_prep_docs(
         display_filename = _display_filename(extras, rid_s)
         drive_id = _resolved_drive_id(fu)
 
-        ts = (
-            ud.get("post_at")
-            or ud.get("indexed_at")
-            or m.get("updated_at")
-            or extras.get("pdf_md_updated_at")
-            or ""
-        )
-        created_at = str(ts) if ts else ""
+        display_post_at = _display_post_at_str(ud, extras)
         unified_doc_id = ud.get("id")
         row_id = str(unified_doc_id) if unified_doc_id else f"{rt_s}:{rid_s}"
 
@@ -259,7 +283,7 @@ def fetch_pending_search_data_prep_docs(
             "unified_doc_id": str(unified_doc_id) if unified_doc_id else None,
             "raw_id": rid_s,
             "raw_table": rt_s,
-            "created_at": created_at,
+            "display_post_at": display_post_at,
             "display_segment": segment,
             "display_segment_label": segment_label,
             "display_source": display_source,
@@ -270,5 +294,5 @@ def fetch_pending_search_data_prep_docs(
         }
         out.append(enriched)
 
-    out.sort(key=lambda x: (x.get("created_at") or ""), reverse=True)
+    out.sort(key=lambda x: (x.get("display_post_at") or ""), reverse=True)
     return out, None
