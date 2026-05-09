@@ -5,6 +5,7 @@ Flask Web Application
 import os
 import sys
 import re
+import unicodedata
 from pathlib import Path
 
 # doc-search 専用パッケージ docsearch のみ（パイプライン dms/ とは無関係・コードも別実装）。
@@ -2265,10 +2266,31 @@ def _chunk_stable_key(doc_id: str, ch: Optional[Dict[str, Any]], fallback_suffix
     return f"{doc_id}:{fallback_suffix}"
 
 
+def _norm_for_rag_chunk_dedup(s: str) -> str:
+    """【２】連結テキストとチャンクの包含判定用（全角半角・空白のゆらぎを寄せる）。"""
+    t = unicodedata.normalize("NFKC", s or "")
+    return re.sub(r"\s+", " ", t.strip())
+
+
+def _chunk_text_fully_in_reference_norm(chunk_text: str, ref_norm: str, *, min_len: int = 20) -> bool:
+    """
+    チャンク全文（正規化後）が ref の部分文字列なら True。
+    min_len 未満は誤判定が増えるため包含扱いしない（【３】に残す）。
+    """
+    ct = _norm_for_rag_chunk_dedup(chunk_text)
+    if not ct:
+        return True
+    if len(ct) < min_len:
+        return False
+    if not ref_norm:
+        return False
+    return ct in ref_norm
+
+
 def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optional[Dict[str, Any]], str]]:
     """
     インデックス上のチャンクを順序付けで返す（index_chunks_all のみ）。
-    【２】は document_body を使う。【３】は本文に含めなかったチャンク列用。all_chunks は持たない。
+    【２】は document_body またはチャンク連結。【３】は【２】の表示テキストに全文が含まれないチャンクのみ。
     chunk が無くベストだけあるときは1件のみ。
     """
     chunks_raw = doc.get("index_chunks_all") or []
@@ -2327,8 +2349,9 @@ def _build_context_sections(
 ) -> Tuple[str, str]:
     """
     （2）（3）のみ返すタプル。（1）は呼び出し側で質問へ付与済みである前提。
-    （2）類似度順トップ3文書の統合MD。
-    （3）類似度順に並べた文書について、（2）に含めなかった抽出チャンクのすべて。
+    （2）類似度順トップ3文書の統合MD（見出し・メタ付きのブロック連結）。
+    （3）類似度順の全文書の index_chunks から、（2）の連結テキストにチャンク全文が含まれないもののみ。
+    判定は NFKC＋空白正規化後の部分文字列一致（短すぎるチャンクは誤判定回避のため【３】に残す）。
     Googleカレンダー行は含めない（質問【１】側の統合文を参照）。
     focal_date_range: 呼び出し互換のみ（現在は未参照）。
     """
@@ -2347,7 +2370,6 @@ def _build_context_sections(
     )
     top3 = ordered_by_sim[:3]
 
-    excluded_chunk_keys: set[str] = set()
     blocks2: List[str] = []
 
     doc_block_idx = 0
@@ -2375,21 +2397,14 @@ def _build_context_sections(
 
         if body_text:
             full_text = body_text
-            for ch, txt in chunks_pairs:
-                excluded_chunk_keys.add(_chunk_stable_key(did, ch, "snippet"))
-            if not chunks_pairs and (doc.get("chunk_content") or "").strip():
-                excluded_chunk_keys.add(_chunk_stable_key(did, None, "snippet"))
         elif chunks_pairs:
             chunk_sections = [f"{_llm_chunk_heading(ch)}{txt}" for ch, txt in chunks_pairs]
             full_text = "\n\n---\n\n".join(chunk_sections)
-            for ch, _txt in chunks_pairs:
-                excluded_chunk_keys.add(_chunk_stable_key(did, ch, "snippet"))
         else:
             snippet = (doc.get("chunk_content") or "").strip()
             if not snippet:
                 continue
             full_text = snippet
-            excluded_chunk_keys.add(_chunk_stable_key(did, None, "snippet"))
 
         blocks2.append(
             f"""【類似度トップの文書（統合MD）{doc_block_idx}／3】{date_tag}
@@ -2402,19 +2417,29 @@ def _build_context_sections(
 {sep}"""
         )
 
+    seg2 = "\n\n".join(blocks2).strip()
+    seg2_norm = _norm_for_rag_chunk_dedup(seg2)
+
     extras_idx = 0
     emitted_keys: set[str] = set()
     blocks3: List[str] = []
+    seg3_norm_parts: List[str] = []
 
     def _emit_extra_chunk(doc_local: Dict[str, Any], ch: Optional[Dict[str, Any]], txt_local: str) -> None:
         nonlocal extras_idx
         did_raw = str(doc_local.get("id") or "")
         key = _chunk_stable_key(did_raw, ch, "snippet")
-        if key in excluded_chunk_keys:
-            return
         if key in emitted_keys:
             return
+        if _chunk_text_fully_in_reference_norm(txt_local, seg2_norm, min_len=20):
+            return
+        seg3_joined = "\n".join(seg3_norm_parts)
+        if _chunk_text_fully_in_reference_norm(txt_local, seg3_joined, min_len=8):
+            return
         emitted_keys.add(key)
+        ct_norm = _norm_for_rag_chunk_dedup(txt_local)
+        if ct_norm:
+            seg3_norm_parts.append(ct_norm)
         extras_idx += 1
         title_loc = doc_local.get("title", "無題")
         src_loc = doc_local.get("source", "不明")
@@ -2453,7 +2478,6 @@ def _build_context_sections(
     if not blocks2 and not blocks3:
         return "", ""
 
-    seg2 = "\n\n".join(blocks2).strip()
     seg3 = "\n\n".join(blocks3).strip()
     total_chars_estimate = sum(len(x) for x in blocks2) + sum(len(x) for x in blocks3)
     print(
