@@ -2290,7 +2290,7 @@ def _chunk_text_fully_in_reference_norm(chunk_text: str, ref_norm: str, *, min_l
 def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optional[Dict[str, Any]], str]]:
     """
     インデックス上のチャンクを順序付けで返す（index_chunks_all のみ）。
-    【２】は document_body またはチャンク連結。【３】は【２】の表示テキストに全文が含まれないチャンクのみ。
+    【３】の列挙と、chunk_content の単一スニペット行に使う。【２】は document_body のみ（ここは使わない）。
     chunk が無くベストだけあるときは1件のみ。
     """
     chunks_raw = doc.get("index_chunks_all") or []
@@ -2349,8 +2349,9 @@ def _build_context_sections(
 ) -> Tuple[str, str]:
     """
     （2）（3）のみ返すタプル。（1）は呼び出し側で質問へ付与済みである前提。
-    （2）文書の similarity（DB ではチャンク類似度の最大）の高い順に最大3件の統合MD本文のみを連結する。
-        タイトル・類似度の数値・罫線ブロックなどのラッパーは付けない（統合MDそのものだけ）。
+    （2）文書の similarity（DB ではチャンク類似度の最大）の高い順に、document_body（統合MD）が非空の文書から最大3件
+        の本文だけを連結する。document_body が無い文書は【２】に載せずスキップし、順位を下って3件に達するまで拾う。
+        チャンク連結・chunk_content 代替はしない。
     （3）類似度順の全文書の index_chunks から、（2）の連結テキストにチャンク全文が含まれないもののみ。
     判定は NFKC＋空白正規化後の部分文字列一致（短すぎるチャンクは誤判定回避のため【３】に残す）。
     Googleカレンダー行は含めない（質問【１】側の統合文を参照）。
@@ -2369,30 +2370,18 @@ def _build_context_sections(
         text_docs,
         key=lambda d: (-_vector_similarity_for_top3_ranking(d), str(d.get("id") or "")),
     )
-    top3 = ordered_by_sim[:3]
-
     integrated_md_bodies: List[str] = []
 
-    for doc in top3:
+    for doc in ordered_by_sim:
+        if len(integrated_md_bodies) >= 3:
+            break
         did = str(doc.get("id") or "")
         if not did:
             continue
-
         body_text = (doc.get("document_body") or "").strip()
-        chunks_pairs = _indexed_chunks_ordered_for_context(doc)
-
-        if body_text:
-            full_text = body_text
-        elif chunks_pairs:
-            chunk_sections = [f"{_llm_chunk_heading(ch)}{txt}" for ch, txt in chunks_pairs]
-            full_text = "\n\n---\n\n".join(chunk_sections)
-        else:
-            snippet = (doc.get("chunk_content") or "").strip()
-            if not snippet:
-                continue
-            full_text = snippet
-
-        integrated_md_bodies.append(full_text)
+        if not body_text:
+            continue
+        integrated_md_bodies.append(body_text)
 
     seg2 = "\n\n---\n\n".join(integrated_md_bodies).strip()
     seg2_norm = _norm_for_rag_chunk_dedup(seg2)
@@ -2458,7 +2447,7 @@ def _build_context_sections(
     seg3 = "\n\n".join(blocks3).strip()
     total_chars_estimate = sum(len(x) for x in integrated_md_bodies) + sum(len(x) for x in blocks3)
     print(
-        f"[DEBUG] （2）（3）: 統合MD本文≤3件／実数={len(integrated_md_bodies)} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
+        f"[DEBUG] （2）（3）: 統合MD（document_body）≤3件／実数={len(integrated_md_bodies)} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
         flush=True,
     )
 
