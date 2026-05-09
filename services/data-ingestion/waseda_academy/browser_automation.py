@@ -6,7 +6,7 @@ Playwrightを使用してログイン・PDF取得を自動化
 import os
 import asyncio
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
 from loguru import logger
 from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PlaywrightTimeout
 
@@ -307,8 +307,8 @@ class WasedaAcademyBrowser:
 
     async def download_pdfs_batch(
         self,
-        pdf_info_list: List[Dict[str, str]]
-    ) -> Dict[str, bytes]:
+        pdf_info_list: List[Dict[str, Any]]
+    ) -> Dict[Tuple[str, int], bytes]:
         """
         複数のPDFを一括ダウンロード
 
@@ -316,11 +316,12 @@ class WasedaAcademyBrowser:
             pdf_info_list: [{
                 'notice_id': 'xxx',
                 'pdf_url': '/notice/xxx/pdf/0',
-                'pdf_title': 'タイトル'
+                'pdf_title': 'タイトル',
+                'pdf_slot': 0,  # 同一お知らせ内の添付順（0始まり）。url が共通でも区別する。
             }, ...]
 
         Returns:
-            {notice_id: pdf_data}の辞書
+            {(notice_id, pdf_slot): pdf_data} の辞書
         """
         pdfs = {}
 
@@ -342,12 +343,13 @@ class WasedaAcademyBrowser:
                     notice_id = pdf_info['notice_id']
                     pdf_url = pdf_info['pdf_url']
                     pdf_title = pdf_info['pdf_title']
+                    pdf_slot = int(pdf_info['pdf_slot'])
 
-                    logger.info(f"[{i}/{len(pdf_info_list)}] {pdf_title}")
+                    logger.info(f"[{i}/{len(pdf_info_list)}] {pdf_title} (slot={pdf_slot})")
 
                     pdf_data = await self.download_pdf(page, pdf_url, pdf_title)
                     if pdf_data:
-                        pdfs[notice_id] = pdf_data
+                        pdfs[(notice_id, pdf_slot)] = pdf_data
 
                     # レート制限対策
                     await asyncio.sleep(1)

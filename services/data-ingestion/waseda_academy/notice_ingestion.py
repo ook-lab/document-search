@@ -5,17 +5,18 @@ HTML → PDF抽出・ダウンロード → Google Drive → Supabase (pending)
 
 処理フロー:
 1. HTMLファイル（window.appPropsのJSON）からお知らせ一覧を取得
-2. Supabaseで既存データをチェックして新着お知らせを抽出
-3. PDFリンクからPDFをダウンロードしてGoogle Driveに保存
-4. Supabaseに基本情報を登録（processing_status='pending'）
-5. 別途 process_queued_documents.py で処理（PDF抽出、Stage E-K）
+2. オプション: --reingest-all-scraped / --reingest-post-ids=… で raw と Drive を整理してから既存チェック
+3. Supabaseで既存データをチェックして新着お知らせを抽出
+4. PDFリンクからPDFをダウンロードしてGoogle Driveに保存
+5. Supabaseに基本情報を登録（processing_status='pending'）
+6. 別途 process_queued_documents.py で処理（PDF抽出、Stage E-K）
 """
 import os
 import sys
 import re
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Set
 from datetime import datetime
 from loguru import logger
 
@@ -32,6 +33,21 @@ load_dotenv(root_dir / ".env")
 from dms.common.connectors.google_drive import GoogleDriveConnector
 from dms.common.database.client import DatabaseClient
 from waseda_academy.browser_automation import WasedaAcademyBrowser
+
+
+def parse_reingest_cli(argv: List[str]) -> Tuple[bool, List[str]]:
+    """
+    --reingest-all-scraped … 今回のHTMLに出た全 post_id を再取り込み対象にする
+    --reingest-post-ids=id1,id2 … 指定した post_id だけ
+    """
+    reingest_all = '--reingest-all-scraped' in argv
+    post_ids: List[str] = []
+    for arg in argv:
+        if arg.startswith('--reingest-post-ids='):
+            rest = arg.split('=', 1)[1]
+            post_ids.extend([p.strip() for p in rest.split(',') if p.strip()])
+    dedup: List[str] = list(dict.fromkeys(post_ids))
+    return reingest_all, dedup
 
 
 class WasedaNoticeIngestionPipeline:
@@ -143,18 +159,68 @@ class WasedaNoticeIngestionPipeline:
             logger.error(f"Supabase検索エラー: {e}")
             return set()
 
+    @staticmethod
+    def _drive_file_id_from_file_url(file_url: Optional[str]) -> Optional[str]:
+        if not file_url:
+            return None
+        m = re.search(r'/file/d/([a-zA-Z0-9_-]+)', file_url)
+        return m.group(1) if m else None
+
+    def prepare_post_reingest(self, post_ids: List[str]) -> int:
+        """
+        指定 post_id の 05 raw を削除する（DB トリガーで pipeline_meta / 09 も連動削除）。
+        file_url がある行は、先に対応する Drive ファイルをゴミ箱へ移す。
+        """
+        if not post_ids:
+            return 0
+        post_ids = list(dict.fromkeys(post_ids))
+        try:
+            sel = self.db.client.table('05_ikuya_waseaca_01_raw').select(
+                'id', 'file_url', 'post_id'
+            ).in_('post_id', post_ids).execute()
+            rows = sel.data or []
+        except Exception as e:
+            logger.error(f"再取り込み前の raw 取得に失敗: {e}")
+            return 0
+
+        trashed_drive: Set[str] = set()
+        for row in rows:
+            fid = self._drive_file_id_from_file_url(row.get('file_url'))
+            if not fid or fid in trashed_drive:
+                continue
+            trashed_drive.add(fid)
+            if self.drive.trash_file(fid):
+                logger.info(f"Drive をゴミ箱へ: {fid}")
+            else:
+                logger.warning(f"Drive ゴミ箱移動に失敗（続行）: {fid}")
+
+        try:
+            self.db.client.table('05_ikuya_waseaca_01_raw').delete().in_(
+                'post_id', post_ids
+            ).execute()
+        except Exception as e:
+            logger.error(f"05_ikuya_waseaca_01_raw の削除に失敗: {e}")
+            return 0
+
+        logger.info(
+            f"再取り込み準備: post_id {len(post_ids)} 種 / raw {len(rows)} 行を削除 "
+            f"（Drive ゴミ箱試行 {len(trashed_drive)} 件）"
+        )
+        return len(rows)
+
     async def download_pdfs_with_browser(
         self,
-        pdf_info_list: List[Dict[str, str]]
-    ) -> Dict[str, bytes]:
+        pdf_info_list: List[Dict[str, Any]]
+    ) -> Dict[Tuple[str, int], bytes]:
         """
         ブラウザ自動化を使用して複数のPDFを一括ダウンロード
 
         Args:
-            pdf_info_list: [{'notice_id': 'xxx', 'pdf_url': '/notice/xxx/pdf/0', 'pdf_title': 'タイトル'}, ...]
+            pdf_info_list: [{'notice_id', 'pdf_url', 'pdf_title', 'pdf_slot'}, ...]
+                pdf_slot は同一お知らせ内の添付順（0始まり）。url が共通の添付を区別する。
 
         Returns:
-            {notice_id: pdf_data}の辞書
+            {(notice_id, pdf_slot): pdf_data} の辞書
         """
         try:
             browser = WasedaAcademyBrowser(headless=True)
@@ -201,14 +267,14 @@ class WasedaNoticeIngestionPipeline:
     async def process_single_notice(
         self,
         notice: Dict[str, Any],
-        pdf_data_dict: Dict[str, bytes]
+        pdf_data_dict: Dict[Tuple[str, int], bytes]
     ) -> Dict[str, Any]:
         """
         1件のお知らせを処理（PDFのみ）
 
         Args:
             notice: お知らせデータ
-            pdf_data_dict: {notice_id: pdf_data}の辞書（事前ダウンロード済み）
+            pdf_data_dict: {(notice_id, pdf_slot): pdf_data} の辞書（事前ダウンロード済み）
 
         Returns:
             処理結果の辞書
@@ -276,8 +342,8 @@ class WasedaNoticeIngestionPipeline:
                 result['success'] = True
                 return result
 
-            # 各PDFを処理
-            for pdf in pdfs:
+            # 各PDFを処理（pdf_slot で区別: API 上で url が同一の添付が複数ある）
+            for pdf_slot, pdf in enumerate(pdfs):
                 pdf_title = pdf.get('title', 'untitled')
                 pdf_url = pdf.get('url', '')
 
@@ -286,7 +352,7 @@ class WasedaNoticeIngestionPipeline:
                     continue
 
                 # 1. 事前ダウンロード済みのPDFデータを取得
-                pdf_data = pdf_data_dict.get(notice_id)
+                pdf_data = pdf_data_dict.get((notice_id, pdf_slot))
                 if not pdf_data:
                     logger.warning(f"PDFデータが見つかりません（スキップ）: {pdf_title}")
                     continue
@@ -399,7 +465,10 @@ async def main():
         if not html_file.exists():
             logger.error(f"HTMLファイルが見つかりません: {html_file}")
             logger.info("ヒント: --browser オプションでブラウザ自動化を使用できます")
-            logger.info("  python -m B_ingestion.waseda_academy.notice_ingestion --browser")
+            logger.info(
+                "  再取り込み: --browser --reingest-all-scraped "
+                "または --browser --reingest-post-ids=id1,id2"
+            )
             return
 
         with open(html_file, 'r', encoding='utf-8') as f:
@@ -411,8 +480,23 @@ async def main():
         logger.warning("お知らせが抽出できませんでした")
         return
 
-    # 既存のお知らせIDをSupabaseから取得
     notice_ids = [n.get('id') for n in current_notices if n.get('id')]
+
+    reingest_all, reingest_post_ids_arg = parse_reingest_cli(sys.argv)
+    if reingest_all:
+        logger.warning(
+            "再取り込み（全件）: 今回のHTMLに出ている全 post_id について "
+            "05_ikuya_waseaca_01_raw と関連を削除し、Drive の添付PDFをゴミ箱へ移します。"
+        )
+        pipeline.prepare_post_reingest(notice_ids)
+    elif reingest_post_ids_arg:
+        logger.warning(
+            f"再取り込み（指定 {len(reingest_post_ids_arg)} 件）: "
+            "該当 post_id の raw と Drive 添付を整理します。"
+        )
+        pipeline.prepare_post_reingest(reingest_post_ids_arg)
+
+    # 既存のお知らせIDをSupabaseから取得
     existing_ids = await pipeline.check_existing_notices(notice_ids)
 
     # 新着お知らせを抽出
@@ -431,14 +515,15 @@ async def main():
     for notice in new_notices:
         notice_id = notice.get('id')
         pdfs = notice.get('pdfs', [])
-        for pdf in pdfs:
+        for pdf_slot, pdf in enumerate(pdfs):
             pdf_title = pdf.get('title', 'untitled')
             pdf_url = pdf.get('url', '')
             if pdf_url:
                 pdf_info_list.append({
                     'notice_id': notice_id,
                     'pdf_url': pdf_url,
-                    'pdf_title': pdf_title
+                    'pdf_title': pdf_title,
+                    'pdf_slot': pdf_slot,
                 })
 
     logger.info(f"ダウンロード対象のPDF: {len(pdf_info_list)}件")
