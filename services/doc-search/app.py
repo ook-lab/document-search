@@ -1138,6 +1138,8 @@ def generate_answer():
             ]
             print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
+        search_results = _filter_documents_verified_in_09_unified(db_client, search_results)
+
         # （２）（３）を構築し、（１）（２）（３）をこの順で結合してから入力上限で切断
         part2_unified, part3_chunks = _build_context_sections(
             search_results,
@@ -2307,6 +2309,62 @@ def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optio
     return [(None, snippet)] if snippet else []
 
 
+def _filter_documents_verified_in_09_unified(db_client: Any, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    【２】【３】に使うベクトル系ヒットは、09_unified_documents に実在する id のみ残す。
+    RPC／クライアント渡しのずれで幽霊 doc_id が混ざっても載せない。
+    Googleカレンダー行は据え置き（【２】【３】では本来就除外）。
+    """
+    if not documents:
+        return documents
+
+    unique_ids: List[str] = []
+    seen: set[str] = set()
+    for d in documents:
+        if d.get("source") == "Googleカレンダー":
+            continue
+        did = str(d.get("id") or "").strip()
+        if did and did not in seen:
+            seen.add(did)
+            unique_ids.append(did)
+
+    if not unique_ids:
+        return documents
+
+    existing: set[str] = set()
+    batch_size = 120
+    for i in range(0, len(unique_ids), batch_size):
+        batch = unique_ids[i : i + batch_size]
+        try:
+            resp = db_client.client.table("09_unified_documents").select("id").in_("id", batch).execute()
+            for row in resp.data or []:
+                rid = str(row.get("id") or "").strip()
+                if rid:
+                    existing.add(rid)
+        except Exception as e:
+            print(f"[WARN] 09 実在チェック batch 失敗: {e}", flush=True)
+
+    out: List[Dict[str, Any]] = []
+    dropped = 0
+    for d in documents:
+        if d.get("source") == "Googleカレンダー":
+            out.append(d)
+            continue
+        sid = str(d.get("id") or "").strip()
+        if not sid:
+            dropped += 1
+            continue
+        if sid in existing:
+            out.append(d)
+        else:
+            dropped += 1
+            print(f"[INFO] 09 に無い doc_id を【２】【３】入力から除外: {sid}", flush=True)
+
+    if dropped:
+        print(f"[INFO] 09 実在チェック: ベクトル系 {dropped} 件除外", flush=True)
+    return out
+
+
 def _vector_similarity_for_top3_ranking(doc: Dict[str, Any]) -> float:
     """（2）の並び順。doc['similarity'] のみ（DB では当該文書のチャンク類似度の最大）。final_score は混ぜない。"""
     s = doc.get("similarity")
@@ -2330,6 +2388,7 @@ def _build_context_sections(
     （3）全チャンクをチャンク類似度の高い順に並べ、【２】に選ばれた上位3 UUID の doc_id と一致しないチャンクだけを送る。
         ブロックに載せる類似度はチャンク単位。
     Googleカレンダー行は含めない。
+    呼び出し側で _filter_documents_verified_in_09_unified を通し、09 に無い id を先に落とすこと。
     focal_date_range: 呼び出し互換のみ（現在は未参照）。
     """
     _ = focal_date_range
