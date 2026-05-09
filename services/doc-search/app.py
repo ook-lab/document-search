@@ -5,7 +5,6 @@ Flask Web Application
 import os
 import sys
 import re
-import unicodedata
 from pathlib import Path
 
 # doc-search 専用パッケージ docsearch のみ（パイプライン dms/ とは無関係・コードも別実装）。
@@ -2266,25 +2265,16 @@ def _chunk_stable_key(doc_id: str, ch: Optional[Dict[str, Any]], fallback_suffix
     return f"{doc_id}:{fallback_suffix}"
 
 
-def _norm_for_rag_chunk_dedup(s: str) -> str:
-    """【２】連結テキストとチャンクの包含判定用（全角半角・空白のゆらぎを寄せる）。"""
-    t = unicodedata.normalize("NFKC", s or "")
-    return re.sub(r"\s+", " ", t.strip())
-
-
-def _chunk_text_fully_in_reference_norm(chunk_text: str, ref_norm: str, *, min_len: int = 20) -> bool:
-    """
-    チャンク全文（正規化後）が ref の部分文字列なら True。
-    min_len 未満は誤判定が増えるため包含扱いしない（【３】に残す）。
-    """
-    ct = _norm_for_rag_chunk_dedup(chunk_text)
-    if not ct:
-        return True
-    if len(ct) < min_len:
-        return False
-    if not ref_norm:
-        return False
-    return ct in ref_norm
+def _chunk_row_similarity(ch: Optional[Dict[str, Any]], doc_fallback: float) -> float:
+    """チャンク行の類似度。chunk_vector_similarity が無ければ文書側のベクトル類似度にフォールバック。"""
+    if ch:
+        v = ch.get("chunk_vector_similarity")
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    return doc_fallback
 
 
 def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optional[Dict[str, Any]], str]]:
@@ -2317,22 +2307,6 @@ def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optio
     return [(None, snippet)] if snippet else []
 
 
-def _doc_similarity_value(doc: Dict[str, Any]) -> float:
-    s = doc.get("similarity")
-    if s is not None:
-        try:
-            return float(s)
-        except (TypeError, ValueError):
-            pass
-    fs = doc.get("final_score")
-    if fs is not None:
-        try:
-            return float(fs)
-        except (TypeError, ValueError):
-            pass
-    return 0.0
-
-
 def _vector_similarity_for_top3_ranking(doc: Dict[str, Any]) -> float:
     """（2）の並び順。doc['similarity'] のみ（DB では当該文書のチャンク類似度の最大）。final_score は混ぜない。"""
     s = doc.get("similarity")
@@ -2349,12 +2323,13 @@ def _build_context_sections(
 ) -> Tuple[str, str]:
     """
     （2）（3）のみ返すタプル。（1）は呼び出し側で質問へ付与済みである前提。
-    （2）類似度上位ちょうど3文書（カレンダー除く）のみを対象にする。各文書の document_body（統合MD）が非空なら
-        その本文を同順で連結する。1〜3位に body が無い文書があっても、4位以下で穴埋めしない（フォールバック禁止）。
-        チャンク連結・chunk_content 代替もしない。
-    （3）類似度順の全文書の index_chunks から、（2）の連結テキストにチャンク全文が含まれないもののみ。
-    判定は NFKC＋空白正規化後の部分文字列一致（短すぎるチャンクは誤判定回避のため【３】に残す）。
-    Googleカレンダー行は含めない（質問【１】側の統合文を参照）。
+
+    （2）全チャンクを類似度の良い順に見て doc_id ごとに文書類似度を付与するが、同一文書では低い値で上書きしない
+        （＝その doc のチャンク類似度の最大）。その文書類似度で並べた上位ちょうど3 UUID のみを対象に、
+        document_body（統合MD）が非空のものを同順で連結する。4位以下で穴埋めしない。
+    （3）全チャンクをチャンク類似度の高い順に並べ、【２】に選ばれた上位3 UUID の doc_id と一致しないチャンクだけを送る。
+        ブロックに載せる類似度はチャンク単位。
+    Googleカレンダー行は含めない。
     focal_date_range: 呼び出し互換のみ（現在は未参照）。
     """
     _ = focal_date_range
@@ -2366,78 +2341,98 @@ def _build_context_sections(
     sep = "─" * 60
 
     text_docs = [d for d in documents if d.get("source") != "Googleカレンダー"]
-    ordered_by_sim = sorted(
-        text_docs,
-        key=lambda d: (-_vector_similarity_for_top3_ranking(d), str(d.get("id") or "")),
-    )
-    integrated_md_bodies: List[str] = []
 
-    for doc in ordered_by_sim[:3]:
-        did = str(doc.get("id") or "")
+    # (chunk_sim, doc_id, doc_dict, chunk_row|None, chunk_text)
+    chunk_events: List[Tuple[float, str, Dict[str, Any], Optional[Dict[str, Any]], str]] = []
+    doc_by_id: Dict[str, Dict[str, Any]] = {}
+
+    for doc in text_docs:
+        did = str(doc.get("id") or "").strip()
         if not did:
             continue
-        body_text = (doc.get("document_body") or "").strip()
-        if not body_text:
+        doc_by_id[did] = doc
+        doc_fallback = _vector_similarity_for_top3_ranking(doc)
+        for ch, txt in _indexed_chunks_ordered_for_context(doc):
+            t = (txt or "").strip()
+            if not t:
+                continue
+            ch_sim = _chunk_row_similarity(ch, doc_fallback)
+            chunk_events.append((ch_sim, did, doc, ch, t))
+
+    doc_best: Dict[str, float] = {}
+    for sim, did, *_rest in chunk_events:
+        doc_best[did] = max(doc_best.get(did, float("-inf")), sim)
+
+    for doc in text_docs:
+        did = str(doc.get("id") or "").strip()
+        if not did:
             continue
-        integrated_md_bodies.append(body_text)
+        if did not in doc_best:
+            doc_best[did] = _vector_similarity_for_top3_ranking(doc)
+
+    ordered_docs = sorted(
+        text_docs,
+        key=lambda d: (-doc_best.get(str(d.get("id") or "").strip(), float("-inf")), str(d.get("id") or "")),
+    )
+    top3_ids_ordered = [
+        str(d.get("id") or "").strip()
+        for d in ordered_docs[:3]
+        if str(d.get("id") or "").strip()
+    ]
+    top3_id_set = set(top3_ids_ordered)
+
+    integrated_md_bodies: List[str] = []
+    for did in top3_ids_ordered:
+        doc = doc_by_id.get(did)
+        if not doc:
+            continue
+        body_text = (doc.get("document_body") or "").strip()
+        if body_text:
+            integrated_md_bodies.append(body_text)
 
     seg2 = "\n\n---\n\n".join(integrated_md_bodies).strip()
-    seg2_norm = _norm_for_rag_chunk_dedup(seg2)
+
+    chunk_events.sort(
+        key=lambda x: (
+            -x[0],
+            x[1],
+            (x[3] or {}).get("chunk_index") if x[3] is not None else 10**9,
+            str((x[3] or {}).get("id") or "") if x[3] else "",
+        ),
+    )
 
     extras_idx = 0
     emitted_keys: set[str] = set()
     blocks3: List[str] = []
-    seg3_norm_parts: List[str] = []
 
-    def _emit_extra_chunk(doc_local: Dict[str, Any], ch: Optional[Dict[str, Any]], txt_local: str) -> None:
-        nonlocal extras_idx
-        did_raw = str(doc_local.get("id") or "")
-        key = _chunk_stable_key(did_raw, ch, "snippet")
+    for ch_sim, did, doc_local, ch, txt_local in chunk_events:
+        if did in top3_id_set:
+            continue
+        key = _chunk_stable_key(did, ch, "snippet")
         if key in emitted_keys:
-            return
-        if _chunk_text_fully_in_reference_norm(txt_local, seg2_norm, min_len=20):
-            return
-        seg3_joined = "\n".join(seg3_norm_parts)
-        if _chunk_text_fully_in_reference_norm(txt_local, seg3_joined, min_len=8):
-            return
+            continue
         emitted_keys.add(key)
-        ct_norm = _norm_for_rag_chunk_dedup(txt_local)
-        if ct_norm:
-            seg3_norm_parts.append(ct_norm)
         extras_idx += 1
         title_loc = doc_local.get("title", "無題")
         src_loc = doc_local.get("source", "不明")
-        sim_loc = doc_local.get("similarity") if doc_local.get("similarity") is not None else _doc_similarity_value(doc_local)
         dd = doc_local.get("document_date", "")
         dm = doc_local.get("is_date_matched", False)
         tag = "（日付一致✓）" if dm else ""
         try:
-            sds = float(sim_loc)
-            s_disp = f"{sds:.3f}"
+            s_disp = f"{float(ch_sim):.3f}"
         except (TypeError, ValueError):
-            s_disp = str(sim_loc)
+            s_disp = str(ch_sim)
         blk = (
             f"""【それ以外の抽出チャンク{extras_idx}】{tag}
 タイトル: {title_loc}
 ソース: {src_loc}
 日付: {dd}
-類似度: {s_disp}
+チャンク類似度: {s_disp}
 
 {_llm_chunk_heading(ch)}{txt_local}
 {sep}"""
         )
         blocks3.append(blk)
-
-    docs_nc_ordered = sorted(
-        [d for d in documents if d.get("source") != "Googleカレンダー"],
-        key=lambda d: (-_vector_similarity_for_top3_ranking(d), str(d.get("id") or "")),
-    )
-    for doc in docs_nc_ordered:
-        did = str(doc.get("id") or "")
-        if not did:
-            continue
-        for ch, txt in _indexed_chunks_ordered_for_context(doc):
-            _emit_extra_chunk(doc, ch, txt)
 
     if not integrated_md_bodies and not blocks3:
         return "", ""
@@ -2445,7 +2440,8 @@ def _build_context_sections(
     seg3 = "\n\n".join(blocks3).strip()
     total_chars_estimate = sum(len(x) for x in integrated_md_bodies) + sum(len(x) for x in blocks3)
     print(
-        f"[DEBUG] （2）（3）: 統合MD（類似度1〜3位の document_body のみ）件数={len(integrated_md_bodies)} 残余チャンク={extras_idx} 文字数≈{total_chars_estimate}",
+        f"[DEBUG] （2）（3）: 【２】上位3doc UUID={top3_ids_ordered} body件数={len(integrated_md_bodies)} "
+        f"【３】チャンク数={extras_idx} 文字数≈{total_chars_estimate}",
         flush=True,
     )
 
