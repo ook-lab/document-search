@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-import re
 from datetime import datetime, timedelta, date as date_type
 from typing import Any, Dict, List, Optional
 
@@ -132,35 +131,6 @@ class DocSearchDB:
                     filtered_results.append(result)
         return filtered_results
 
-    def _filter_chunks_for_context(
-        self,
-        chunks: List[Dict[str, Any]],
-        query: str,
-        best_chunk_id: Optional[str],
-        keywords: List[str],
-        non_table_weight_threshold: float = 1.0,
-        max_other_chunks: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        table_chunks = [c for c in chunks if (c.get("chunk_type") or "").startswith("table_")]
-        other_chunks = [c for c in chunks if not (c.get("chunk_type") or "").startswith("table_")]
-        relevant_tables: List[Dict[str, Any]] = []
-        if keywords and table_chunks:
-            for chunk in table_chunks:
-                content = chunk.get("chunk_text") or ""
-                if any(kw in content for kw in keywords):
-                    relevant_tables.append(chunk)
-            if not relevant_tables:
-                best = [c for c in table_chunks if str(c.get("id")) == str(best_chunk_id)] if best_chunk_id else []
-                relevant_tables = best if best else table_chunks[:1]
-        else:
-            relevant_tables = table_chunks[:1] if table_chunks else []
-        filtered_other = [c for c in other_chunks if (c.get("chunk_weight") or 0) >= non_table_weight_threshold]
-        # 週レンジなどで「複数日が別チャンクに分散」しているとき、絞り込みで取りこぼさないよう上限で制御する。
-        filtered_other.sort(key=lambda x: (x.get("chunk_weight") or 0), reverse=True)
-        if max_other_chunks is not None:
-            filtered_other = filtered_other[:max_other_chunks]
-        return relevant_tables + filtered_other
-
     def _parse_yyyy_mm_dd(self, s: Optional[Any]) -> Optional[str]:
         if s is None:
             return None
@@ -251,18 +221,6 @@ class DocSearchDB:
                     continue
         return out
 
-    def _extract_keywords(self, query: str) -> List[str]:
-        keywords: List[str] = []
-        keywords.extend(re.findall(r"[（(]([^）)]+)[）)]", query))
-        keywords.extend(re.findall(r"[\w一-龠ぁ-んァ-ヶー]+[（(][^）)]+[）)]", query))
-        cleaned_query = query
-        for particle in ["の", "は", "を", "が", "に", "へ", "と", "から", "まで", "で", "？", "?"]:
-            cleaned_query = cleaned_query.replace(particle, " ")
-        words = re.findall(r"[一-龠ァ-ヶー]{2,}", cleaned_query)
-        keywords.extend(words)
-        keywords = [kw.strip() for kw in keywords if kw.strip()]
-        return list(set(keywords))
-
     async def search_documents(
         self,
         query: str,
@@ -279,6 +237,7 @@ class DocSearchDB:
         calendar_filter_date_start: Optional[date_type] = None,
         calendar_filter_date_end: Optional[date_type] = None,
         rpc_match_count: Optional[int] = None,
+        enumeration_recall: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         構成との対応:
@@ -286,8 +245,12 @@ class DocSearchDB:
             （件数上限は RPC の match_count と呼び出し側の truncate）。
         （2）主軸日付への近さによる加点・final_score 再構成は行わず、呼び出し側（例: app._apply_date_match_bonus）に委ねる。
         （3）サービスロール時は各文書の全インデックスチャンクと質問ベクトルの類似度を付け、その最大を文書の similarity とする。
+
+        enumeration_recall: 列挙・一覧系の問い。RPC の match_count を広げて候補文書の取りこぼしを減らす。
         """
         mc = rpc_match_count if rpc_match_count is not None else settings.UNIFIED_SEARCH_RPC_MATCH_COUNT
+        if enumeration_recall and rpc_match_count is None:
+            mc = min(max(mc * 2, 120), 280)
         rpc_params = {
             "query_text": query,
             "query_embedding": embedding,
@@ -358,23 +321,7 @@ class DocSearchDB:
                 }
             )
 
-        keywords = self._extract_keywords(query)
-
         if self._is_service_role:
-            week_mode = False
-            if date_range and ".." in date_range:
-                try:
-                    a_s, b_s = date_range.split("..", 1)
-                    a = date_type.fromisoformat(a_s.strip())
-                    b = date_type.fromisoformat(b_s.strip())
-                    if (b - a).days >= 6:
-                        week_mode = True
-                except Exception:
-                    week_mode = False
-
-            non_table_thr = 0.0 if week_mode else 1.0
-            max_other = 40 if week_mode else None
-
             for doc_result in final_results:
                 doc_id = doc_result.get("id")
                 if not doc_id:
@@ -382,7 +329,6 @@ class DocSearchDB:
                 if doc_result.get("source") == "Googleカレンダー":
                     doc_result["document_body"] = ""
                     doc_result["index_chunks_all"] = []
-                    doc_result["all_chunks"] = []
                     doc_result["max_chunk_vector_similarity"] = None
                     continue
                 try:
@@ -428,14 +374,6 @@ class DocSearchDB:
                                 str(x.get("id") or ""),
                             ),
                         )
-                        doc_result["all_chunks"] = self._filter_chunks_for_context(
-                            enriched,
-                            query=query,
-                            best_chunk_id=doc_result.get("chunk_id"),
-                            keywords=keywords,
-                            non_table_weight_threshold=non_table_thr,
-                            max_other_chunks=max_other,
-                        )
                         sims_mc = [
                             float(x["chunk_vector_similarity"])
                             for x in enriched
@@ -444,16 +382,13 @@ class DocSearchDB:
                         doc_result["max_chunk_vector_similarity"] = max(sims_mc) if sims_mc else None
                     else:
                         doc_result["index_chunks_all"] = []
-                        doc_result["all_chunks"] = []
                         doc_result["max_chunk_vector_similarity"] = None
                 except Exception as e:
                     logger.warning("chunk fetch doc_id={}: {}", doc_id, e)
                     doc_result["index_chunks_all"] = []
-                    doc_result["all_chunks"] = []
                     doc_result["max_chunk_vector_similarity"] = None
         else:
             for doc_result in final_results:
-                doc_result["all_chunks"] = []
                 doc_result["index_chunks_all"] = []
                 doc_result["max_chunk_vector_similarity"] = None
 
@@ -512,6 +447,7 @@ class DocSearchDB:
         calendar_filter_date_start: Optional[date_type] = None,
         calendar_filter_date_end: Optional[date_type] = None,
         rpc_match_count: Optional[int] = None,
+        enumeration_recall: bool = False,
     ) -> List[Dict[str, Any]]:
         try:
             try:
@@ -535,6 +471,7 @@ class DocSearchDB:
                             calendar_filter_date_start,
                             calendar_filter_date_end,
                             rpc_match_count,
+                            enumeration_recall,
                         )
                     )
             except RuntimeError:
@@ -555,6 +492,7 @@ class DocSearchDB:
                     calendar_filter_date_start,
                     calendar_filter_date_end,
                     rpc_match_count,
+                    enumeration_recall,
                 )
             )
         except Exception as e:

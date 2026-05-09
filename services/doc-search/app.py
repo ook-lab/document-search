@@ -22,6 +22,25 @@ CORS(app)
 
 # カレンダー主軸（date_range / calendar_primary）の開始・終了から、RPC filter_date 用に広げる暦日数（1暦月は使わずこの値のみ）
 SEARCH_CALENDAR_MARGIN_DAYS = 30
+
+# クエリ分類に依存せず検索統合へ載せる（捏造禁止）
+RAG_POLICY_SEARCH_UNIVERSAL_JA = (
+    "【検索・埋め込み｜絶対遵守】後段で渡す資料に現れる語形・日付・人物・別表記を、1つも捨てるな。"
+    "検索が後から全文を読む前提で、取りこぼしゼロに近づく統合文にせよ。少数ヒットで質問を狭めるな。"
+    "ヒット件数に心の上限を置くな。何十・何百の手がかりでも拾いに行けるよう語を増やせ。"
+    "材料に無い事実は1文字も足すな。"
+)
+
+# 回答系プロンプトへ毎回載せる（創作禁止）
+RAG_POLICY_ANSWER_UNIVERSAL_JA = (
+    "【回答｜絶対遵守】【１】【２】【３】に含まれる資料の文字は、先頭から末尾まで、"
+    "絶対に1文字も読み飛ばすな。スキップ・粗読み・先に進む省略は禁止。全文を目で追い、"
+    "質問に関係しうる断片をすべて見つけ出し、拾いつくせ。見落としは許されない。"
+    "件数の目安で打ち切るな。10件でも100件でも200件でも、入力に現れる限りどこまでも探し、拾い続けろ。"
+    "資料に書いてないことだけを書くな（捏造・推測の禁止）。"
+    "【入力】に省略の示唆があるときは、手元に無い文字は存在不明とし、その部分は断定するな。不確実性に書け。"
+)
+
 # クライアントの遅延初期化（Cloud Run起動高速化）
 db_client = None
 llm_client = None
@@ -273,20 +292,9 @@ def _calendar_premise_block(target_date_range: str, calendar_rows: List[Dict[str
 
 
 def _query_type_guidance_ja(query_type_info: Dict[str, Any]) -> str:
-    """ルールベース分類に応じた短い扱いの指針（検索・埋め込み用テキストの一部）。"""
-    t = (query_type_info.get("type") or "general") if isinstance(query_type_info, dict) else "general"
-    t = str(t).strip() or "general"
-    hints = {
-        "list": "列挙・一覧系: 該当項目を漏れなく列挙し、各項目に根拠を結び付ける。",
-        "when": "日付・予定系: 期限・スケジュール・時系列を優先して解釈する。",
-        "who": "人物系: 差出人・担当・宛先を優先して解釈する。",
-        "where": "場所系: 場所・教室・会場を優先して解釈する。",
-        "how": "方法・手順系: 手順・やり方を優先して解釈する。",
-        "why": "理由系: 理由・目的・原因を優先して解釈する。",
-        "what": "内容系: 主題・内容・詳細を優先して解釈する。",
-        "general": "一般的な質問: 文脈に沿ってバランスよく検索する。",
-    }
-    return hints.get(t, hints["general"])
+    """検索統合 LLM 用の網羅方針。分類タイプには依存しない（ログ用の query_type_info は呼び出し側で保持）。"""
+    _ = query_type_info
+    return RAG_POLICY_SEARCH_UNIVERSAL_JA
 
 
 def _calendar_facts_plain(date_range_literal: str, calendar_rows: List[Dict[str, Any]]) -> str:
@@ -330,7 +338,7 @@ def _assemble_search_query_mechanical(
         parts.append(prem)
     qh = _query_type_guidance_ja(query_type_info)
     if qh:
-        parts.append(f"【質問タイプに応じた扱い】\n{qh}")
+        parts.append(f"【網羅方針（全質問共通）】\n{qh}")
     if isinstance(intent_spec, dict):
         ri = (intent_spec.get("resolved_instruction_ja") or "").strip()
         if ri:
@@ -400,7 +408,7 @@ def _assemble_search_query_with_llm(
 ■ 主軸の日付と機械ヒットしたカレンダー（事実として統合に含める）
 {cal_facts or '（なし）'}
 
-■ 質問タイプに応じた扱い
+■ 網羅方針（全質問共通）
 {qh}
 
 ■ 下流への手順・拘束（検索要約にも溶け込ませる）
@@ -630,7 +638,6 @@ def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_id": None,
         "chunk_index": None,
         "chunk_type": "calendar_row",
-        "all_chunks": [],
         "document_body": "",
         "similarity": 1.0,
         "rpc_hybrid_score": 1.0,
@@ -865,7 +872,12 @@ def search_documents():
             )
 
         query_type_info = _detect_query_type(query)
-        print(f"[DEBUG] クエリタイプ検出: {query_type_info['type']} (focus: {query_type_info['focus']})")
+        enum_recall = True
+        print(
+            f"[DEBUG] クエリタイプ検出: {query_type_info['type']} (focus: {query_type_info['focus']}) "
+            f"enumeration_recall={enum_recall}（全質問で広域候補）",
+            flush=True,
+        )
 
         refined_query = _assemble_search_query_with_llm(
             llm_client,
@@ -905,6 +917,7 @@ def search_documents():
             filter_date_end=hi,
             calendar_filter_date_start=cal_lo,
             calendar_filter_date_end=cal_hi,
+            enumeration_recall=enum_recall,
         )
         results = results[: int(limit)]
         results = _filter_calendar_results_by_attendance_intent(results, refined_query)
@@ -922,8 +935,6 @@ def search_documents():
         print(f"[DEBUG] 最終検索結果: {len(results)} 件返却")
 
         vector_hit_chunks = _flatten_vector_hit_chunks(results)
-        for r in results:
-            r.pop("index_chunks_all", None)
 
         response_data = {
             'success': True,
@@ -1037,6 +1048,7 @@ def generate_answer():
             )
 
         query_type_info = _detect_query_type(query)
+        enum_recall = True
         refined_query = _assemble_search_query_with_llm(
             llm_client,
             original_query=query,
@@ -1094,6 +1106,7 @@ def generate_answer():
                 filter_date_end=hi,
                 calendar_filter_date_start=cal_lo,
                 calendar_filter_date_end=cal_hi,
+                enumeration_recall=enum_recall,
             )
             search_results = search_results[: int(search_limit)]
             search_results = _filter_calendar_results_by_attendance_intent(search_results, refined_query)
@@ -1201,10 +1214,11 @@ def _answer_1step(llm_client, model_name: str, ordered_rag_blob: str, log_contex
 {ordered_rag_blob}
 
 【ルール】
+- {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - Evidenceが存在する内容のみ回答する（新しい主張の創作禁止）
 - 【１／質問】の【検索に使った統合文】等に載る機械ヒット予定がある場合のみ、根拠として Evidence にそのまま引用してよい（Source は Googleカレンダー / タイトル）。載っていない場合は無理に使わない
 - 根拠なし断定禁止
-- Evidenceは原文から1〜2文抜粋し、Sourceを必ず付ける
+- Evidenceは原文から1〜2文抜粋し、Sourceを必ず付ける（関連する抜粋は件数を惜しまず列挙する。同一文の繰り返しだけ避ける）
 - 不明・不足情報は「不確実性」欄に明示する
 - 重要情報（期限・場所・提出方法）は太字で強調する
 - 【１】に載っているカレンダー・機械抽出の情報は優先して反映し、それ以外の資料と矛盾する場合は「⚠️ 注記：」で明示する
@@ -1246,8 +1260,9 @@ def _evidence_1step(llm_client, model_name: str, ordered_rag_blob: str, output_l
 {ordered_rag_blob}
 
 【ルール】
+- {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - 要約・抽象化・言い換え禁止
-- Evidenceは原文から1〜2文の抜粋のみ
+- Evidenceは原文から1〜2文の抜粋のみ（質問に関係しうるものは漏らさず複数行でよい）
 - Topicタグを付ける（日程/範囲/持ち物/注意事項/例外 など）
 - 出典（タイトルまたは、そのチャンクを示す番号）を必ず付ける
 - 新しい主張の創作禁止
@@ -1287,6 +1302,7 @@ def _answer_from_evidence(llm_client, model_name: str, query: str, evidence_list
 {evidence_list}
 
 【ルール】
+- {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - Evidenceがある内容のみ回答する（創作禁止）
 - 【検索に使った統合文】内の機械ヒットの予定は根拠として回答に含めてよい
 - 不確実・不足情報は「不確実性」欄に明示する
@@ -1567,8 +1583,9 @@ def _compress_step1(llm_client, model_name: str, ordered_rag_blob: str, output_l
 {ordered_rag_blob}
 
 【ルール】
+- {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - 抽象要約禁止。原文の短い抜粋（1〜2文）をEvidenceとして必ず残す
-- 重複する情報はまとめる（Evidenceは最大2つ）
+- 同一内容の重複だけまとめ、異なる日付・項目・条件は別エントリに分ける（件数を勝手に上限しない）
 - SourceはタイトルまたはDocIDを使う
 - 出力形式（1エントリごと）:
   Claim: （短い主張）
@@ -1607,8 +1624,9 @@ def _compress_step2(llm_client, model_name: str, query: str, step1_output: str, 
 {step1_output}
 
 【ルール】
+- {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - タグ単位で束ねる（日付/範囲/持ち物/注意事項/例外など）
-- 各TopicにKey takeaway + Evidence（抜粋）+ Sourcesを残す
+- 各TopicにKey takeaway + Evidence（抜粋）+ Sourcesを残す（Evidenceの取りこぼしをしない）
 - 新しい主張の創作禁止
 - 出力形式:
   Topic: （論点名）
@@ -1646,13 +1664,14 @@ def _compress_step3(llm_client, model_name: str, query: str, step2_output: str, 
 {step2_output}
 
 【ルール】
+- {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - Evidenceがある内容のみ記載（創作禁止）
 - 曖昧・不確かな点は「〜の可能性があります」と明示
 - 見出し・箇条書きを活用して読みやすく整形する
 - 重要情報（期限・提出方法・場所など）は太字で強調する
 - 【質問】に含まれるカレンダー・機械抽出の情報は優先して反映し、文書と矛盾する場合は「⚠️ 注記：」で明示する
 - 回答末尾に「参考文書：」として使用したファイル名を列挙する
-- 長さは内容に応じて調整する（不要な冗長は避け、必要な情報は省略しない）
+- 長さは内容に応じて調整する（冗長な同義繰り返しは避け、Evidenceにあった事項の省略はしない）
 
 【回答】
 """]
@@ -2060,13 +2079,16 @@ def _detect_query_type(query: str) -> Dict[str, Any]:
     """
     import re
 
-    # 優先順位順に検出（列挙・一覧は「いつ」「何」と重なりやすいので先に見る）
+    q = (query or "").strip()
 
-    # List: 列挙・一覧が主目的
+    # 優先順位: 明示列挙 → 人物（単一答え想定）→ 予定・週・持ち物等（複数答え想定の list）
+    # → 単一点の日時・締切（when）→ その他
+
+    # List: 明示的に列挙・網羅を求める
     if re.search(
         r'(一覧|リスト|列挙|全件|ぜんけん|全部|すべて|全て|まとめて|箇条書き|順に|並べて|'
         r'網羅|漏れなく|抜けなく|list|enumerate|bullet|all\s+of|everything)',
-        query,
+        q,
         re.IGNORECASE,
     ):
         return {
@@ -2075,48 +2097,73 @@ def _detect_query_type(query: str) -> Dict[str, Any]:
             'keywords': ['list', 'enumeration', 'all_items', 'schedule', 'content'],
         }
 
-    # When: 時間に関する質問
-    if re.search(r'(いつ|何時|何日|何月|何年|when|期限|締切|締め切り|デッドライン|予定|スケジュール)', query):
-        return {
-            'type': 'when',
-            'focus': 'time_date',
-            'keywords': ['document_date', 'deadline', 'schedule', 'weekly_schedule']
-        }
-
-    # Who: 人に関する質問
-    if re.search(r'(誰|だれ|who|先生|teacher|from|送信者|差出人)', query):
+    # Who: 単一または人物集合の「誰」だが、予定一覧より先に人物意図を拾う
+    if re.search(r'(誰|だれ|who\b|先生|teacher|from\b|送信者|差出人)', q, re.IGNORECASE):
         return {
             'type': 'who',
             'focus': 'person',
-            'keywords': ['sender', 'teacher', 'author', 'display_sender']
+            'keywords': ['sender', 'teacher', 'author', 'display_sender'],
+        }
+
+    # List: 予定・週・行事＋持ち物など「答えが複数になりやすい」スケジュール／準備系
+    # （「予定|スケジュール」を when に寄せない）
+    if re.search(
+        r'('
+        r'予定|スケジュール|行程|タイムテーブル|カレンダー|'
+        r'来週|先週|今週|翌週|先々週|再来週|'
+        r'の週\b|週の(?:予定|スケジュール|授業)?|'
+        r'一週間|１週間|1週間|この週間|'
+        r'持ち物|準備(?:物|するもの)?|必要なもの|忘れ(?:ず|ないで)|チェックリスト|'
+        r'(?:遠足|修学旅行|宿泊学習|運動会|文化祭|発表会).{0,18}(?:持ち物|準備|何を|何が|リスト|教えて)|'
+        r'(?:明日|明後日|あす|あさって).{0,12}(?:予定|スケジュール|何が|何かある|用事)'
+        r')',
+        q,
+        re.IGNORECASE,
+    ):
+        return {
+            'type': 'list',
+            'focus': 'schedule_or_multi',
+            'keywords': ['schedule', 'enumeration', 'events', 'items', 'weekly'],
+        }
+
+    # When: 単一点の日時・締切（「予定」単体は上の list に回す）
+    if re.search(
+        r'(いつ|何時|何日|何月|何年|when\b|期限|締切|締め切り|デッドライン|いつまで|何日まで|due\b)',
+        q,
+        re.IGNORECASE,
+    ):
+        return {
+            'type': 'when',
+            'focus': 'time_point',
+            'keywords': ['document_date', 'deadline', 'due_datetime'],
         }
 
     # Where: 場所に関する質問
-    if re.search(r'(どこ|where|場所|教室|クラス|classroom)', query):
+    if re.search(r'(どこ|where|場所|教室|クラス|classroom)', q, re.IGNORECASE):
         return {
             'type': 'where',
             'focus': 'location',
-            'keywords': ['location', 'classroom', 'place']
+            'keywords': ['location', 'classroom', 'place'],
         }
 
     # How: 方法・手順に関する質問
-    if re.search(r'(どうやって|どのように|how|方法|手順|やり方)', query):
+    if re.search(r'(どうやって|どのように|how|方法|手順|やり方)', q, re.IGNORECASE):
         return {
             'type': 'how',
             'focus': 'method',
-            'keywords': ['procedure', 'method', 'steps']
+            'keywords': ['procedure', 'method', 'steps'],
         }
 
     # Why: 理由に関する質問
-    if re.search(r'(なぜ|why|理由|原因)', query):
+    if re.search(r'(なぜ|why|理由|原因)', q, re.IGNORECASE):
         return {
             'type': 'why',
             'focus': 'reason',
-            'keywords': ['reason', 'cause', 'purpose']
+            'keywords': ['reason', 'cause', 'purpose'],
         }
 
     # What: 物事・内容に関する質問（デフォルト）
-    if re.search(r'(何|なに|what|内容|詳細)', query):
+    if re.search(r'(何|なに|what|内容|詳細)', q, re.IGNORECASE):
         return {
             'type': 'what',
             'focus': 'content',
@@ -2158,10 +2205,11 @@ def _chunk_stable_key(doc_id: str, ch: Optional[Dict[str, Any]], fallback_suffix
 
 def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optional[Dict[str, Any]], str]]:
     """
-    インデックス上のチャンクを順序付けで返す（index_chunks_all 優先）。
+    インデックス上のチャンクを順序付けで返す（index_chunks_all のみ）。
+    【２】は document_body を使う。【３】は本文に含めなかったチャンク列用。all_chunks は持たない。
     chunk が無くベストだけあるときは1件のみ。
     """
-    chunks_raw = doc.get("index_chunks_all") or doc.get("all_chunks") or []
+    chunks_raw = doc.get("index_chunks_all") or []
     rows: List[Dict[str, Any]] = []
     if isinstance(chunks_raw, list):
         for row in chunks_raw:
