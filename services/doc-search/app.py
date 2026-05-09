@@ -1164,7 +1164,9 @@ def generate_answer():
                 llm_client, steps[0], ordered_rag_blob,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
-            llm_prompt_trace.append({"stage": "回答+Evidence（1段）", "model": steps[0], "prompt": p1})
+            llm_prompt_trace.append(
+                {"stage": "回答+Evidence（1段）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
+            )
 
         elif rounds == 2:
             # 2段: Evidence整理 → 回答生成
@@ -1174,13 +1176,17 @@ def generate_answer():
                 llm_client, steps[0], ordered_rag_blob, step1_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
-            llm_prompt_trace.append({"stage": "Evidence抽出（2段・Step1）", "model": steps[0], "prompt": p1})
+            llm_prompt_trace.append(
+                {"stage": "Evidence抽出（2段・Step1）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
+            )
             print(f"[INFO] 2段Step2 ({steps[1]}): 内容依存", flush=True)
             answer, p2 = _answer_from_evidence(
                 llm_client, steps[1], answer_llm_query, evidence_list,
                 log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
             )
-            llm_prompt_trace.append({"stage": "回答生成（2段・Step2）", "model": steps[1], "prompt": p2})
+            llm_prompt_trace.append(
+                {"stage": "回答生成（2段・Step2）", "model": steps[1], "prompt": p2, "prompt_chars": len(p2)}
+            )
 
         else:
             # 3段: Evidence抽出 → 論点整理 → 最終回答
@@ -1190,7 +1196,9 @@ def generate_answer():
                 llm_client, steps[0], ordered_rag_blob, step1_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
             )
-            llm_prompt_trace.append({"stage": "Evidenceノート（3段・Step1）", "model": steps[0], "prompt": p1})
+            llm_prompt_trace.append(
+                {"stage": "Evidenceノート（3段・Step1）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
+            )
 
             step2_limit = int(step1_limit * 0.33)
             print(f"[INFO] 3段Step2 ({steps[1]}): →{step2_limit}字上限", flush=True)
@@ -1198,14 +1206,18 @@ def generate_answer():
                 llm_client, steps[1], answer_llm_query, step1_output, step2_limit,
                 log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
             )
-            llm_prompt_trace.append({"stage": "論点整理（3段・Step2）", "model": steps[1], "prompt": p2})
+            llm_prompt_trace.append(
+                {"stage": "論点整理（3段・Step2）", "model": steps[1], "prompt": p2, "prompt_chars": len(p2)}
+            )
 
             print(f"[INFO] 3段Step3 ({steps[2]}): 内容依存", flush=True)
             answer, p3 = _compress_step3(
                 llm_client, steps[2], answer_llm_query, step2_output,
                 log_context={'app': 'doc-search', 'stage': 'search-step3', 'session_id': request_id},
             )
-            llm_prompt_trace.append({"stage": "最終回答（3段・Step3）", "model": steps[2], "prompt": p3})
+            llm_prompt_trace.append(
+                {"stage": "最終回答（3段・Step3）", "model": steps[2], "prompt": p3, "prompt_chars": len(p3)}
+            )
 
         if not answer:
             return jsonify({'success': False, 'error': '回答生成に失敗しました'}), 500

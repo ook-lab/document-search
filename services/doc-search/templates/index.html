@@ -921,7 +921,7 @@
 
                 <div id="ragLlmInputSection" style="display: none;">
                     <h2 class="section-title">回答生成でモデルに送った全文</h2>
-                    <p class="vector-chunks-note">上段は【１】〜【３】の参照ブロック（プロンプト内の【入力】と同じ）。その下に、ルール・網羅指示を含む <strong>call_model に渡したプロンプト全文</strong>（フローに応じ1回または複数回）をそのまま載せます。</p>
+                    <p class="vector-chunks-note"><strong>本体は「モデル呼び出し」ブロック</strong>です（ルール・網羅指示・【入力】込みの <code>call_model</code> 引数と同一）。【１】〜【３】だけを並べた文字列は入力の一部に過ぎず、文字数制限の意味もモデルが読む内容も取れないため、<strong>末尾の参考</strong>に回します。</p>
                     <div id="ragLlmInputMeta" class="rag-llm-input-meta"></div>
                     <pre class="rag-llm-input-pre" id="ragLlmInputPre"></pre>
                 </div>
@@ -1426,31 +1426,41 @@
             sec.style.display = 'block';
             const truncated = !!meta.truncated;
             metaEl.className = 'rag-llm-input-meta' + (truncated ? ' truncated' : '');
+            let sumPrompt = 0;
+            for (let i = 0; i < trace.length; i++) {
+                const pc = trace[i].prompt_chars;
+                if (pc != null && pc !== '') sumPrompt += Number(pc);
+                else if (typeof trace[i].prompt === 'string') sumPrompt += trace[i].prompt.length;
+            }
             const lines = [
-                `【１〜３】ブロックの送信文字数: ${meta.sent_length != null ? meta.sent_length : (blob ? blob.length : 0)} 字`,
-                `【１〜３】連結後の全文長（切断前）: ${meta.full_length_before_cut != null ? meta.full_length_before_cut : '—'} 字`,
-                `入力上限 max_context_chars: ${meta.max_context_chars != null ? meta.max_context_chars : '—'}`,
+                `モデル API 呼び出し: ${trace.length} 回（各回のプロンプト全文＝ルール＋【入力】込み。これが実際の送信内容）`,
+                trace.length
+                    ? `各回のプロンプト文字数: ${trace.map((t, j) => `#${j + 1} ${t.prompt_chars != null ? t.prompt_chars : (t.prompt ? t.prompt.length : 0)}字`).join(' / ')}（合計 ${sumPrompt} 字）`
+                    : '（プロンプトトレースなし — 古いサーバの可能性）',
+                `──────── 参照ブロック（【１〜３】）のみの話 ────────`,
+                `【１〜３】送信済み文字数: ${meta.sent_length != null ? meta.sent_length : (blob ? blob.length : 0)} 字（max_context_chars=${meta.max_context_chars != null ? meta.max_context_chars : '—'} で先に切るのはここ）`,
                 truncated
-                    ? `【１〜３】末尾切断: はい（未送信 ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字）`
-                    : '【１〜３】末尾切断: いいえ',
-                `モデル API 呼び出し回数（プロンプト全文の塊）: ${trace.length} 回`,
+                    ? `【１〜３】切断で未送信: ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字`
+                    : '【１〜３】切断: なし',
             ];
             metaEl.textContent = lines.join('\n');
             const chunks = [];
-            chunks.push('========== 【１〜３】参照ブロック（プロンプト内「【入力】」に埋め込まれた本文） ==========');
-            chunks.push(blob || '（参照ブロックなし）');
-            if (truncated && blob) {
-                chunks.push(
-                    '\n────────\n※ 入力上限のため、【１〜３】のこの先はモデルに渡っていません（未送信）。',
-                );
-            }
+            chunks.push('========== モデルへ渡したプロンプト全文（本体・ルール・網羅指示・【入力】すべて含む） ==========');
             for (let i = 0; i < trace.length; i++) {
                 const t = trace[i] || {};
                 const stage = t.stage != null ? String(t.stage) : `呼び出し ${i + 1}`;
                 const model = t.model != null ? String(t.model) : '—';
+                const nch = t.prompt_chars != null ? t.prompt_chars : (typeof t.prompt === 'string' ? t.prompt.length : 0);
                 const promptText = typeof t.prompt === 'string' ? t.prompt : '';
-                chunks.push(`\n========== ${stage}（モデル: ${model}）==========`);
+                chunks.push(`\n--- ${stage} / モデル: ${model} / この呼び出しのプロンプト ${nch} 字 ---\n`);
                 chunks.push(promptText);
+            }
+            chunks.push('\n\n========== 参考:【１〜３】参照ブロック単体（上記プロンプトの【入力】内と同じ。単体だけでは意味が足りない） ==========');
+            chunks.push(blob || '（なし）');
+            if (truncated && blob) {
+                chunks.push(
+                    '\n────────\n※ max_context_chars により、【１〜３】はここで打ち切り済み。上のプロンプト内の【入力】もこの長さで止まっている。',
+                );
             }
             pre.textContent = chunks.join('\n');
         }
