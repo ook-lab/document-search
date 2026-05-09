@@ -154,7 +154,22 @@ class DatabaseClient:
         except Exception as e:
             print(f"Error getting document by file_url: {e}")
             return None
-    
+
+    def require_unified_document_before_ix_write(self, doc_id: str) -> None:
+        """
+        10_ix_search_index へ INSERT/DELETE を行う前に必ず呼ぶ。
+        09_unified_documents に当該 id が無い場合は例外とし、正規ルート外のインデックス書き込みを防ぐ。
+        """
+        rid = (doc_id or "").strip()
+        if not rid:
+            raise ValueError("doc_id が空です。10_ix_search_index への書き込みはできません。")
+        response = self.client.table("09_unified_documents").select("id").eq("id", rid).limit(1).execute()
+        if not response.data:
+            raise RuntimeError(
+                f"09_unified_documents に id={rid} がありません。"
+                "10_ix_search_index は 09 を経由したルートでのみ更新してください。"
+            )
+
     async def insert_document(self, table: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         文書をデータベースに挿入

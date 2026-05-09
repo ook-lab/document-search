@@ -476,6 +476,7 @@ class GmailService:
         return did
 
     def _chunk_and_embed(self, doc_id: str, md: str, email: dict):
+        self.db.require_unified_document_before_ix_write(doc_id)
         self.db.client.table("10_ix_search_index").delete().eq("doc_id", doc_id).execute()
         chunks = _chunk(md)
         if not chunks:

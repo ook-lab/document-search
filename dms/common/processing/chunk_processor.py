@@ -66,6 +66,8 @@ class ChunkProcessor:
         try:
             logger.info(f"[ChunkProcessor] Processing document: {document_id}")
 
+            self.db.require_unified_document_before_ix_write(document_id)
+
             # 既存のチャンクを確認
             if not force_reprocess:
                 existing_chunks = self.db.client.table('10_ix_search_index').select('id').eq('doc_id', document_id).execute()
@@ -206,6 +208,7 @@ class ChunkProcessor:
             成功/失敗
         """
         try:
+            self.db.require_unified_document_before_ix_write(document_id)
             self.db.client.table('10_ix_search_index').delete().eq('doc_id', document_id).execute()
             logger.info(f"[ChunkProcessor] Deleted all chunks for document {document_id}")
             return True

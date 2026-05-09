@@ -98,6 +98,16 @@ class RagPrepareSearchIndexer:
             category = ud_fresh.get("category") or category
 
             chunks = self._plain_chunks(full_markdown, chunk_size=1200)
+            gate = (
+                self.db.client.table("09_unified_documents")
+                .select("id")
+                .eq("id", unified_doc_id)
+                .limit(1)
+                .execute()
+            )
+            if not gate.data:
+                return False, "09_unified_documents に行が無い doc_id では 10_ix_search_index を更新できません"
+
             self.db.client.table("10_ix_search_index").delete().eq("doc_id", unified_doc_id).execute()
             if self.embedder is None:
                 self.embedder = EmbeddingGen()

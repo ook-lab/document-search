@@ -1,10 +1,10 @@
 """
 Stage K: Embedding (ベクトル化)
 
-チャンクをベクトル化して 10_ix_search_index に保存
+チャンクをベクトル化して 10_ix_search_index に保存（09_unified_documents に行があることのみ許可）。
 - 役割: チャンクをベクトル化
 - モデル: OpenAI text-embedding-3-small (1536次元)
-- 書き込み先: 10_ix_search_index (doc_id = 09_unified_documents.id)
+- 書き込み先: 10_ix_search_index (doc_id = 09_unified_documents.id、FK と require_unified_document_before_ix_write で担保)
 """
 from typing import Dict, Any, List, Optional
 from loguru import logger
@@ -44,6 +44,8 @@ class StageKEmbedding:
             {'success': bool, 'saved_count': int, 'failed_count': int}
         """
         logger.info(f"[Stage K] ベクトル化開始: doc_id={doc_id}, chunks={len(chunks)}")
+
+        self.db.require_unified_document_before_ix_write(doc_id)
 
         # person/source/category が未指定なら 09 から取得
         if person is None or source is None or category is None:
