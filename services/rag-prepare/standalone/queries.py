@@ -91,7 +91,7 @@ def _resolved_drive_id(file_url: Optional[str]) -> Optional[str]:
 
 def _raw_select_columns(raw_table: str) -> str:
     """08_file_only は created_at / due_date が無い。"""
-    common = "id, file_url, file_name, title, source, pdf_md_content, pdf_md_updated_at"
+    common = "id, file_url, file_name, title, source, category, pdf_md_content, pdf_md_updated_at"
     if raw_table == "08_file_only_01_raw":
         return common
     return f"{common}, created_at, due_date"
@@ -195,6 +195,7 @@ def fetch_pending_search_data_prep_docs(
                             "file_name": row.get("file_name"),
                             "title": row.get("title"),
                             "source": row.get("source"),
+                            "category": row.get("category"),
                             "pdf_md_content": row.get("pdf_md_content"),
                             "pdf_md_updated_at": row.get("pdf_md_updated_at"),
                         }
@@ -251,6 +252,10 @@ def fetch_pending_search_data_prep_docs(
         src_raw = (extras.get("source") or "").strip()
         merged_source = src_ud or src_raw
 
+        cat_ud = (ud.get("category") or "").strip()
+        cat_raw = (extras.get("category") or "").strip()
+        merged_category = cat_ud or cat_raw or "—"
+
         if _gmail_without_attachment(merged_source, fu, extras.get("pdf_md_content")):
             continue
 
@@ -270,6 +275,7 @@ def fetch_pending_search_data_prep_docs(
             segment_label = "テキストのみ"
 
         display_source = merged_source or "—"
+        display_category = merged_category
         display_filename = _display_filename(extras, rid_s)
         drive_id = _resolved_drive_id(fu)
 
@@ -287,6 +293,7 @@ def fetch_pending_search_data_prep_docs(
             "display_segment": segment,
             "display_segment_label": segment_label,
             "display_source": display_source,
+            "display_category": display_category,
             "display_filename": display_filename,
             "resolved_drive_id": drive_id,
             "has_09_structured": has_structured_09,

@@ -182,7 +182,7 @@
                     <tr>
                         <th>投稿・送信日</th>
                         <th>区分</th>
-                        <th>ソース / ファイル名</th>
+                        <th>ソース / カテゴリー（下段: ファイル名）</th>
                         <th>アクション</th>
                     </tr>
                 </thead>
@@ -202,7 +202,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <strong>{{ doc.display_source }}</strong><br>
+                            <strong>{{ doc.display_source }}</strong><span style="color: var(--text-muted);"> / </span><strong>{{ doc.display_category }}</strong><br>
                             <span style="font-size: 13px;">{{ doc.display_filename }}</span>
                             {% if doc.resolved_drive_id %}
                             <div style="margin-top:6px;font-size:12px;">
