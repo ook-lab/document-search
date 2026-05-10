@@ -174,6 +174,35 @@ def fetch_pending_search_data_prep_docs(
         if rt and rid:
             by_table[str(rt)].add(str(rid))
 
+    doc_ids_meta: List[str] = []
+    for r in pending_meta:
+        did = r.get("doc_id")
+        if did:
+            doc_ids_meta.append(str(did))
+
+    ud_by_id: Dict[str, Dict[str, Any]] = {}
+    chunk_size = 80
+    for i in range(0, len(doc_ids_meta), chunk_size):
+        chunk = doc_ids_meta[i : i + chunk_size]
+        if not chunk:
+            continue
+        try:
+            ud_by_doc = (
+                db_client.table("09_unified_documents")
+                .select(
+                    "id, raw_id, raw_table, source, person, category, title, file_url, "
+                    "post_at, start_at, end_at, due_date, ui_data, body"
+                )
+                .in_("id", chunk)
+                .execute()
+            )
+            for row in ud_by_doc.data or []:
+                uid = row.get("id")
+                if uid is not None:
+                    ud_by_id[str(uid)] = row
+        except Exception:
+            pass
+
     raw_extras_by_pair: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for rt, id_set in by_table.items():
         ids = list(id_set)
@@ -243,7 +272,12 @@ def fetch_pending_search_data_prep_docs(
         rt_s = str(rt)
         extras = raw_extras_by_pair.get((rt_s, rid_s), {})
         fu = extras.get("file_url")
-        ud = ud_by_pair.get((rt_s, rid_s), {})
+        did_meta = m.get("doc_id")
+        ud: Dict[str, Any] = {}
+        if did_meta:
+            ud = ud_by_id.get(str(did_meta), {})
+        if not ud:
+            ud = ud_by_pair.get((rt_s, rid_s), {})
 
         has_pdf_md = pdf_md_in_raw(extras.get("pdf_md_content"))
         has_physical_file = raw_row_has_file_backing(fu) or bool(drive_id_from_file_url(fu))
@@ -252,10 +286,9 @@ def fetch_pending_search_data_prep_docs(
         src_raw = (extras.get("source") or "").strip()
         merged_source = src_ud or src_raw
 
-        # スラッシュ後は 09_unified_documents.category を正とする（09 行が無いときだけ raw に落とす）
-        cat_ud = (ud.get("category") or "").strip()
-        cat_raw = (extras.get("category") or "").strip()
-        merged_category = cat_ud or cat_raw or "—"
+        # スラッシュ後は 09_unified_documents.category のみ。09 がまだ無い行に raw の種別を出すと 09 と誤認されるため出さない。
+        cat_ud = (ud.get("category") or "").strip() if ud.get("id") else ""
+        merged_category = cat_ud or "—"
 
         if _gmail_without_attachment(merged_source, fu, extras.get("pdf_md_content")):
             continue
