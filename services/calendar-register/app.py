@@ -912,7 +912,7 @@ def _build_event_body(ev: dict) -> dict:
     """
     パース済みイベント dict → Google Calendar API の event body
     """
-    title = ev.get('title', '（無題）')
+    title = str(ev.get("title") or "").strip()
     date = ev.get('date')           # YYYY-MM-DD
     start_time = ev.get('start_time')   # HH:MM or null
     end_time = ev.get('end_time')       # HH:MM or null

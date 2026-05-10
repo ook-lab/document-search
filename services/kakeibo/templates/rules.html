@@ -278,7 +278,7 @@
                     {% elif r.amount_sign == '-' %}<span class="badge badge-minus">－のみ</span>
                     {% else %}<span class="badge badge-any">両方</span>{% endif %}
                 </td>
-                <td>{{ r.cash_cat_major or '—' }}</td>
+                <td>{{ r.cash_cat_major or '' }}</td>
                 <td>
                     {% if r.loan_type == '借入' %}<span class="badge badge-borrow">借入</span>
                     {% elif r.loan_type == '返済' %}<span class="badge badge-repay">返済</span>

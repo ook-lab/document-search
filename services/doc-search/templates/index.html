@@ -1391,8 +1391,8 @@
             list.innerHTML = rows.map((r) => {
                 const sim = r.similarity != null && r.similarity !== ''
                     ? Number(r.similarity).toFixed(4)
-                    : '—';
-                const cid = r.chunk_id ? escapeHtml(String(r.chunk_id)) : '（なし）';
+                    : '';
+                const cid = r.chunk_id ? escapeHtml(String(r.chunk_id)) : '';
                 const did = escapeHtml(String(r.doc_id || ''));
                 const ordInDoc = r.chunk_index != null && r.chunk_index !== ''
                     ? escapeHtml(String(r.chunk_index))
@@ -1440,9 +1440,9 @@
                     ? `各回のプロンプト文字数: ${trace.map((t, j) => `#${j + 1} ${t.prompt_chars != null ? t.prompt_chars : (t.prompt ? t.prompt.length : 0)}字`).join(' / ')}（合計 ${sumPrompt} 字）`
                     : '（プロンプトトレースなし — 古いサーバの可能性）',
                 `──────── 参照ブロック（【１〜３】）のみの話 ────────`,
-                `【１〜３】送信済み文字数: ${meta.sent_length != null ? meta.sent_length : (blob ? blob.length : 0)} 字（max_context_chars=${meta.max_context_chars != null ? meta.max_context_chars : '—'} で先に切るのはここ）`,
+                `【１〜３】送信済み文字数: ${meta.sent_length != null ? meta.sent_length : (blob ? blob.length : 0)} 字（max_context_chars=${meta.max_context_chars != null ? meta.max_context_chars : ''} で先に切るのはここ）`,
                 truncated
-                    ? `【１〜３】切断で未送信: ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : '—'} 字`
+                    ? `【１〜３】切断で未送信: ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : ''} 字`
                     : '【１〜３】切断: なし',
                 blobEmbeddedInTrace
                     ? '末尾参照欄: プロンプト内【入力】と同一のため省略（スクロールの二重表示を避ける）'
@@ -1454,7 +1454,7 @@
             for (let i = 0; i < trace.length; i++) {
                 const t = trace[i] || {};
                 const stage = t.stage != null ? String(t.stage) : `呼び出し ${i + 1}`;
-                const model = t.model != null ? String(t.model) : '—';
+                const model = t.model != null ? String(t.model) : '';
                 const nch = t.prompt_chars != null ? t.prompt_chars : (typeof t.prompt === 'string' ? t.prompt.length : 0);
                 const promptText = typeof t.prompt === 'string' ? t.prompt : '';
                 chunks.push(`\n--- ${stage} / モデル: ${model} / この呼び出しのプロンプト ${nch} 字 ---\n`);
@@ -1469,7 +1469,7 @@
                 chunks.push(
                     '\n\n========== 参考:【１〜３】参照ブロック単体（多段フロー等で上記プロンプトに全文が無いときのみ） ==========',
                 );
-                chunks.push(blob || '（なし）');
+                chunks.push(blob || '');
                 if (truncated && blob) {
                     chunks.push(
                         '\n────────\n※ max_context_chars により、【１〜３】はここで打ち切り済み。上のプロンプト内の【入力】もこの長さで止まっている。',

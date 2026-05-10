@@ -202,8 +202,16 @@
                             {% endif %}
                         </td>
                         <td>
-                            <strong>{{ doc.display_source }}</strong>{% if doc.display_category %}<span style="color: var(--text-muted);"> / </span><strong>{{ doc.display_category }}</strong>{% endif %}<br>
-                            <span style="font-size: 13px;">{{ doc.display_filename }}</span>
+                            {% set has_head = doc.display_source or doc.display_category %}
+                            {% if doc.display_source and doc.display_category %}
+                            <strong>{{ doc.display_source }}</strong><span style="color: var(--text-muted);"> / </span><strong>{{ doc.display_category }}</strong>
+                            {% elif doc.display_source %}
+                            <strong>{{ doc.display_source }}</strong>
+                            {% elif doc.display_category %}
+                            <strong>{{ doc.display_category }}</strong>
+                            {% endif %}
+                            {% if has_head and doc.display_filename %}<br>{% endif %}
+                            {% if doc.display_filename %}<span style="font-size: 13px;">{{ doc.display_filename }}</span>{% endif %}
                             {% if doc.resolved_drive_id %}
                             <div style="margin-top:6px;font-size:12px;">
                                 <a href="https://drive.google.com/file/d/{{ doc.resolved_drive_id }}/view" target="_blank" rel="noopener">Drive で開く</a>

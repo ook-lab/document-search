@@ -74,15 +74,14 @@ def _gmail_without_attachment(
     return True
 
 
-def _display_filename(extras: Dict[str, Any], raw_id: str) -> str:
+def _display_filename(extras: Dict[str, Any], _raw_id: str) -> str:
     fn = (extras.get("file_name") or "").strip()
     title = (extras.get("title") or "").strip()
     if fn:
         return fn
     if title:
         return title
-    rid = str(raw_id)
-    return f"(無題・{rid[:8]}…)" if len(rid) > 8 else f"(無題・{rid})"
+    return ""
 
 
 def _resolved_drive_id(file_url: Optional[str]) -> Optional[str]:
@@ -311,7 +310,7 @@ def fetch_pending_search_data_prep_docs(
             segment = "text_only"
             segment_label = "テキストのみ"
 
-        display_source = merged_source or "—"
+        display_source = (merged_source or "").strip()
         display_filename = _display_filename(extras, rid_s)
         drive_id = _resolved_drive_id(fu)
 

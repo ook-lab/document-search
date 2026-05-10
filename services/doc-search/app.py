@@ -521,12 +521,16 @@ def _calendar_premise_lines(rows: List[Dict[str, Any]], max_lines: int = 30) -> 
     out: List[str] = []
     for row in rows[:max_lines]:
         d = _calendar_row_date_str(row)
-        title = str(row.get("title") or "（無題予定）").strip()
+        title = str(row.get("title") or "").strip()
         location = str(row.get("location") or "").strip()
-        if location:
+        if title and location:
             out.append(f"- {d} {title} @ {location}")
-        else:
+        elif title:
             out.append(f"- {d} {title}")
+        elif location:
+            out.append(f"- {d} @ {location}")
+        else:
+            out.append(f"- {d}")
     return out
 
 
@@ -2488,8 +2492,8 @@ def _build_context_sections(
             continue
         emitted_keys.add(key)
         extras_idx += 1
-        title_loc = doc_local.get("title", "無題")
-        src_loc = doc_local.get("source", "不明")
+        title_loc = str(doc_local.get("title") or "").strip()
+        src_loc = str(doc_local.get("source") or "").strip()
         dd = doc_local.get("document_date", "")
         dm = doc_local.get("is_date_matched", False)
         tag = "（日付一致✓）" if dm else ""

@@ -1421,7 +1421,7 @@ async function registerEvents() {
       description = description ? `${description}\n${tagStr}` : tagStr;
     }
     return {
-      title:       item.querySelector('.ev-input-title')?.value || '（無題）',
+      title:       (item.querySelector('.ev-input-title')?.value || '').trim(),
       date:        item.querySelector('.ev-input-date')?.value || '',
       start_time:  startTime || null,
       end_time:    endTime || null,

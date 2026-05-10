@@ -358,7 +358,9 @@
     (j.profiles || []).forEach((p) => {
       const o = document.createElement("option");
       o.value = p.id;
-      o.textContent = (p.title || "(無題)") + " · " + (p.updated_at || "").slice(0, 19);
+      const pt = (p.title && String(p.title).trim()) || "";
+      const ts = (p.updated_at || "").slice(0, 19);
+      o.textContent = pt ? pt + " · " + ts : ts;
       sel.appendChild(o);
     });
   }

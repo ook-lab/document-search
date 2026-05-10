@@ -1226,7 +1226,9 @@
                 }
 
                 listEl.innerHTML = queuedDocs.map(doc => {
-                    const title = doc.title || doc.file_name || '(無題)';
+                    const t1 = (doc.title && String(doc.title).trim()) || '';
+                    const t2 = (doc.file_name && String(doc.file_name).trim()) || '';
+                    const title = t1 || t2;
 
                     return `
                         <div class="request-card">
@@ -1235,16 +1237,16 @@
                                 <span class="request-status queued">⏳ queued</span>
                             </div>
                             <div class="doc-titles">
-                                <div class="doc-titles-label">📄 ${title}</div>
+                                <div class="doc-titles-label">${title ? '📄 ' + title : '📄'}</div>
                             </div>
                             <div class="request-info">
                                 <div class="info-item">
                                     <div class="label">ワークスペース</div>
-                                    <div class="value">${doc.source || '-'}</div>
+                                    <div class="value">${(doc.source && String(doc.source).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">ドキュメント種別</div>
-                                    <div class="value">${doc.doc_type || '-'}</div>
+                                    <div class="value">${(doc.doc_type && String(doc.doc_type).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">試行回数</div>
@@ -1323,7 +1325,9 @@
                 `;
 
                 const docsHtml = blockedDocs.map(doc => {
-                    const title = doc.title || doc.file_name || '(無題)';
+                    const t1 = (doc.title && String(doc.title).trim()) || '';
+                    const t2 = (doc.file_name && String(doc.file_name).trim()) || '';
+                    const title = t1 || t2;
                     const blockCode = doc.gate_block_code || 'UNKNOWN';
                     const blockReason = doc.gate_block_reason || '理由不明';
 
@@ -1334,7 +1338,7 @@
                                 <span class="request-status failed" style="background: #fef2f2; color: #991b1b;">🚫 BLOCK</span>
                             </div>
                             <div class="doc-titles">
-                                <div class="doc-titles-label">📄 ${title}</div>
+                                <div class="doc-titles-label">${title ? '📄 ' + title : '📄'}</div>
                             </div>
                             <div style="background: #fef2f2; padding: 12px; border-radius: 6px; margin: 10px 0;">
                                 <div style="font-weight: 600; color: #991b1b; margin-bottom: 5px;">
@@ -1347,23 +1351,23 @@
                             <div class="request-info">
                                 <div class="info-item">
                                     <div class="label">ワークスペース</div>
-                                    <div class="value">${doc.workspace || '-'}</div>
+                                    <div class="value">${(doc.workspace && String(doc.workspace).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">作成ソフト</div>
-                                    <div class="value">${doc.origin_app || '-'}</div>
+                                    <div class="value">${(doc.origin_app && String(doc.origin_app).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">信頼度</div>
-                                    <div class="value">${doc.origin_confidence || '-'}</div>
+                                    <div class="value">${(doc.origin_confidence != null && doc.origin_confidence !== '') ? doc.origin_confidence : ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">レイアウト</div>
-                                    <div class="value">${doc.layout_profile || '-'}</div>
+                                    <div class="value">${(doc.layout_profile && String(doc.layout_profile).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">ポリシーバージョン</div>
-                                    <div class="value">${doc.gate_policy_version || '-'}</div>
+                                    <div class="value">${(doc.gate_policy_version && String(doc.gate_policy_version).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">更新日時</div>
@@ -1444,7 +1448,9 @@
                 `;
 
                 const docsHtml = failedDocs.map(doc => {
-                    const title = doc.title || doc.file_name || '(無題)';
+                    const t1 = (doc.title && String(doc.title).trim()) || '';
+                    const t2 = (doc.file_name && String(doc.file_name).trim()) || '';
+                    const title = t1 || t2;
                     const attemptCount = doc.attempt_count || 0;
 
                     // エラーメッセージ: 優先順位 last_error_reason > error_message > metadata.last_error
@@ -1481,7 +1487,7 @@
                                 <span class="request-status failed">❌ FAILED</span>
                             </div>
                             <div class="doc-titles">
-                                <div class="doc-titles-label">📄 ${title}</div>
+                                <div class="doc-titles-label">${title ? '📄 ' + title : '📄'}</div>
                             </div>
                             <div style="background: #fffbeb; padding: 12px; border-radius: 6px; margin: 10px 0; border: 1px solid #fbbf24;">
                                 <div style="font-weight: 600; color: #92400e; margin-bottom: 5px;">
@@ -1495,11 +1501,11 @@
                             <div class="request-info">
                                 <div class="info-item">
                                     <div class="label">ワークスペース</div>
-                                    <div class="value">${doc.workspace || '-'}</div>
+                                    <div class="value">${(doc.workspace && String(doc.workspace).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">作成ソフト</div>
-                                    <div class="value">${doc.origin_app || '-'}</div>
+                                    <div class="value">${(doc.origin_app && String(doc.origin_app).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">試行回数</div>
@@ -1507,11 +1513,11 @@
                                 </div>
                                 <div class="info-item">
                                     <div class="label">信頼度</div>
-                                    <div class="value">${doc.origin_confidence || '-'}</div>
+                                    <div class="value">${(doc.origin_confidence != null && doc.origin_confidence !== '') ? doc.origin_confidence : ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">レイアウト</div>
-                                    <div class="value">${doc.layout_profile || '-'}</div>
+                                    <div class="value">${(doc.layout_profile && String(doc.layout_profile).trim()) || ''}</div>
                                 </div>
                                 <div class="info-item">
                                     <div class="label">更新日時</div>
