@@ -196,10 +196,9 @@ class TransactionProcessor:
             Dict: {"product_name": "正規化後", "category_id": "...", "tax_rate": 10, "tax_rate_fixed": True/False}
         """
         # 商品名を取得（nullや空文字列の場合は代替値を使用）
-        product_name = item.get("product_name") or item.get("line_text") or item.get("ocr_raw_text") or "不明"
-        # 空文字列の場合は「不明」に
+        product_name = item.get("product_name") or item.get("line_text") or item.get("ocr_raw_text") or ""
         if not product_name or not product_name.strip():
-            product_name = "不明"
+            product_name = ""
 
         gemini_tax_rate = item.get("tax_rate", 10)  # Geminiの推測税率（デフォルト10%）
 

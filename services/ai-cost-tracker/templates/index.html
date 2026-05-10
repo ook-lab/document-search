@@ -129,9 +129,9 @@
 
   <!-- サマリーカード -->
   <div class="cards" id="summaryCards">
-    <div class="card"><div class="label">総コスト</div><div class="value" id="totalCost">—</div><div class="sub">USD</div></div>
-    <div class="card"><div class="label">総トークン</div><div class="value" id="totalTokens">—</div></div>
-    <div class="card"><div class="label">呼び出し数</div><div class="value" id="totalRecords">—</div><div class="sub">件</div></div>
+    <div class="card"><div class="label">総コスト</div><div class="value" id="totalCost"></div><div class="sub">USD</div></div>
+    <div class="card"><div class="label">総トークン</div><div class="value" id="totalTokens"></div></div>
+    <div class="card"><div class="label">呼び出し数</div><div class="value" id="totalRecords"></div><div class="sub">件</div></div>
   </div>
 
   <!-- タブ -->
@@ -395,7 +395,7 @@ function renderSessions(sessions) {
     const rowCount = stages.length || 1;
     const shortId = (sess.session_id || '').slice(0, 8) + '…';
     const dt = sess.first_seen ? (() => { const d = new Date(sess.first_seen); return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })() : '';
-    const title = sess.title || sess.file_name || '(タイトル不明)';
+    const title = sess.title || sess.file_name || '';
     const bg = si % 2 === 0 ? '' : 'rgba(255,255,255,0.02)';
 
     stages.forEach((st, idx) => {
@@ -546,7 +546,7 @@ async function runSimulate() {
 
   const diffClass = d.cost_diff_usd > 0 ? 'diff-pos' : 'diff-neg';
   const diffSign  = d.cost_diff_usd > 0 ? '+' : '';
-  const ratio     = d.cost_ratio ? (d.cost_ratio*100).toFixed(1)+'%' : 'N/A';
+  const ratio     = d.cost_ratio ? (d.cost_ratio*100).toFixed(1)+'%' : '';
 
   document.getElementById('simResult').style.display = 'block';
   document.getElementById('simResult').innerHTML = `

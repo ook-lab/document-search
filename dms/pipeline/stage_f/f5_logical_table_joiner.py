@@ -110,12 +110,12 @@ class F5LogicalTableJoiner:
             # データサイズの計算
             if 'data' in table:
                 data = table.get('data', [])
-                data_size = len(data) if isinstance(data, list) else 'N/A'
+                data_size = len(data) if isinstance(data, list) else ''
             elif 'markdown' in table:
                 markdown = table.get('markdown', '')
                 data_size = f"{len(markdown.split(chr(10)))}行"
             else:
-                data_size = 'N/A'
+                data_size = ''
 
             logger.info(f"  Table {idx}:")
             logger.info(f"    ├─ table_id: {table_id}")
@@ -369,7 +369,7 @@ class F5LogicalTableJoiner:
 
             logger.info(f"  Table {idx+1} ({table_id}):")
             logger.info(f"    ├─ data type: {type(data)}")
-            logger.info(f"    ├─ data len: {len(data) if isinstance(data, list) else 'N/A'}")
+            logger.info(f"    ├─ data len: {len(data) if isinstance(data, list) else ''}")
 
             if isinstance(data, list):
                 if data:

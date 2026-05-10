@@ -202,13 +202,14 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% set has_head = doc.display_source or doc.display_category %}
-                            {% if doc.display_source and doc.display_category %}
-                            <strong>{{ doc.display_source }}</strong><span style="color: var(--text-muted);"> / </span><strong>{{ doc.display_category }}</strong>
-                            {% elif doc.display_source %}
-                            <strong>{{ doc.display_source }}</strong>
-                            {% elif doc.display_category %}
-                            <strong>{{ doc.display_category }}</strong>
+                            {% set src = doc.display_source or '' %}
+                            {% set c09 = doc.display_category or '' %}
+                            {% set has_head = src or c09 %}
+                            {% if has_head %}
+                            <div>
+                                {% if src %}<strong>{{ src }}</strong>{% endif %}
+                                {% if src and c09 %}<span style="color: var(--text-muted);"> / </span><strong>{{ c09 }}</strong>{% elif c09 %}<strong>{{ c09 }}</strong>{% endif %}
+                            </div>
                             {% endif %}
                             {% if has_head and doc.display_filename %}<br>{% endif %}
                             {% if doc.display_filename %}<span style="font-size: 13px;">{{ doc.display_filename }}</span>{% endif %}

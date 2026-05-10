@@ -81,9 +81,9 @@ class KakeiboDBHandler:
                 is_discount = item.get("line_type") == "DISCOUNT"
 
                 # 商品名を取得（nullや空文字列の場合は代替値を使用）
-                product_name = normalized.get("product_name") or item.get("product_name") or item.get("line_text") or "不明"
+                product_name = normalized.get("product_name") or item.get("product_name") or item.get("line_text") or ""
                 if not product_name or not product_name.strip():
-                    product_name = "不明"
+                    product_name = ""
 
                 transaction_id = self._insert_transaction(
                     receipt_id=receipt_id,

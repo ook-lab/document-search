@@ -180,7 +180,7 @@ async def run_ingestion(
         try:
             category_url = category["url"]
             category_name = category["name"]
-            category_id = category.get("category_id", "不明")
+            category_id = category.get("category_id") or ''
 
             logger.info("-" * 60)
             logger.info(f"📦 カテゴリー処理中: {category_name} (ID: {category_id})")

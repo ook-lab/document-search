@@ -170,7 +170,7 @@ if search_query:
                             st.markdown(f"## ¥{price_tax_included:,.0f}")
 
                         # 店舗名
-                        organization = product.get('organization', '不明')
+                        organization = product.get('organization') or ''
                         if organization == '楽天西友ネットスーパー':
                             st.markdown(f"🏪 **{organization}** 🟢")
                         elif organization == '東急ストア ネットスーパー':

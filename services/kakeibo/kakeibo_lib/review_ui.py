@@ -484,8 +484,8 @@ def show_receipt_detail(log: dict):
             "ファイル名": log["file_name"],
             "処理日時": log["processed_at"],
             "ステータス": log["status"],
-            "OCRモデル": log.get("ocr_model", "不明"),
-            "エラー": log.get("error_message", "なし")
+            "OCRモデル": log.get("ocr_model") or "",
+            "エラー": log.get("error_message") or ""
         }
 
         for key, value in info_data.items():
@@ -552,7 +552,7 @@ def show_receipt_detail(log: dict):
                 else:
                     tax_display_type = "内税"
             else:
-                tax_display_type = "不明"
+                tax_display_type = ""
 
             # トランザクションを取得（JOINは使わず2段階クエリ）
             # 注意: 小計・合計行を除外するため、line_type = 'ITEM' のみ取得
@@ -1006,7 +1006,7 @@ def show_receipt_detail(log: dict):
                 if tax_display_type == "内税":
                     # 内税の場合：小計 = 税込合計
                     table_data["項目"].append("小計（税込）")
-                    table_data["レシート記載"].append(f"¥{receipt_subtotal:,}" if receipt_subtotal is not None else "—")
+                    table_data["レシート記載"].append(f"¥{receipt_subtotal:,}" if receipt_subtotal is not None else "")
 
                     subtotal_diff = calc_total - receipt_subtotal if receipt_subtotal else 0
                     if subtotal_diff != 0:
@@ -1016,7 +1016,7 @@ def show_receipt_detail(log: dict):
                 else:
                     # 外税の場合：小計 = 税抜合計
                     table_data["項目"].append("小計（税抜）")
-                    table_data["レシート記載"].append(f"¥{receipt_subtotal:,}" if receipt_subtotal is not None else "—")
+                    table_data["レシート記載"].append(f"¥{receipt_subtotal:,}" if receipt_subtotal is not None else "")
 
                     subtotal_diff = calc_subtotal_excluding_tax - receipt_subtotal if receipt_subtotal else 0
                     if subtotal_diff != 0:
@@ -1036,7 +1036,7 @@ def show_receipt_detail(log: dict):
                             receipt_10_including = tax_10_subtotal + tax_10_amount
                             table_data["レシート記載"].append(f"¥{receipt_10_including:,}")
                         else:
-                            table_data["レシート記載"].append("—")
+                            table_data["レシート記載"].append("")
                             receipt_10_including = None
 
                         # 計算値 = 10%対象商品の税込価合計
@@ -1049,7 +1049,7 @@ def show_receipt_detail(log: dict):
                         # 内税10%税額
                         table_data["項目"].append("内税10%税額")
                         table_data["レシート記載"].append(
-                            f"¥{tax_10_amount:,}" if tax_10_amount is not None else "—"
+                            f"¥{tax_10_amount:,}" if tax_10_amount is not None else ""
                         )
                         # 計算値は total_tax_10 を使う（実際に計算した税額）
                         tax_10_diff = total_tax_10 - tax_10_amount if tax_10_amount else 0
@@ -1067,7 +1067,7 @@ def show_receipt_detail(log: dict):
                                 receipt_8_including = tax_8_subtotal + tax_8_amount
                                 table_data["レシート記載"].append(f"¥{receipt_8_including:,}")
                             else:
-                                table_data["レシート記載"].append("—")
+                                table_data["レシート記載"].append("")
                                 receipt_8_including = None
 
                             amount_diff = calc_8_amount_including_tax - receipt_8_including if receipt_8_including else 0
@@ -1079,7 +1079,7 @@ def show_receipt_detail(log: dict):
                             # 内税8%税額
                             table_data["項目"].append("内税8%税額")
                             table_data["レシート記載"].append(
-                                f"¥{tax_8_amount:,}" if tax_8_amount is not None else "—"
+                                f"¥{tax_8_amount:,}" if tax_8_amount is not None else ""
                             )
                             # 計算値は total_tax_8 を使う（実際に計算した税額）
                             tax_8_diff = total_tax_8 - tax_8_amount if tax_8_amount else 0
@@ -1093,7 +1093,7 @@ def show_receipt_detail(log: dict):
                         table_data["項目"].append("外税10%対象額（税抜）")
                         tax_10_subtotal = summary.get('tax_10_subtotal')
                         table_data["レシート記載"].append(
-                            f"¥{tax_10_subtotal:,}" if tax_10_subtotal is not None else "—"
+                            f"¥{tax_10_subtotal:,}" if tax_10_subtotal is not None else ""
                         )
 
                         # 計算値 = 10%対象商品の税抜価合計
@@ -1107,7 +1107,7 @@ def show_receipt_detail(log: dict):
                         table_data["項目"].append("外税10%税額")
                         tax_10_amount = summary.get('tax_10_amount')
                         table_data["レシート記載"].append(
-                            f"¥{tax_10_amount:,}" if tax_10_amount is not None else "—"
+                            f"¥{tax_10_amount:,}" if tax_10_amount is not None else ""
                         )
                         # 計算値は total_tax_10 を使う（実際に計算した税額）
                         tax_10_diff = total_tax_10 - tax_10_amount if tax_10_amount else 0
@@ -1121,7 +1121,7 @@ def show_receipt_detail(log: dict):
                             table_data["項目"].append("外税8%対象額（税抜）")
                             tax_8_subtotal = summary.get('tax_8_subtotal')
                             table_data["レシート記載"].append(
-                                f"¥{tax_8_subtotal:,}" if tax_8_subtotal is not None else "—"
+                                f"¥{tax_8_subtotal:,}" if tax_8_subtotal is not None else ""
                             )
 
                             amount_diff = calc_8_amount_excluding_tax - tax_8_subtotal if tax_8_subtotal else 0
@@ -1134,7 +1134,7 @@ def show_receipt_detail(log: dict):
                             table_data["項目"].append("外税8%税額")
                             tax_8_amount = summary.get('tax_8_amount')
                             table_data["レシート記載"].append(
-                                f"¥{tax_8_amount:,}" if tax_8_amount is not None else "—"
+                                f"¥{tax_8_amount:,}" if tax_8_amount is not None else ""
                             )
                             # 計算値は total_tax_8 を使う（実際に計算した税額）
                             tax_8_diff = total_tax_8 - tax_8_amount if tax_8_amount else 0
@@ -1146,24 +1146,24 @@ def show_receipt_detail(log: dict):
                     # tax_summaryがない場合
                     if tax_display_type == "内税":
                         table_data["項目"].append("内税10%対象額（税込）")
-                        table_data["レシート記載"].append("—")
+                        table_data["レシート記載"].append("")
                         table_data["計算値（差分）"].append(f"¥{calc_10_amount_including_tax:,}|")
 
                         table_data["項目"].append("内税10%税額")
-                        table_data["レシート記載"].append("—")
+                        table_data["レシート記載"].append("")
                         table_data["計算値（差分）"].append(f"¥{total_tax_10:,}|")
                     else:
                         table_data["項目"].append("外税10%対象額（税抜）")
-                        table_data["レシート記載"].append("—")
+                        table_data["レシート記載"].append("")
                         table_data["計算値（差分）"].append(f"¥{calc_10_amount_excluding_tax:,}|")
 
                         table_data["項目"].append("外税10%税額")
-                        table_data["レシート記載"].append("—")
+                        table_data["レシート記載"].append("")
                         table_data["計算値（差分）"].append(f"¥{total_tax_10:,}|")
 
                 # 3. 税込合計
                 table_data["項目"].append("税込合計")
-                table_data["レシート記載"].append(f"¥{receipt_total:,}" if receipt_total is not None else "—")
+                table_data["レシート記載"].append(f"¥{receipt_total:,}" if receipt_total is not None else "")
 
                 total_diff = calc_total - receipt_total if receipt_total else 0
                 if total_diff != 0:
@@ -1351,7 +1351,7 @@ def show_receipt_detail(log: dict):
                 st.warning("トランザクションデータが見つかりません")
 
         elif log["status"] == "failed":
-            st.error(f"❌ 処理エラー: {log.get('error_message', '不明')}")
+            st.error(f"❌ 処理エラー: {log.get('error_message') or ''}")
             st.info("errorsフォルダを確認してください")
 
         else:
@@ -1458,7 +1458,6 @@ def show_daily_inbox():
 def render_product_approval_table(products, title, icon):
     """商品承認テーブル表示"""
     if not products:
-        st.info(f"{title}: 該当なし")
         return
 
     st.markdown(f"### {icon} {title} ({len(products)}件)")
@@ -1470,7 +1469,7 @@ def render_product_approval_table(products, title, icon):
         "product_name_normalized": p.get("product_name_normalized", ""),
         "general_name": p.get("general_name", "未設定"),
         "店舗": p.get("organization", ""),
-        "信頼度": f"{p.get('classification_confidence', 0):.1%}" if p.get('classification_confidence') else "—"
+        "信頼度": f"{p.get('classification_confidence', 0):.1%}" if p.get('classification_confidence') else ""
     } for p in products])
 
     edited_df = st.data_editor(
@@ -1734,7 +1733,7 @@ def show_product_category_management():
             new_name = st.text_input("カテゴリ名", key="new_prod_cat_name", placeholder="例: 野菜")
 
         with col2:
-            parent_options = {"（親なし）": None}
+            parent_options = {"": None}
             if categories.data:
                 parent_options.update({cat["name"]: cat["id"] for cat in categories.data})
             selected_parent = st.selectbox("親カテゴリ", options=list(parent_options.keys()), key="new_prod_cat_parent")
@@ -2143,7 +2142,7 @@ def show_approved_products_search():
                 "product_name_normalized": p.get("product_name_normalized", ""),
                 "general_name": p.get("general_name", ""),
                 "店舗": p.get("organization", ""),
-                "信頼度": f"{p.get('classification_confidence', 0):.1%}" if p.get('classification_confidence') else "—"
+                "信頼度": f"{p.get('classification_confidence', 0):.1%}" if p.get('classification_confidence') else ""
             } for p in results.data])
 
             edited_df = st.data_editor(

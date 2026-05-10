@@ -1438,7 +1438,7 @@
                 `モデル API 呼び出し: ${trace.length} 回（各回のプロンプト全文＝ルール＋【入力】込み。これが実際の送信内容）`,
                 trace.length
                     ? `各回のプロンプト文字数: ${trace.map((t, j) => `#${j + 1} ${t.prompt_chars != null ? t.prompt_chars : (t.prompt ? t.prompt.length : 0)}字`).join(' / ')}（合計 ${sumPrompt} 字）`
-                    : '（プロンプトトレースなし — 古いサーバの可能性）',
+                    : '（プロンプトトレースなし。古いサーバの可能性）',
                 `──────── 参照ブロック（【１〜３】）のみの話 ────────`,
                 `【１〜３】送信済み文字数: ${meta.sent_length != null ? meta.sent_length : (blob ? blob.length : 0)} 字（max_context_chars=${meta.max_context_chars != null ? meta.max_context_chars : ''} で先に切るのはここ）`,
                 truncated
@@ -1543,7 +1543,7 @@
         function renderScoreBadge(doc) {
             if (doc.similarity == null || doc.similarity === '') {
                 const tip = 'この文書ではチャンクごとの類似度を計算できませんでした。';
-                return `<span class="similarity-badge" title="${escapeHtml(tip)}">類似度: —</span>`;
+                return `<span class="similarity-badge" title="${escapeHtml(tip)}"></span>`;
             }
             const v = Number(doc.similarity).toFixed(2);
             if (doc.source === 'Googleカレンダー') {
@@ -1555,7 +1555,15 @@
         }
 
         function renderClassroomPost(doc) {
-            let title = doc.title || '';
+            let title = (doc.title || '').trim();
+            // タイトルが「名前 / —」のようにプレースホルダだけ右側にあるときは左だけ使う（category は 09 の列を別表示）
+            const sepIdx = title.lastIndexOf(' / ');
+            if (sepIdx >= 0) {
+                const right = title.slice(sepIdx + 3).trim();
+                if (right === '' || right === '—' || right === '-' || right === '―') {
+                    title = title.slice(0, sepIdx).trim();
+                }
+            }
             if (title.length > 50) title = title.substring(0, 50) + '...';
 
             const bodyText = (doc.snippet && doc.snippet.trim())
@@ -1564,12 +1572,14 @@
 
             // 送信者・日時
             const meta = doc.meta || {};
-            const sender = doc.from_name || meta.author_name || meta.sender_name || '不明';
+            const sender = (doc.from_name || meta.author_name || meta.sender_name || '').trim();
             const dateStr = doc.post_at || doc.indexed_at || '';
-            const formattedDate = dateStr ? formatDate(dateStr) : '日時不明';
+            const formattedDate = dateStr ? formatDate(dateStr) : '';
 
-            // 投稿種別
-            const postType = doc.category || doc.source || 'Classroom';
+            // 09 の category のみ（📚 行）。空・ダッシュ類は出さない。person や source は此処に載せない（「ソース／カテゴリ」に見えるのを避ける）。
+            const rawCat = doc.category != null && doc.category !== undefined ? String(doc.category).trim() : '';
+            const categoryOk = rawCat && rawCat !== '—' && rawCat !== '-' && rawCat !== '―';
+            const contextLine = categoryOk ? rawCat : '';
 
             // 添付ファイル
             const attachments = [];
@@ -1611,12 +1621,12 @@
                     ${title ? `<div class="document-title">📘 ${escapeHtml(title)}</div>` : ''}
                     <div class="document-meta">
                         ${renderScoreBadge(doc)}
-                        <span style="color: #1565c0; font-weight: 500;">📚 ${escapeHtml(postType)}</span>
+                        ${contextLine ? `<span style="color: #1565c0; font-weight: 500;">📚 ${escapeHtml(contextLine)}</span>` : ''}
                     </div>
                     <div class="classroom-post">
-                        ${(sender && sender !== '不明') || formattedDate ? `
+                        ${sender || formattedDate ? `
                         <div class="classroom-header">
-                            ${(sender && sender !== '不明') ? `<span class="classroom-sender">👤 ${escapeHtml(sender)}</span>` : ''}
+                            ${sender ? `<span class="classroom-sender">👤 ${escapeHtml(sender)}</span>` : ''}
                             ${formattedDate ? `<span class="classroom-date">🕒 ${escapeHtml(formattedDate)}</span>` : ''}
                         </div>` : ''}
                         ${bodyText ? `<div class="classroom-body">${escapeHtml(bodyText)}</div>` : ''}
@@ -1628,7 +1638,7 @@
 
         function renderRegularDocument(doc) {
             // タイトル（09_unified_documents.title）
-            let title = doc.title || 'ドキュメント';
+            let title = doc.title || '';
             if (title.length > 100) title = title.substring(0, 100) + '...';
 
             const displayText = doc.snippet || truncateText(doc.chunk_content || '', 200);

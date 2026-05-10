@@ -108,9 +108,9 @@ def generate_batch_summary(
             "-" * 60,
         ])
         for i, item in enumerate(failed_results, 1):
-            lines.append(f"{i}. {item.get('title', '(不明)')}")
-            lines.append(f"   ID: {item.get('id', '(不明)')}")
-            lines.append(f"   エラー: {item.get('error', '(不明)')}")
+            lines.append(f"{i}. {item.get('title') or ''}")
+            lines.append(f"   ID: {item.get('id') or ''}")
+            lines.append(f"   エラー: {item.get('error') or ''}")
             lines.append("")
 
     if success_results:
@@ -120,7 +120,7 @@ def generate_batch_summary(
             "-" * 60,
         ])
         for i, item in enumerate(success_results, 1):
-            lines.append(f"{i}. {item.get('title', '(不明)')}")
+            lines.append(f"{i}. {item.get('title') or ''}")
 
     lines.extend([
         "",
@@ -267,7 +267,7 @@ class PipelineManager:
                     }
                     for d in docs:
                         d['file_name'] = title_map.get(
-                            (d.get('raw_id'), d.get('raw_table')), '(不明)'
+                            (d.get('raw_id'), d.get('raw_table')), ''
                         )
                 except Exception:
                     pass
@@ -680,7 +680,7 @@ class PipelineManager:
                 logger.info(f"[PM] ジョブ完了: meta_id={meta_id}")
                 return True
             else:
-                error = result.get('error', '不明なエラー')
+                error = result.get('error') or ''
                 self.nack_pipeline_meta(meta_id, error_message=error, retry=True)
                 logger.error(f"[PM] ジョブ失敗（リトライ可）: meta_id={meta_id} - {error}")
                 return False
@@ -775,7 +775,7 @@ class PipelineManager:
                 log_dir=local_path.parent,
             )
             if not stage_b_result or not stage_b_result.get('success'):
-                b_error = (stage_b_result or {}).get('error', '不明')
+                b_error = (stage_b_result or {}).get('error') or ''
                 return {'success': False, 'error': f'Stage B失敗: {b_error}'}
 
             purged_pdf_path = stage_b_result.get('purged_pdf_path')
@@ -1449,10 +1449,10 @@ class PipelineManager:
                             try:
                                 r = task.result()
                                 (success_results if r else failed_results).append(
-                                    {'id': '(不明)', 'title': '(不明)'}
+                                    {'id': '', 'title': ''}
                                 )
                             except Exception as e:
-                                failed_results.append({'id': '(不明)', 'title': '(不明)', 'error': str(e)})
+                                failed_results.append({'id': '', 'title': '', 'error': str(e)})
                     continue
 
                 rt_cursor = (rt_cursor + 1) % len(active_raw_tables)
@@ -1498,10 +1498,10 @@ class PipelineManager:
                         try:
                             r = task.result()
                             (success_results if r else failed_results).append(
-                                {'id': '(不明)', 'title': '(不明)'}
+                                {'id': '', 'title': ''}
                             )
                         except Exception as e:
-                            failed_results.append({'id': '(不明)', 'title': '(不明)', 'error': str(e)})
+                            failed_results.append({'id': '', 'title': '', 'error': str(e)})
                     self.state_manager.update_resource_control(current_workers=len(active_tasks))
                     processing_count = self._get_processing_count()
                     logger.debug(f"[WAIT] タスク完了, 現在の実行数: {processing_count}")
@@ -1521,11 +1521,11 @@ class PipelineManager:
                 results = await asyncio.gather(*active_tasks, return_exceptions=True)
                 for result in results:
                     if isinstance(result, Exception):
-                        failed_results.append({'id': '(不明)', 'title': '(不明)', 'error': str(result)})
+                        failed_results.append({'id': '', 'title': '', 'error': str(result)})
                     elif result:
-                        success_results.append({'id': '(不明)', 'title': '(不明)'})
+                        success_results.append({'id': '', 'title': ''})
                     else:
-                        failed_results.append({'id': '(不明)', 'title': '(不明)'})
+                        failed_results.append({'id': '', 'title': ''})
                 self.state_manager.update_resource_control(current_workers=0)
 
         finally:

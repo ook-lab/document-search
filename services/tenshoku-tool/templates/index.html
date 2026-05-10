@@ -332,7 +332,7 @@
                                         <!-- 職種名 -->
                                         <p class="text-sm font-bold leading-snug line-clamp-2"
                                            style="color:var(--text-primary);"
-                                           x-text="job.job_title || '—'"></p>
+                                           x-text="job.job_title || ''"></p>
                                     </div>
                                     <input type="checkbox"
                                            :checked="(deleteMode ? deleteIds : compareIds).includes(job.id)"
@@ -353,7 +353,7 @@
                                               x-text="'+'+(job.skill_tags.length-7)"></span>
                                     </template>
                                     <template x-if="(job.skill_tags||[]).length === 0">
-                                        <span class="text-xs italic" style="color:var(--text-muted);">スキル情報なし</span>
+                                        <span class="text-xs italic" style="color:var(--text-muted);"></span>
                                     </template>
                                 </div>
 
@@ -396,7 +396,7 @@
                                                       ? (job.salary_min/10000).toFixed(0)+'〜'+(job.salary_max/10000).toFixed(0)+'万'
                                                   : job.salary_min
                                                       ? (job.salary_min/10000).toFixed(0)+'万〜'
-                                                  : '—'"></span>
+                                                  : ''"></span>
                                     </div>
                                     <!-- 休日 -->
                                     <div class="metric-icon-box flex-col items-start gap-1 p-2">
@@ -410,7 +410,7 @@
                                             <span class="mic-label">休日</span>
                                         </div>
                                         <span class="font-extrabold text-sm leading-tight" style="color:#0066CC;"
-                                              x-text="job.annual_holidays ? job.annual_holidays+'日' : '—'"></span>
+                                              x-text="job.annual_holidays ? job.annual_holidays+'日' : ''"></span>
                                     </div>
                                     <!-- 英語 -->
                                     <div class="metric-icon-box flex-col items-start gap-1 p-2">
@@ -424,7 +424,7 @@
                                             <span class="mic-label">英語</span>
                                         </div>
                                         <span class="font-extrabold text-sm leading-tight" style="color:#1A8C44;"
-                                              x-text="{'none':'不要','daily':'日常','business':'BIZ','native':'NT'}[job.english_level] || '—'"></span>
+                                              x-text="{'none':'不要','daily':'日常','business':'BIZ','native':'NT'}[job.english_level] || ''"></span>
                                     </div>
                                 </div>
 
@@ -466,7 +466,7 @@
                                 <a :href="selectedJob.url" target="_blank"
                                    class="text-sm hover:underline font-bold transition"
                                    :style="'color:' + brandColor(selectedJob)"
-                                   x-text="selectedJob.company_name || '企業名未取得'"></a>
+                                   x-text="selectedJob.company_name || ''"></a>
                                 <template x-if="serviceLabel(selectedJob)">
                                     <span class="tag-service" x-text="serviceLabel(selectedJob)"></span>
                                 </template>
@@ -484,7 +484,7 @@
                                 </template>
                             </div>
                             <p class="text-base font-bold leading-snug" style="color:var(--text-primary);"
-                               x-text="selectedJob.job_title || '—'"></p>
+                               x-text="selectedJob.job_title || ''"></p>
                             <p class="text-xs mt-1" style="color:var(--text-muted);"
                                x-text="selectedJob.category_label + '　／　' + inferIndustry(selectedJob)"></p>
                             <template x-if="selectedJob.location">
@@ -506,7 +506,7 @@
                                    x-text="selectedJob.description"></p>
                             </template>
                             <template x-if="!selectedJob.description || !selectedJob.description.trim()">
-                                <p class="text-xs italic" style="color:var(--text-muted);">未取得（全件再処理で取得できます）</p>
+                                <p class="text-xs italic" style="color:var(--text-muted);"></p>
                             </template>
                         </div>
 
@@ -532,7 +532,7 @@
                                     <span class="tag-skill" x-text="tag"></span>
                                 </template>
                                 <template x-if="(selectedJob.skill_tags||[]).length === 0">
-                                    <span class="text-sm" style="color:var(--text-muted);">—</span>
+                                    <span class="text-sm" style="color:var(--text-muted);"></span>
                                 </template>
                             </div>
                             <div class="flex flex-wrap gap-x-4 gap-y-1.5 text-xs" style="color:var(--text-secondary);">
@@ -592,9 +592,9 @@
                                     <div class="flex justify-between items-center border-t pt-2" style="border-color:#C7D2FE;">
                                         <span class="text-xs" style="color:var(--text-muted);">提示年収レンジ</span>
                                         <span class="text-xs font-bold" style="color:var(--text-secondary);"
-                                              x-text="(selectedJob.salary_min ? (selectedJob.salary_min/10000).toFixed(0)+'万' : '?')
-                                                     + ' 〜 '
-                                                     + (selectedJob.salary_max ? (selectedJob.salary_max/10000).toFixed(0)+'万' : '?')"></span>
+                                              x-text="(selectedJob.salary_min ? (selectedJob.salary_min/10000).toFixed(0)+'万' : '')
+                                                     + (selectedJob.salary_min && selectedJob.salary_max ? ' 〜 ' : '')
+                                                     + (selectedJob.salary_max ? (selectedJob.salary_max/10000).toFixed(0)+'万' : '')"></span>
                                     </div>
                                 </template>
                                 <template x-if="selectedJob.salary_average">
@@ -608,7 +608,7 @@
                                     <p class="text-xs" style="color:var(--text-secondary);" x-text="selectedJob.salary"></p>
                                 </template>
                                 <template x-if="!selectedJob.real_base_annual && !selectedJob.salary_min && !selectedJob.salary_max && !selectedJob.salary_average && !selectedJob.salary">
-                                    <p class="text-xs italic" style="color:var(--text-muted);">未取得（全件再処理で取得できます）</p>
+                                    <p class="text-xs italic" style="color:var(--text-muted);"></p>
                                 </template>
                             </div>
                         </div>
@@ -620,7 +620,7 @@
                                 <div class="metric-box">
                                     <p class="metric-label">リモート</p>
                                     <p class="metric-value text-sm"
-                                       x-text="{'full':'フルリモート','partial':'一部リモート','none':'出社のみ'}[selectedJob.remote_type] || '—'"></p>
+                                       x-text="{'full':'フルリモート','partial':'一部リモート','none':'出社のみ'}[selectedJob.remote_type] || ''"></p>
                                 </div>
                                 <div class="metric-box">
                                     <p class="metric-label">フレックス</p>
@@ -631,12 +631,12 @@
                                 <div class="metric-box">
                                     <p class="metric-label">試用期間</p>
                                     <p class="metric-value text-sm"
-                                       x-text="selectedJob.probation_months ? selectedJob.probation_months+'ヶ月' : '—'"></p>
+                                       x-text="selectedJob.probation_months ? selectedJob.probation_months+'ヶ月' : ''"></p>
                                 </div>
                                 <div class="metric-box">
                                     <p class="metric-label">雇用形態</p>
                                     <p class="metric-value text-sm"
-                                       x-text="selectedJob.employment_type || '—'"></p>
+                                       x-text="selectedJob.employment_type || ''"></p>
                                 </div>
                             </div>
                             <template x-if="selectedJob.working_hours">
@@ -660,7 +660,7 @@
                                     <span class="mic-label">年間休日</span>
                                 </div>
                                 <span class="font-extrabold text-base" style="color:#0066CC;"
-                                      x-text="selectedJob.annual_holidays ? selectedJob.annual_holidays+'日' : '—'"></span>
+                                      x-text="selectedJob.annual_holidays ? selectedJob.annual_holidays+'日' : ''"></span>
                             </div>
                             <div class="metric-icon-box flex-1 flex-col items-start gap-1">
                                 <div class="flex items-center gap-1.5 w-full">
@@ -674,7 +674,7 @@
                                 </div>
                                 <span class="font-extrabold text-base"
                                       :style="(selectedJob.avg_overtime_hours||0) > 30 ? 'color:#C0392B;' : 'color:var(--text-primary);'"
-                                      x-text="selectedJob.avg_overtime_hours != null ? selectedJob.avg_overtime_hours+'h' : '—'"></span>
+                                      x-text="selectedJob.avg_overtime_hours != null ? selectedJob.avg_overtime_hours+'h' : ''"></span>
                             </div>
                         </div>
                         <template x-if="selectedJob.holidays">

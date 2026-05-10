@@ -55,12 +55,12 @@ EXTRACT_PROMPT = """\
 - 「〜以上」「最大〜」など範囲がある場合は下限を min、上限を max に入れる
 - boolean は True/False のみ（null 禁止）
 - skill_tags・benefit_tags は具体的なキーワードを配列で（例: ["SAP","在庫管理","英語"]）
-- listing_status: "unlisted"(非上場) / "listed_prime"(東証プライム) / "listed_growth"(東証グロース) / "listed_other"(その他上場) / "ipo_preparing"(上場準備中) / null(不明)
-- salary_system: "monthly"(月給制) / "annual"(年俸制) / null(不明)
-- remote_type: "full"(フルリモート) / "partial"(一部リモート) / "none"(出社のみ) / null(不明)
-- english_level: "none"(不要) / "daily"(日常会話) / "business"(ビジネス) / "native"(ネイティブ) / null(不明)
+- listing_status: "unlisted"(非上場) / "listed_prime"(東証プライム) / "listed_growth"(東証グロース) / "listed_other"(その他上場) / "ipo_preparing"(上場準備中) / null
+- salary_system: "monthly"(月給制) / "annual"(年俸制) / null
+- remote_type: "full"(フルリモート) / "partial"(一部リモート) / "none"(出社のみ) / null
+- english_level: "none"(不要) / "daily"(日常会話) / "business"(ビジネス) / "native"(ネイティブ) / null
 - metadata には、上記カラムに収まらない企業固有の数値や特徴を自由形式で入れる
-- industry: 求人の業界を以下から1つ選択: "金融・会計" / "IT・通信" / "製造・メーカー" / "商社・物流" / "人材・教育" / "広告・マスコミ" / "不動産・建設" / "コンサル・経営" / "医療・福祉" / "その他" / null(不明)
+- industry: 求人の業界を以下から1つ選択: "金融・会計" / "IT・通信" / "製造・メーカー" / "商社・物流" / "人材・教育" / "広告・マスコミ" / "不動産・建設" / "コンサル・経営" / "医療・福祉" / "その他" / null
 - summary: 求人全体を2〜3文で要約した日本語テキスト。どんな会社で何をする仕事か・魅力を簡潔に。
 - description: 仕事内容・業務内容セクションの本文（全文）。見出しラベルは含めず本文のみ。
 - requirements: 「必須要件」「応募資格」「必須スキル」「必須条件」セクションの本文（全文）。見出しラベルは含めず本文のみ。

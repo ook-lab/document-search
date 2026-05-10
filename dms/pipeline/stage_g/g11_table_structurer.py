@@ -78,7 +78,7 @@ class G11TableStructurer:
                 # ★ headers/rows を優先（G-1 Reproducer の出力形式）
                 columns = table.get('headers') or table.get('columns', [])
                 data = table.get('rows') or table.get('data', [])
-                source_page = table.get('source_page', 'N/A')
+                source_page = table.get('source_page', '')
 
                 logger.info(f"  Table {idx}:")
                 logger.info(f"    ├─ table_id: {table_id}")
@@ -134,7 +134,7 @@ class G11TableStructurer:
                     table_id = table.get('table_id', 'Unknown')
                     headers = table.get('headers', [])
                     rows = table.get('rows', [])
-                    source_page = table.get('source_page', 'N/A')
+                    source_page = table.get('source_page', '')
                     total_rows += len(rows)
 
                     logger.info(f"Table {idx} ({table_id}):")

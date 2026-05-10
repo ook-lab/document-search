@@ -215,10 +215,9 @@ class StageHKakeibo:
             Dict: {"product_name": "正規化後", "category_id": "...", "tax_rate": 10}
         """
         # 商品名を取得（空文字列もNoneとして扱う）
-        product_name = item.get("product_name") or item.get("line_text") or item.get("ocr_raw_text") or "不明"
-        # 空文字列の場合は「不明」に
+        product_name = item.get("product_name") or item.get("line_text") or item.get("ocr_raw_text") or ""
         if not product_name or not product_name.strip():
-            product_name = "不明"
+            product_name = ""
 
         receipt_tax_mark = item.get("tax_mark")  # レシートの税率マーク
 
@@ -268,17 +267,15 @@ class StageHKakeibo:
             tax_rate_source = "product_name_pattern"
             # 商品名から税率パターンを削除
             product_name = product_name.replace("外8", "").replace("内8", "").replace("外 8", "").replace("内 8", "").strip()
-            # 空文字列になった場合は「不明」に
             if not product_name:
-                product_name = "不明"
+                product_name = ""
         elif "外10" in product_name or "内10" in product_name or "外 10" in product_name or "内 10" in product_name:
             tax_rate = 10
             tax_rate_source = "product_name_pattern"
             # 商品名から税率パターンを削除
             product_name = product_name.replace("外10", "").replace("内10", "").replace("外 10", "").replace("内 10", "").strip()
-            # 空文字列になった場合は「不明」に
             if not product_name:
-                product_name = "不明"
+                product_name = ""
         # 4. レシートのマークから税率を判定
         # 8%マークの判定（複数パターン対応）
         elif receipt_tax_mark and (

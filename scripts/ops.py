@@ -127,7 +127,7 @@ def cmd_stats(args):
                 stats['null'] += 1
             else:
                 stats[status] = stats.get(status, 0) + 1
-            src = doc.get('source', '(不明)')
+            src = doc.get('source') or ''
             source_counts[src] = source_counts.get(src, 0) + 1
 
         stats['total'] = len(response.data)
@@ -383,7 +383,7 @@ def cmd_reset_status(args):
     # 対象の表示
     print("\n対象ドキュメント:")
     for i, doc in enumerate(dry_result.affected_items[:20]):
-        title = doc.get('title', doc.get('file_name', '(不明)'))
+        title = doc.get('title') or doc.get('file_name') or ''
         print(f"  {i+1:>3}. {title}")
     if dry_result.affected_count > 20:
         print(f"  ... 他 {dry_result.affected_count - 20}件")
@@ -490,7 +490,7 @@ def cmd_reset_stages(args):
     # ソース別集計
     source_counts = {}
     for doc in dry_result.affected_items:
-        src = doc.get('source', '(不明)')
+        src = doc.get('source') or ''
         source_counts[src] = source_counts.get(src, 0) + 1
 
     print("\nソース別:")
@@ -500,7 +500,7 @@ def cmd_reset_stages(args):
     # 対象の表示
     print("\n対象ドキュメント:")
     for i, doc in enumerate(dry_result.affected_items[:20]):
-        src = doc.get('source', '不明')
+        src = doc.get('source') or ''
         print(f"  {i+1:>3}. [{src}] id={doc.get('id')}")
     if dry_result.affected_count > 20:
         print(f"  ... 他 {dry_result.affected_count - 20}件")
@@ -573,7 +573,7 @@ def cmd_requests(args):
 
         print("\n要求一覧:")
         for i, req in enumerate(requests_list):
-            req_type = req.get('request_type', '不明')
+            req_type = req.get('request_type') or ''
             scope = f"{req.get('scope_type', '')}:{req.get('scope_id', '')}" if req.get('scope_id') else req.get('scope_type', 'global')
             created = req.get('created_at', '')[:19] if req.get('created_at') else ''
             print(f"  {i+1:>3}. [{req_type}] {scope} ({created})")

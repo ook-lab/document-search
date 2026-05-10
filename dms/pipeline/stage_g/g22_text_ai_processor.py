@@ -132,7 +132,7 @@ class G22TextAIProcessor:
 
         # G-21 の全 articles の詳細をログ出力
         for i, article in enumerate(articles, 1):
-            title = article.get('title', '(タイトルなし)')
+            title = article.get('title') or ''
             body = article.get('body', '')
             logger.info(f"[G-22] Article {i}: title={title} body={len(body)}文字")
         logger.info("[G-22] " + "=" * 60)

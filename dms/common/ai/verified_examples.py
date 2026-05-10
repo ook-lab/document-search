@@ -111,15 +111,15 @@ class VerifiedExamplesProvider:
             フォーマットされた文字列
         """
         if not examples:
-            return "（検証済みデータなし）"
+            return ""
 
         if format_type == "numbered":
             lines = ["以下は人間が検証した正しい分類例です：\n"]
             for i, ex in enumerate(examples, 1):
                 lines.append(
                     f"{i}. 商品名: {ex['product_name']}\n"
-                    f"   一般名詞: {ex.get('general_name', '未設定')}\n"
-                    f"   小カテゴリ: {ex.get('small_category', '未設定')}\n"
+                    f"   一般名詞: {ex.get('general_name') or ''}\n"
+                    f"   小カテゴリ: {ex.get('small_category') or ''}\n"
                 )
             return "\n".join(lines)
 
@@ -136,8 +136,8 @@ class VerifiedExamplesProvider:
             for ex in examples:
                 lines.append(
                     f"| {ex['product_name']} | "
-                    f"{ex.get('general_name', '未設定')} | "
-                    f"{ex.get('small_category', '未設定')} |"
+                    f"{ex.get('general_name') or ''} | "
+                    f"{ex.get('small_category') or ''} |"
                 )
             return "\n".join(lines)
 

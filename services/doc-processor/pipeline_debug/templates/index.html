@@ -338,7 +338,7 @@ function loadSessions() {
       sessions.forEach(s => {
         const opt = document.createElement('option');
         opt.value = s.id;
-        const stageInfo = s.completed_stages.join(',') || 'なし';
+        const stageInfo = s.completed_stages.join(',') || '';
         opt.textContent = s.id + ' (' + stageInfo + ')' + (s.pdf ? ' [' + s.pdf + ']' : '');
         sel.appendChild(opt);
       });
@@ -511,7 +511,7 @@ function renderFiles(files, sessionId) {
   const container = document.getElementById('fileList');
   container.innerHTML = '';
   if (!files || !files.length) {
-    container.innerHTML = '<span style="color:#666; font-size:0.85rem;">ファイルなし</span>';
+    container.innerHTML = '<span style="color:#666; font-size:0.85rem;"></span>';
     return;
   }
   files.forEach(f => {
@@ -643,7 +643,7 @@ function buildDiagHTML(d) {
   html += `<div class="diag-card">
     <h3>② ページフォント解析</h3>`;
   if (Object.keys(d.page_types).length === 0) {
-    html += '<span style="color:#666;font-size:0.82rem;">データなし</span>';
+    html += '<span style="color:#666;font-size:0.82rem;"></span>';
   } else {
     for (const [t, cnt] of Object.entries(d.page_types)) {
       html += `<span class="page-type-badge ${t}">${t}: ${cnt}p</span>`;
@@ -665,7 +665,7 @@ function buildDiagHTML(d) {
           ${pd.matched_font ? `<span style="color:#888;font-size:0.75rem;"> (font="${escHtml(pd.matched_font)}", pattern="${escHtml(pd.matched_pattern)}")</span>` : ''}
         </div>
         <div style="font-family:monospace;font-size:0.75rem;color:${isUnknown ? '#664444' : '#446644'};background:#0d0d1a;padding:3px 8px;border-radius:4px;word-break:break-all;">
-          検出フォント: ${pd.fonts.length > 0 ? pd.fonts.map(f => escHtml(f)).join(', ') : '(なし)'}
+          検出フォント: ${pd.fonts.length > 0 ? pd.fonts.map(f => escHtml(f)).join(', ') : ''}
         </div>
       </div>`;
     }
@@ -692,7 +692,7 @@ function buildDiagHTML(d) {
       <span class="check-val ${cls(c.confidence_ok)}">${d.confidence}</span>
     </div>
     <div class="check-row">
-      <span class="check-icon">${c.confidence_ok ? (c.allowlist_ok ? '✓' : '✗') : '―'}</span>
+      <span class="check-icon">${c.confidence_ok ? (c.allowlist_ok ? '✓' : '✗') : ''}</span>
       <span class="check-label">Allowlistチェック<div class="sub">(${d.origin_app}, ${d.layout_profile})</div></span>
       <span class="check-val ${c.confidence_ok ? cls(c.allowlist_ok) : ''}">${c.confidence_ok ? (c.allowlist_ok ? 'OK' : '対象外') : 'スキップ'}</span>
     </div>`;
@@ -707,7 +707,7 @@ function buildDiagHTML(d) {
     }
   } else if (c.allowlist_ok) {
     html += `<div class="check-row">
-      <span class="check-icon" style="color:#555;">―</span>
+      <span class="check-icon" style="color:#555;"></span>
       <span class="check-label" style="color:#555;">閾値チェック<div class="sub">WORDのみ適用</div></span>
       <span class="check-val" style="color:#555;">スキップ</span>
     </div>`;
@@ -719,22 +719,22 @@ function buildDiagHTML(d) {
   html += `<div class="diag-card">
     <h3>④ レイアウトメトリクス</h3>
     <div class="check-row">
-      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-icon" style="color:#555;"></span>
       <span class="check-label">avg_images/page<div class="sub">≤10 でWORD閾値OK</div></span>
       <span class="check-val ${m.avg_images <= 10 ? 'ok' : 'ng'}">${m.avg_images}</span>
     </div>
     <div class="check-row">
-      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-icon" style="color:#555;"></span>
       <span class="check-label">avg_words/page<div class="sub">≥20 でWORD閾値OK</div></span>
       <span class="check-val ${m.avg_words >= 20 ? 'ok' : 'ng'}">${m.avg_words}</span>
     </div>
     <div class="check-row">
-      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-icon" style="color:#555;"></span>
       <span class="check-label">avg_chars/page<div class="sub">≥100 でWORD閾値OK</div></span>
       <span class="check-val ${m.avg_chars >= 100 ? 'ok' : 'ng'}">${m.avg_chars}</span>
     </div>
     <div class="check-row">
-      <span class="check-icon" style="color:#555;">—</span>
+      <span class="check-icon" style="color:#555;"></span>
       <span class="check-label">avg_x_std<div class="sub">≥100 → FIXED判定</div></span>
       <span class="check-val">${m.avg_x_std}</span>
     </div>

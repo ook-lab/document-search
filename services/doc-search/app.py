@@ -1288,7 +1288,7 @@ Evidence:
 - 「原文抜粋」 (タイトル/Source)
 
 不確実性:
-<不足情報や条件。なければ「なし」>
+<不足情報や条件。なければ空欄のまま>
 """]
 
     full_prompt = "\n".join(prompt_parts)
@@ -1387,7 +1387,7 @@ def _answer_from_evidence(
 - <Source>
 
 不確実性:
-<なければ「なし」>
+<なければ空欄のまま>
 """]
 
     full_prompt = "\n".join(prompt_parts)
@@ -2493,7 +2493,16 @@ def _build_context_sections(
         emitted_keys.add(key)
         extras_idx += 1
         title_loc = str(doc_local.get("title") or "").strip()
-        src_loc = str(doc_local.get("source") or "").strip()
+        person_loc = str(doc_local.get("person") or "").strip()
+        cat_loc = str(doc_local.get("category") or "").strip()
+        if cat_loc in ("—", "-", "―"):
+            cat_loc = ""
+        meta_extra_lines: List[str] = []
+        if person_loc:
+            meta_extra_lines.append(f"人物: {person_loc}")
+        if cat_loc:
+            meta_extra_lines.append(f"カテゴリ: {cat_loc}")
+        meta_extra = ("\n".join(meta_extra_lines) + "\n") if meta_extra_lines else ""
         dd = doc_local.get("document_date", "")
         dm = doc_local.get("is_date_matched", False)
         tag = "（日付一致✓）" if dm else ""
@@ -2504,8 +2513,7 @@ def _build_context_sections(
         blk = (
             f"""【それ以外の抽出チャンク{extras_idx}】{tag}
 タイトル: {title_loc}
-ソース: {src_loc}
-日付: {dd}
+{meta_extra}日付: {dd}
 チャンク類似度: {s_disp}
 
 {_llm_chunk_heading(ch)}{txt_local}

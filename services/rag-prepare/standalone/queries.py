@@ -285,12 +285,14 @@ def fetch_pending_search_data_prep_docs(
         src_raw = (extras.get("source") or "").strip()
         merged_source = src_ud or src_raw
 
-        # スラッシュ後は 09 行があるときだけその category（空なら何も出さない。プレースホルダ禁止）
-        display_category = (
-            (ud.get("category") or "").strip()
-            if ud.get("id")
-            else ""
-        )
+        # 一覧のスラッシュ後は 09_unified_documents.category のみ。meta.doc_id の行を優先し、無ければ突き合わせた ud。
+        display_category = ""
+        if did_meta is not None and str(did_meta).strip():
+            row09 = ud_by_id.get(str(did_meta).strip())
+            if row09 and row09.get("id") is not None:
+                display_category = str(row09.get("category") or "").strip()
+        if not display_category and ud.get("id") is not None:
+            display_category = str(ud.get("category") or "").strip()
 
         if _gmail_without_attachment(merged_source, fu, extras.get("pdf_md_content")):
             continue

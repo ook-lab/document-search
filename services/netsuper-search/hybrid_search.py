@@ -293,10 +293,10 @@ def main():
 
     for i, product in enumerate(results, 1):
         print(f"\n{i}. {product['product_name']}")
-        print(f"   一般名: {product.get('general_name', 'N/A')}")
-        print(f"   小分類: {product.get('small_category', 'N/A')}")
-        print(f"   キーワード: {product.get('keywords', 'N/A')}")
-        print(f"   価格: {product.get('current_price', 'N/A')}")
+        print(f"   一般名: {product.get('general_name') or ''}")
+        print(f"   小分類: {product.get('small_category') or ''}")
+        print(f"   キーワード: {product.get('keywords') or ''}")
+        print(f"   価格: {product.get('current_price') if product.get('current_price') is not None else ''}")
         print(f"   スコア: {product['search_score']:.4f}")
 
     print("\n" + "="*80)

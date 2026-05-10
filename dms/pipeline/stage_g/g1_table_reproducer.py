@@ -378,7 +378,7 @@ class G1TableReproducer:
 
             else:
                 # それでも処理できない場合、詳細をログに出力
-                logger.warning(f"[G-1] 未知のdata形式: type={type(data)}, len={len(data) if isinstance(data, (list, dict)) else 'N/A'}")
+                logger.warning(f"[G-1] 未知のdata形式: type={type(data)}, len={len(data) if isinstance(data, (list, dict)) else ''}")
                 if isinstance(data, list) and len(data) > 0:
                     logger.warning(f"[G-1] data[0] type: {type(data[0])}, value: {data[0]}")
                 return None

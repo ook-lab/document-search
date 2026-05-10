@@ -111,9 +111,9 @@ class FlyerProcessor:
             処理結果
         """
         flyer_doc_id = flyer_doc['id']
-        file_name = flyer_doc.get('file_name', '不明')
+        file_name = flyer_doc.get('file_name') or ''
         source_id = flyer_doc.get('source_id')  # Google Drive ID
-        organization = flyer_doc.get('organization', '不明')
+        organization = flyer_doc.get('organization') or ''
 
         logger.info(f"\n{'='*80}")
         logger.info(f"チラシ処理開始: {file_name}")

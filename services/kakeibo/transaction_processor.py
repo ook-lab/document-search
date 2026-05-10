@@ -145,7 +145,7 @@ class TransactionProcessor:
                 trans_id   = self._insert_transaction(
                     receipt_id=receipt_id,
                     line_number=line_num,
-                    ocr_raw_text=item.get("ocr_raw") or item.get("product_name") or item.get("line_text") or "不明",
+                    ocr_raw_text=item.get("ocr_raw") or item.get("product_name") or item.get("line_text") or "",
                     ocr_confidence=item.get("confidence"),
                     product_name=normalized["product_name"],
                     item_name=None,
@@ -183,10 +183,10 @@ class TransactionProcessor:
     def _normalize_item(self, item: Dict, shop_name: str, tax_summary: Dict = None) -> Dict:
         product_name = (
             item.get("product_name") or item.get("line_text")
-            or item.get("ocr_raw_text") or "不明"
+            or item.get("ocr_raw_text") or ""
         )
         if not product_name or not product_name.strip():
-            product_name = "不明"
+            product_name = ""
 
         gemini_tax_rate = item.get("tax_rate", 10)
 

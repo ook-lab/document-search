@@ -317,7 +317,7 @@ class WasedaNoticeIngestionPipeline:
                     'post_type': 'notice',
                     'title': title,
                     'description': message,
-                    'creator_name': source.get('label', '不明'),
+                    'creator_name': source.get('label') or '',
                     'created_at': sent_at,
                 }
                 try:
@@ -377,7 +377,7 @@ class WasedaNoticeIngestionPipeline:
                 metadata = {
                     'notice_title': title,
                     'notice_date': date,
-                    'notice_source': source.get('label', '不明'),
+                    'notice_source': source.get('label') or '',
                     'notice_category': category.get('label', 'その他'),
                     'notice_message': message,
                     'pdf_url': full_pdf_url,
@@ -393,7 +393,7 @@ class WasedaNoticeIngestionPipeline:
                     'post_type': 'notice',
                     'title': title,
                     'description': message,
-                    'creator_name': source.get('label', '不明'),
+                    'creator_name': source.get('label') or '',
                     'created_at': sent_at,
                     'file_url': f"https://drive.google.com/file/d/{file_id}/view",
                     'file_name': actual_file_name,

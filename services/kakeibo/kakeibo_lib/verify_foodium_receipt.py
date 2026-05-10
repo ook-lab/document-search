@@ -36,7 +36,7 @@ def verify_foodium():
         else:
             tax_type = "内税"
     else:
-        tax_type = "不明"
+        tax_type = ""
     logger.info(f"   税表示タイプ: {tax_type}")
 
     # Get transactions
@@ -47,12 +47,12 @@ def verify_foodium():
         # 正規化データは同じレコードに含まれる
         logger.info(f"\n   商品: {trans['product_name']}")
         logger.info(f"     1. 数量:      {trans['quantity']}")
-        logger.info(f"     2. 表示額:    {trans.get('unit_price', 'N/A')}円")
+        logger.info(f"     2. 表示額:    {trans['unit_price'] if trans.get('unit_price') is not None else ''}円")
         logger.info(f"     3. 外or内:    {tax_type}")
-        logger.info(f"     4. 税率:      {trans.get('tax_rate', 'N/A')}%")
-        logger.info(f"     5. 本体価:    {trans.get('std_unit_price', 'N/A')}円")
-        logger.info(f"     6. 税額:      {trans.get('tax_amount', 'N/A')}円")
-        logger.info(f"     7. 税込価:    {trans.get('std_amount', 'N/A')}円")
+        logger.info(f"     4. 税率:      {(str(trans['tax_rate']) + '%') if trans.get('tax_rate') is not None else ''}")
+        logger.info(f"     5. 本体価:    {trans['std_unit_price'] if trans.get('std_unit_price') is not None else ''}円")
+        logger.info(f"     6. 税額:      {trans['tax_amount'] if trans.get('tax_amount') is not None else ''}円")
+        logger.info(f"     7. 税込価:    {trans['std_amount'] if trans.get('std_amount') is not None else ''}円")
 
         # Verify calculation
         if trans.get('std_unit_price') is not None and trans.get('std_amount') is not None and trans.get('tax_amount') is not None:

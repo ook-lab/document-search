@@ -242,7 +242,7 @@
                     <div class="form-group">
                         <label>大分類</label>
                         <select id="cc-major">
-                            <option value="">—</option>
+                            <option value=""></option>
                             {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
                             <option value="{{ opt }}">{{ opt }}</option>
                             {% endfor %}
@@ -282,12 +282,12 @@
                 <td>
                     {% if r.loan_type == '借入' %}<span class="badge badge-borrow">借入</span>
                     {% elif r.loan_type == '返済' %}<span class="badge badge-repay">返済</span>
-                    {% else %}—{% endif %}
+                    {% else %}{% endif %}
                 </td>
                 <td>
-                    {% if r.exclude %}<span class="badge badge-exclude">計算対象外</span>{% else %}—{% endif %}
+                    {% if r.exclude %}<span class="badge badge-exclude">計算対象外</span>{% else %}{% endif %}
                 </td>
-                <td style="font-size:12px;color:#888;">{{ r.created_at[:10] if r.created_at else '-' }}</td>
+                <td style="font-size:12px;color:#888;">{{ r.created_at[:10] if r.created_at else '' }}</td>
                 <td style="white-space:nowrap;">
                     <button class="btn btn-secondary" style="margin-right:4px;"
                             data-rule='{{ r | tojson }}'
@@ -321,7 +321,7 @@
                     <div class="form-group">
                         <label>現金大分類（除外の場合は空）</label>
                         <select id="cl-major">
-                            <option value="">—（計算対象外）</option>
+                            <option value="">（計算対象外）</option>
                             <option value="借入">借入</option>
                             <option value="返済">返済</option>
                         </select>
@@ -329,7 +329,7 @@
                     <div class="form-group">
                         <label>ローン種別</label>
                         <select id="cl-loan-type">
-                            <option value="">—</option>
+                            <option value=""></option>
                             <option value="借入">借入</option>
                             <option value="返済">返済</option>
                         </select>

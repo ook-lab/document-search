@@ -219,7 +219,7 @@ def analyze_local_folders(root_paths):
 @app.route("/api/health")
 def api_health():
     """指令塔から、手元のPCに作業員がいるかを確認するための窓口"""
-    return jsonify({"success": True, "mode": os.environ.get("RUN_MODE", "LOCAL"), "pc": os.environ.get("COMPUTERNAME", "UNKNOWN")})
+    return jsonify({"success": True, "mode": os.environ.get("RUN_MODE", "LOCAL"), "pc": os.environ.get("COMPUTERNAME") or ""})
 
 # --- その他の基本操作 ---
 

@@ -281,7 +281,7 @@ def session_diagnosis(session_id):
     a4 = a.get('a4_layout') or {}
     gk = a.get('a5_gatekeeper') or a.get('gatekeeper') or {}
 
-    origin_app = a2.get('origin_app') or a.get('origin_app') or a.get('document_type', 'UNKNOWN')
+    origin_app = a2.get('origin_app') or a.get('origin_app') or a.get('document_type') or ''
     confidence = a2.get('confidence') or a.get('confidence', 'NONE')
     reason = a2.get('reason') or a.get('reason', '')
     raw_meta = a2.get('raw_metadata') or a.get('raw_metadata') or {}

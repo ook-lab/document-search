@@ -404,7 +404,7 @@ function renderTaskPage(page) {
       html += `<div class="task-row">
         <div class="task-deadline">${esc(dl)}</div>
         <div class="task-body">
-          <div class="task-title">${esc(t.task || t.doc_title || '(不明)')}</div>
+          <div class="task-title">${esc(t.task || t.doc_title || '')}</div>
           <div class="task-sub">${esc(t.source || '')}${t.doc_title && t.task ? ' · ' + esc(t.doc_title) : ''}</div>
           ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
         </div>

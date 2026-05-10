@@ -277,7 +277,7 @@ export async function POST(req: Request) {
       await fetch(`${SUPABASE_URL}/rest/v1/tasks`, {
         method: "POST", headers: sbHeaders(),
         body: JSON.stringify({
-          owner_email: ownerEmail, card_name: cardName ?? "(無題)", description: description || null,
+          owner_email: ownerEmail, card_name: cardName ?? "", description: description || null,
           due_date: due, due_complete: dueComplete, assignees, labels, checklist_total: total, checklist_done: done,
           trello_card_id: trelloCardId, trello_list_id: rawListId, list_name: listName,
           board_id: resolvedBoardId, board_name: boardName, archived: isClosed, source: "trello", sync_updated_at: now,
@@ -312,7 +312,7 @@ export async function POST(req: Request) {
         await fetch(`${SUPABASE_URL}/rest/v1/tasks`, {
           method: "POST", headers: sbHeaders(),
           body: JSON.stringify({
-            owner_email: ownerEmail, card_name: cardName ?? "(無題)", description: description || null,
+            owner_email: ownerEmail, card_name: cardName ?? "", description: description || null,
             due_date: due, due_complete: dueComplete, assignees, labels, checklist_total: total, checklist_done: done,
             trello_card_id: trelloCardId, trello_list_id: rawListId, list_name: listName,
             board_id: resolvedBoardId, board_name: boardName, archived: isClosed, source: "trello", sync_updated_at: now,

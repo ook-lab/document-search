@@ -149,7 +149,7 @@
                     </td>
                     <td>
                         <select class="cat-select cash-cat-major">
-                            <option value="">—</option>
+                            <option value=""></option>
                             {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
                             <option value="{{ opt }}" {% if t.cash_cat_major == opt %}selected{% endif %}>{{ opt }}</option>
                             {% endfor %}
@@ -199,7 +199,7 @@
                     </td>
                     <td>
                         <select class="cat-select cash-cat-major">
-                            <option value="">—</option>
+                            <option value=""></option>
                             {% for opt in ['クレジット','振込','引落','引出し','借入','返済','収入','預り金','雑費'] %}
                             <option value="{{ opt }}" {% if t.cash_cat_major == opt %}selected{% endif %}>{{ opt }}</option>
                             {% endfor %}

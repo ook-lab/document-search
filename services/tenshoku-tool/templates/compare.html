@@ -159,8 +159,8 @@ function compare(ids) {
         },
 
         buildRows() {
-            const fmt = (v, suffix='') => v != null ? v + suffix : '—';
-            const fmtMoney = v => v != null ? (v/10000).toFixed(0) + '万' : '—';
+            const fmt = (v, suffix='') => v != null ? v + suffix : '';
+            const fmtMoney = v => v != null ? (v/10000).toFixed(0) + '万' : '';
             const winner = (jobs, key, higher=true) => {
                 const vals = jobs.map(j => j[key]).filter(v => v != null);
                 if (vals.length === 0) return null;
@@ -183,7 +183,7 @@ function compare(ids) {
                 },
                 {
                     label: '固定残業代（月）',
-                    value: j => j.fixed_overtime_pay ? '+' + (j.fixed_overtime_pay/10000).toFixed(1) + '万 (' + j.fixed_overtime_hours + 'h)' : '—',
+                    value: j => j.fixed_overtime_pay ? '+' + (j.fixed_overtime_pay/10000).toFixed(1) + '万 (' + j.fixed_overtime_hours + 'h)' : '',
                     highlight: (j, jobs) => {
                         return (j.fixed_overtime_hours || 0) > 40 ? 'text-rose-600' : 'text-gray-600';
                     }
@@ -207,17 +207,17 @@ function compare(ids) {
                 },
                 {
                     label: 'リモート',
-                    value: j => ({'full':'フルリモート','partial':'一部リモート','none':'出社のみ'})[j.remote_type] || '—',
+                    value: j => ({'full':'フルリモート','partial':'一部リモート','none':'出社のみ'})[j.remote_type] || '',
                     highlight: (j) => j.remote_type === 'full' ? 'text-teal-600' : 'text-gray-600',
                 },
                 {
                     label: '英語',
-                    value: j => ({'none':'不要','daily':'日常会話','business':'ビジネス','native':'ネイティブ'})[j.english_level] || '—',
+                    value: j => ({'none':'不要','daily':'日常会話','business':'ビジネス','native':'ネイティブ'})[j.english_level] || '',
                     highlight: () => 'text-gray-600',
                 },
                 {
                     label: '企業フェーズ',
-                    value: j => ({'listed_prime':'東証プライム','listed_growth':'東証グロース','ipo_preparing':'上場準備中','unlisted':'非上場'})[j.listing_status] || '—',
+                    value: j => ({'listed_prime':'東証プライム','listed_growth':'東証グロース','ipo_preparing':'上場準備中','unlisted':'非上場'})[j.listing_status] || '',
                     highlight: () => 'text-gray-600',
                 },
                 {
@@ -227,7 +227,7 @@ function compare(ids) {
                 },
                 {
                     label: '管理監督者',
-                    value: j => j.is_managerial ? '対象' : '—',
+                    value: j => j.is_managerial ? '対象' : '',
                     highlight: () => 'text-gray-600',
                 },
             ];

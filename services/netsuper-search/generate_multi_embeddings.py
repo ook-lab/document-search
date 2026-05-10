@@ -247,7 +247,7 @@ class MultiEmbeddingGenerator:
                 time.sleep(delay)
 
             except Exception as e:
-                logger.error(f"[{i}/{stats['total']}] エラー: {product.get('product_name', '不明')} - {e}")
+                logger.error(f"[{i}/{stats['total']}] エラー: {product.get('product_name') or ''} - {e}")
                 stats['error'] += 1
                 time.sleep(1)  # エラー時は少し長めに待機
 

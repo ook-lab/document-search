@@ -104,9 +104,10 @@ class HypotheticalQuestionGenerator:
         """
         metadata_context = ""
         if document_metadata:
-            doc_type = document_metadata.get("doc_type", "不明")
-            file_name = document_metadata.get("file_name", "不明")
-            metadata_context = f"\n文書タイプ: {doc_type}\nファイル名: {file_name}\n"
+            doc_type = document_metadata.get("doc_type") or ""
+            file_name = document_metadata.get("file_name") or ""
+            if doc_type or file_name:
+                metadata_context = f"\n文書タイプ: {doc_type}\nファイル名: {file_name}\n"
 
         prompt = f"""あなたは質問生成の専門家です。以下の文書の一部を読んで、ユーザーが聞きそうな質問を生成してください。
 

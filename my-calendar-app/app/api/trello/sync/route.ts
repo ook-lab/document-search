@@ -136,7 +136,7 @@ async function syncBoard(boardId: string, ownerEmail: string, trelloToken: strin
         headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates" },
         body: JSON.stringify({
           owner_email:     ownerEmail,
-          card_name:       card.name || "(無題)",
+          card_name:       card.name || "",
           description:     card.desc || null,
           due_date:        due,
           due_complete:    card.dueComplete ?? false,

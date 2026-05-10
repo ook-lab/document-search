@@ -2972,9 +2972,9 @@ def reprocess_receipt():
                     existing = receipt_res.data[0]
                     ocr_result["transaction_date"] = str(existing.get("transaction_date") or "")
                     if not ocr_result.get("shop_name"):
-                        ocr_result["shop_name"] = existing.get("shop_name") or "不明"
+                        ocr_result["shop_name"] = existing.get("shop_name") or ""
             if not ocr_result.get("shop_name"):
-                ocr_result["shop_name"] = "不明"
+                ocr_result["shop_name"] = ""
             if not ocr_result.get("items"):
                 ocr_result["items"] = []
 

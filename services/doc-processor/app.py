@@ -1009,7 +1009,7 @@ def get_blocked_documents():
 
         block_stats = {}
         for doc in blocked_docs:
-            code = doc.get('gate_block_code', 'UNKNOWN')
+            code = doc.get('gate_block_code') or ''
             block_stats[code] = block_stats.get(code, 0) + 1
 
         return jsonify({
@@ -1513,7 +1513,7 @@ def reprocess_g():
             g22_result = g22.process(articles)
 
             if not g22_result.get('success'):
-                return jsonify({'success': False, 'error': f'G22 処理失敗: {g22_result.get("error", "不明")}'}), 500
+                return jsonify({'success': False, 'error': f'G22 処理失敗: {g22_result.get("error") or ""}'}), 500
 
             db.client.table('pipeline_meta').update({
                 'g22_ai_extracted': g22_result
@@ -1540,7 +1540,7 @@ def reprocess_g():
             g17_result = g17.process(g14_data)
 
             if not g17_result.get('success'):
-                return jsonify({'success': False, 'error': f'G17 処理失敗: {g17_result.get("error", "不明")}'}), 500
+                return jsonify({'success': False, 'error': f'G17 処理失敗: {g17_result.get("error") or ""}'}), 500
 
             g17_analyses = g17_result.get('table_analyses', [])
 

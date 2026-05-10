@@ -152,9 +152,9 @@ class FlyerProcessor:
         try:
             # プロンプト生成
             prompt = PRODUCT_EXTRACTION_PROMPT.format(
-                store_name=flyer_doc.get('organization', '不明'),
-                flyer_title=flyer_doc.get('flyer_title', '不明'),
-                flyer_period=flyer_doc.get('flyer_period', '不明'),
+                store_name=flyer_doc.get('organization') or '',
+                flyer_title=flyer_doc.get('flyer_title') or '',
+                flyer_period=flyer_doc.get('flyer_period') or '',
                 page_number=flyer_doc.get('page_number', 1)
             )
 
@@ -308,7 +308,7 @@ class FlyerProcessor:
             処理結果
         """
         flyer_doc_id = flyer_doc['id']
-        file_name = flyer_doc.get('file_name', '不明')
+        file_name = flyer_doc.get('file_name') or ''
         source_id = flyer_doc.get('source_id')  # Google Drive ID
 
         logger.info(f"=== チラシ処理開始: {file_name} ===")

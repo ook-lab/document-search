@@ -109,13 +109,15 @@ class ContextExtractor:
             return ""
         lines = ["【ユーザーの前提情報】"]
         for child in extracted_context["children"]:
-            name = child.get("name", "不明")
-            birth_date = child.get("birth_date", "不明")
-            grade = child.get("grade", "不明")
+            name = child.get("name") or ""
+            birth_date = child.get("birth_date") or ""
+            grade = child.get("grade") or ""
             lines.append(f"\n■ {name} さん（{grade}年生、生年月日: {birth_date}）")
             school = child.get("school", {})
             if school:
-                lines.append(f"  - 学校: {school.get('name', '不明')} {school.get('class', '不明')}")
+                lines.append(
+                    f"  - 学校: {school.get('name') or ''} {school.get('class') or ''}"
+                )
                 schedule = school.get("schedule", {})
                 if schedule:
                     lines.append("  - 学校の授業:")
@@ -125,7 +127,7 @@ class ContextExtractor:
                             lines.append(f"    {day}: {', '.join(subjects)}")
             cram_school = child.get("cram_school", {})
             if cram_school:
-                lines.append(f"  - 塾: {cram_school.get('name', '不明')}")
+                lines.append(f"  - 塾: {cram_school.get('name') or ''}")
                 schedule = cram_school.get("schedule", {})
                 if schedule:
                     lines.append("  - 塾の授業:")

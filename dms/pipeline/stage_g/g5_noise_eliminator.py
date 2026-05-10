@@ -126,7 +126,7 @@ class G5NoiseEliminator:
             result = {
                 'success': True,
                 'ui_data': ui_data,
-                'size_reduction': 'N/A'
+                'size_reduction': None
             }
 
             # ★チェーン: 次のステージを呼び出す（分岐）

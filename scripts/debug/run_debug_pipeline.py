@@ -392,7 +392,7 @@ class DebugPipeline:
             if 'B1' in active_set:
                 _b = ctx.get("B") or {}
                 if not _b.get('is_structured', False):
-                    raise ValueError(f"Stage B 失敗 → 後続ステージ中断: {_b.get('error', '不明')}")
+                    raise ValueError(f"Stage B 失敗 → 後続ステージ中断: {_b.get('error') or ''}")
 
             self._exec_stage_d(ctx, active_set, force)
             self._exec_stage_e(ctx, active_set, force)

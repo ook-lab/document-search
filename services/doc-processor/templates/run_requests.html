@@ -1141,7 +1141,7 @@
 
                 if (data.success) {
                     if (data.was_locked) {
-                        showMessage('success', `🔓 ${data.message}\n（以前: ${data.previous_state.locked_by || '不明'}）`);
+                        showMessage('success', `🔓 ${data.message}\n（以前: ${data.previous_state.locked_by || ''}）`);
                     } else {
                         showMessage('info', `ℹ️ ${data.message}`);
                     }
@@ -1328,8 +1328,8 @@
                     const t1 = (doc.title && String(doc.title).trim()) || '';
                     const t2 = (doc.file_name && String(doc.file_name).trim()) || '';
                     const title = t1 || t2;
-                    const blockCode = doc.gate_block_code || 'UNKNOWN';
-                    const blockReason = doc.gate_block_reason || '理由不明';
+                    const blockCode = doc.gate_block_code || '';
+                    const blockReason = doc.gate_block_reason || '';
 
                     return `
                         <div class="request-card" style="border-left: 4px solid #ef4444;">

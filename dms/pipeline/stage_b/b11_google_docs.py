@@ -157,7 +157,7 @@ class B11GoogleDocsProcessor:
 
                 # デバッグ：各表のdataサイズを確認
                 for idx, tbl in enumerate(all_tables):
-                    data_size = len(tbl.get('data', [])) if isinstance(tbl.get('data'), list) else 'N/A'
+                    data_size = len(tbl.get('data', [])) if isinstance(tbl.get('data'), list) else ''
                     logger.debug(f"[B-11] all_tables[{idx}]: data={data_size}行, has_data_key={'data' in tbl}")
 
                 # ════════════════════════════════════════

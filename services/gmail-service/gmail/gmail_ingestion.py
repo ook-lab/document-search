@@ -440,10 +440,10 @@ class GmailIngestionPipeline:
 
             # 差出人が空の場合のフォールバック
             if not sender_name and not sender_email:
-                sender_name = '不明'
-                sender_email = '不明'
+                sender_name = ''
+                sender_email = ''
 
-            logger.info(f"メール処理開始: {subject or '（件名なし）'}")
+            logger.info(f"メール処理開始: {subject or ''}")
             attachments = parts.get('attachments', [])
 
             # HTMLメール内のCID参照画像をBASE64形式に変換

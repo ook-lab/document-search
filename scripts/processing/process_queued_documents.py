@@ -95,19 +95,19 @@ def print_dry_run_targets(processor: PipelineManager, source: str, limit: int, d
             return
 
         doc = result.data[0]
-        title = '(不明)'
+        title = ''
         try:
             ud = db.client.table('09_unified_documents').select('title')\
                 .eq('raw_id', doc['raw_id']).eq('raw_table', doc['raw_table']).execute()
             if ud.data:
-                title = ud.data[0].get('title', '(不明)')
+                title = ud.data[0].get('title') or ''
         except Exception:
             pass
         logger.info(f"\n対象ドキュメント:")
         logger.info(f"  ID:        {doc.get('id')}")
         logger.info(f"  タイトル:  {title}")
-        logger.info(f"  ステータス: {doc.get('processing_status', '(不明)')}")
-        logger.info(f"  Source:    {doc.get('source', '(不明)')} / {doc.get('person', '(不明)')}")
+        logger.info(f"  ステータス: {doc.get('processing_status') or ''}")
+        logger.info(f"  Source:    {doc.get('source') or ''} / {doc.get('person') or ''}")
     else:
         # バッチ
         docs = processor.get_pending_documents(source, limit)
@@ -120,8 +120,8 @@ def print_dry_run_targets(processor: PipelineManager, source: str, limit: int, d
         logger.info("-" * 80)
 
         for i, doc in enumerate(docs[:20]):
-            title = doc.get('file_name', '(不明)')
-            src = doc.get('source', '不明')
+            title = doc.get('file_name') or ''
+            src = doc.get('source') or ''
             logger.info(f"  {i+1:>3}. [{src}] {title}")
 
         if len(docs) > 20:
@@ -271,7 +271,7 @@ async def process_run_request(processor: PipelineManager, run_request_id: str):
 
                 for doc in docs:
                     doc_id_current = doc['id']
-                    title = doc.get('title', doc.get('file_name', '(不明)'))
+                    title = doc.get('title') or doc.get('file_name') or ''
 
                     try:
                         success = await processor.process_single_document(doc_id_current)

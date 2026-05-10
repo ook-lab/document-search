@@ -99,7 +99,7 @@ class G21TextStructurer:
                 logger.info("[G-21] ===== sections の詳細 =====")
                 for i, section in enumerate(sections, 1):
                     section_type = section.get('type', 'unknown')
-                    label = section.get('label', '(ラベルなし)')
+                    label = section.get('label') or ''
                     content = section.get('content', '')
 
                     logger.info(f"[G-21] Section {i}:")
@@ -156,7 +156,7 @@ class G21TextStructurer:
             logger.info("[G-21] ========== 生成された articles ==========")
             if articles:
                 for i, article in enumerate(articles, 1):
-                    title = article.get('title', '(タイトルなし)')
+                    title = article.get('title') or ''
                     body = article.get('body', '')
                     logger.info(f"[G-21] Article {i}:")
                     logger.info(f"[G-21]   title: {title}")
