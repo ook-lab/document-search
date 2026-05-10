@@ -70,15 +70,15 @@ class DocSearchDB:
             while True:
                 response = (
                     self.client.table("09_unified_documents")
-                    .select("person, source, category")
+                    .select("person, classification1, classification2, classification3")
                     .range(offset, offset + page_size - 1)
                     .execute()
                 )
                 batch = response.data or []
                 for doc in batch:
                     person = (doc.get("person") or "").strip()
-                    source = (doc.get("source") or "").strip()
-                    cat = doc.get("category")
+                    source = (doc.get("classification1") or "").strip()
+                    cat = doc.get("classification3")
                     if not person or not source:
                         continue
                     hierarchy.setdefault(person, {}).setdefault(source, set())
@@ -281,13 +281,19 @@ class DocSearchDB:
             document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
             date_signals = self._read_date_signals_from_ix(result)
             doc_id = result.get("doc_id")
+            c1 = result.get("classification1")
+            c2 = result.get("classification2")
+            c3 = result.get("classification3")
             final_results.append(
                 {
                     "id": doc_id,
                     "title": result.get("title"),
-                    "source": result.get("source"),
+                    "source": c1,
                     "person": result.get("person"),
-                    "category": result.get("category"),
+                    "category": c3,
+                    "classification1": c1,
+                    "classification2": c2,
+                    "classification3": c3,
                     "from_name": result.get("from_name"),
                     "from_email": result.get("from_email"),
                     "snippet": result.get("snippet"),
@@ -326,7 +332,7 @@ class DocSearchDB:
                 doc_id = doc_result.get("id")
                 if not doc_id:
                     continue
-                if doc_result.get("source") == "Googleカレンダー":
+                if doc_result.get("classification1") == "Googleカレンダー":
                     doc_result["document_body"] = ""
                     doc_result["index_chunks_all"] = []
                     doc_result["max_chunk_vector_similarity"] = None

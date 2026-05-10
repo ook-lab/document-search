@@ -643,9 +643,9 @@ def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": row.get("id"),
         "title": row.get("title"),
-        "source": row.get("source"),
+        "source": row.get("classification1"),
         "person": row.get("person"),
-        "category": row.get("category"),
+        "category": row.get("classification3"),
         "snippet": row.get("snippet"),
         "post_at": row.get("post_at"),
         "start_at": row.get("start_at"),
@@ -736,15 +736,15 @@ def _machine_hit_calendar_rows(
     q = (
         db_client.client.table("09_unified_documents")
         .select(
-            "id, title, source, person, category, snippet, post_at, start_at, end_at, due_date, "
+            "id, title, classification1, person, classification3, snippet, post_at, start_at, end_at, due_date, "
             "location, file_url, ui_data, meta, ix_search_dates"
         )
-        .eq("source", "Googleカレンダー")
+        .eq("classification1", "Googleカレンダー")
     )
     if persons:
         q = q.in_("person", persons)
     if categories:
-        q = q.in_("category", categories)
+        q = q.in_("classification3", categories)
 
     start = s.isoformat()
     end = e.isoformat()
@@ -2635,14 +2635,14 @@ def extract_schedules():
 
         # データベースクエリを構築
         query = db_client.client.table('09_unified_documents').select(
-            'id, title, source, person, category, post_at, start_at, end_at, due_date, ui_data, meta'
+            'id, title, classification1, person, classification3, post_at, start_at, end_at, due_date, ui_data, meta'
         )
 
         if person:
             query = query.eq('person', person)
 
         if sources:
-            query = query.in_('source', sources)
+            query = query.in_('classification1', sources)
 
         # 日付範囲でフィルタ（post_at または start_at）
         if start_date:
@@ -2660,7 +2660,7 @@ def extract_schedules():
         for doc in documents:
             doc_id    = doc.get('id')
             title     = doc.get('title') or ''
-            source    = doc.get('source') or ''
+            source    = doc.get('classification1') or ''
             person_v  = doc.get('person') or ''
             post_at   = doc.get('post_at') or ''
             start_at  = doc.get('start_at') or ''

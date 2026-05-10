@@ -25,8 +25,9 @@ class StageKEmbedding:
         doc_id: str,
         chunks: List[Dict[str, Any]],
         person: Optional[str] = None,
-        source: Optional[str] = None,
-        category: Optional[str] = None,
+        classification1: Optional[str] = None,
+        classification2: Optional[str] = None,
+        classification3: Optional[str] = None,
         delete_existing: bool = True,
     ) -> Dict[str, Any]:
         """
@@ -36,8 +37,7 @@ class StageKEmbedding:
             doc_id:          09_unified_documents.id
             chunks:          チャンクリスト
             person:          09_unified_documents.person（非正規化）
-            source:          09_unified_documents.source（非正規化）
-            category:        09_unified_documents.category（非正規化）
+            classification1..3: 09 と同じ非正規化（旧 source / course / category に相当）
             delete_existing: 既存チャンクを先に削除するか
 
         Returns:
@@ -47,21 +47,22 @@ class StageKEmbedding:
 
         self.db.require_unified_document_before_ix_write(doc_id)
 
-        # person/source/category が未指定なら 09 から取得
-        if person is None or source is None or category is None:
+        if person is None or classification1 is None or classification3 is None:
             try:
                 row = (
                     self.db.client
                     .table('09_unified_documents')
-                    .select('person, source, category')
+                    .select('person, classification1, classification2, classification3')
                     .eq('id', doc_id)
                     .execute()
                 )
                 if row.data:
                     r = row.data[0]
-                    person   = person   or r.get('person')
-                    source   = source   or r.get('source')
-                    category = category or r.get('category')
+                    person = person or r.get('person')
+                    classification1 = classification1 or r.get('classification1')
+                    classification3 = classification3 or r.get('classification3')
+                    if classification2 is None:
+                        classification2 = r.get('classification2')
             except Exception as e:
                 logger.warning(f"[Stage K] 09 からの取得失敗（継続）: {e}")
 
@@ -89,8 +90,9 @@ class StageKEmbedding:
                 chunk_data = {
                     'doc_id':       doc_id,
                     'person':       person,
-                    'source':       source,
-                    'category':     category,
+                    'classification1': classification1,
+                    'classification2': classification2,
+                    'classification3': classification3,
                     'chunk_index':  chunk.get('chunk_index', 0),
                     'chunk_text':   chunk_text,
                     'chunk_type':   chunk.get('chunk_type'),

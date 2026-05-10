@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
 
 _UD_SELECT = (
-    "id, raw_id, raw_table, person, source, category, title, file_url, post_at, start_at, end_at, due_date, "
-    "snippet, from_name, from_email, location, post_type, ui_data, meta, body, ix_date_signals, ix_search_dates"
+    "id, raw_id, raw_table, person, classification1, classification2, classification3, title, file_url, "
+    "post_at, start_at, end_at, due_date, snippet, from_name, from_email, location, post_type, ui_data, meta, "
+    "body, ix_date_signals, ix_search_dates"
 )
 
 
@@ -69,8 +70,9 @@ class RagPrepareSearchIndexer:
 
             unified_doc_id = str(ud["id"])
             person = ud.get("person")
-            source = ud.get("source")
-            category = ud.get("category") or rt
+            c1 = ud.get("classification1")
+            c2 = ud.get("classification2")
+            c3 = ud.get("classification3") or rt
 
             raw_row = self._load_raw_row(rt, ud_raw_id)
             sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_markdown)
@@ -94,8 +96,9 @@ class RagPrepareSearchIndexer:
             ).eq("id", unified_doc_id).execute()
 
             person = ud_fresh.get("person") or person
-            source = ud_fresh.get("source") or source
-            category = ud_fresh.get("category") or category
+            c1 = ud_fresh.get("classification1") or c1
+            c2 = ud_fresh.get("classification2")
+            c3 = ud_fresh.get("classification3") or c3
 
             chunks = self._plain_chunks(full_markdown, chunk_size=1200)
             gate = (
@@ -121,8 +124,9 @@ class RagPrepareSearchIndexer:
                     {
                         "doc_id": unified_doc_id,
                         "person": person,
-                        "source": source,
-                        "category": category,
+                        "classification1": c1,
+                        "classification2": c2,
+                        "classification3": c3,
                         "chunk_index": i,
                         "chunk_text": chunk_text,
                         "chunk_type": "rag_prepare_plain",
@@ -285,7 +289,6 @@ class RagPrepareSearchIndexer:
 
         for key in (
             "person",
-            "source",
             "file_url",
             "snippet",
             "from_name",
@@ -295,8 +298,17 @@ class RagPrepareSearchIndexer:
         ):
             _set_str(key, raw_row.get(key))
 
-        cat = raw_row.get("course_name") or raw_row.get("category")
-        _set_str("category", cat)
+        rt = ud.get("raw_table") or ""
+        _set_str("classification1", raw_row.get("source"))
+        if rt in (
+            "03_ema_classroom_01_raw",
+            "04_ikuya_classroom_01_raw",
+            "05_ikuya_waseaca_01_raw",
+        ):
+            _set_str("classification2", raw_row.get("course_name"))
+            _set_str("classification3", raw_row.get("category"))
+        else:
+            _set_str("classification3", raw_row.get("category"))
 
         tit = raw_row.get("title") or raw_row.get("file_name")
         _set_str("title", tit)
@@ -380,8 +392,18 @@ class RagPrepareSearchIndexer:
             "raw_id": str(raw_id),
             "raw_table": raw_table,
             "person": raw_row.get("person"),
-            "source": raw_row.get("source"),
-            "category": raw_row.get("course_name") or raw_row.get("category"),
+            "classification1": raw_row.get("source"),
+            "classification2": (
+                raw_row.get("course_name")
+                if raw_table
+                in (
+                    "03_ema_classroom_01_raw",
+                    "04_ikuya_classroom_01_raw",
+                    "05_ikuya_waseaca_01_raw",
+                )
+                else None
+            ),
+            "classification3": raw_row.get("category"),
             "title": raw_row.get("title") or raw_row.get("file_name"),
             "file_url": raw_row.get("file_url"),
             "post_at": raw_row.get("created_at"),

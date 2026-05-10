@@ -121,7 +121,7 @@ def extract_searchable_text(ud: Dict[str, Any]) -> str:
 
 def fetch_09_rows(db: DatabaseClient, *, raw_table: Optional[str], limit: Optional[int]) -> List[Dict[str, Any]]:
     q = db.client.table("09_unified_documents").select(
-        "id,raw_table,body,ui_data,person,source,category,title,snippet"
+        "id,raw_table,body,ui_data,person,classification1,classification2,classification3,title,snippet"
     )
     if raw_table:
         q = q.eq("raw_table", raw_table)
@@ -190,8 +190,9 @@ def main() -> int:
                 doc_id,
                 chunks,
                 person=ud.get("person"),
-                source=ud.get("source"),
-                category=ud.get("category"),
+                classification1=ud.get("classification1"),
+                classification2=ud.get("classification2"),
+                classification3=ud.get("classification3"),
                 delete_existing=True,
             )
             if result.get("success"):

@@ -95,8 +95,9 @@ class G31UnifiedWriter:
             'raw_id':     str(raw['id']),
             'raw_table':  RAW_GMAIL,
             'person':     raw.get('person'),
-            'source':     raw.get('source'),
-            'category':   raw.get('category'),
+            'classification1': raw.get('source'),
+            'classification2': None,
+            'classification3': raw.get('category'),
             'title':      raw.get('header_subject'),
             'file_url':   raw.get('source_url'),
             'from_email': raw.get('from_email'),
@@ -131,8 +132,9 @@ class G31UnifiedWriter:
             'raw_id':       str(raw['id']),
             'raw_table':    RAW_GCAL,
             'person':       raw.get('person'),
-            'source':       raw.get('source'),
-            'category':     raw.get('category'),
+            'classification1': raw.get('source'),
+            'classification2': None,
+            'classification3': raw.get('category'),
             'title':        raw.get('summary'),
             'file_url':     raw.get('source_url'),
             'from_email':   raw.get('organizer_email'),
@@ -184,12 +186,14 @@ class G31UnifiedWriter:
     # Classroom マッパー（ema / ikuya / waseaca 共通）
     # ------------------------------------------------------------------
     def _map_classroom(self, raw: Dict, raw_table: str, ui_data: Optional[Dict]) -> Dict:
+        # 03–05: 1=ソース 2=コース名 3=カテゴリー（raw 列と対応）
         return {
             'raw_id':     str(raw['id']),
             'raw_table':  raw_table,
             'person':     raw.get('person'),
-            'source':     raw.get('source'),
-            'category':   raw.get('course_name'),   # course_name → category
+            'classification1': raw.get('source'),
+            'classification2': raw.get('course_name'),
+            'classification3': raw.get('category'),
             'title':      raw.get('title'),
             'file_url':   raw.get('file_url'),
             'from_email': raw.get('creator_email'),
@@ -221,8 +225,9 @@ class G31UnifiedWriter:
             'raw_id':     str(raw['id']),
             'raw_table':  RAW_FILE,
             'person':     raw.get('person'),
-            'source':     raw.get('source'),
-            'category':   raw.get('category'),
+            'classification1': raw.get('source'),
+            'classification2': None,
+            'classification3': raw.get('category'),
             'title':      raw.get('file_name'),
             'file_url':   raw.get('file_url'),
             'from_email': None,

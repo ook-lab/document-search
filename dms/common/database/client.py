@@ -344,12 +344,18 @@ class DatabaseClient:
                 raw_date = result.get('post_at') or result.get('start_at')
                 document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
 
+                c1 = result.get('classification1')
+                c2 = result.get('classification2')
+                c3 = result.get('classification3')
                 doc_result = {
                     'id':           result.get('doc_id'),
                     'title':        result.get('title'),
-                    'source':       result.get('source'),
+                    'source':       c1,
                     'person':       result.get('person'),
-                    'category':     result.get('category'),
+                    'category':     c3,
+                    'classification1': c1,
+                    'classification2': c2,
+                    'classification3': c3,
                     'from_name':    result.get('from_name'),
                     'from_email':   result.get('from_email'),
                     'snippet':      result.get('snippet'),
@@ -1136,8 +1142,8 @@ class DatabaseClient:
             source 名のリスト（重複なし、ソート済み）
         """
         try:
-            response = self.client.table('09_unified_documents').select('source').execute()
-            sources = {doc.get('source') for doc in response.data if doc.get('source')}
+            response = self.client.table('09_unified_documents').select('classification1').execute()
+            sources = {doc.get('classification1') for doc in response.data if doc.get('classification1')}
             return sorted(list(sources))
         except Exception as e:
             print(f"Error getting available sources: {e}")
@@ -1145,19 +1151,21 @@ class DatabaseClient:
 
     def get_workspace_hierarchy(self) -> Dict[str, Dict[str, List[str]]]:
         """
-        person → source → [category] の3階層構造を取得（09_unified_documents ベース）
+        person → classification1 → [classification3, ...] の3階層（09_unified_documents）
 
         Returns:
-            {person: {source: [category, ...]}} の辞書
+            {person: {classification1: [classification3, ...]}} の辞書（従来キー構造は維持）
         """
         try:
-            response = self.client.table('09_unified_documents').select('person, source, category').execute()
+            response = self.client.table('09_unified_documents').select(
+                'person, classification1, classification3'
+            ).execute()
 
             hierarchy: Dict[str, Dict[str, set]] = {}
             for doc in response.data:
                 person = doc.get('person')
-                source = doc.get('source')
-                cat    = doc.get('category')
+                source = doc.get('classification1')
+                cat    = doc.get('classification3')
                 if person and source:
                     hierarchy.setdefault(person, {}).setdefault(source, set())
                     if cat:

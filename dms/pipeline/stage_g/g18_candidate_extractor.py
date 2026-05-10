@@ -150,8 +150,11 @@ class G18CandidateExtractor:
             "raw_id":          doc.get("raw_id"),
             "raw_table":       raw_tbl,
             "person":          doc.get("person"),
-            "source":          doc.get("source"),
-            "category":        doc.get("category"),
+            "source":          doc.get("classification1"),
+            "category":        doc.get("classification3"),
+            "classification1": doc.get("classification1"),
+            "classification2": doc.get("classification2"),
+            "classification3": doc.get("classification3"),
             "source_priority": prio,
             "origin_stage":    "G18",
         }

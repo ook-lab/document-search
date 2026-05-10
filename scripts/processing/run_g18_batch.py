@@ -41,7 +41,10 @@ def fetch_docs(db, args):
     q = (
         db.client
         .table("09_unified_documents")
-        .select("id,raw_id,raw_table,person,source,category,title,start_at,end_at,due_date,ui_data")
+        .select(
+            "id,raw_id,raw_table,person,classification1,classification2,classification3,"
+            "title,start_at,end_at,due_date,ui_data"
+        )
     )
     if args.person:
         q = q.eq("person", args.person)

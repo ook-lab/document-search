@@ -14,6 +14,15 @@ from standalone.ud_meta import UD_META_TABLE
 
 DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
 
+# Classroom raw のみ course_name 列がある（他テーブルでは SELECT に含めない）。
+_CLASSROOM_RAW_WITH_COURSE_NAME = frozenset(
+    {
+        "03_ema_classroom_01_raw",
+        "04_ikuya_classroom_01_raw",
+        "05_ikuya_waseaca_01_raw",
+    }
+)
+
 
 def drive_id_from_file_url(file_url: Optional[str]) -> Optional[str]:
     if not file_url:
@@ -42,7 +51,7 @@ def body_layer_in_09(ud_row: Dict[str, Any]) -> bool:
 
 
 def structured_in_09(ui_data: Any) -> bool:
-    """09_unified_documents.ui_data に G 由来の構造化 JSON があるか。"""
+    """09_unified_documents.ui_data に構造化用 JSON があるか。"""
     if ui_data is None:
         return False
     if isinstance(ui_data, dict):
@@ -89,8 +98,13 @@ def _resolved_drive_id(file_url: Optional[str]) -> Optional[str]:
 
 
 def _raw_select_columns(raw_table: str) -> str:
-    """08_file_only は created_at / due_date が無い。"""
-    common = "id, file_url, file_name, title, source, category, pdf_md_content, pdf_md_updated_at"
+    """08_file_only は created_at / due_date が無い。Classroom は course_name のみ（検索データ準備一覧用）。"""
+    common = "id, file_url, file_name, title, source, pdf_md_content, pdf_md_updated_at"
+    if raw_table in _CLASSROOM_RAW_WITH_COURSE_NAME:
+        common = (
+            "id, file_url, file_name, title, source, course_name, "
+            "pdf_md_content, pdf_md_updated_at"
+        )
     if raw_table == "08_file_only_01_raw":
         return common
     return f"{common}, created_at, due_date"
@@ -189,8 +203,8 @@ def fetch_pending_search_data_prep_docs(
             ud_by_doc = (
                 db_client.table("09_unified_documents")
                 .select(
-                    "id, raw_id, raw_table, source, person, category, title, file_url, "
-                    "post_at, start_at, end_at, due_date, ui_data, body"
+                    "id, raw_id, raw_table, classification1, person, title, file_url, "
+                    "post_at, start_at, end_at, due_date, ui_data, body, classification2, classification3"
                 )
                 .in_("id", chunk)
                 .execute()
@@ -227,6 +241,8 @@ def fetch_pending_search_data_prep_docs(
                             "pdf_md_content": row.get("pdf_md_content"),
                             "pdf_md_updated_at": row.get("pdf_md_updated_at"),
                         }
+                        if rt in _CLASSROOM_RAW_WITH_COURSE_NAME:
+                            entry["course_name"] = row.get("course_name")
                         if rt != "08_file_only_01_raw":
                             entry["created_at"] = row.get("created_at")
                             entry["due_date"] = row.get("due_date")
@@ -246,8 +262,8 @@ def fetch_pending_search_data_prep_docs(
                 ud_res = (
                     db_client.table("09_unified_documents")
                     .select(
-                        "id, raw_id, raw_table, source, person, category, title, file_url, "
-                        "post_at, start_at, end_at, due_date, ui_data, body"
+                        "id, raw_id, raw_table, classification1, person, classification2, classification3, "
+                        "title, file_url, post_at, start_at, end_at, due_date, ui_data, body"
                     )
                     .eq("raw_table", rt)
                     .in_("raw_id", chunk)
@@ -281,18 +297,19 @@ def fetch_pending_search_data_prep_docs(
         has_pdf_md = pdf_md_in_raw(extras.get("pdf_md_content"))
         has_physical_file = raw_row_has_file_backing(fu) or bool(drive_id_from_file_url(fu))
 
-        src_ud = (ud.get("source") or "").strip()
+        src_ud = (ud.get("classification1") or "").strip()
         src_raw = (extras.get("source") or "").strip()
         merged_source = src_ud or src_raw
 
-        # 一覧のスラッシュ後は 09_unified_documents.category のみ。meta.doc_id の行を優先し、無ければ突き合わせた ud。
-        display_category = ""
+        display_course = ""
         if did_meta is not None and str(did_meta).strip():
             row09 = ud_by_id.get(str(did_meta).strip())
             if row09 and row09.get("id") is not None:
-                display_category = str(row09.get("category") or "").strip()
-        if not display_category and ud.get("id") is not None:
-            display_category = str(ud.get("category") or "").strip()
+                display_course = str(row09.get("classification2") or "").strip()
+        if not display_course and ud.get("id") is not None:
+            display_course = str(ud.get("classification2") or "").strip()
+        if not display_course and rt_s in _CLASSROOM_RAW_WITH_COURSE_NAME:
+            display_course = str(extras.get("course_name") or "").strip()
 
         if _gmail_without_attachment(merged_source, fu, extras.get("pdf_md_content")):
             continue
@@ -330,7 +347,7 @@ def fetch_pending_search_data_prep_docs(
             "display_segment": segment,
             "display_segment_label": segment_label,
             "display_source": display_source,
-            "display_category": display_category,
+            "display_course_name": display_course,
             "display_filename": display_filename,
             "resolved_drive_id": drive_id,
             "has_09_structured": has_structured_09,

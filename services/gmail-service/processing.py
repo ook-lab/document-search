@@ -453,8 +453,10 @@ class GmailService:
     def _upsert_unified(self, raw_id: str, email: dict, md: str) -> str:
         row = {
             "raw_id": raw_id, "raw_table": "01_gmail_01_raw",
-            "person": email.get("person"), "source": email.get("source"),
-            "category": email.get("category"),
+            "person": email.get("person"),
+            "classification1": email.get("source"),
+            "classification2": None,
+            "classification3": email.get("category"),
             "title": email.get("header_subject"),
             "from_email": email.get("from_email"),
             "from_name": email.get("from_name"),
@@ -487,8 +489,9 @@ class GmailService:
             rows.append({
                 "doc_id": doc_id,
                 "person": email.get("person"),
-                "source": email.get("source"),
-                "category": email.get("category"),
+                "classification1": email.get("source"),
+                "classification2": None,
+                "classification3": email.get("category"),
                 "chunk_index": i, "chunk_text": c,
                 "chunk_type": "email_content", "chunk_weight": 1.0,
                 "embedding": "[" + ",".join(str(v) for v in e) + "]",
