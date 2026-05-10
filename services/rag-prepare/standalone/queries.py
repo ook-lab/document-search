@@ -252,6 +252,7 @@ def fetch_pending_search_data_prep_docs(
         src_raw = (extras.get("source") or "").strip()
         merged_source = src_ud or src_raw
 
+        # スラッシュ後は 09_unified_documents.category を正とする（09 行が無いときだけ raw に落とす）
         cat_ud = (ud.get("category") or "").strip()
         cat_raw = (extras.get("category") or "").strip()
         merged_category = cat_ud or cat_raw or "—"
