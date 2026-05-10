@@ -286,9 +286,12 @@ def fetch_pending_search_data_prep_docs(
         src_raw = (extras.get("source") or "").strip()
         merged_source = src_ud or src_raw
 
-        # スラッシュ後は 09_unified_documents.category のみ。09 がまだ無い行に raw の種別を出すと 09 と誤認されるため出さない。
-        cat_ud = (ud.get("category") or "").strip() if ud.get("id") else ""
-        merged_category = cat_ud or "—"
+        # スラッシュ後は 09 行があるときだけその category（空なら何も出さない。プレースホルダ禁止）
+        display_category = (
+            (ud.get("category") or "").strip()
+            if ud.get("id")
+            else ""
+        )
 
         if _gmail_without_attachment(merged_source, fu, extras.get("pdf_md_content")):
             continue
@@ -309,7 +312,6 @@ def fetch_pending_search_data_prep_docs(
             segment_label = "テキストのみ"
 
         display_source = merged_source or "—"
-        display_category = merged_category
         display_filename = _display_filename(extras, rid_s)
         drive_id = _resolved_drive_id(fu)
 

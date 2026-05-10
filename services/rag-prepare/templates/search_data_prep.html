@@ -202,7 +202,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <strong>{{ doc.display_source }}</strong><span style="color: var(--text-muted);"> / </span><strong>{{ doc.display_category }}</strong><br>
+                            <strong>{{ doc.display_source }}</strong>{% if doc.display_category %}<span style="color: var(--text-muted);"> / </span><strong>{{ doc.display_category }}</strong>{% endif %}<br>
                             <span style="font-size: 13px;">{{ doc.display_filename }}</span>
                             {% if doc.resolved_drive_id %}
                             <div style="margin-top:6px;font-size:12px;">
