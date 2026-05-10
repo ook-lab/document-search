@@ -1,3 +1,6 @@
+# Supabase CLI（ローカルリンク・バージョンキャッシュ。共有不要）
+supabase/.temp/
+
 # Cursor MCP（PAT やカスタム URL を入れる場合はコミットしない）
 .cursor/mcp.json
 
