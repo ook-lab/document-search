@@ -628,6 +628,14 @@
     }
     .sync-count { color: #555; white-space: nowrap; }
     .sync-muted { color: #aaa; }
+    .sync-toggle-cell {
+      display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+    }
+    .sync-toggle-text {
+      font-size: 12px; font-weight: 600; color: #555; min-width: 2.5em;
+    }
+    .sync-toggle-text.on { color: #137333; }
+    .sync-toggle-text.off { color: #888; }
 
     /* ───── 同期設定タブ内: 選択中カレンダー1件用 ───── */
     .sync-tab-current {
@@ -888,7 +896,7 @@
       </div>
       <div class="sync-toolbar">
         <div class="sync-toolbar-note">
-          <strong>まとめて指定:</strong> 下の一覧の<strong>「同期」列のチェックボックス</strong>で、base / _pen / _arc ごとのグループ単位で検索への同期 ON・OFF を指定します。<br>
+          <strong>まとめて指定:</strong> 下の一覧の<strong>「同期」列のスイッチ（グレー=OFF・緑=ON）</strong>で、base / _pen / _arc ごとのグループ単位で検索への同期 ON・OFF を指定します。右隣の ON/OFF 表記と一致します。<br>
           Google Calendar に見えているカレンダーを表示しています。同期 ON のグループは「保存して同期開始」後に watch 登録と初回同期が始まります。
         </div>
         <button class="btn-fetch" onclick="loadSyncSettings()">再読み込み</button>
@@ -1700,6 +1708,16 @@ function setSyncSettingsStatus(text, color) {
   el.style.color = color || '#888';
 }
 
+function updateSyncToggleLabel(i) {
+  const inp = document.querySelector(`input[data-sync-idx="${i}"]`);
+  const lab = document.querySelector(`[data-sync-label-idx="${i}"]`);
+  if (!inp || !lab) return;
+  const on = inp.checked;
+  lab.textContent = on ? 'ON' : 'OFF';
+  lab.classList.toggle('on', on);
+  lab.classList.toggle('off', !on);
+}
+
 function roleLabel(role) {
   if (role === 'arc') return '_arc: 不参加';
   if (role === 'pen') return '_pen: 参加不参加未定';
@@ -1740,15 +1758,20 @@ function renderSyncSettings() {
       return `${esc(roleLabel(c.role))} / ${esc(c.name)} / ${enabled} / ${count}`;
     }).join('<br>');
     const enabled = g.index_enabled ? 'checked' : '';
+    const onoffClass = g.index_enabled ? 'on' : 'off';
+    const onoffText = g.index_enabled ? 'ON' : 'OFF';
     const rawCount = g.raw_count || 0;
     const syncTokenCount = g.calendars.filter(c => c.has_sync_token).length;
     return `
       <tr>
         <td>
-          <label class="toggle-switch">
-            <input type="checkbox" data-sync-idx="${i}" ${enabled}>
-            <span class="toggle-slider"></span>
-          </label>
+          <div class="sync-toggle-cell">
+            <label class="toggle-switch" title="検索（RAG）へ同期するか（保存して同期開始で反映）">
+              <input type="checkbox" data-sync-idx="${i}" ${enabled} onchange="updateSyncToggleLabel(${i})">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="sync-toggle-text ${onoffClass}" data-sync-label-idx="${i}">${onoffText}</span>
+          </div>
         </td>
         <td>
           <div class="sync-name">${esc(g.base_name)}</div>
@@ -1770,7 +1793,7 @@ async function saveSyncSettings() {
 
   const groups = syncSettingGroups.map((g, i) => ({
     calendar_ids: g.calendar_ids,
-    index_enabled: !!document.querySelector(`[data-sync-idx="${i}"]`)?.checked,
+    index_enabled: !!document.querySelector(`input[data-sync-idx="${i}"]`)?.checked,
     person: document.querySelector(`[data-person-idx="${i}"]`)?.value.trim() || '',
   }));
 
