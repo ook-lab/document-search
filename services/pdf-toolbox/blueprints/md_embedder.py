@@ -6,11 +6,11 @@ from datetime import timezone, datetime
 import fitz  # PyMuPDF
 from flask import Blueprint, request, jsonify, current_app, send_file, render_template
 from google import genai
-from google.genai import types
+from PIL import Image, ImageOps
 from werkzeug.utils import secure_filename
 from gemini_studio_key import google_ai_studio_api_key
 from google_drive_connector import GoogleDriveConnector
-from blueprints.drive_pdf import download_drive_pdf
+from blueprints.drive_pdf import download_drive_embedder_source, EMBEDDER_IMAGE_MIMES, PDF_MIME
 from blueprints.gemini_http import post_generate_content
 from blueprints.gemini_images import to_gemini_inline_image_part
 from supabase import create_client as _supabase_create_client
@@ -26,6 +26,39 @@ embedder_bp = Blueprint('embedder', __name__, template_folder='../templates')
 
 MARKER_START = "<<<MD_SANDWICH_START>>>"
 MARKER_END = "<<<MD_SANDWICH_END>>>"
+
+_EMBEDDER_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
+
+def _split_stored_pdf_md(md: str) -> list:
+    """save_pdf / combined 形式の `## Page N` 区切りで分割。無ければ全文を1要素。"""
+    text = (md or "").strip()
+    if not text:
+        return []
+    pieces = re.split(r"(?m)^## Page \d+\s*$", text)
+    out = [p.strip() for p in pieces if p and p.strip()]
+    return out if out else [text]
+
+
+def _normalize_image_to_pages_info(input_filepath: str, file_id: str, upload_dir: str) -> list:
+    """1枚の画像を page_0.png に正規化し、pages_info（1ページ）を返す。"""
+    os.makedirs(upload_dir, exist_ok=True)
+    with Image.open(input_filepath) as im:
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("RGBA", "P"):
+            im = im.convert("RGB")
+        elif im.mode != "RGB":
+            im = im.convert("RGB")
+        img_name = f"{file_id}_page_0.png"
+        img_path = os.path.join(upload_dir, img_name)
+        im.save(img_path, format="PNG")
+    return [
+        {
+            "page_index": 0,
+            "image_url": f"/embedder/static_uploads/{file_id}_page_0.png",
+            "existing_data": None,
+        }
+    ]
 
 def get_gemini_studio_client():
     """google.genai クライアント。キー未設定時は None。"""
@@ -85,18 +118,27 @@ def load_from_drive():
 
         file_id = str(uuid.uuid4())[:8]
         upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'embedder')
-        loaded = download_drive_pdf(drive_file_id, upload_dir, prefix=file_id)
-
-        pages_info = _build_pages_info_for_embedder(loaded['path'], file_id, upload_dir)
+        loaded = download_drive_embedder_source(drive_file_id, upload_dir, prefix=file_id)
+        mime_type = (loaded.get("mime_type") or "").strip()
+        if mime_type == PDF_MIME:
+            pages_info = _build_pages_info_for_embedder(loaded["path"], file_id, upload_dir)
+            source_kind = "pdf"
+        elif mime_type in EMBEDDER_IMAGE_MIMES:
+            pages_info = _normalize_image_to_pages_info(loaded["path"], file_id, upload_dir)
+            source_kind = "image"
+        else:
+            return jsonify({"error": f"未対応のMIME: {mime_type}"}), 400
 
         return jsonify(
             {
-                'success': True,
-                'file_id': file_id,
-                'safe_filename': loaded['safe_filename'],
-                'filename': loaded['filename'],
-                'pages': pages_info,
-                'drive_file_id': drive_file_id,
+                "success": True,
+                "file_id": file_id,
+                "safe_filename": loaded["safe_filename"],
+                "filename": loaded["filename"],
+                "pages": pages_info,
+                "drive_file_id": loaded.get("drive_file_id") or drive_file_id,
+                "mime_type": mime_type,
+                "source_kind": source_kind,
             }
         )
     except Exception as e:
@@ -138,35 +180,46 @@ def upload_file():
     else:
         file = request.files['file']
 
-    if file.filename == '':
-        return jsonify({'error': 'No selected file'}), 400
-    
-    if file and file.filename.lower().endswith('.pdf'):
-        filename = secure_filename(file.filename)
-        file_id = str(uuid.uuid4())[:8]
-        safe_filename = f"{file_id}_{filename}"
-        upload_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'embedder')
-        os.makedirs(upload_dir, exist_ok=True)
-        input_filepath = os.path.join(upload_dir, safe_filename)
-        file.save(input_filepath)
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
 
-        try:
+    lower = (file.filename or "").lower()
+    is_pdf = lower.endswith(".pdf")
+    is_image = lower.endswith(_EMBEDDER_IMAGE_SUFFIXES)
+
+    if not file or not (is_pdf or is_image):
+        return jsonify({"error": "PDF または画像（JPEG/PNG/WebP/GIF）のみ対応です"}), 400
+
+    filename = secure_filename(file.filename)
+    file_id = str(uuid.uuid4())[:8]
+    safe_filename = f"{file_id}_{filename}"
+    upload_dir = os.path.join(current_app.config["UPLOAD_FOLDER"], "embedder")
+    os.makedirs(upload_dir, exist_ok=True)
+    input_filepath = os.path.join(upload_dir, safe_filename)
+    file.save(input_filepath)
+
+    try:
+        if is_pdf:
             pages_info = _build_pages_info_for_embedder(input_filepath, file_id, upload_dir)
-            return jsonify({
-                'success': True,
-                'file_id': file_id,
-                'filename': filename,
-                'safe_filename': safe_filename,
-                'pages': pages_info
-            })
-
-        except ValueError as ve:
-            return jsonify({'error': str(ve)}), 400
-        except Exception as e:
-            logging.error(f"Error processing upload: {e}")
-            return jsonify({'error': str(e)}), 500
-
-    return jsonify({'error': 'Invalid file type'}), 400
+            source_kind = "pdf"
+        else:
+            pages_info = _normalize_image_to_pages_info(input_filepath, file_id, upload_dir)
+            source_kind = "image"
+        return jsonify(
+            {
+                "success": True,
+                "file_id": file_id,
+                "filename": filename,
+                "safe_filename": safe_filename,
+                "pages": pages_info,
+                "source_kind": source_kind,
+            }
+        )
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        logging.error("Error processing upload: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 @embedder_bp.route('/static_uploads/<filename>')
 def serve_upload(filename):
@@ -326,6 +379,41 @@ def save_pdf():
         logging.error(f"Error saving PDF: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+@embedder_bp.route("/save_md", methods=["POST"])
+def save_md():
+    """画像モード等: Markdown のみを outputs に保存（PDFサンドイッチは生成しない）。"""
+    try:
+        data = request.json
+        user_filename = data.get("filename")
+        pages_data = data.get("pages_data", {})
+
+        if user_filename:
+            base = secure_filename(user_filename)
+            if not base.lower().endswith(".md"):
+                base = f"{base}.md"
+            output_filename = base
+        else:
+            output_filename = "extracted.md"
+
+        md_filepath = os.path.join(current_app.config["OUTPUT_FOLDER"], output_filename)
+        with open(md_filepath, "w", encoding="utf-8") as f:
+            for str_idx, page_data in sorted(pages_data.items(), key=lambda x: int(x[0])):
+                f.write(f"## Page {int(str_idx) + 1}\n\n")
+                f.write(page_data.get("markdown", "") + "\n\n")
+
+        return jsonify(
+            {
+                "success": True,
+                "download_md_url": f"/embedder/download/{output_filename}",
+                "md_filename": output_filename,
+            }
+        )
+    except Exception as e:
+        logging.error("Error saving MD: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @embedder_bp.route('/download/<filename>')
 def download_file(filename):
     filepath = os.path.join(current_app.config['OUTPUT_FOLDER'], filename)
@@ -370,21 +458,82 @@ def generate_filename():
         logging.error(f"Error generating filename: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@embedder_bp.route("/bootstrap_pipeline", methods=["POST"])
+def bootstrap_pipeline():
+    """検索データ準備などから pipeline_meta_id で raw の pdf_md・Drive ID を取得。"""
+    try:
+        data = request.json or {}
+        pipeline_meta_id = (data.get("pipeline_meta_id") or "").strip()
+        if not pipeline_meta_id:
+            return jsonify({"error": "pipeline_meta_id が必要です"}), 400
+
+        sb = _get_supabase()
+        if not sb:
+            return jsonify({"error": "Supabase が未設定です"}), 500
+
+        sel = (
+            sb.table("pipeline_meta")
+            .select("id, raw_id, raw_table")
+            .eq("id", pipeline_meta_id)
+            .limit(1)
+            .execute()
+        )
+        prow = (sel.data or [None])[0]
+        if not prow:
+            return jsonify({"error": "pipeline_meta が見つかりません"}), 404
+
+        raw_table = (prow.get("raw_table") or "").strip()
+        raw_id = prow.get("raw_id")
+        if not raw_table or raw_id is None:
+            return jsonify({"error": "pipeline_meta に raw_table / raw_id がありません"}), 400
+
+        rsel = (
+            sb.table(raw_table)
+            .select("file_url, file_name, pdf_md_content")
+            .eq("id", raw_id)
+            .limit(1)
+            .execute()
+        )
+        rrow = (rsel.data or [None])[0]
+        if not rrow:
+            return jsonify({"error": "raw 行が見つかりません"}), 404
+
+        file_url = rrow.get("file_url") or ""
+        pdf_md = rrow.get("pdf_md_content") or ""
+        m = re.search(r"/d/([a-zA-Z0-9_-]+)", str(file_url))
+        drive_file_id = m.group(1) if m else None
+        md_page_parts = _split_stored_pdf_md(pdf_md)
+
+        return jsonify(
+            {
+                "success": True,
+                "pipeline_meta_id": pipeline_meta_id,
+                "raw_table": raw_table,
+                "raw_id": str(raw_id),
+                "file_name": rrow.get("file_name"),
+                "file_url": file_url,
+                "drive_file_id": drive_file_id,
+                "pdf_md_content": pdf_md,
+                "md_page_parts": md_page_parts,
+            }
+        )
+    except Exception as e:
+        logging.error("bootstrap_pipeline: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 @embedder_bp.route('/save_to_drive', methods=['POST'])
 def save_to_drive():
     try:
         data = request.json
-        drive_file_id = data.get('drive_file_id')
+        drive_file_id = (data.get('drive_file_id') or '').strip()
         filename = data.get('filename')  # The generated file on server
+        supabase_md_only = bool(data.get('supabase_md_only') or data.get('md_only'))
 
-        if not drive_file_id or not filename:
-            return jsonify({'error': 'Missing drive_file_id or filename'}), 400
+        if not drive_file_id:
+            return jsonify({'error': 'Missing drive_file_id'}), 400
 
-        output_filepath = os.path.join(current_app.config['OUTPUT_FOLDER'], filename)
-        if not os.path.exists(output_filepath):
-            return jsonify({'error': 'Generated file not found on server'}), 404
-
-        # ===== Supabase: raw 行へ PDF由来MDを保存 =====
         now_iso = datetime.now(timezone.utc).isoformat()
         md_in_request = isinstance(data, dict) and (
             'pdf_md_content' in data or 'md_content' in data
@@ -394,16 +543,36 @@ def save_to_drive():
         ).strip() if md_in_request else None
         pipeline_meta_id = (data.get('pipeline_meta_id') or '').strip() or None
         sb = _get_supabase()
-        if md_in_request and not sb:
-            return jsonify({
-                'error': 'Supabase未設定のため、PDF由来MDをraw行へ反映できません',
-            }), 500
 
-        drive = GoogleDriveConnector()
-        success = drive.update_file_content(drive_file_id, output_filepath)
+        if supabase_md_only:
+            if not md_in_request or not md_content_val:
+                return jsonify({
+                    'error': 'supabase_md_only では pdf_md_content（または md_content）が必須です',
+                }), 400
+            if not sb:
+                return jsonify({
+                    'error': 'Supabase未設定のため、raw行へ反映できません',
+                }), 500
+            success = True
+            output_filepath = None
+        else:
+            if not filename:
+                return jsonify({'error': 'Missing filename（PDF上書き時は必須）'}), 400
 
-        if not success:
-            return jsonify({'error': 'Failed to update Google Drive file'}), 500
+            output_filepath = os.path.join(current_app.config['OUTPUT_FOLDER'], filename)
+            if not os.path.exists(output_filepath):
+                return jsonify({'error': 'Generated file not found on server'}), 404
+
+            if md_in_request and not sb:
+                return jsonify({
+                    'error': 'Supabase未設定のため、PDF由来MDをraw行へ反映できません',
+                }), 500
+
+            drive = GoogleDriveConnector()
+            success = drive.update_file_content(drive_file_id, output_filepath)
+
+            if not success:
+                return jsonify({'error': 'Failed to update Google Drive file'}), 500
 
         sb_updated = {}
         try:
@@ -472,9 +641,10 @@ def save_to_drive():
                         logging.warning('raw table %s update skipped: %s', raw_table, te)
 
         except Exception as se:
-            logging.error('Supabase update failed after Drive overwrite: %s', se)
+            logging.error('Supabase update failed: %s', se)
+            prefix = 'Supabase更新に失敗しました' if supabase_md_only else f'Driveは上書きしましたが、Supabase更新に失敗しました'
             return jsonify({
-                'error': f'Driveは上書きしましたが、Supabase更新に失敗しました: {se}',
+                'error': f'{prefix}: {se}',
             }), 500
 
         md_update_rows = sum(
@@ -484,20 +654,29 @@ def save_to_drive():
         )
         if md_in_request and md_content_val and md_update_rows == 0:
             logging.error(
-                'Drive overwritten but no raw row received pdf_md_content. file_id=%s supabase=%s',
+                'No raw row received pdf_md_content. drive=%s supabase_md_only=%s supabase=%s',
                 drive_file_id,
+                supabase_md_only,
                 sb_updated,
             )
+            err_detail = (
+                'pdf_md_content を書き込む raw 行が見つかりませんでした（pipeline_meta_id または file_url の Drive ID を確認してください）'
+            )
             return jsonify({
-                'error': 'Driveは上書きしましたが、pdf_md_contentを書き込むraw行が見つかりませんでした',
+                'error': err_detail,
                 'supabase_updated': sb_updated,
             }), 500
 
-        logging.info(f"Drive save complete. file_id={drive_file_id}, supabase={sb_updated}")
+        if supabase_md_only:
+            msg = f'raw の pdf_md_content を更新しました（Drive ファイルのバイナリは変更していません）: {drive_file_id}'
+        else:
+            msg = f'Drive ファイル {drive_file_id} を更新しました'
+        logging.info('save_to_drive complete. file_id=%s supabase_md_only=%s supabase=%s', drive_file_id, supabase_md_only, sb_updated)
         return jsonify({
             'success': True,
-            'message': f'Drive ファイル {drive_file_id} を更新しました',
-            'supabase_updated': sb_updated
+            'message': msg,
+            'supabase_updated': sb_updated,
+            'supabase_md_only': supabase_md_only,
         })
 
     except Exception as e:

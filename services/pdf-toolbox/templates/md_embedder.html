@@ -55,18 +55,18 @@
             <input type="text" id="outputFilename" placeholder="保存ファイル名" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 200px;">
             <button class="btn-outline" id="generateFilenameBtn" style="display:none; padding: 0.5rem; font-size: 0.85rem; background: white;">AI生成</button>
             <input type="text" id="driveFileId" placeholder="Google Drive ID (上書き用)" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; display: none; width: 180px;">
-            <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">MD保存PDFをダウンロード</button>
+            <button class="btn-primary" id="saveBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem;">MD / PDF をダウンロード</button>
             <button class="btn-primary" id="driveOverwriteBtn" style="display:none; padding: 0.5rem 1rem; font-size: 0.85rem; background: #059669;">ドライブ上書き</button>
         </div>
     </header>
     <div id="uploadView">
         <div class="upload-card">
             <h2 style="margin-top:0">Upload Document</h2>
-            <p style="color:var(--text-muted); margin-bottom:2rem;">PDFをアップロードして、ページ画像をMarkdown化します。</p>
+            <p style="color:var(--text-muted); margin-bottom:2rem;">PDF または画像（JPEG / PNG / WebP / GIF）をアップロードし、Gemini で Markdown 化します。画像のときは保存は .md のみです。</p>
             <div class="upload-area" id="dropZone">
-                <p>PDFをドラッグ＆ドロップ</p>
+                <p>PDF または画像をドラッグ＆ドロップ</p>
                 <button class="btn-primary" id="localUploadBtn" style="margin-top: 1rem; padding: 0.5rem 1rem;">ローカルからアップロード</button>
-                <input type="file" id="fileInput" accept="application/pdf" style="display: none;">
+                <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,application/pdf,image/jpeg,image/png,image/webp,image/gif" style="display: none;">
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 1rem;">Google Driveから読み込み</p>
                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
                     <input type="text" id="initialDriveId" placeholder="Google Drive File ID" style="padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; width: 250px;">
@@ -174,10 +174,27 @@
 
     <script>
         const API = '/embedder';
+        const EMBEDDABLE_DRIVE_MIMES = new Set([
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/gif',
+        ]);
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const driveFileIdInput = document.getElementById('driveFileId');
-        let appState = { fileId: null, safeFilename: null, pages: [], currentPage: 0, editMode: 'visual', pipelineMetaId: null, driveFileId: null };
+        let appState = {
+            fileId: null,
+            safeFilename: null,
+            pages: [],
+            currentPage: 0,
+            editMode: 'visual',
+            pipelineMetaId: null,
+            driveFileId: null,
+            sourceKind: 'pdf',
+            prefillMdPageParts: null,
+        };
         
         const uploadView = document.getElementById('uploadView');
         const workspaceView = document.getElementById('workspaceView');
@@ -187,6 +204,8 @@
         const outputFilename = document.getElementById('outputFilename');
         const generateFilenameBtn = document.getElementById('generateFilenameBtn');
         const saveBtn = document.getElementById('saveBtn');
+        const driveOverwriteBtn = document.getElementById('driveOverwriteBtn');
+        const loadFromDriveBtn = document.getElementById('loadFromDriveBtn');
         const aiOverlay = document.getElementById('aiOverlay');
         const markdownEditor = document.getElementById('markdownEditor');
         const tableContainer = document.getElementById('tableContainer');
@@ -196,31 +215,62 @@
         dropZone.addEventListener('click', (e) => { if (e.target !== document.getElementById('initialDriveId') && e.target !== document.getElementById('loadFromDriveBtn')) fileInput.click(); });
         fileInput.addEventListener('change', (e) => { if(e.target.files.length) handleFile(e.target.files[0]); });
 
+        function isAllowedLocalEmbedderFile(file) {
+            const n = (file && file.name ? file.name : '').toLowerCase();
+            if (n.endsWith('.pdf')) return true;
+            return /\.(jpe?g|png|webp|gif)$/.test(n);
+        }
+
         async function handleFile(file) {
-            if(file.type !== 'application/pdf') return alert("Must upload a PDF.");
-            showLoader("Uploading & preparing pages...");
-            const fd = new FormData(); fd.append('pdf_file', file);
+            if (!isAllowedLocalEmbedderFile(file)) {
+                return alert('PDF または画像（JPEG / PNG / WebP / GIF）のみ対応です。');
+            }
+            showLoader('アップロードとページ準備中...');
+            const fd = new FormData();
+            fd.append('pdf_file', file);
             try {
                 const res = await fetch(`${API}/upload`, { method: 'POST', body: fd });
                 const json = await res.json();
-                if(!res.ok) throw new Error(json.error || 'Server error');
-                appState.fileId = json.file_id; appState.safeFilename = json.safe_filename;
-                appState.pages = json.pages.map(p => { if (p.existing_data) p.backup_data = JSON.parse(JSON.stringify(p.existing_data)); return p; });
+                if (!res.ok) throw new Error(json.error || 'Server error');
+                appState.fileId = json.file_id;
+                appState.safeFilename = json.safe_filename;
+                appState.sourceKind = json.source_kind || 'pdf';
+                appState.pages = json.pages.map((p) => {
+                    if (p.existing_data) p.backup_data = JSON.parse(JSON.stringify(p.existing_data));
+                    return p;
+                });
                 initWorkspace();
-            } catch(e) { alert(e.message); } finally { hideLoader(); }
+            } catch (e) {
+                alert(e.message);
+            } finally {
+                hideLoader();
+            }
         }
 
         function initWorkspace() {
-            uploadView.style.display = 'none'; workspaceView.style.display = 'block';
-            headerStatus.textContent = `File: ${appState.safeFilename}`;
-            outputFilename.value = `extracted_${appState.safeFilename}`;
+            uploadView.style.display = 'none';
+            workspaceView.style.display = 'block';
+            headerStatus.textContent =
+                appState.sourceKind === 'image'
+                    ? `画像モード: ${appState.safeFilename}`
+                    : `PDF: ${appState.safeFilename}`;
+            if (appState.sourceKind === 'image') {
+                const base = (appState.safeFilename || '').replace(/\.[^.]+$/, '');
+                outputFilename.value = `extracted_${base}.md`;
+                saveBtn.textContent = 'MDをダウンロード';
+            } else {
+                outputFilename.value = `extracted_${appState.safeFilename}`;
+                saveBtn.textContent = 'MD保存PDFをダウンロード';
+            }
             saveBtn.style.display = 'block';
             driveOverwriteBtn.style.display = 'block';
             driveFileIdInput.style.display = 'block';
             if (appState.driveFileId) {
                 driveFileIdInput.value = appState.driveFileId;
             }
-            appState.currentPage = 0; renderThumbnails(); loadActivePage();
+            appState.currentPage = 0;
+            renderThumbnails();
+            loadActivePage();
         }
 
         function renderThumbnails() {
@@ -275,7 +325,7 @@
         };
 
         function mapUploadPages(json) {
-            return (json.pages || []).map(p => {
+            return (json.pages || []).map((p) => {
                 const pg = {
                     page_index: p.page_index,
                     image_url: p.image_url,
@@ -286,7 +336,33 @@
             });
         }
 
-        async function loadPdfFromDriveId(driveId) {
+        function applyBootstrapPrefill() {
+            const parts = appState.prefillMdPageParts;
+            appState.prefillMdPageParts = null;
+            if (!parts || !parts.length || !appState.pages || !appState.pages.length) return;
+            const n = Math.min(parts.length, appState.pages.length);
+            for (let i = 0; i < n; i++) {
+                if (parts[i]) {
+                    appState.pages[i].existing_data = { markdown: parts[i] };
+                    appState.pages[i].backup_data = JSON.parse(JSON.stringify(appState.pages[i].existing_data));
+                }
+            }
+            if (parts.length > appState.pages.length) {
+                const extra = parts.slice(appState.pages.length).join('\n\n');
+                const last = appState.pages.length - 1;
+                if (last >= 0) {
+                    const cur = (appState.pages[last].existing_data && appState.pages[last].existing_data.markdown) || '';
+                    appState.pages[last].existing_data = {
+                        markdown: cur + (cur ? '\n\n' : '') + extra,
+                    };
+                    appState.pages[last].backup_data = JSON.parse(JSON.stringify(appState.pages[last].existing_data));
+                }
+            }
+            renderThumbnails();
+            loadActivePage();
+        }
+
+        async function loadEmbedderFromDriveId(driveId) {
             const id = (driveId || '').trim();
             if (!id) {
                 alert('Google Drive File IDを入力してください。');
@@ -303,9 +379,11 @@
                 if (!res.ok) throw new Error(json.error);
                 appState.fileId = json.file_id;
                 appState.safeFilename = json.safe_filename;
+                appState.sourceKind = json.source_kind || 'pdf';
                 appState.pages = mapUploadPages(json);
                 appState.driveFileId = json.drive_file_id;
                 initWorkspace();
+                applyBootstrapPrefill();
             } catch (e) {
                 alert(e.message);
             } finally {
@@ -314,24 +392,77 @@
         }
 
         loadFromDriveBtn.onclick = async () => {
-            await loadPdfFromDriveId(initialDriveId.value);
+            await loadEmbedderFromDriveId(initialDriveId.value);
         };
 
         saveBtn.onclick = async () => {
-            if(appState.editMode === 'visual') syncVisualToAppState(); else syncRawToAppState();
-            showLoader("Generating Sandwich PDF...");
+            if (appState.editMode === 'visual') syncVisualToAppState();
+            else syncRawToAppState();
+            const pagesData = {};
+            appState.pages.forEach((p, i) => {
+                if (p.existing_data) pagesData[i] = p.existing_data;
+            });
+            if (appState.sourceKind === 'image') {
+                showLoader('Markdown を書き出し中...');
+                try {
+                    const res = await fetch(`${API}/save_md`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            filename: outputFilename.value,
+                            pages_data: pagesData,
+                        }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok) throw new Error(json.error);
+                    const a = document.createElement('a');
+                    a.href = json.download_md_url;
+                    a.download = json.md_filename || 'extracted.md';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } catch (e) {
+                    alert(e.message);
+                } finally {
+                    hideLoader();
+                }
+                return;
+            }
+            showLoader('サンドイッチ PDF を生成中...');
             try {
-                const pagesData = {};
-                appState.pages.forEach((p, i) => { if(p.existing_data) pagesData[i] = p.existing_data; });
                 const res = await fetch(`${API}/save_pdf`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ file_id: appState.fileId, safe_filename: appState.safeFilename, filename: outputFilename.value, pages_data: pagesData })
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        file_id: appState.fileId,
+                        safe_filename: appState.safeFilename,
+                        filename: outputFilename.value,
+                        pages_data: pagesData,
+                    }),
                 });
                 const json = await res.json();
-                if(!res.ok) throw new Error(json.error);
-                const a = document.createElement('a'); a.href = json.download_url; a.download = json.filename || 'embedded.pdf'; document.body.appendChild(a); a.click(); a.remove();
-                if(json.download_md_url) { setTimeout(() => { const a2 = document.createElement('a'); a2.href = json.download_md_url; a2.download = json.md_filename || 'extracted.md'; document.body.appendChild(a2); a2.click(); a2.remove(); }, 500); }
-            } catch (e) { alert(e.message); } finally { hideLoader(); }
+                if (!res.ok) throw new Error(json.error);
+                const a = document.createElement('a');
+                a.href = json.download_url;
+                a.download = json.filename || 'embedded.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                if (json.download_md_url) {
+                    setTimeout(() => {
+                        const a2 = document.createElement('a');
+                        a2.href = json.download_md_url;
+                        a2.download = json.md_filename || 'extracted.md';
+                        document.body.appendChild(a2);
+                        a2.click();
+                        a2.remove();
+                    }, 500);
+                }
+            } catch (e) {
+                alert(e.message);
+            } finally {
+                hideLoader();
+            }
         };
 
         function combinedMarkdownForPipeline() {
@@ -350,12 +481,41 @@
             if (appState.editMode === 'visual') syncVisualToAppState();
             else syncRawToAppState();
 
+            const pagesData = {};
+            appState.pages.forEach((p, i) => {
+                if (p.existing_data) pagesData[i] = p.existing_data;
+            });
+            const mdAll = combinedMarkdownForPipeline();
+
+            if (appState.sourceKind === 'image') {
+                if (!mdAll.trim()) {
+                    return alert('ページに抽出 MD がありません。先に AI 抽出を実行してください。');
+                }
+                showLoader('raw 行の pdf_md_content を更新中（Drive の画像は変更しません）...');
+                try {
+                    const driveRes = await fetch(`${API}/save_to_drive`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            drive_file_id: driveId,
+                            supabase_md_only: true,
+                            pdf_md_content: mdAll,
+                            pipeline_meta_id: appState.pipelineMetaId || undefined,
+                        }),
+                    });
+                    const driveJson = await driveRes.json();
+                    if (!driveRes.ok) throw new Error(driveJson.error);
+                    alert(driveJson.message || 'raw の pdf_md_content を更新しました。');
+                } catch (e) {
+                    alert(e.message);
+                } finally {
+                    hideLoader();
+                }
+                return;
+            }
+
             showLoader('PDFを生成してドライブを更新中...');
             try {
-                const pagesData = {};
-                appState.pages.forEach((p, i) => {
-                    if (p.existing_data) pagesData[i] = p.existing_data;
-                });
                 const saveRes = await fetch(`${API}/save_pdf`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -370,7 +530,6 @@
                 if (!saveRes.ok) throw new Error(saveJson.error);
 
                 const driveBody = { drive_file_id: driveId, filename: saveJson.filename };
-                const mdAll = combinedMarkdownForPipeline();
                 if (mdAll.trim()) driveBody.pdf_md_content = mdAll;
                 if (appState.pipelineMetaId) driveBody.pipeline_meta_id = appState.pipelineMetaId;
 
@@ -588,13 +747,41 @@
         const driveBreadcrumb = document.getElementById('driveBreadcrumb');
         const browseDriveBtn = document.getElementById('browseDriveBtn');
         const initialDriveId = document.getElementById('initialDriveId');
-        (function initFromQueryString() {
+        (async function initFromQueryString() {
             const p = new URLSearchParams(window.location.search);
             const did = (p.get('drive_id') || p.get('drive_file_id') || '').trim();
             const pmid = (p.get('pipeline_meta_id') || '').trim();
             if (pmid) appState.pipelineMetaId = pmid;
+            if (pmid) {
+                showLoader('pipeline から raw 情報を取得しています...');
+                try {
+                    const res = await fetch(`${API}/bootstrap_pipeline`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pipeline_meta_id: pmid }),
+                    });
+                    const boot = await res.json();
+                    if (!res.ok) throw new Error(boot.error || 'bootstrap に失敗しました');
+                    appState.prefillMdPageParts = boot.md_page_parts || [];
+                    const loadId = (boot.drive_file_id || did || '').trim();
+                    if (initialDriveId && loadId) initialDriveId.value = loadId;
+                    if (!loadId) {
+                        hideLoader();
+                        alert(
+                            'この pipeline_meta に紐づく Drive file_url がありません。Drive ID を入力するか、ローカルからファイルをアップロードしてください。'
+                        );
+                        return;
+                    }
+                    await loadEmbedderFromDriveId(loadId);
+                } catch (e) {
+                    alert(e.message);
+                } finally {
+                    hideLoader();
+                }
+                return;
+            }
             if (did && initialDriveId) initialDriveId.value = did;
-            if (did) setTimeout(() => loadPdfFromDriveId(did), 0);
+            if (did) setTimeout(() => loadEmbedderFromDriveId(did), 0);
         })();
 
         appState.driveHistory = [{id: 'root', name: 'My Drive'}];
@@ -640,7 +827,7 @@
                 
                 json.files.forEach(f => {
                     const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
-                    if (!isFolder && f.mimeType !== 'application/pdf') return; 
+                    if (!isFolder && !EMBEDDABLE_DRIVE_MIMES.has(f.mimeType)) return;
                     
                     const item = document.createElement('div');
                     item.className = 'drive-item';
@@ -685,7 +872,7 @@
             if (window.openDrivePicker) {
                 window.openDrivePicker(item => {
                     initialDriveId.value = item.id;
-                    loadPdfFromDriveId(item.id);
+                    loadEmbedderFromDriveId(item.id);
                 });
             } else {
                 openDriveModal();
