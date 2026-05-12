@@ -12,16 +12,7 @@ SET
   classification2 = NULL,
   classification3 = category;
 
-ALTER TABLE public."09_unified_documents" DROP COLUMN IF EXISTS source;
-ALTER TABLE public."09_unified_documents" DROP COLUMN IF EXISTS category;
-
-DROP INDEX IF EXISTS idx_09_unified_source;
-DROP INDEX IF EXISTS idx_09_unified_category;
-CREATE INDEX IF NOT EXISTS idx_09_unified_classification1 ON public."09_unified_documents" (classification1);
-CREATE INDEX IF NOT EXISTS idx_09_unified_classification2 ON public."09_unified_documents" (classification2);
-CREATE INDEX IF NOT EXISTS idx_09_unified_classification3 ON public."09_unified_documents" (classification3);
-
--- 10_ix
+-- 10_ix（09 と同様にコピーしてから旧列削除）
 ALTER TABLE public."10_ix_search_index"
   ADD COLUMN IF NOT EXISTS classification1 TEXT,
   ADD COLUMN IF NOT EXISTS classification2 TEXT,
@@ -33,16 +24,26 @@ SET
   classification2 = NULL,
   classification3 = category;
 
-ALTER TABLE public."10_ix_search_index" DROP COLUMN IF EXISTS source;
-ALTER TABLE public."10_ix_search_index" DROP COLUMN IF EXISTS category;
+-- trg_sync_10_from_09 が UPDATE OF source,category に依存している環境があるため、列削除より先に外す
+DROP TRIGGER IF EXISTS trg_sync_10_from_09 ON public."09_unified_documents";
+
+DROP INDEX IF EXISTS idx_09_unified_source;
+DROP INDEX IF EXISTS idx_09_unified_category;
+ALTER TABLE public."09_unified_documents" DROP COLUMN IF EXISTS source;
+ALTER TABLE public."09_unified_documents" DROP COLUMN IF EXISTS category;
+
+CREATE INDEX IF NOT EXISTS idx_09_unified_classification1 ON public."09_unified_documents" (classification1);
+CREATE INDEX IF NOT EXISTS idx_09_unified_classification2 ON public."09_unified_documents" (classification2);
+CREATE INDEX IF NOT EXISTS idx_09_unified_classification3 ON public."09_unified_documents" (classification3);
 
 DROP INDEX IF EXISTS idx_10_ix_source;
 DROP INDEX IF EXISTS idx_10_ix_category;
+ALTER TABLE public."10_ix_search_index" DROP COLUMN IF EXISTS source;
+ALTER TABLE public."10_ix_search_index" DROP COLUMN IF EXISTS category;
+
 CREATE INDEX IF NOT EXISTS idx_10_ix_classification1 ON public."10_ix_search_index" (classification1);
 CREATE INDEX IF NOT EXISTS idx_10_ix_classification2 ON public."10_ix_search_index" (classification2);
 CREATE INDEX IF NOT EXISTS idx_10_ix_classification3 ON public."10_ix_search_index" (classification3);
-
-DROP TRIGGER IF EXISTS trg_sync_10_from_09 ON public."09_unified_documents";
 
 CREATE OR REPLACE FUNCTION public.sync_10_from_09()
 RETURNS TRIGGER
