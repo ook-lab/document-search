@@ -1958,16 +1958,11 @@ def api_save_md_to_supabase(session_id: str):
     if not md_text:
         return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
     try:
-        import os as _os
         import datetime as _dt
-        from supabase import create_client
-        url = _os.environ.get('SUPABASE_URL', '')
-        key = _os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
-        if not url or not key:
-            return jsonify({'error': 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY が未設定'}), 500
-        client = create_client(url, key)
+        from dms.common.database.client import DatabaseClient
+        db = DatabaseClient(use_service_role=True)
         now = _dt.datetime.now(_dt.timezone.utc).isoformat()
-        client.table(raw_table).update({'pdf_md_content': md_text, 'pdf_md_updated_at': now}).eq('id', raw_id).execute()
+        db.client.table(raw_table).update({'pdf_md_content': md_text, 'pdf_md_updated_at': now}).eq('id', raw_id).execute()
         return jsonify({'success': True, 'raw_table': raw_table, 'raw_id': raw_id})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
