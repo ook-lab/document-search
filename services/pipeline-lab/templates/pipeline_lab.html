@@ -1967,6 +1967,19 @@
         document.querySelectorAll('.overlayPageNumRef').forEach(el => { el.textContent = String(appState.currentPage + 1); });
         dataHeaderMeta.textContent = 'ページ ' + (appState.currentPage + 1) + ' / ' + appState.pages.length;
 
+        // AI直接抽出結果を優先表示（パイプライン結果より先に確認）
+        if (p.direct_md != null) {
+            labOverlay.style.display = 'none';
+            paneVisualEditor.contentEditable = 'false';
+            paneVisualEditor.innerHTML = '<div style="padding:1rem;color:var(--text-muted);font-size:0.9rem;">AI直接抽出モード（Visual Editor は使用しません）</div>';
+            paneRawMd.innerHTML = _makeRawMdTextarea(p.direct_md);
+            _wireRawMdSync(appState.currentPage);
+            paneLog.innerHTML = '';
+            setLabTab('rawmd');
+            btnFullJson.disabled = true;
+            return;
+        }
+
         const pr = p.pipeline_result;
         if (pr && pr.success) {
             await hydratePageResult(pr, appState.currentPage);
@@ -2065,8 +2078,20 @@
                 } catch (ignore) { /* サマリーのみ表示 */ }
             }
             appState.pages[pg].pipeline_result = json;
+            appState.pages[pg].direct_md = null;
             renderThumbnails();
-            loadActivePage();
+            await loadActivePage();
+            // パイプライン結果を即時永続化（保存ボタンがユーザー入力前でも機能するよう）
+            if (json.success) {
+                const ta = document.getElementById('labRawMarkdownBody');
+                if (ta && ta.value && appState.sessionId) {
+                    fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ markdown_text: ta.value }),
+                    }).catch(() => {});
+                }
+            }
             if (json.success) {
                 const u = json.ui_data_summary || {};
                 var g21c = u.g21_articles_count != null ? u.g21_articles_count : '—';
@@ -2085,8 +2110,9 @@
                 f46_log: (e && e.__f46Log) || '',
                 f47_log: (e && e.__f47Log) || '',
             };
+            appState.pages[pg].direct_md = null;
             renderThumbnails();
-            loadActivePage();
+            await loadActivePage();
         } finally {
             hideLoader();
         }
@@ -2106,9 +2132,22 @@
             try { data = await res.json(); } catch (_) { throw new Error('サーバーの応答が JSON ではありません。'); }
             if (!res.ok) throw new Error((data && data.error) || 'HTTP ' + res.status);
             // Raw MD タブに結果を表示してタブ切り替え
-            paneRawMd.innerHTML = _makeRawMdTextarea(data.markdown || '');
+            appState.pages[pg].direct_md = data.markdown || '';
+            labOverlay.style.display = 'none';
+            paneVisualEditor.contentEditable = 'false';
+            paneVisualEditor.innerHTML = '<div style="padding:1rem;color:var(--text-muted);font-size:0.9rem;">AI直接抽出モード（Visual Editor は使用しません）</div>';
+            paneRawMd.innerHTML = _makeRawMdTextarea(appState.pages[pg].direct_md);
             _wireRawMdSync(pg);
+            paneLog.innerHTML = '';
             setLabTab('rawmd');
+            btnFullJson.disabled = true;
+            // 即時永続化（保存ボタンがユーザー入力前でも機能するよう）
+            fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markdown_text: appState.pages[pg].direct_md }),
+            }).catch(() => {});
+            renderThumbnails();
             headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ページ ' + (pg + 1) + ' AI直接抽出完了 (' + (data.model || model) + ')';
         } catch (e) {
             alert('AI直接抽出エラー: ' + (e.message || String(e)));
