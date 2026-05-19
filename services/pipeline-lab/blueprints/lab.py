@@ -1266,7 +1266,7 @@ def api_full_result(session_id: str):
 
 
 # ---------------------------------------------------------------------------
-# 丸投げ直接抽出（Gemini に画像を渡して MD を得る）
+# AI直接抽出（Gemini に画像を渡して MD を得る）
 # ---------------------------------------------------------------------------
 
 _DIRECT_EXTRACT_PROMPT = """
@@ -1300,7 +1300,7 @@ _DIRECT_EXTRACT_PROMPT = """
 
 @lab_bp.route('/api/extract_direct/<session_id>/<int:page_index>', methods=['POST'])
 def api_extract_direct(session_id: str, page_index: int):
-    """丸投げ: ページ画像を Gemini に直接送って MD を返す。パイプライン（A→G）は実行しない。"""
+    """AI直接抽出: ページ画像を Gemini に直接送って MD を返す。パイプライン（A→G）は実行しない。"""
     base = _safe_session_dir(session_id)
     if not base:
         return jsonify({'success': False, 'error': 'セッション不明'}), 404

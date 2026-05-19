@@ -2095,7 +2095,7 @@
     async function runDirectExtract(model) {
         if (!appState.sessionId) return;
         const pg = appState.currentPage;
-        showLoader('ページ ' + (pg + 1) + ' を AI に丸投げ中…');
+        showLoader('ページ ' + (pg + 1) + ' を AI 直接抽出中…');
         try {
             const res = await fetch(API_PREFIX + '/api/extract_direct/' + appState.sessionId + '/' + pg, {
                 method: 'POST',
@@ -2111,7 +2111,7 @@
             setLabTab('rawmd');
             headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ページ ' + (pg + 1) + ' AI直接抽出完了 (' + (data.model || model) + ')';
         } catch (e) {
-            alert('丸投げ失敗: ' + (e.message || String(e)));
+            alert('AI直接抽出エラー: ' + (e.message || String(e)));
         } finally {
             hideLoader();
         }
@@ -2514,7 +2514,7 @@
                 body: JSON.stringify({ drive_file_id: driveId }),
             }).then(r => r.json()).then(json => {
                 if (!json.success) throw new Error(json.error || '読み込み失敗');
-                appState.sessionId = json.file_id;
+                appState.sessionId = json.session_id || json.file_id;
                 appState.safeFilename = json.safe_filename || json.filename || driveName;
                 appState.pages = (json.pages || []).map(p => ({
                     page_index: p.page_index,
