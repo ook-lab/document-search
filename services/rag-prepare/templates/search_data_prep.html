@@ -225,7 +225,9 @@
                         </td>
                         <td>
                             <div class="actions-cell">
-                                {% if pipeline_lab_base %}
+                                {% if pipeline_lab_base and doc.resolved_drive_id %}
+                                <a class="btn btn-outline" href="{{ pipeline_lab_base }}/pipeline-lab/?drive_id={{ doc.resolved_drive_id }}&raw_table={{ doc.raw_table }}&raw_id={{ doc.raw_id }}" target="_blank" rel="noopener">パイプライン処理</a>
+                                {% elif pipeline_lab_base %}
                                 <a class="btn btn-outline" href="{{ pipeline_lab_base }}/pipeline-lab/" target="_blank" rel="noopener">パイプライン処理</a>
                                 {% else %}
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>

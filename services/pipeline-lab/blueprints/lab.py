@@ -34,6 +34,20 @@ from dms.pipeline.stage_f.f46_f47_chain_logs import F46_LOG_NAME, F47_LOG_NAME
 
 lab_bp = Blueprint('pipeline_lab', __name__, template_folder='../templates')
 
+_IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
+
+
+def _is_image(name: str) -> bool:
+    return Path(name.lower()).suffix in _IMAGE_EXTS
+
+
+def _image_to_pdf(img_path: Path, pdf_path: Path) -> None:
+    """画像を単一ページ PDF に変換（PyMuPDF）。"""
+    img_doc = fitz.open(str(img_path))
+    pdf_bytes = img_doc.convert_to_pdf()
+    img_doc.close()
+    pdf_path.write_bytes(pdf_bytes)
+
 
 def _sessions_root() -> Path:
     return Path(current_app.config['UPLOAD_FOLDER']) / 'pipeline_lab'
@@ -1107,29 +1121,38 @@ def session_file(session_id: str, rel_path: str):
 
 @lab_bp.route('/api/upload', methods=['POST'])
 def api_upload():
-    """PDF 1 ファイルのみ受け付ける（複数ファイル同時投入は想定しない）。"""
+    """PDF または画像（PNG/JPG/GIF/WebP/TIFF）1 ファイルを受け付ける。"""
     uploaded = []
     for key in ('pdf_file', 'file'):
         if key not in request.files:
             continue
         uploaded.extend([fh for fh in request.files.getlist(key) if fh and fh.filename])
     if len(uploaded) > 1:
-        return jsonify({'success': False, 'error': 'PDF は 1 ファイルだけ指定してください'}), 400
+        return jsonify({'success': False, 'error': 'ファイルは 1 つだけ指定してください'}), 400
     if len(uploaded) != 1:
         return jsonify({'success': False, 'error': 'file が必要です'}), 400
     f = uploaded[0]
-    if not f.filename.lower().endswith('.pdf'):
-        return jsonify({'success': False, 'error': 'PDF のみ対応しています'}), 400
+    fname_lower = f.filename.lower()
+    is_img = _is_image(f.filename)
+    if not fname_lower.endswith('.pdf') and not is_img:
+        return jsonify({'success': False, 'error': 'PDF または画像ファイル（PNG/JPG/GIF/WebP/TIFF）のみ対応しています'}), 400
 
     session_id = uuid.uuid4().hex[:12]
     session_dir = _sessions_root() / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = secure_filename(f.filename) or 'upload.pdf'
+    safe_name = secure_filename(f.filename) or ('upload.png' if is_img else 'upload.pdf')
     pdf_path = session_dir / 'input.pdf'
-    f.save(str(pdf_path))
 
     try:
+        if is_img:
+            img_path = session_dir / safe_name
+            f.save(str(img_path))
+            _image_to_pdf(img_path, pdf_path)
+            (session_dir / 'is_image.txt').write_text('1', encoding='utf-8')
+        else:
+            f.save(str(pdf_path))
+
         n = _pdf_page_count(pdf_path)
         if n < 1:
             shutil.rmtree(session_dir, ignore_errors=True)
@@ -1137,7 +1160,7 @@ def api_upload():
         pages = _render_pdf_previews(pdf_path, session_dir, session_id)
     except Exception as e:
         shutil.rmtree(session_dir, ignore_errors=True)
-        return jsonify({'success': False, 'error': f'PDF 読込エラー: {e}'}), 400
+        return jsonify({'success': False, 'error': f'読込エラー: {e}'}), 400
 
     return jsonify({
         'success': True,
@@ -1147,6 +1170,7 @@ def api_upload():
         'filename': safe_name,
         'page_count': n,
         'pages': pages,
+        'is_image': is_img,
     })
 
 
@@ -1317,22 +1341,30 @@ def api_extract_direct(session_id: str, page_index: int):
         else:
             text = text.strip()
 
-        # result_page_N.json に保存（download_result_pdf で使う）
+        # JSON メタデータブロック + 抽出テキストの構造化 MD
+        import datetime as _dt
+        meta_json = json.dumps(
+            {'mode': 'direct_extract', 'model': model_name, 'page_index': page_index,
+             'extracted_at': _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')},
+            ensure_ascii=False,
+        )
+        structured_md = f'```json\n{meta_json}\n```\n\n{text}'
+
         result_data = {
             'success': True,
             'session_id': session_id,
             'page_index': page_index,
             'mode': 'direct',
             'model': model_name,
-            'reading': {'stage_e_non_table_plain': text},
-            'raw_md': text,
+            'reading_stream': [{'type': 'non_table', 'text': structured_md}],
+            'raw_md': structured_md,
         }
         result_file = base / f'result_page_{page_index}.json'
         result_file.write_text(
             json.dumps(result_data, ensure_ascii=False, indent=2), encoding='utf-8'
         )
 
-        return jsonify({'success': True, 'markdown': text, 'model': model_name})
+        return jsonify({'success': True, 'markdown': structured_md, 'model': model_name})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -1350,10 +1382,10 @@ def api_list_drive_files():
         drive = GoogleDriveConnector()
         results = drive.service.files().list(
             q=f"'{folder_id}' in parents and trashed=false",
+            spaces='drive',
             fields='files(id, name, mimeType, size)',
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
-            corpora='allDrives',
         ).execute()
         files = results.get('files', [])
         files.sort(key=lambda x: (x['mimeType'] != 'application/vnd.google-apps.folder', x['name'].lower()))
@@ -1380,18 +1412,21 @@ def api_load_from_drive():
         # ファイル名取得
         meta = drive.service.files().get(fileId=drive_file_id, fields='name').execute()
         filename = meta.get('name', 'drive.pdf')
-        if not filename.lower().endswith('.pdf'):
+        is_img = _is_image(filename)
+        if not filename.lower().endswith('.pdf') and not is_img:
             shutil.rmtree(session_dir, ignore_errors=True)
-            return jsonify({'success': False, 'error': 'PDF ファイルのみ対応しています'}), 400
+            return jsonify({'success': False, 'error': 'PDF または画像ファイルのみ対応しています'}), 400
 
         pdf_path = session_dir / 'input.pdf'
         downloaded = drive.download_file(drive_file_id, filename, session_dir)
         if not downloaded:
             shutil.rmtree(session_dir, ignore_errors=True)
             return jsonify({'success': False, 'error': 'Drive からのダウンロードに失敗しました'}), 500
-        # download_file は <dest_dir>/<file_name> に保存するので rename
         dl_path = session_dir / filename
-        if dl_path != pdf_path:
+        if is_img:
+            _image_to_pdf(dl_path, pdf_path)
+            (session_dir / 'is_image.txt').write_text('1', encoding='utf-8')
+        elif dl_path != pdf_path:
             dl_path.rename(pdf_path)
 
         # drive_file_id を session に記録（後で上書き時に使う）
@@ -1413,6 +1448,7 @@ def api_load_from_drive():
             'page_count': n,
             'pages': pages,
             'drive_file_id': drive_file_id,
+            'is_image': is_img,
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1423,7 +1459,7 @@ def api_load_from_drive():
 # ---------------------------------------------------------------------------
 
 def _collect_session_md(session_dir: Path) -> str:
-    """全ページの実行結果から reading_stream テキストを集約して MD 文字列を返す。"""
+    """全ページの実行結果から reading_stream テキストを集約する。"""
     parts = []
     for result_file in sorted(session_dir.glob('result_page_*.json')):
         try:
@@ -1431,12 +1467,8 @@ def _collect_session_md(session_dir: Path) -> str:
         except Exception:
             continue
         page_idx = r.get('page_index', '?')
-        # reading_stream が最も読みやすいテキスト
         rs = r.get('reading_stream') or []
-        if rs:
-            text = '\n'.join(b.get('text', '') for b in rs if b.get('text'))
-        else:
-            text = r.get('raw_text', '') or ''
+        text = '\n'.join(b.get('text', '') for b in rs if b.get('text'))
         if text:
             parts.append(f'## Page {int(page_idx) + 1}\n\n{text}')
     return '\n\n'.join(parts)
@@ -1523,5 +1555,107 @@ def api_save_to_drive(session_id: str):
         if not success:
             return jsonify({'error': 'Drive への上書きに失敗しました'}), 500
         return jsonify({'success': True, 'drive_file_id': drive_file_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@lab_bp.route('/api/download_md/<session_id>', methods=['GET'])
+def api_download_md(session_id: str):
+    """MD テキストをファイルとしてダウンロード。"""
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'error': 'not found'}), 404
+    md_text = _collect_session_md(base)
+    if not md_text:
+        return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
+    drive_filename_file = base / 'drive_filename.txt'
+    if drive_filename_file.exists():
+        dl_name = drive_filename_file.read_text(encoding='utf-8').strip().rsplit('.', 1)[0] + '_pipeline.md'
+    else:
+        dl_name = 'pipeline_result.md'
+    from flask import Response
+    return Response(
+        md_text.encode('utf-8'),
+        mimetype='text/markdown; charset=utf-8',
+        headers={'Content-Disposition': f'attachment; filename="{dl_name}"'},
+    )
+
+
+@lab_bp.route('/api/save_md_to_drive/<session_id>', methods=['POST'])
+def api_save_md_to_drive(session_id: str):
+    """MD テキストを Drive の元ファイルと同じフォルダに .md ファイルとして保存。"""
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'error': 'not found'}), 404
+    drive_id_file = base / 'drive_file_id.txt'
+    if not drive_id_file.exists():
+        return jsonify({'error': 'Drive ファイル ID が記録されていません（ローカルアップロードのセッション）'}), 400
+    drive_file_id = drive_id_file.read_text(encoding='utf-8').strip()
+    md_text = _collect_session_md(base)
+    if not md_text:
+        return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
+    drive_filename_file = base / 'drive_filename.txt'
+    pdf_name = drive_filename_file.read_text(encoding='utf-8').strip() if drive_filename_file.exists() else 'result.pdf'
+    md_name = pdf_name.rsplit('.', 1)[0] + '_pipeline.md'
+    try:
+        from dms.common.connectors.google_drive import GoogleDriveConnector
+        drive = GoogleDriveConnector()
+        meta = drive.service.files().get(fileId=drive_file_id, fields='parents', supportsAllDrives=True).execute()
+        parent_id = (meta.get('parents') or [None])[0]
+        file_id = drive.upload_file(md_text, md_name, 'text/markdown', folder_id=parent_id)
+        if not file_id:
+            return jsonify({'error': 'Drive へのアップロードに失敗しました'}), 500
+        return jsonify({'success': True, 'file_id': file_id, 'file_name': md_name})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@lab_bp.route('/api/save_md_to_supabase/<session_id>', methods=['POST'])
+def api_save_md_to_supabase(session_id: str):
+    """MD を Supabase の raw テーブル pdf_md_content カラムに保存（rag-prepare 連携）。"""
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'error': 'not found'}), 404
+    body = request.get_json(silent=True) or {}
+    raw_table = (body.get('raw_table') or '').strip()
+    raw_id = (body.get('raw_id') or '').strip()
+    if not raw_table or not raw_id:
+        return jsonify({'error': 'raw_table と raw_id が必要です'}), 400
+    md_text = _collect_session_md(base)
+    if not md_text:
+        return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
+    try:
+        import os as _os
+        import datetime as _dt
+        from supabase import create_client
+        url = _os.environ.get('SUPABASE_URL', '')
+        key = _os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+        if not url or not key:
+            return jsonify({'error': 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY が未設定'}), 500
+        client = create_client(url, key)
+        now = _dt.datetime.now(_dt.timezone.utc).isoformat()
+        client.table(raw_table).update({'pdf_md_content': md_text, 'pdf_md_updated_at': now}).eq('id', raw_id).execute()
+        return jsonify({'success': True, 'raw_table': raw_table, 'raw_id': raw_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@lab_bp.route('/api/update_page_md/<session_id>/<int:page_index>', methods=['POST'])
+def api_update_page_md(session_id: str, page_index: int):
+    """ブラウザ上で編集された MD テキストを result JSON に書き戻す。"""
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'error': 'not found'}), 404
+    body = request.get_json(silent=True) or {}
+    md_text = body.get('markdown_text', '')
+    result_file = base / f'result_page_{page_index}.json'
+    try:
+        if result_file.exists():
+            r = json.loads(result_file.read_text(encoding='utf-8'))
+        else:
+            r = {'success': True, 'session_id': session_id, 'page_index': page_index}
+        r['reading_stream'] = [{'type': 'non_table', 'text': md_text}]
+        result_file.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding='utf-8')
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
