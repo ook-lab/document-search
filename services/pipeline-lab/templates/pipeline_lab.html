@@ -2774,8 +2774,9 @@
         const mdText = _collectAllPagesMd();
         if (!mdText) { alert('実行結果がありません。先にパイプラインを実行してください'); return; }
         showLoader('Supabase に保存中…');
+        const saveUrl = API_PREFIX + '/api/save_md_to_supabase/' + appState.sessionId;
         try {
-            const res = await fetch(API_PREFIX + '/api/save_md_to_supabase/' + appState.sessionId, {
+            const res = await fetch(saveUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...appState.ragContext, md_text: mdText }),

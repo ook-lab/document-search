@@ -47,7 +47,7 @@ class DatabaseClient:
                           指定された場合、use_service_role は無視される
         """
         # Fail-fast: SUPABASE_URL は必須
-        if not settings.SUPABASE_URL:
+        if not settings.SUPABASE_URL.strip():
             raise ValueError("環境変数が不足しています: SUPABASE_URL")
 
         # 認証トークンが指定された場合（Admin UI 向け）
@@ -58,8 +58,8 @@ class DatabaseClient:
             # 認証済みセッションでクライアントを作成
             # supabase-py では、auth.set_session() を使用
             self.client: Client = create_client(
-                settings.SUPABASE_URL,
-                settings.SUPABASE_KEY
+                settings.SUPABASE_URL.strip(),
+                settings.SUPABASE_KEY.strip()
             )
             # アクセストークンをヘッダーに設定
             self.client.postgrest.auth(access_token)
@@ -71,7 +71,7 @@ class DatabaseClient:
         elif use_service_role:
             if not settings.SUPABASE_SERVICE_ROLE_KEY:
                 raise ValueError("環境変数が不足しています: SUPABASE_SERVICE_ROLE_KEY (use_service_role=True時に必要)")
-            api_key = settings.SUPABASE_SERVICE_ROLE_KEY
+            api_key = settings.SUPABASE_SERVICE_ROLE_KEY.strip()
 
             self.client: Client = create_client(
                 settings.SUPABASE_URL,
