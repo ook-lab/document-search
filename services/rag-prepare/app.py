@@ -17,10 +17,27 @@ from standalone import (
 
 
 def resolve_pipeline_lab_base(request_host: str = None) -> str:
-    """PIPELINE_LAB_BASE 環境変数、またはホスト名から推測。"""
+    """
+    pipeline-lab のベース URL（末尾スラッシュなし）。
+
+    優先順: PIPELINE_LAB_BASE 環境変数
+    → ローカル（K_SERVICE なし）: http://127.0.0.1:{PIPELINE_LAB_PORT|5055}
+    → Cloud Run: リクエストホストが *-{num}.{region}.run.app なら pipeline-lab の sibling URL を推定
+    """
+    import re as _re
     explicit = os.environ.get('PIPELINE_LAB_BASE', '').strip().rstrip('/')
     if explicit:
         return explicit
+    if not os.environ.get('K_SERVICE'):
+        port = (os.environ.get('PIPELINE_LAB_PORT') or '5055').strip()
+        return f'http://127.0.0.1:{port}'
+    # Cloud Run: ホスト名から pipeline-lab の URL を推定
+    if request_host:
+        h = request_host.split(':')[0].strip().lower()
+        m = _re.search(r'-(?P<num>\d+)\.(?P<region>[a-z0-9-]+)\.run\.app$', h, _re.IGNORECASE)
+        if m:
+            num, region = m.group('num'), m.group('region')
+            return f'https://pipeline-lab-{num}.{region}.run.app'
     return ''
 
 app = Flask(__name__)

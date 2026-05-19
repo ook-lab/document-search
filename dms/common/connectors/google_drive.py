@@ -38,7 +38,18 @@ class GoogleDriveConnector:
     def __init__(self):
         self.service = self._authenticate()
         # logger.info("Google Driveコネクタ初期化完了")
-    
+
+    def _apply_delegation(self, creds):
+        """GMAIL_USER_EMAIL が設定されていれば domain-wide delegation でユーザーを impersonate。"""
+        delegated_user = (os.environ.get('GMAIL_USER_EMAIL') or '').strip()
+        if not delegated_user:
+            return creds
+        if hasattr(creds, 'with_subject'):
+            logger.info(f"Domain-wide delegation enabled for: {delegated_user}")
+            return creds.with_subject(delegated_user)
+        logger.warning('GMAIL_USER_EMAIL is set but credentials do not support with_subject().')
+        return creds
+
     def _authenticate(self):
         """サービスアカウント認証（環境変数ファイル -> ADC -> Streamlit Secrets の順で試行）"""
         # 1. 環境変数 (ローカル開発用: JSONファイルパス指定)
@@ -47,6 +58,7 @@ class GoogleDriveConnector:
                 creds = service_account.Credentials.from_service_account_file(
                     CREDENTIALS_PATH, scopes=SCOPES
                 )
+                creds = self._apply_delegation(creds)
                 logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH}")
                 return build('drive', 'v3', credentials=creds)
             except Exception as e:
@@ -55,8 +67,8 @@ class GoogleDriveConnector:
         # 2. Application Default Credentials (ADC) (★Cloud Run用: これを追加！★)
         try:
             import google.auth
-            # Cloud Run等の環境では自動的に認証情報を取得（ファイル不要）
             creds, project = google.auth.default(scopes=SCOPES)
+            creds = self._apply_delegation(creds)
             logger.info("ADC (Application Default Credentials) で認証成功")
             return build('drive', 'v3', credentials=creds)
         except Exception as e:
