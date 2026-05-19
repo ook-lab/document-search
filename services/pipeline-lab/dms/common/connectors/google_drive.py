@@ -50,16 +50,29 @@ class GoogleDriveConnector:
         logger.warning('GMAIL_USER_EMAIL is set but credentials do not support with_subject().')
         return creds
 
+    def _credentials_from_env_value(self):
+        """CREDENTIALS_PATH がファイルパスまたはJSON文字列（Secret Manager由来）の両方に対応。"""
+        if not CREDENTIALS_PATH:
+            return None
+        import json as _json
+        raw = CREDENTIALS_PATH.strip()
+        if os.path.exists(raw):
+            return service_account.Credentials.from_service_account_file(raw, scopes=SCOPES)
+        if raw.startswith('{'):
+            info = _json.loads(raw)
+            return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        return None
+
     def _authenticate(self):
-        """サービスアカウント認証（環境変数ファイル -> ADC -> Streamlit Secrets の順で試行）"""
-        # 1. 環境変数 (ローカル開発用: JSONファイルパス指定)
-        if CREDENTIALS_PATH and os.path.exists(CREDENTIALS_PATH):
+        """サービスアカウント認証（環境変数ファイル/JSON -> ADC -> Streamlit Secrets の順で試行）"""
+        # 1. 環境変数 (ローカル: JSONファイルパス / Cloud Run: Secret Manager JSON本文)
+        if CREDENTIALS_PATH:
             try:
-                creds = service_account.Credentials.from_service_account_file(
-                    CREDENTIALS_PATH, scopes=SCOPES
-                )
+                creds = self._credentials_from_env_value()
+                if creds is None:
+                    raise FileNotFoundError(f"GOOGLE_APPLICATION_CREDENTIALS が有効なファイルパスまたはJSON文字列ではありません: {CREDENTIALS_PATH[:80]}")
                 creds = self._apply_delegation(creds)
-                logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH}")
+                logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH[:80]}")
                 return build('drive', 'v3', credentials=creds)
             except Exception as e:
                 logger.warning(f"環境変数からの認証失敗: {e}")

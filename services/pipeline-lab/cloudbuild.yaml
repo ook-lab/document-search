@@ -25,7 +25,7 @@ steps:
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=600'
       - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
-      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest'
+      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,GMAIL_USER_EMAIL=GMAIL_USER_EMAIL:latest,GOOGLE_APPLICATION_CREDENTIALS=GOOGLE_APPLICATION_CREDENTIALS:latest'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pipeline-lab:${_TAG}'

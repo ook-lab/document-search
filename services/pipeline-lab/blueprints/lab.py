@@ -1504,7 +1504,7 @@ def api_load_from_drive():
 
         drive = GoogleDriveConnector()
         # ファイル名取得
-        meta = drive.service.files().get(fileId=drive_file_id, fields='name').execute()
+        meta = drive.service.files().get(fileId=drive_file_id, fields='name', supportsAllDrives=True).execute()
         filename = meta.get('name', 'drive.pdf')
         is_img = _is_image(filename)
         if not filename.lower().endswith('.pdf') and not is_img:
