@@ -2637,6 +2637,22 @@
     // -----------------------------------------------------------------------
     // 保存前フラッシュ（Visual Editor 編集中に保存ボタンを押した場合に同期）
     // -----------------------------------------------------------------------
+    function _collectAllPagesMd() {
+        const parts = [];
+        for (let i = 0; i < appState.pages.length; i++) {
+            const p = appState.pages[i];
+            let text = '';
+            if (p.direct_md != null) {
+                text = p.direct_md.trim();
+            } else if (p.pipeline_result) {
+                const rs = p.pipeline_result.reading_stream || [];
+                text = rs.map(b => b.text || '').filter(t => t.trim()).join('\n').trim();
+            }
+            if (text) parts.push('## Page ' + (i + 1) + '\n\n' + text);
+        }
+        return parts.join('\n\n');
+    }
+
     async function _dmeFlushBeforeSave() {
         const pg = appState.currentPage;
         if (!appState.pages[pg] || appState.pages[pg].direct_md == null) return;
@@ -2704,12 +2720,14 @@
         if (!appState.sessionId) { alert('セッションがありません'); return; }
         if (!appState.ragContext) { alert('rag-prepare コンテキストがありません'); return; }
         await _dmeFlushBeforeSave();
+        const mdText = _collectAllPagesMd();
+        if (!mdText) { alert('実行結果がありません。先にパイプラインを実行してください'); return; }
         showLoader('Supabase に保存中…');
         try {
             const res = await fetch(API_PREFIX + '/api/save_md_to_supabase/' + appState.sessionId, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(appState.ragContext),
+                body: JSON.stringify({ ...appState.ragContext, md_text: mdText }),
             });
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.error || '保存失敗');

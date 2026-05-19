@@ -1902,15 +1902,16 @@ def api_save_md_to_drive(session_id: str):
 @lab_bp.route('/api/save_md_to_supabase/<session_id>', methods=['POST'])
 def api_save_md_to_supabase(session_id: str):
     """MD を Supabase の raw テーブル pdf_md_content カラムに保存（rag-prepare 連携）。"""
-    base = _safe_session_dir(session_id)
-    if not base:
-        return jsonify({'error': 'not found'}), 404
     body = request.get_json(silent=True) or {}
     raw_table = (body.get('raw_table') or '').strip()
     raw_id = (body.get('raw_id') or '').strip()
     if not raw_table or not raw_id:
         return jsonify({'error': 'raw_table と raw_id が必要です'}), 400
-    md_text = _collect_session_md(base)
+    md_text = (body.get('md_text') or '').strip()
+    if not md_text:
+        base = _safe_session_dir(session_id)
+        if base:
+            md_text = _collect_session_md(base)
     if not md_text:
         return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
     try:
