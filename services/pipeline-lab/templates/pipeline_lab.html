@@ -602,7 +602,12 @@
                 <div class="lab-overlay" id="labOverlay">
                     <h2>このページは未処理です</h2>
                     <p>サムネでページを選び、<strong>このページだけ</strong>パイプラインを実行します。</p>
-                    <button type="button" class="btn-primary" style="width:280px;" id="overlayRunBtn">A→G を実行（ページ <span id="overlayPageNum">1</span>）</button>
+                    <div style="display:flex;flex-direction:column;gap:0.5rem;align-items:center;">
+                        <button type="button" class="btn-primary" style="width:300px;" data-mode="pipeline" data-model="gemini-2.5-flash-lite-preview" id="overlayRunBtn">PL 3.1 flash-lite preview（ページ <span id="overlayPageNum">1</span>）</button>
+                        <button type="button" class="btn-primary" style="width:300px;background:#0891b2;" data-mode="pipeline" data-model="gemini-2.5-flash-lite" id="overlayRunBtn25">PL 2.5 flash-lite（ページ <span class="overlayPageNumRef">1</span>）</button>
+                        <button type="button" class="btn-outline" style="width:300px;" data-mode="direct" data-model="gemini-2.5-flash-lite-preview" id="overlayDirectBtn31">丸投げ 3.1 flash-lite preview（ページ <span class="overlayPageNumRef">1</span>）</button>
+                        <button type="button" class="btn-outline" style="width:300px;" data-mode="direct" data-model="gemini-2.5-flash-lite" id="overlayDirectBtn25">丸投げ 2.5 flash-lite（ページ <span class="overlayPageNumRef">1</span>）</button>
+                    </div>
                 </div>
                 <div class="data-header">
                     <div class="data-header-row">
@@ -613,7 +618,10 @@
                         </div>
                         <div style="display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;">
                             <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;" id="dataHeaderMeta">ページ 1 / 1</span>
-                            <button type="button" class="btn-primary" style="padding:0.45rem 1rem;font-size:0.8rem;" id="headerRunBtn">再実行 / このページで実行</button>
+                            <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="pipeline" data-model="gemini-2.5-flash-lite-preview" id="headerRunBtn">PL 3.1</button>
+                            <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;background:#0891b2;" data-mode="pipeline" data-model="gemini-2.5-flash-lite" id="headerRunBtn25">PL 2.5</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="direct" data-model="gemini-2.5-flash-lite-preview" id="headerDirectBtn31">丸投げ 3.1</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="direct" data-model="gemini-2.5-flash-lite" id="headerDirectBtn25">丸投げ 2.5</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 1rem;font-size:0.8rem;" id="downloadResultBtn">MD保存PDFをダウンロード</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 1rem;font-size:0.8rem;display:none;" id="saveToDriveBtn">ドライブ上書き</button>
                         </div>
@@ -1942,6 +1950,7 @@
         if (!p) return;
         document.getElementById('mainPreviewImg').src = p.image_url;
         overlayPageNum.textContent = String(appState.currentPage + 1);
+        document.querySelectorAll('.overlayPageNumRef').forEach(el => { el.textContent = String(appState.currentPage + 1); });
         dataHeaderMeta.textContent = 'ページ ' + (appState.currentPage + 1) + ' / ' + appState.pages.length;
 
         const pr = p.pipeline_result;
@@ -1976,12 +1985,17 @@
         }
     }
 
-    async function runPipelineForCurrentPage() {
+    async function runPipelineForCurrentPage(model) {
         if (!appState.sessionId) return;
         const pg = appState.currentPage;
         showLoader('ページ ' + (pg + 1) + ' をパイプライン処理中…');
         try {
-            const res = await fetch(API_PREFIX + '/api/run/' + appState.sessionId + '/' + pg, { method: 'POST' });
+            const body = model ? JSON.stringify({ g26_model: model }) : undefined;
+            const res = await fetch(API_PREFIX + '/api/run/' + appState.sessionId + '/' + pg, {
+                method: 'POST',
+                headers: body ? { 'Content-Type': 'application/json' } : {},
+                body: body,
+            });
             if (!res.ok) {
                 let detail = 'HTTP ' + res.status;
                 let errPipelineLog = '';
@@ -2060,8 +2074,47 @@
         }
     }
 
-    overlayRunBtn.addEventListener('click', runPipelineForCurrentPage);
-    headerRunBtn.addEventListener('click', runPipelineForCurrentPage);
+    async function runDirectExtract(model) {
+        if (!appState.sessionId) return;
+        const pg = appState.currentPage;
+        showLoader('ページ ' + (pg + 1) + ' を AI に丸投げ中…');
+        try {
+            const res = await fetch(API_PREFIX + '/api/extract_direct/' + appState.sessionId + '/' + pg, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: model }),
+            });
+            let data;
+            try { data = await res.json(); } catch (_) { throw new Error('サーバーの応答が JSON ではありません。'); }
+            if (!res.ok) throw new Error((data && data.error) || 'HTTP ' + res.status);
+            // Raw MD タブに結果を表示してタブ切り替え
+            paneRawMd.innerHTML = '<pre style="white-space:pre-wrap;word-break:break-all;font-size:0.82rem;">' +
+                (data.markdown || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</pre>';
+            setLabTab('rawmd');
+            headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ページ ' + (pg + 1) + ' 丸投げ完了 (' + (data.model || model) + ')';
+        } catch (e) {
+            alert('丸投げ失敗: ' + (e.message || String(e)));
+        } finally {
+            hideLoader();
+        }
+    }
+
+    function makeRunHandler(btn) {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.mode;
+            const model = btn.dataset.model;
+            if (mode === 'direct') {
+                runDirectExtract(model);
+            } else {
+                runPipelineForCurrentPage(model);
+            }
+        });
+    }
+    ['overlayRunBtn', 'overlayRunBtn25', 'overlayDirectBtn31', 'overlayDirectBtn25',
+     'headerRunBtn', 'headerRunBtn25', 'headerDirectBtn31', 'headerDirectBtn25'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) makeRunHandler(el);
+    });
 
     btnFullJson.addEventListener('click', async () => {
         if (!appState.sessionId) return;

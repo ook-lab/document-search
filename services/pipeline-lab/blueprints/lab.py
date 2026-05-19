@@ -795,7 +795,7 @@ def _attach_table_chain_stage_logs(result: Dict[str, Any], work_dir: Path, page_
         pass
 
 
-def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, page_num: int) -> Dict[str, Any]:
+def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, page_num: int, g26_model_name: Optional[str] = None) -> Dict[str, Any]:
     from dms.pipeline.stage_a import A3EntryPoint
     from dms.pipeline.stage_b import B1Controller
     from dms.pipeline.stage_d import D1Controller
@@ -928,7 +928,7 @@ def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, pa
         f"stage_e_blocks_plain_len={len(body_join)}"
     )
 
-    g11 = G11Controller(document_id=session_id)
+    g11 = G11Controller(document_id=session_id, g26_model_name=g26_model_name)
     g11_result = g11.process(stage_f_result=stage_f_result, log_dir=work_dir)
     if not g11_result or not g11_result.get('success'):
         return {
@@ -1006,7 +1006,7 @@ def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, pa
     }
 
 
-def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num: int) -> Dict[str, Any]:
+def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num: int, g26_model_name: Optional[str] = None) -> Dict[str, Any]:
     """loguru（dms.pipeline 名前空間）をバッファに取り込みつつステージ実行。絶対に例外を外に漏らさない。"""
     buf = StringIO()
     fmt = (
@@ -1034,7 +1034,7 @@ def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num:
     result: Dict[str, Any] = {'success': False, 'error': 'internal', 'stage': 'exception'}
     try:
         try:
-            result = _run_pdf_pipeline_stages(pdf_path, work_dir, session_id, page_num)
+            result = _run_pdf_pipeline_stages(pdf_path, work_dir, session_id, page_num, g26_model_name=g26_model_name)
         except BaseException as e:
             # BaseException まで受ける: KeyboardInterrupt / SystemExit がパイプライン内から来ても
             # 500 + 空ログにならないよう result に格納してから finally へ
@@ -1171,9 +1171,12 @@ def api_run(session_id: str, page_index: int):
             'error': f'page_index は 0〜{total_pages - 1} の範囲で指定してください',
         }), 400
 
+    body = request.get_json(silent=True) or {}
+    g26_model_name = (body.get('g26_model') or '').strip() or None
+
     work_dir = base / 'interactive_run'
     try:
-        result = _run_pdf_pipeline(pdf_path, work_dir, session_id, page_index)
+        result = _run_pdf_pipeline(pdf_path, work_dir, session_id, page_index, g26_model_name=g26_model_name)
     except Exception as e:
         # _run_pdf_pipeline 内でステージ例外は握りつぶして dict 返却する想定。ここは防護壁のみ。
         return jsonify({
@@ -1236,6 +1239,102 @@ def api_full_result(session_id: str):
     except json.JSONDecodeError:
         return jsonify({'error': '結果 JSON が壊れています'}), 500
     return jsonify(data)
+
+
+# ---------------------------------------------------------------------------
+# 丸投げ直接抽出（Gemini に画像を渡して MD を得る）
+# ---------------------------------------------------------------------------
+
+_DIRECT_EXTRACT_PROMPT = """
+あなたは高度なOCRおよびデータ抽出システムです。
+提供された画像からすべての情報を抽出し、マークダウン形式で返してください。
+「一列のズレ、一行の結合も許さない」という極めて厳格な姿勢で臨んでください。
+
+【思考プロセス（重要）】
+正確な抽出のために、以下の手順を厳守してください。
+
+1. **垂直境界（列のコンテナ）の定義**:
+   まずヘッダー行を精査し、各列の水平方向の開始位置と終了位置を確定させてください。これを「列のコンテナ」と呼びます。
+2. **座標ベースの列割り当て**:
+   すべてのテキストブロックについて、その水平方向の中心座標を計算し、それがどの「列のコンテナ」に属するかを物理的に判定してください。
+   **重要：データがない列を飛ばして左に詰めることは「データ改ざん」とみなし、絶対に禁止します。**
+3. **垂直スキャンによる検算**:
+   各列のヘッダーから下方向へ垂直に視線を走らせ、その「コンテナ」の中にデータが正しく縦一列に並んでいるかを確認してください。
+4. **行の解体（結合セルの排除）**:
+   画像上で上下に並んでいるデータは、一つのセルにまとめず、必ず**独立した複数の行**として書き出してください。結合セルによって省略されている情報は、すべての行に繰り返し入力してください。
+
+【抽出ルール】
+0. **ドキュメントタイトル**: 画像の最上部にある文書名やタイトルを特定し、必ずMarkdownの最初に `# ` (H1) ヘッダーとして記述してください。
+1. **1データ1行の徹底**: セル内で改行して複数のクラスや時間を詰め込まないでください。行を分けて出力してください。
+2. **空セルの厳格維持**: データが存在しない列は、必ず `| |` （半角スペース一つ）を入れて列のカウントを維持してください。
+3. **結合セルの完全展開**: 縦または横に結合されたセル（学年、校舎など）は、その範囲に含まれる**すべての行・列にその値をコピー**して出力してください。
+4. **周辺テキストの抽出**: 表の外にある注釈、ヘッダー、フッター、地文なども漏らさず適切にMarkdown（##, ###, または通常の段落）として構成してください。
+5. **出力形式**: 構造化されたMarkdown形式を出力し、AI自身の説明（「抽出しました」等）は一切省いてください。
+6. **言語**: 日本語のまま抽出してください。
+"""
+
+
+@lab_bp.route('/api/extract_direct/<session_id>/<int:page_index>', methods=['POST'])
+def api_extract_direct(session_id: str, page_index: int):
+    """丸投げ: ページ画像を Gemini に直接送って MD を返す。パイプライン（A→G）は実行しない。"""
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'success': False, 'error': 'セッション不明'}), 404
+
+    img_path = base / 'preview' / f'page_{page_index}.png'
+    if not img_path.is_file():
+        return jsonify({'success': False, 'error': f'ページ画像が見つかりません: page_{page_index}.png'}), 404
+
+    body = request.get_json(silent=True) or {}
+    model_name = (body.get('model') or 'gemini-2.5-flash-lite').strip()
+
+    try:
+        import google.generativeai as genai
+        import os as _os
+        api_key = _os.environ.get('GOOGLE_AI_API_KEY')
+        if not api_key:
+            return jsonify({'success': False, 'error': 'GOOGLE_AI_API_KEY が未設定です'}), 500
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+
+        img_bytes = img_path.read_bytes()
+        import base64 as _b64
+        img_part = {
+            'inline_data': {
+                'mime_type': 'image/png',
+                'data': _b64.b64encode(img_bytes).decode('utf-8'),
+            }
+        }
+
+        response = model.generate_content([_DIRECT_EXTRACT_PROMPT, img_part])
+        text = response.text or ''
+
+        import re as _re
+        matches = _re.findall(r'```(?:markdown|md)?\s*\n?(.*?)```', text, _re.DOTALL)
+        if matches:
+            text = '\n\n'.join(m.strip() for m in matches)
+        else:
+            text = text.strip()
+
+        # result_page_N.json に保存（download_result_pdf で使う）
+        result_data = {
+            'success': True,
+            'session_id': session_id,
+            'page_index': page_index,
+            'mode': 'direct',
+            'model': model_name,
+            'reading': {'stage_e_non_table_plain': text},
+            'raw_md': text,
+        }
+        result_file = base / f'result_page_{page_index}.json'
+        result_file.write_text(
+            json.dumps(result_data, ensure_ascii=False, indent=2), encoding='utf-8'
+        )
+
+        return jsonify({'success': True, 'markdown': text, 'model': model_name})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # ---------------------------------------------------------------------------

@@ -53,7 +53,7 @@ from dms.pipeline.stage_g.table_md_emitters import (
 class G11Controller:
     """Stage G: F17 出口を入力に UI データを組み立てる。"""
 
-    def __init__(self, document_id: Optional[str] = None) -> None:
+    def __init__(self, document_id: Optional[str] = None, g26_model_name: Optional[str] = None) -> None:
         g62 = G62TableLayoutProcessor(document_id=document_id)
         self._g61 = G61LayoutBridgeProcessor(document_id=document_id, next_stage=g62)
         self._g44 = G44TableReconstructor(next_stage=None)
@@ -62,6 +62,7 @@ class G11Controller:
         self._g22 = G22TableRebuilder()
         self._g19 = G19UIAssembly(table_chain=None, text_chain=None)
         self.document_id = document_id
+        self.g26_model_name = g26_model_name  # None のとき G26 デフォルトを使う
 
     def process(
         self,
@@ -143,7 +144,10 @@ class G11Controller:
         }
 
         logger.info("[G26] ページ理解（D罫線 + 表の列意味・切り方）")
-        semantic, _, _ = G26SemanticEstimator(document_id=self.document_id).infer_all(
+        g26_kwargs = {"document_id": self.document_id}
+        if self.g26_model_name:
+            g26_kwargs["model_name"] = self.g26_model_name
+        semantic, _, _ = G26SemanticEstimator(**g26_kwargs).infer_all(
             self._structured_to_e14_reconstructed(structured),
             year_ctx,
             chain_context=g24_bundle,
