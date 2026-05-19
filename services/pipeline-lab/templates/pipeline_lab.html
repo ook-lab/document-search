@@ -2679,19 +2679,25 @@
     // 保存前フラッシュ（Visual Editor 編集中に保存ボタンを押した場合に同期）
     // -----------------------------------------------------------------------
     function _collectAllPagesMd() {
+        const _PLACEHOLDER = '（非表も表もまだありません';
         const parts = [];
         for (let i = 0; i < appState.pages.length; i++) {
             const p = appState.pages[i];
             let text = '';
             if (p.direct_md != null) {
                 text = p.direct_md.trim();
-            } else if (p.pipeline_result && p.pipeline_result.success) {
+            } else {
+                // 現在ページはテキストエリアを最優先（ユーザー編集・パイプライン結果どちらも反映）
                 if (i === appState.currentPage) {
                     const ta = document.getElementById('labRawMarkdownBody');
-                    text = (ta && ta.value.trim()) ? ta.value.trim() : buildSyntheticMarkdown(p.pipeline_result).trim();
-                } else {
-                    text = buildSyntheticMarkdown(p.pipeline_result).trim();
+                    if (ta) text = ta.value.trim();
                 }
+                // テキストエリアが空 or 別ページ: pipeline_result から組立（success 問わず）
+                if (!text && p.pipeline_result) {
+                    try { text = buildSyntheticMarkdown(p.pipeline_result).trim(); } catch (_) {}
+                }
+                // プレースホルダーは実コンテンツなし扱い
+                if (text.startsWith(_PLACEHOLDER)) text = '';
             }
             if (text) parts.push('## Page ' + (i + 1) + '\n\n' + text);
         }
