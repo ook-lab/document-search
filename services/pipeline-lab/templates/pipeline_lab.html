@@ -1865,6 +1865,46 @@
         return html;
     }
 
+    function renderAiCostHtml(data) {
+        const c = data.ai_cost;
+        if (!c || !c.breakdown || !c.breakdown.length) return '';
+        const fmt = n => (n < 0.0001 && n > 0 ? n.toFixed(6) : n.toFixed(4));
+        const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
+        let rows = '';
+        for (const m of c.breakdown) {
+            const hasThink = m.thinking_tokens > 0;
+            const outTokLabel = hasThink
+                ? fmtTok(m.completion_tokens) + ' + ' + fmtTok(m.thinking_tokens) + '(思考)'
+                : fmtTok(m.completion_tokens);
+            rows += '<tr>' +
+                '<td style="font-weight:600;white-space:nowrap;">' + escapeHtml(m.model) + '</td>' +
+                '<td style="text-align:right;">' + fmtTok(m.prompt_tokens) + '</td>' +
+                '<td style="text-align:right;color:#0891b2;">$' + fmt(m.input_cost_usd) + '</td>' +
+                '<td style="text-align:right;">' + outTokLabel + '</td>' +
+                '<td style="text-align:right;color:#0891b2;">$' + fmt(m.output_cost_usd) + '</td>' +
+                '<td style="text-align:right;font-weight:700;color:#4f46e5;">$' + fmt(m.total_cost_usd) + '</td>' +
+                '<td style="text-align:right;color:var(--text-muted);">' + m.calls + '回</td>' +
+                '</tr>';
+        }
+        const totalStyle = 'font-weight:700;font-size:1rem;color:' + (c.total_cost_usd > 0.01 ? '#dc2626' : '#16a34a') + ';';
+        return '<details class="acc-panel" open><summary>AIコスト</summary><div class="acc-body" style="padding:0.5rem;">' +
+            '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">' +
+            '<thead><tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">' +
+            '<th style="text-align:left;padding:3px 6px;">モデル</th>' +
+            '<th style="text-align:right;padding:3px 6px;">入力 tok</th>' +
+            '<th style="text-align:right;padding:3px 6px;">入力 $</th>' +
+            '<th style="text-align:right;padding:3px 6px;">出力 tok（思考含む）</th>' +
+            '<th style="text-align:right;padding:3px 6px;">出力 $</th>' +
+            '<th style="text-align:right;padding:3px 6px;">計 $</th>' +
+            '<th style="text-align:right;padding:3px 6px;">呼出</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+            '</table>' +
+            '<div style="text-align:right;margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid var(--border);">' +
+            '<span style="' + totalStyle + '">合計: $' + fmt(c.total_cost_usd) + '</span>' +
+            '</div></div></details>';
+    }
+
     function renderLogHtml(data) {
         const r = data.reading || {};
         const d = data.stage_d || {};
@@ -1918,6 +1958,7 @@
 
         return (
             '<div class="debug-stack acc-stack">' +
+            renderAiCostHtml(data) +
             renderStructuredPanels(data) +
             '<details class="acc-panel"><summary>テキスト・ステージ要約</summary><div class="acc-body">' + sumParts.join('') + '</div></details>' +
             '<details class="acc-panel"><summary>F-46 専用ログ（線意味・表トポロジ）</summary>' +
@@ -2644,9 +2685,13 @@
             let text = '';
             if (p.direct_md != null) {
                 text = p.direct_md.trim();
-            } else if (p.pipeline_result) {
-                const rs = p.pipeline_result.reading_stream || [];
-                text = rs.map(b => b.text || '').filter(t => t.trim()).join('\n').trim();
+            } else if (p.pipeline_result && p.pipeline_result.success) {
+                if (i === appState.currentPage) {
+                    const ta = document.getElementById('labRawMarkdownBody');
+                    text = (ta && ta.value.trim()) ? ta.value.trim() : buildSyntheticMarkdown(p.pipeline_result).trim();
+                } else {
+                    text = buildSyntheticMarkdown(p.pipeline_result).trim();
+                }
             }
             if (text) parts.push('## Page ' + (i + 1) + '\n\n' + text);
         }

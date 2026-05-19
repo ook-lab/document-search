@@ -36,6 +36,46 @@ lab_bp = Blueprint('pipeline_lab', __name__, template_folder='../templates')
 
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 
+# 料金表（USD / 100万トークン）。出力料金は思考トークンを含む。
+_GEMINI_PRICING: Dict[str, Dict[str, float]] = {
+    'gemini-3.1-flash-lite': {'input': 0.25, 'output': 1.50},
+    'gemini-2.5-flash-lite': {'input': 0.10, 'output': 0.40},
+}
+
+
+def _calc_ai_cost(raw_entries: List[Dict]) -> Dict:
+    """log_ai_usage エントリを集計してモデル別コスト内訳を返す。"""
+    by_model: Dict[str, Dict] = {}
+    for e in raw_entries:
+        m = e['model']
+        if m not in by_model:
+            by_model[m] = {'prompt_tokens': 0, 'completion_tokens': 0, 'thinking_tokens': 0, 'calls': 0}
+        by_model[m]['prompt_tokens'] += e['prompt_tokens']
+        by_model[m]['completion_tokens'] += e['completion_tokens']
+        by_model[m]['thinking_tokens'] += e['thinking_tokens']
+        by_model[m]['calls'] += 1
+
+    breakdown = []
+    total = 0.0
+    for model, tok in by_model.items():
+        p = _GEMINI_PRICING.get(model) or {'input': 0.0, 'output': 0.0}
+        in_cost = tok['prompt_tokens'] / 1_000_000 * p['input']
+        out_cost = (tok['completion_tokens'] + tok['thinking_tokens']) / 1_000_000 * p['output']
+        cost = in_cost + out_cost
+        total += cost
+        breakdown.append({
+            'model': model,
+            'calls': tok['calls'],
+            'prompt_tokens': tok['prompt_tokens'],
+            'completion_tokens': tok['completion_tokens'],
+            'thinking_tokens': tok['thinking_tokens'],
+            'input_cost_usd': round(in_cost, 6),
+            'output_cost_usd': round(out_cost, 6),
+            'total_cost_usd': round(cost, 6),
+        })
+    breakdown.sort(key=lambda x: x['total_cost_usd'], reverse=True)
+    return {'breakdown': breakdown, 'total_cost_usd': round(total, 6)}
+
 
 def _is_image(name: str) -> bool:
     return Path(name.lower()).suffix in _IMAGE_EXTS
@@ -1022,6 +1062,8 @@ def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, pa
 
 def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num: int, g26_model_name: Optional[str] = None) -> Dict[str, Any]:
     """loguru（dms.pipeline 名前空間）をバッファに取り込みつつステージ実行。絶対に例外を外に漏らさない。"""
+    from dms.common.ai_cost_logger import start_cost_accumulation, stop_cost_accumulation
+    start_cost_accumulation()
     buf = StringIO()
     fmt = (
         '{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {name}:{function}:{line} | {message}\n'
@@ -1092,6 +1134,7 @@ def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num:
 
     _attach_table_chain_stage_logs(result, work_dir, page_num)
 
+    result['ai_cost'] = _calc_ai_cost(stop_cost_accumulation())
     return result
 
 

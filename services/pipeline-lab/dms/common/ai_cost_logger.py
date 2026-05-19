@@ -4,10 +4,13 @@ AI使用量ログ記録ユーティリティ
 AIトークン使用量をSupabaseに記録する。
 失敗しても本処理に影響しない（fire-and-forget）。
 """
+import threading
 import uuid
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from loguru import logger
+
+_thread_local = threading.local()
 
 
 def nullable_uuid_str(value: Any) -> Optional[str]:
@@ -23,6 +26,18 @@ def nullable_uuid_str(value: Any) -> Optional[str]:
         return None
 
 
+def start_cost_accumulation() -> None:
+    """現在スレッドのコスト集計を開始する。"""
+    _thread_local.entries = []
+
+
+def stop_cost_accumulation() -> List[dict]:
+    """現在スレッドのコスト集計を終了し、蓄積されたエントリを返す。"""
+    entries = getattr(_thread_local, 'entries', None) or []
+    _thread_local.entries = None
+    return entries
+
+
 def log_ai_usage(
     app: str,
     stage: str,
@@ -36,6 +51,17 @@ def log_ai_usage(
     metadata: dict = None,
 ) -> None:
     """AIトークン使用量をSupabaseに記録。失敗しても本処理に影響しない。"""
+    # スレッドローカルアキュムレータに蓄積（集計中のみ）
+    entries = getattr(_thread_local, 'entries', None)
+    if entries is not None:
+        entries.append({
+            'stage': stage,
+            'model': model,
+            'prompt_tokens': prompt_token_count,
+            'completion_tokens': candidates_token_count,
+            'thinking_tokens': thoughts_token_count,
+        })
+
     try:
         from dms.common.database.client import DatabaseClient
         db = DatabaseClient(use_service_role=True)
