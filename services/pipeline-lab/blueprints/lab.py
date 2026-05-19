@@ -1271,7 +1271,7 @@ def api_full_result(session_id: str):
 
 _DIRECT_EXTRACT_PROMPT = """
 あなたは高度なOCRおよびデータ抽出システムです。
-提供された画像からすべての情報を抽出し、マークダウン形式で返してください。
+提供された画像からすべての情報を抽出し、**以下の厳密な出力形式**で返してください。
 「一列のズレ、一行の結合も許さない」という極めて厳格な姿勢で臨んでください。
 
 【思考プロセス（重要）】
@@ -1288,14 +1288,121 @@ _DIRECT_EXTRACT_PROMPT = """
    画像上で上下に並んでいるデータは、一つのセルにまとめず、必ず**独立した複数の行**として書き出してください。結合セルによって省略されている情報は、すべての行に繰り返し入力してください。
 
 【抽出ルール】
-0. **ドキュメントタイトル**: 画像の最上部にある文書名やタイトルを特定し、必ずMarkdownの最初に `# ` (H1) ヘッダーとして記述してください。
 1. **1データ1行の徹底**: セル内で改行して複数のクラスや時間を詰め込まないでください。行を分けて出力してください。
 2. **空セルの厳格維持**: データが存在しない列は、必ず `| |` （半角スペース一つ）を入れて列のカウントを維持してください。
 3. **結合セルの完全展開**: 縦または横に結合されたセル（学年、校舎など）は、その範囲に含まれる**すべての行・列にその値をコピー**して出力してください。
-4. **周辺テキストの抽出**: 表の外にある注釈、ヘッダー、フッター、地文なども漏らさず適切にMarkdown（##, ###, または通常の段落）として構成してください。
-5. **出力形式**: 構造化されたMarkdown形式を出力し、AI自身の説明（「抽出しました」等）は一切省いてください。
-6. **言語**: 日本語のまま抽出してください。
+4. **言語**: 日本語のまま抽出してください。
+5. **AI の説明不要**: 「抽出しました」等の説明文は一切省いてください。
+
+【出力形式（必須・厳守）】
+以下の2セクション構成で出力してください。セクション名は一字一句変えないでください。
+
+---
+
+## 非表（F 地の文）
+
+（表以外のタイトル・見出し・注釈・フッター・地の文をすべてここに記述。表の外にあるすべてのテキストを漏らさず含める。）
+
+## 表（ui_data.tables）
+
+（表ごとに `## T1`, `## T2`, ... と見出しを付けてマークダウン表を記述。表が複数ある場合は順番に並べる。表がない場合はこのセクションごと省略。）
+
+---
 """
+
+
+def _direct_extract_build_structured_md(ai_text: str) -> str:
+    """AI が返した生テキストをパイプライン互換の構造化 MD に変換する。"""
+    import re as _re
+
+    # AI が markdown コードブロックで包んだ場合は中身だけ取り出す
+    matches = _re.findall(r'```(?:markdown|md)?\s*\n?(.*?)```', ai_text, _re.DOTALL)
+    if matches:
+        ai_text = '\n\n'.join(m.strip() for m in matches)
+    ai_text = ai_text.strip()
+
+    # AI の出力が既に ## 非表 / ## 表 のセクション構造を持っているか確認
+    has_prose_section = bool(_re.search(r'^## 非表', ai_text, _re.MULTILINE))
+    has_table_section = bool(_re.search(r'^## 表', ai_text, _re.MULTILINE))
+
+    if has_prose_section or has_table_section:
+        # 正しいフォーマットで出力されている → そのまま使う
+        structured = ai_text
+    else:
+        # フォーマット違反: テキストと表を手動で分離して再構成
+        prose_lines = []
+        table_blocks = []
+        current_table: list[str] = []
+        in_table = False
+        for line in ai_text.split('\n'):
+            is_table_line = line.strip().startswith('|') and line.strip().endswith('|')
+            if is_table_line:
+                if not in_table:
+                    in_table = True
+                    current_table = []
+                current_table.append(line)
+            else:
+                if in_table:
+                    table_blocks.append('\n'.join(current_table))
+                    current_table = []
+                    in_table = False
+                prose_lines.append(line)
+        if current_table:
+            table_blocks.append('\n'.join(current_table))
+
+        parts = []
+        prose = '\n'.join(prose_lines).strip()
+        if prose:
+            parts.append('## 非表（F 地の文）\n\n' + prose)
+        if table_blocks:
+            table_section_lines = ['## 表（ui_data.tables）', '']
+            for i, tb in enumerate(table_blocks):
+                table_section_lines.append(f'## T{i + 1}')
+                table_section_lines.append('')
+                table_section_lines.append(tb)
+                table_section_lines.append('')
+            parts.append('\n'.join(table_section_lines))
+        structured = '\n\n'.join(parts) if parts else ai_text
+
+    # ## 表（ui_data.tables）配下の表から ## 表（埋め込み） HTML を生成
+    import html as _html
+    embed_lines: list[str] = []
+    table_section_match = _re.search(
+        r'^## 表（ui_data\.tables）\s*\n(.*?)(?=^## (?!T\d)|$)',
+        structured, _re.MULTILINE | _re.DOTALL
+    )
+    if table_section_match:
+        table_section_text = table_section_match.group(1)
+        table_blocks_in_section = _re.split(r'^## (T\d+)\s*$', table_section_text, flags=_re.MULTILINE)
+        # table_blocks_in_section: [pre, id1, block1, id2, block2, ...]
+        tbl_idx = 1
+        i = 1
+        while i + 1 < len(table_blocks_in_section):
+            tbl_id = table_blocks_in_section[i].strip()
+            tbl_md = table_blocks_in_section[i + 1].strip()
+            # マークダウン表をHTMLに変換
+            tbl_lines = [l for l in tbl_md.split('\n') if l.strip().startswith('|')]
+            if len(tbl_lines) >= 2:
+                parse_cells = lambda l: [c.strip() for c in l.strip().strip('|').split('|')]
+                headers = parse_cells(tbl_lines[0])
+                rows = [parse_cells(l) for l in tbl_lines[2:]]  # [1] はセパレーター行
+                th_html = ''.join(f'<th>{_html.escape(h)}</th>' for h in headers)
+                rows_html = ''.join(
+                    '<tr>' + ''.join(f'<td>{_html.escape(c)}</td>' for c in r) + '</tr>'
+                    for r in rows
+                )
+                embed_lines.append(f'<!-- table:{tbl_id} -->')
+                embed_lines.append(
+                    f'<table class="md-embed-table"><thead><tr>{th_html}</tr></thead>'
+                    f'<tbody>{rows_html}</tbody></table>'
+                )
+            i += 2
+            tbl_idx += 1
+
+    if embed_lines:
+        structured += '\n\n## 表（埋め込み）\n\n<!-- dms:tables-md-embed v1 -->\n' + '\n'.join(embed_lines)
+
+    return structured
 
 
 @lab_bp.route('/api/extract_direct/<session_id>/<int:page_index>', methods=['POST'])
@@ -1332,23 +1439,7 @@ def api_extract_direct(session_id: str, page_index: int):
         }
 
         response = model.generate_content([_DIRECT_EXTRACT_PROMPT, img_part])
-        text = response.text or ''
-
-        import re as _re
-        matches = _re.findall(r'```(?:markdown|md)?\s*\n?(.*?)```', text, _re.DOTALL)
-        if matches:
-            text = '\n\n'.join(m.strip() for m in matches)
-        else:
-            text = text.strip()
-
-        # JSON メタデータブロック + 抽出テキストの構造化 MD
-        import datetime as _dt
-        meta_json = json.dumps(
-            {'mode': 'direct_extract', 'model': model_name, 'page_index': page_index,
-             'extracted_at': _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')},
-            ensure_ascii=False,
-        )
-        structured_md = f'```json\n{meta_json}\n```\n\n{text}'
+        structured_md = _direct_extract_build_structured_md(response.text or '')
 
         result_data = {
             'success': True,
