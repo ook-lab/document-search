@@ -157,7 +157,7 @@
             <div>
                 <h1>検索データ準備</h1>
                 <div class="subtitle">
-                    ドキュメント処理（doc-processor）とは別経路で、検索用ベクトル（<code>10_ix_search_index</code>）へ登録するための一覧です。
+                    ドキュメント処理パイプラインとは別経路で、検索用ベクトル（<code>10_ix_search_index</code>）へ登録するための一覧です。
                     対象は 03–05 の classroom 系と 08（file-only）。正本の本文は <code>raw.pdf_md_content</code>、生成テキストは <code>09_unified_documents</code> / <code>10_ix_search_index</code>。
                     登録済み判定は補助テーブル <code>09_unified_documents_meta.ix_vectorized_at</code>（ステータスのみ）です。<code>pipeline_meta</code> は参照しません。
                     PDF ツールのベース URL は <code>RAG_PREPARE_PDF_TOOLBOX_BASE</code> 等（末尾スラッシュなし）。
@@ -225,7 +225,11 @@
                         </td>
                         <td>
                             <div class="actions-cell">
+                                {% if pipeline_lab_base %}
+                                <a class="btn btn-outline" href="{{ pipeline_lab_base }}/pipeline-lab/" target="_blank" rel="noopener">パイプライン処理</a>
+                                {% else %}
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
+                                {% endif %}
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/embedder/{% if doc.resolved_drive_id %}?drive_id={{ doc.resolved_drive_id }}{% endif %}" target="_blank" rel="noopener">帳票→Markdown抽出＆PDF埋め込み</a>
                                 <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runVectorRegister('{{ doc.unified_doc_id or '' }}', '{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">ベクトル化登録</button>
                             </div>

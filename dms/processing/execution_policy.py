@@ -1,10 +1,7 @@
 """
-ExecutionPolicy - 実行可否判断
+ExecutionPolicy - 実行可否判断（将来のポリシー拡張用）
 
-【設計】
-- 唯一のルール: processing_status = 'queued' のドキュメントのみ処理可能
-- それ以外のチェックは全て削除済み
-- dequeue_document RPC が queued のみを取得するため、Python側は常に許可
+呼び出し側が処理対象（pipeline_meta.id 等）を選ぶ前提で、現状は常に許可する。
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -22,12 +19,7 @@ class ExecutionResult:
 
 
 class ExecutionPolicy:
-    """
-    実行可否判断
-
-    唯一のルール: dequeue_document RPC が queued のみを取得する
-    Python側では追加チェックなし（常に許可）
-    """
+    """実行可否判断（現状は常に許可）。"""
 
     def __init__(self, db_client=None):
         pass  # DB不要

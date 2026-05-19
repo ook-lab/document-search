@@ -239,18 +239,18 @@ def api_sessions():
             s['total_tokens']      += log.get('total_token_count', 0) or 0
             s['cost_usd']          += cost
 
-        # doc-processor のセッションは pipeline_meta → raw テーブルからタイトルを取得
-        doc_processor_ids = [
+        # pipeline 由来のセッション（session_id = pipeline_meta.id）は raw テーブルからタイトルを取得
+        pipeline_meta_session_ids = [
             sid for sid, s in sessions.items()
-            if s['app'] == 'doc-processor'
+            if s['app'] in ('dms-pipeline', 'doc-processor')
         ]
-        if doc_processor_ids:
+        if pipeline_meta_session_ids:
             try:
                 # pipeline_meta から raw_id, raw_table を取得
                 meta_resp = (
                     db.client.table('pipeline_meta')
                     .select('id, raw_id, raw_table')
-                    .in_('id', doc_processor_ids[:200])
+                    .in_('id', pipeline_meta_session_ids[:200])
                     .execute()
                 )
                 metas = meta_resp.data or []

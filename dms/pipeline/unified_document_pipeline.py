@@ -1,5 +1,5 @@
 """
-Legacy entry point used by data-ingestion (inbox monitor, flyer batch).
+Legacy stub kept for ``from dms.pipeline import UnifiedDocumentPipeline`` の互換のみ。
 
 Historically imported as ``from dms.pipeline import UnifiedDocumentPipeline``.
 The full file-to-document orchestration should be routed through ``PipelineManager``

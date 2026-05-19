@@ -21,4 +21,4 @@ ENV PYTHONPATH=/app/services/pipeline-lab
 ENV PORT=8080
 ENV PIPELINE_LAB_NO_BROWSER=1
 
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 4 --timeout 600 --chdir /app/services/pipeline-lab app:app
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 4 --timeout 600 --chdir /app/services/pipeline-lab --pythonpath /app/services/pipeline-lab app:app

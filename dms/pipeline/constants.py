@@ -38,19 +38,9 @@ F1_QUALITY_THRESHOLD = 0.5
 # - DOCUMENT_AI_FORM_PARSER_PROCESSOR_ID: プロセッサID
 
 # ============================================
-# Stage G: I/O契約（固定）
+# Stage F 表示（F60）: レビュー用 ui_data（実装は `dms.pipeline.stage_g.F60UIDeliveryController`）
 # ============================================
-#
-# G3: Scrub（唯一の書き換えゾーン）
-# G4: Assemble（read-only組み立て）
-# G5: Audit（検算・品質・確定 = 唯一の正本出口）
-# G6: Packager（用途別出力整形、AI禁止）
-#
-# 絶対ルール:
-# 1. 値を書き換えるのは G3 だけ
-# 2. G4/G5/G6 は read-only
-# 3. G5の出力 scrubbed_data が唯一の正本
-# 4. G6は用途別フォーマットだけ
+# 旧ドキュメントの G3〜G6 契約はアーカイブ参照。現行ワーカーは F17 正本の後に F60 のみ。
 #
 # ============================================
 

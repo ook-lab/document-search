@@ -8,7 +8,7 @@
 # - 人間の注意に依存しない構造保証
 #
 # 【検査内容】
-# 1. Web配下（services/doc-processor）に禁止パターンがないこと
+# 1. Web配下（services/doc-search）に禁止パターンがないこと
 # 2. 処理復活を示唆する危険な語彙の組み合わせがないこと
 # 3. 入口スクリプトが許可リスト以外に増えていないこと
 
@@ -18,13 +18,13 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - 'services/doc-processor/**'
+      - 'services/doc-search/**'
       - 'scripts/**'
       - 'dms/processing/**'
   pull_request:
     branches: [main, develop]
     paths:
-      - 'services/doc-processor/**'
+      - 'services/doc-search/**'
       - 'scripts/**'
       - 'dms/processing/**'
 
@@ -58,7 +58,7 @@ jobs:
 
           for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
             echo "Checking pattern: $pattern"
-            if grep -rn "$pattern" services/doc-processor/ --include="*.py" 2>/dev/null; then
+            if grep -rn "$pattern" services/doc-search/ --include="*.py" 2>/dev/null; then
               echo "❌ VIOLATION: Found '$pattern' in Web layer"
               FOUND_VIOLATIONS=$((FOUND_VIOLATIONS + 1))
             else
@@ -72,7 +72,7 @@ jobs:
             echo "❌ FAILED: Found $FOUND_VIOLATIONS forbidden pattern(s) in Web layer"
             echo ""
             echo "【設計原則違反】"
-            echo "Web層（services/doc-processor）に処理コードが含まれています。"
+            echo "Web層（services/doc-search）に処理コードが含まれています。"
             echo "処理実行は Worker（scripts/processing/process_queued_documents.py）のみで行ってください。"
             exit 1
           else
@@ -91,7 +91,7 @@ jobs:
           FOUND_ISSUES=0
 
           # Web配下で "start" と "process" と "execute" が組み合わさっているファイルをチェック
-          for file in $(find services/doc-processor -name "*.py" 2>/dev/null); do
+          for file in $(find services/doc-search -name "*.py" 2>/dev/null); do
             if grep -q "def.*start.*process\|start.*processing\|enable.*process\|allow.*process" "$file" 2>/dev/null; then
               echo "⚠️  WARNING: Suspicious pattern in $file"
               grep -n "start.*process\|enable.*process\|allow.*process" "$file" || true
@@ -115,10 +115,9 @@ jobs:
           echo "Checking Worker entry points (STRICT)..."
           echo "=========================================="
 
-          # 【入口は3本のみ】
+          # 【入口は2本のみ】
           # 1. scripts/ops.py - 運用操作
           # 2. scripts/processing/process_queued_documents.py - 処理実行
-          # 3. services/doc-processor/app.py - Web API
 
           # scripts/processing/ 配下で asyncio.run を持つファイルを検出
           # process_queued_documents.py のみが許可
@@ -162,10 +161,9 @@ jobs:
             echo "【設計原則違反】"
             echo "scripts/processing/ 配下で asyncio.run を持つファイルが許可リスト外に存在します。"
             echo ""
-            echo "【入口は3本のみ】"
+            echo "【入口は2本のみ】"
             echo "1. scripts/ops.py - 運用操作"
             echo "2. scripts/processing/process_queued_documents.py - 処理実行"
-            echo "3. services/doc-processor/app.py - Web API"
             echo ""
             echo "新しい処理スクリプトを追加するのではなく、"
             echo "process_queued_documents.py に --option を追加してください。"

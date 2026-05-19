@@ -29,20 +29,6 @@ services:
       - PORT=5001
     restart: unless-stopped
 
-  # 文書ハブ（doc-processor + review/ + /pipeline スタジオを単一イメージ）
-  document-hub:
-    build:
-      context: .
-      dockerfile: services/doc-processor/Dockerfile
-    ports:
-      - "5002:8080"
-    env_file: .env
-    environment:
-      - PYTHONPATH=/app
-      - PORT=8080
-      - PIPELINE_STUDIO=1
-    restart: unless-stopped
-
   # Gmail クリーナ等のみ（ローカル想定・軽量）
   gmail-service:
     build:

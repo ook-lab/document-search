@@ -12,7 +12,7 @@ E-21: Context Extractor（地の文用 - Gemini 2.5 Flash-lite）
 
 注意:
 - イベント、タスク、注意事項への分類は行わない
-- それらの分類は Stage G-21 で実施する
+- それらの分類は Stage F（F6 の sections 組立・E-53 経由）で実施する
 """
 
 from pathlib import Path
@@ -229,7 +229,7 @@ class E21ContextExtractor:
             try:
                 from dms.common.ai_cost_logger import log_ai_usage
                 log_ai_usage(
-                    app='doc-processor', stage='E-21', model=self.model_name,
+                    app='dms-pipeline', stage='E-21', model=self.model_name,
                     prompt_token_count=prompt_tokens,
                     candidates_token_count=candidates_tokens,
                     thoughts_token_count=thoughts_tokens,
@@ -321,6 +321,9 @@ class E21ContextExtractor:
   - width/height 形式（[x, y, w, h]）は禁止。
 
 【出力形式（JSON のみ。説明文不要）】
+- 必ずオブジェクト 1 個で、そのキーは **blocks のみ**（トップレベルに text キーを置かないこと）。
+- 本文はすべて blocks[].text に入れる（空配列は「画像に本文が無い」ときのみ）。
+
 ```json
 {
   "blocks": [
@@ -370,7 +373,7 @@ class E21ContextExtractor:
 
         Returns:
             {
-                'text': str,  # 全テキスト（後方互換性）
+                'text': str,  # blocks[].text を '\\n\\n' で結合した全文（契約違反のトップレベル text は無視）
                 'blocks': [{'text': str, 'bbox': [x0, y0, x1, y1]}]
             }
         """
@@ -414,15 +417,18 @@ class E21ContextExtractor:
             return {'text': '', 'blocks': []}
 
         blocks = parsed.get('blocks', [])
+        if not isinstance(blocks, list):
+            blocks = []
+        blocks = [b for b in blocks if isinstance(b, dict)]
 
-        # bbox は Gemini が出力した [x0, y0, x1, y1]（xyxy）のまま返す
-
-        # 全テキストを生成（後方互換性）
-        full_text = '\n\n'.join([block.get('text', '') for block in blocks if block.get('text', '').strip()])
+        # 契約: 非表 JSON は blocks[].text のみ（ルート text や別キーへの逃げはパースしない）
+        full_text = '\n\n'.join(
+            (b.get('text') or '').strip() for b in blocks if (b.get('text') or '').strip()
+        )
 
         return {
             'text': full_text,
-            'blocks': blocks
+            'blocks': blocks,
         }
 
     def _enrich_with_coordinates(

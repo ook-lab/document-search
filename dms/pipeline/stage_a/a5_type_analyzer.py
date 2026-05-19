@@ -34,6 +34,36 @@ def _load_rules() -> dict:
         return yaml.safe_load(f)
 
 
+def _normalize_pdf_document_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Creator / Producer / Title を pdfplumber・PyMuPDF 間のキー表記揺れから正規化する。"""
+    if not metadata:
+        return {}
+
+    def _first_nonempty(*keys: str) -> str:
+        for k in keys:
+            if k not in metadata:
+                continue
+            v = metadata.get(k)
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                return s
+        return ''
+
+    out = dict(metadata)
+    c = _first_nonempty('Creator', 'creator', 'CREATOR')
+    p = _first_nonempty('Producer', 'producer', 'PRODUCER')
+    t = _first_nonempty('Title', 'title', 'TITLE')
+    if c:
+        out['Creator'] = c
+    if p:
+        out['Producer'] = p
+    if t:
+        out['Title'] = t
+    return out
+
+
 class A5TypeAnalyzer:
     """A-5: Document Type Analyzer（書類種類判断）
 
@@ -160,7 +190,7 @@ class A5TypeAnalyzer:
             import pdfplumber
             logger.info(f"[A-5 TypeAnalyzer] pdfplumberでメタデータ取得を試行...")
             with pdfplumber.open(str(file_path)) as pdf:
-                metadata = pdf.metadata or {}
+                metadata = _normalize_pdf_document_metadata(pdf.metadata or {})
                 logger.info(f"[A-5 TypeAnalyzer] pdfplumberでメタデータ取得成功: {len(metadata)}項目")
                 return metadata
         except Exception as e:
@@ -171,7 +201,7 @@ class A5TypeAnalyzer:
             import fitz
             logger.info(f"[A-5 TypeAnalyzer] PyMuPDFでメタデータ取得を試行...")
             doc = fitz.open(str(file_path))
-            metadata = doc.metadata or {}
+            metadata = _normalize_pdf_document_metadata(doc.metadata or {})
             doc.close()
             logger.info(f"[A-5 TypeAnalyzer] PyMuPDFでメタデータ取得成功: {len(metadata)}項目")
             return metadata

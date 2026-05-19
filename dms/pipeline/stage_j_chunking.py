@@ -1,9 +1,7 @@
 """
-Stage J: Chunking (チャンク化)
+メタデータから検索用チャンクを生成（`MetadataChunker`）。
 
-メタデータからチャンクを生成
-- 役割: 検索用チャンクの作成
-- 処理: MetadataChunker でメタデータチャンク生成
+互換のためクラス名は `StageJChunking` のまま。パイプライン表記の「Stage J」は廃止。
 """
 from typing import Dict, Any, List
 from loguru import logger
@@ -12,7 +10,7 @@ from dms.common.processing.metadata_chunker import MetadataChunker
 
 
 class StageJChunking:
-    """Stage J: チャンク化"""
+    """メタデータからチャンクを生成するヘルパー（主に `MetadataChunker` の薄いラッパ）。"""
 
     def __init__(self):
         """初期化"""
@@ -46,7 +44,7 @@ class StageJChunking:
                 ...
             ]
         """
-        logger.info("[Stage J] チャンク化開始...")
+        logger.info("[Chunking] チャンク化開始...")
 
         try:
             # metadata から構造化データを展開
@@ -73,12 +71,12 @@ class StageJChunking:
 
             chunks = self.chunker.create_metadata_chunks(document_data)
 
-            logger.info(f"[Stage J完了] チャンク数: {len(chunks)}")
+            logger.info(f"[Chunking完了] チャンク数: {len(chunks)}")
 
             return chunks
 
         except Exception as e:
-            logger.error(f"[Stage J エラー] チャンク化失敗: {e}", exc_info=True)
+            logger.error(f"[Chunking エラー] チャンク化失敗: {e}", exc_info=True)
             return []
 
     def process(

@@ -179,7 +179,7 @@ class E30TableStructureExtractor:
             try:
                 from dms.common.ai_cost_logger import log_ai_usage
                 log_ai_usage(
-                    app='doc-processor', stage='E-30', model=self.model_name,
+                    app='dms-pipeline', stage='E-30', model=self.model_name,
                     prompt_token_count=prompt_tokens,
                     candidates_token_count=candidates_tokens,
                     thoughts_token_count=thoughts_tokens,

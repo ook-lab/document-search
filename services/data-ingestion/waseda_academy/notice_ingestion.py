@@ -413,7 +413,7 @@ class WasedaNoticeIngestionPipeline:
                         }).execute()
                         result['document_ids'].append(raw_id)
                         logger.info(f"Supabase保存完了（pending状態）: raw_id={raw_id}")
-                        logger.info(f"  → process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw で処理してください")
+                        logger.info(f"  → pipeline_meta.id を確認のうえ scripts/processing/process_queued_documents.py --doc-id <uuid> --execute で処理してください")
                     else:
                         logger.error(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
 
@@ -556,7 +556,7 @@ async def main():
     logger.info("=" * 60)
     logger.info("")
     logger.info("次のステップ:")
-    logger.info("  python process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw --execute")
+    logger.info("  python scripts/processing/process_queued_documents.py --doc-id <pipeline_meta.id> --execute")
     logger.info("=" * 60)
 
     # 結果を表示
@@ -576,7 +576,7 @@ async def main():
 
     print("\n" + "=" * 80)
     print("次のステップ:")
-    print("  python process_queued_documents.py --raw-table=05_ikuya_waseaca_01_raw --execute")
+    print("  python scripts/processing/process_queued_documents.py --doc-id <pipeline_meta.id> --execute")
     print("=" * 80)
 
 

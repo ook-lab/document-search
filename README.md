@@ -12,15 +12,15 @@
 
 本システムの心臓部とも言える「書類を読んで理解し、検索可能にする」ためのコアアプリ群です。
 
-### `doc-processor` / `dms/pipeline` (AIドキュメント処理エンジン)
-Web APIは「リクエストのキューイングのみ」を行い、真の重い処理は非同期のWorkerレイヤーとして実行される超堅牢なドキュメントパーサーです。
+### `dms/pipeline` と Worker CLI（AIドキュメント処理エンジン）
+処理は **`scripts/processing/process_queued_documents.py`**（`--doc-id` で `pipeline_meta.id` を指定）からのみ実行します。Web API はキュー投入専用とせず、当該サービスは削除済みです。
 * **💡 恐るべき工夫: Stage A〜Kの完全防備なパイプライン**
   * **二重読み取り防止 (LayerPurge)**: OCRとAI（Gemini）が同じテキストを重複して読んでしまうのを防ぐため、Stage Bにてシステムが認識済みの一部テキストを画像レイヤー上で「白塗り（パージ）」してから次の工程に渡すという泥臭くも確実な前処理を実装しています。
   * **「表崩れ」の完全制圧 (Stage D)**: ベクトル線とラスター線の両方を検知し、エクセルのような表（セルマップ）を完全に復元。セル単位で画像を分割してモデルに渡すことで、LLM特有のハルシネーションやレイアウト崩壊を完全にシャットアウトします。
   * **文字密度でのLLM動的ルーティング (Stage E)**: 画像内の文字密度を計算し、文字が少ない地の文は高速な「Gemini Flash-lite」、情報が密な表部分は推論力が高い「Gemini Flash」へとリクエストを自動で切り替え、コストと精度の最高効率を叩き出しています。
 
-### `doc-processor`（document-hub）内のレビュー UI & `doc-search`（横断検索）
-目視レビュー用の Flask 面は `services/doc-processor/review/` に置き、本番イメージでは `doc-processor` と同一プロセスで提供します。AIが作成した `ui_data` を即座に描画し、オペレータが最終確認してから本登録し、`doc-search` で横断検索します。
+### `pipeline-lab`（ローカル試験）と `doc-search`（横断検索）
+対話的なパイプライン試験は **`services/pipeline-lab/`**（`python services/pipeline-lab/app.py`、既定ポート 5055）。登録済み文書の横断検索は **`doc-search`** で行います。
 
 ---
 

@@ -71,16 +71,22 @@ class D3VectorLineExtractor:
                 lines = self._extract_lines(page, page_width, page_height)
                 logger.info(f"[D-3] pdfplumber.lines から抽出: {len(lines)}本")
                 if lines:
-                    logger.info(f"[D-3] lines 全件:")
+                    logger.debug("[D-3] lines 全件:")
                     for i, line in enumerate(lines, 1):
-                        logger.info(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, length={line.get('length', 0):.1f}pt")
+                        logger.debug(
+                            f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, "
+                            f"x1={line['x1']:.3f}, y1={line['y1']:.3f}, length={line.get('length', 0):.1f}pt"
+                        )
 
                 rect_lines = self._extract_rect_edges(page, page_width, page_height)
                 logger.info(f"[D-3] pdfplumber.rects から抽出: {len(rect_lines)}本")
                 if rect_lines:
-                    logger.info(f"[D-3] rect_lines 全件:")
+                    logger.debug("[D-3] rect_lines 全件:")
                     for i, line in enumerate(rect_lines, 1):
-                        logger.info(f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, x1={line['x1']:.3f}, y1={line['y1']:.3f}, length={line.get('length', 0):.1f}pt")
+                        logger.debug(
+                            f"  {i}. x0={line['x0']:.3f}, y0={line['y0']:.3f}, "
+                            f"x1={line['x1']:.3f}, y1={line['y1']:.3f}, length={line.get('length', 0):.1f}pt"
+                        )
 
                 # 統合してクレンジング
                 before_merge = len(lines) + len(rect_lines)

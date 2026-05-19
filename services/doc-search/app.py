@@ -2706,6 +2706,29 @@ def extract_schedules():
                         }
                     })
 
+            for article in (ui_data.get('g21_articles') or []):
+                if not isinstance(article, dict):
+                    continue
+                sec_title = (article.get('title') or '').strip()
+                sec_body = (article.get('body') or '').strip()
+                combined = sec_title + ' ' + sec_body
+                if re.search(
+                    r'(予定|スケジュール|日程|期限|締切|締め切り|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})',
+                    combined
+                ):
+                    schedules.append({
+                        'doc_id':       doc_id,
+                        'title':        title,
+                        'source':       source,
+                        'person':       person_v,
+                        'document_date': (post_at or start_at)[:10] if (post_at or start_at) else None,
+                        'schedule_type': 'g21_article',
+                        'schedule_data': {
+                            'title':   sec_title,
+                            'content': sec_body,
+                        }
+                    })
+
         print(f"[DEBUG] 抽出されたスケジュール: {len(schedules)} 件")
 
         # 日付順にソート
@@ -2781,7 +2804,7 @@ def debug_database():
     except Exception as e:
         errors['search_index_sample'] = str(e)
 
-    # embedding NULL件数確認（NULLならStage K未実行）
+    # embedding NULL件数確認（NULLなら埋め込みパイプライン未実行）
     try:
         # embedding IS NOT NULL なチャンク数（直接カラム選択でNULLチェック）
         not_null_resp = db_client.client.table('10_ix_search_index').select('id', count='exact').not_.is_('embedding', 'null').limit(1).execute()
@@ -2887,9 +2910,7 @@ def get_workspaces():
     """ワークスペース一覧を取得（検索UI専用）
 
     【設計方針】
-    - このエンドポイントは doc-search UI 専用
-    - document-hub（doc-processor）にも同名の /api/workspaces が存在するが、
-      doc-search は別ホストのため衝突しない
+    - このエンドポイントは doc-search UI 専用（別ホストで提供）
     """
     try:
         from docsearch.db import DocSearchDB

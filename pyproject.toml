@@ -14,3 +14,7 @@ include = ["shared*", "scripts*", "services*", "frontend*", "database*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.json", "*.yaml", "*.yml", "*.html", "*.css", "*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -479,7 +479,7 @@ async def main():
     print(f"合計: 新着チラシ {total_new_flyers}件、画像 {total_images}件、ドキュメント {total_docs}件")
     print("=" * 80)
     print("\n次のステップ:")
-    print("  python process_queued_documents.py --workspace=household")
+    print("  python scripts/processing/process_queued_documents.py --doc-id <pipeline_meta.id> --execute")
     print("=" * 80)
 
 

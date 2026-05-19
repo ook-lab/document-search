@@ -141,10 +141,12 @@ class D10ImageSlicer:
                 x1 = int(bbox[2] * width)
                 y1 = int(bbox[3] * height)
 
-                logger.info(f"[D-10] 表画像切り出し {table_id} ({origin_uid}):")
-                logger.info(f"  ├─ 正規化bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]")
-                logger.info(f"  ├─ ピクセル座標: ({x0}, {y0}) - ({x1}, {y1})")
-                logger.info(f"  └─ サイズ: {x1-x0} x {y1-y0} px")
+                logger.debug(f"[D-10] 表画像切り出し {table_id} ({origin_uid}):")
+                logger.debug(
+                    f"  ├─ 正規化bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]"
+                )
+                logger.debug(f"  ├─ ピクセル座標: ({x0}, {y0}) - ({x1}, {y1})")
+                logger.debug(f"  └─ サイズ: {x1-x0} x {y1-y0} px")
 
                 # 表画像を切り出し
                 table_image = image[y0:y1, x0:x1]
@@ -178,7 +180,9 @@ class D10ImageSlicer:
                 x1 = int(bbox[2] * width)
                 y1 = int(bbox[3] * height)
 
-                logger.info(f"[D-10] 白塗り {table_region['table_id']}: ({x0}, {y0}) - ({x1}, {y1})")
+                logger.debug(
+                    f"[D-10] 白塗り {table_region['table_id']}: ({x0}, {y0}) - ({x1}, {y1})"
+                )
 
                 # 白塗り
                 non_table_image[y0:y1, x0:x1] = 255
@@ -260,17 +264,18 @@ class D10ImageSlicer:
             # 3) 判定
             if interior_hline_count >= self.min_interior_hlines:
                 # 内側水平線が十分あるので、真の全面tableと判断
-                logger.info(f"[D-10] ✓ 全面table許可: {table_id}")
-                logger.info(f"    ├─ サイズ比率: w={w:.3f}, h={h:.3f}")
-                logger.info(f"    ├─ 内側水平線数: {interior_hline_count} (閾値: {self.min_interior_hlines})")
-                logger.info(f"    └─ 判定: 真の全面表として採用")
+                logger.info(
+                    f"[D-10] 全面table許可: {table_id} w={w:.3f} h={h:.3f} "
+                    f"interior_hlines={interior_hline_count}>={self.min_interior_hlines}"
+                )
                 filtered.append(region)
             else:
                 # 内側水平線が不足 → 誤検出として reject
-                logger.warning(f"[D-10] ✗ 表領域除外: {table_id}")
-                logger.warning(f"    ├─ サイズ比率: w={w:.3f}, h={h:.3f}")
-                logger.warning(f"    ├─ 内側水平線数: {interior_hline_count} (閾値: {self.min_interior_hlines})")
-                logger.warning(f"    └─ 理由: 全面bbox判定で内側水平線不足（誤検出の可能性）")
+                logger.warning(
+                    f"[D-10] 表領域除外: {table_id} w={w:.3f} h={h:.3f} "
+                    f"interior_hlines={interior_hline_count}<{self.min_interior_hlines} "
+                    f"(全面bboxで内側水平線不足)"
+                )
 
         logger.info(f"[D-10] 表領域フィルタリング完了: {len(table_regions)}個 → {len(filtered)}個")
         return filtered
@@ -316,8 +321,10 @@ class D10ImageSlicer:
             if gap > GAP_THRESHOLD:
                 # 大きなギャップを発見 → この後が実際の表
                 valid_y_start = y_coords_all[i + 1]
-                logger.info(f"[D-10] 大きなギャップ検出: y={y_coords_all[i]:.3f} → {y_coords_all[i+1]:.3f} (gap={gap:.3f})")
-                logger.info(f"[D-10] 実際の表の開始位置: y={valid_y_start:.3f}")
+                logger.debug(
+                    f"[D-10] 大きなギャップ検出: y={y_coords_all[i]:.3f} → {y_coords_all[i+1]:.3f} (gap={gap:.3f})"
+                )
+                logger.debug(f"[D-10] 実際の表の開始位置: y={valid_y_start:.3f}")
                 break
 
         # 有効なセルのみから座標を取得
@@ -353,9 +360,15 @@ class D10ImageSlicer:
             original_bbox = region['bbox']
             adjusted_bbox = [x_min, y_min, x_max, y_max]
 
-            logger.info(f"[D-10] Bbox 調整 {region['table_id']}:")
-            logger.info(f"  ├─ 元の bbox: [{original_bbox[0]:.3f}, {original_bbox[1]:.3f}, {original_bbox[2]:.3f}, {original_bbox[3]:.3f}]")
-            logger.info(f"  └─ 調整後: [{adjusted_bbox[0]:.3f}, {adjusted_bbox[1]:.3f}, {adjusted_bbox[2]:.3f}, {adjusted_bbox[3]:.3f}]")
+            logger.debug(f"[D-10] Bbox 調整 {region['table_id']}:")
+            logger.debug(
+                f"  ├─ 元の bbox: [{original_bbox[0]:.3f}, {original_bbox[1]:.3f}, "
+                f"{original_bbox[2]:.3f}, {original_bbox[3]:.3f}]"
+            )
+            logger.debug(
+                f"  └─ 調整後: [{adjusted_bbox[0]:.3f}, {adjusted_bbox[1]:.3f}, "
+                f"{adjusted_bbox[2]:.3f}, {adjusted_bbox[3]:.3f}]"
+            )
 
             adjusted_region = region.copy()
             adjusted_region['bbox'] = adjusted_bbox

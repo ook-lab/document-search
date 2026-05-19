@@ -232,24 +232,24 @@ class B11GoogleDocsProcessor:
                 logger.warning(f"[B-11] Table {idx}: 再構築後もデータが空のためスキップ")
                 continue
 
-            # デバッグ：追加する表のデータ内容を確認
             logger.info(f"[B-11] Table {idx}: {len(data)}行×{len(data[0]) if data else 0}列 追加")
             if data:
                 for row_idx, row in enumerate(data):
                     logger.info(f"[B-11] Table {idx} 行{row_idx}: {row}")
 
-            tables.append({
+            tbl_rec: Dict[str, Any] = {
                 'page': page_num,
                 'index': idx,
                 'rows': len(data),
                 'cols': len(data[0]) if data else 0,
                 'data': data,
                 'bbox': table.bbox,
-                'source': 'stage_b',              # F-5が結合処理を認識するために必要
-                'origin_uid': f"B:P{page_num}:B{idx + 1}",  # 出自付き一意ID（D表と混線防止）
-                'canonical_id': f"P{page_num}_B{idx + 1}",  # 汎用ID（後段用）
-                'table_id': f"P{page_num}_B{idx + 1}",      # P{page}_B{n} 形式
-            })
+                'source': 'stage_b',
+                'origin_uid': f"B:P{page_num}:B{idx + 1}",
+                'canonical_id': f"P{page_num}_B{idx + 1}",
+                'table_id': f"P{page_num}_B{idx + 1}",
+            }
+            tables.append(tbl_rec)
 
         # 全経路で必須キーを補完（appendが複数経路あっても確実に揃える）
         for i, t in enumerate(tables):

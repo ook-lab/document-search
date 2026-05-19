@@ -24,8 +24,7 @@ COPY services/doc-search/app.py .
 COPY services/doc-search/templates/ ./templates/
 COPY services/doc-search/docsearch/ ./docsearch/
 
-# パイプライン処理は doc-processor またはリポジトリルートで
-# scripts/processing/process_queued_documents.py を実行する（本イメージは検索 Web のみ）。
+# パイプライン処理はリポジトリルートで scripts/processing/process_queued_documents.py を実行する（本イメージは検索 Web のみ）。
 # Note: PlaywrightはローカルのGmail取り込みのみで使用。Cloud Runでは不要。
 
 # 6. ポート環境変数を設定（念のため）

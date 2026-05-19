@@ -12,11 +12,11 @@
   # Stage Bだけを再実行（Stage Aのキャッシュを使用）
   python run_debug_pipeline.py [UUID] --stage B --force
 
-  # Stage DからGまで実行
-  python run_debug_pipeline.py [UUID] --start D --end G --force
+  # Stage DからFまで実行
+  python run_debug_pipeline.py [UUID] --start D --end F --force
 
-  # サブステージ F3（日付正規化）だけを再実行
-  python run_debug_pipeline.py [UUID] --stage F3 --force
+  # サブステージ F13（日付正規化）だけを再実行
+  python run_debug_pipeline.py [UUID] --stage F13 --force
 
   # サブステージ D8からD10まで実行
   python run_debug_pipeline.py [UUID] --start D8 --end D10 --force
@@ -47,6 +47,11 @@ sys.modules.setdefault('dms', types.ModuleType('dms'))
 sys.modules['dms'].__path__ = [str(PROJECT_ROOT / 'dms')]
 sys.modules['dms.pipeline'] = _pipeline_pkg
 
+from dms.pipeline.substage_order import (
+    DEBUG_PIPELINE_SUBSTAGES_EXECUTION,
+    sorted_valid_targets,
+)
+
 from loguru import logger
 
 # ステージ コントローラーのインポート
@@ -65,12 +70,12 @@ from dms.pipeline.stage_d.d10_image_slicer import D10ImageSlicer
 from dms.pipeline.stage_e import E1Controller as E1ControllerFull
 
 # サブステージ クラスのインポート（Stage F）
-from dms.pipeline.stage_f.f1_data_fusion_merger import F1DataFusionMerger
-from dms.pipeline.stage_f.f3_smart_date_normalizer import F3SmartDateNormalizer
-from dms.pipeline.stage_f.f5_logical_table_joiner import F5LogicalTableJoiner
+from dms.pipeline.stage_f.f11_data_fusion_merger import F11DataFusionMerger
+from dms.pipeline.stage_f.f13_smart_date_normalizer import F13SmartDateNormalizer
+from dms.pipeline.stage_f.f17_stage_f_finalize import F17StageFFinalize
 
-# Stage G コントローラー（G11/G17/G21/G22 含む全処理）
-from dms.pipeline.stage_g import G1Controller as G1ControllerFull
+# G11: Stage G（レビュー用 ui_data）。`F60UIDeliveryController` は G11 の別名
+from dms.pipeline.stage_g import G11Controller
 
 
 class DebugPipeline:
@@ -85,19 +90,12 @@ class DebugPipeline:
         "B": ["B1"],  # B90削除: B1で抽出＋削除を統合
         "D": ["D3", "D5", "D8", "D9", "D10"],
         "E": ["E1"],
-        "F": ["F1", "F3", "F5"],
-        "G": ["G1", "G3", "G5", "G11", "G17", "G21", "G22"],
+        "F": ["F11", "F13", "F17"],
+        "G": ["G11"],
     }
 
-    # 全サブステージの実行順序（フラット）
-    ALL_SUBSTAGES = [
-        "A3",
-        "B1",  # B90削除
-        "D3", "D5", "D8", "D9", "D10",
-        "E1",
-        "F1", "F3", "F5",
-        "G1", "G3", "G5", "G11", "G17", "G21", "G22",
-    ]
+    # 全サブステージの実行順序（フラット・時系列。G 以降に E 番号を置かない）
+    ALL_SUBSTAGES = list(DEBUG_PIPELINE_SUBSTAGES_EXECUTION)
 
     # サブステージ → 親ステージ
     SUBSTAGE_TO_STAGE = {}
@@ -105,8 +103,8 @@ class DebugPipeline:
         for _sub in _subs:
             SUBSTAGE_TO_STAGE[_sub] = _stage
 
-    # CLI choices 用
-    VALID_TARGETS = STAGES + ALL_SUBSTAGES
+    # CLI choices 用（親 A…F を先に、その後サブステージはレター→数値の自然順）
+    VALID_TARGETS = sorted_valid_targets(STAGES, list(ALL_SUBSTAGES))
 
     def __init__(
         self,
@@ -137,12 +135,12 @@ class DebugPipeline:
         self._stage_e = E1ControllerFull(gemini_api_key=_gemini_key)
 
         # Stage F サブステージ
-        self._f1 = F1DataFusionMerger()
-        self._f3 = F3SmartDateNormalizer(api_key=_gemini_key)
-        self._f5 = F5LogicalTableJoiner()
+        self._f11 = F11DataFusionMerger()
+        self._f13 = F13SmartDateNormalizer(api_key=_gemini_key)
+        self._f17 = F17StageFFinalize()
 
-        # Stage G: G1Controller（G11/G17/G21/G22 含む全処理）
-        self._g_controller = G1ControllerFull(api_key=_gemini_key)
+        # Stage G: G11（レビュー用 ui_data）
+        self._g11_controller = G11Controller()
 
         # ログ出力設定: 各ステージのログを個別ファイルに出力（起動時に一括設定）
         # フィルタはモジュール名ベース（"[X-NN]" プレフィックスの有無に関わらず全行を捕捉）
@@ -150,47 +148,51 @@ class DebugPipeline:
         self._log_sinks = []
         # (_module_substring, _filename):
         #   record["name"] に _module_substring が含まれるログを _filename に書き込む
-        for _mod, _filename in [
-            ("a3_entry_point",           "a3_entry_point.log"),
-            ("a5_",                      "a5_type_analyzer.log"),   # a5_type_analyzer + a5_gatekeeper
-            ("a6_dimension_measurer",    "a6_dimension_measurer.log"),
-            ("b1_controller",            "b1_controller.log"),
-            ("b3_pdf_word",              "b3_pdf_word.log"),
-            ("b4_pdf_excel",             "b4_pdf_excel.log"),
-            ("b5_pdf_ppt",               "b5_pdf_ppt.log"),
-            ("b11_google_docs",          "b11_google_docs.log"),
-            ("b12_google_sheets",        "b12_google_sheets.log"),
-            ("b14_goodnotes",            "b14_goodnotes.log"),
-            ("b30_illustrator",          "b30_illustrator.log"),
-            ("b42_multicolumn",          "b42_multi_column.log"),
-            ("b90_result_merger",        "b90_result_merger.log"),
-            ("stage_d.d1_controller",    "d1_controller.log"),
-            ("d3_vector_line_extractor", "d3_vector.log"),
-            ("d5_raster_line_detector",  "d5_raster.log"),
-            ("d8_grid_analyzer",         "d8_grid.log"),
-            ("d9_cell_identifier",       "d9_cell.log"),
-            ("d10_image_slicer",         "d10_slicer.log"),
-            ("stage_e.e1_",              "e1_controller.log"),      # e1_controller + e1_ocr_scouter
-            ("e5_text_block_visualizer", "e5_visualizer.log"),
-            ("e20_non_table_vision_ocr", "e20_vision_ocr.log"),
-            ("e21_context_extractor",    "e21_context.log"),
-            ("e25_paragraph_grouper",    "e25_coord_fitter.log"),
-            ("e30_table_structure",      "e30_table_struct.log"),
-            ("e31_table_vision_ocr",     "e31_table_ocr.log"),
-            ("e32_cell_candidate",       "e32_cell_merger.log"),
-            ("e37_embedded_cell",        "e37_embedded.log"),
-            ("e40_image_ssot",           "e40_ssot.log"),
-            ("f1_data_fusion_merger",    "f1_merger.log"),
-            ("f3_smart_date_normalizer", "f3_normalizer.log"),
-            ("f5_logical_table_joiner",  "f5_table_joiner.log"),
-            ("stage_g.g1_controller",    "g1_controller.log"),
-            ("g3_block_arranger",        "g3_block_arranger.log"),
-            ("g5_noise_eliminator",      "g5_noise_eliminator.log"),
-            ("g11_table_structurer",     "g11_table_structurer.log"),
-            ("g17_table_ai_processor",   "g17_table_ai_processor.log"),
-            ("g21_text_structurer",      "g21_text_structurer.log"),
-            ("g22_text_ai_processor",    "g22_text_ai_processor.log"),
-        ]:
+        for _mod, _filename in sorted(
+            [
+                ("a3_entry_point", "a3_entry_point.log"),
+                ("a5_", "a5_type_analyzer.log"),  # a5_type_analyzer + a5_gatekeeper
+                ("a6_dimension_measurer", "a6_dimension_measurer.log"),
+                ("b1_controller", "b1_controller.log"),
+                ("b3_pdf_word", "b3_pdf_word.log"),
+                ("b4_pdf_excel", "b4_pdf_excel.log"),
+                ("b5_pdf_ppt", "b5_pdf_ppt.log"),
+                ("b11_google_docs", "b11_google_docs.log"),
+                ("b12_google_sheets", "b12_google_sheets.log"),
+                ("b14_goodnotes", "b14_goodnotes.log"),
+                ("b30_illustrator", "b30_illustrator.log"),
+                ("b42_multicolumn", "b42_multi_column.log"),
+                ("b90_result_merger", "b90_result_merger.log"),
+                ("stage_d.d1_controller", "d1_controller.log"),
+                ("d3_vector_line_extractor", "d3_vector.log"),
+                ("d5_raster_line_detector", "d5_raster.log"),
+                ("d8_grid_analyzer", "d8_grid.log"),
+                ("d9_cell_identifier", "d9_cell.log"),
+                ("d10_image_slicer", "d10_slicer.log"),
+                ("stage_e.e1_", "e1_controller.log"),  # e1_controller + e1_ocr_scouter
+                ("e5_text_block_visualizer", "e5_visualizer.log"),
+                ("g24_table_structurer", "g24_table_structurer.log"),
+                ("e20_non_table_vision_ocr", "e20_vision_ocr.log"),
+                ("e21_context_extractor", "e21_context.log"),
+                ("e25_paragraph_grouper", "e25_coord_fitter.log"),
+                ("e30_table_structure", "e30_table_struct.log"),
+                ("e31_table_vision_ocr", "e31_table_ocr.log"),
+                ("e32_cell_candidate", "e32_cell_merger.log"),
+                ("e37_embedded_cell", "e37_embedded.log"),
+                ("e40_image_ssot", "e40_ssot.log"),
+                ("g19_ui_assembly", "g19_ui_assembly.log"),
+                ("g62_table_layout", "g62_table_layout.log"),
+                ("g61_layout_bridge", "g61_layout_bridge.log"),
+                ("g26_semantic_estimator", "g26_semantic_estimator.log"),
+                ("g36_lr_vertical", "g36_lr_vertical.log"),
+                ("f11_data_fusion_merger", "f11_merger.log"),
+                ("f13_smart_date_normalizer", "f13_normalizer.log"),
+                ("f17_stage_f_finalize", "f17_finalize.log"),
+                ("f5_logical_table_joiner", "f5_table_joiner.log"),
+                ("g11_controller", "g11_ui_delivery.log"),
+            ],
+            key=lambda t: t[1],
+        ):
             sid = logger.add(
                 str(_log_dir / _filename),
                 format="{time:HH:mm:ss} | {level:<5} | {message}",
@@ -282,40 +284,40 @@ class DebugPipeline:
             logger.info(f"[{substage_id}] サブステージキャッシュ読み込み: {fp}")
         return data
 
+    def _load_f_substage(self, substage_id: str) -> Optional[Dict[str, Any]]:
+        """F11/F13/F17 のサブステージキャッシュを読む（サブステージ JSON のみ）。"""
+        data = self.load_substage(substage_id)
+        legacy = {"F11": "F20", "F13": "F30", "F17": ("F40", "F50")}
+        if data is None and substage_id in legacy:
+            for old_id in (legacy[substage_id] if isinstance(legacy[substage_id], tuple) else (legacy[substage_id],)):
+                data = self.load_substage(old_id)
+                if data is not None:
+                    break
+        return data
+
+    def _load_g_substage(self, substage_id: str) -> Optional[Dict[str, Any]]:
+        """G11 のサブステージキャッシュ（F60 レガシー名を読む）。"""
+        data = self.load_substage(substage_id)
+        if data is None and substage_id == "G11":
+            data = self.load_substage("F60")
+        return data
+
     def _get_substage_data(self, substage_id: str, ctx: dict) -> Optional[Any]:
-        """サブステージ結果を取得（ctx → サブステージcache → フルステージcacheの順）"""
-        # 1. コンテキストから
+        """サブステージ結果を取得（実行中 ctx → サブステージ JSON のみ）。"""
         if ctx.get(substage_id) is not None:
             return ctx[substage_id]
-        # 2. サブステージキャッシュから
-        data = self.load_substage(substage_id)
-        if data is not None:
-            return data
-        # 3. フルステージキャッシュから抽出（Stage D のみ対応）
-        stage = self.SUBSTAGE_TO_STAGE.get(substage_id)
-        stage_data = self.load_stage(stage) if stage else None
-        if stage_data and stage == "D":
-            debug = stage_data.get('debug', {})
-            extract = {
-                "D3": "vector_lines", "D5": "raster_lines",
-                "D8": "grid_result", "D9": "cell_result",
-            }
-            if substage_id in extract:
-                return debug.get(extract[substage_id])
-            if substage_id == "D10":
-                return {
-                    'tables': stage_data.get('tables', []),
-                    'non_table_image_path': stage_data.get('non_table_image_path', ''),
-                    'metadata': stage_data.get('metadata', {}),
-                }
-        return None
+        return self.load_substage(substage_id)
 
     # ════════════════════════════════════════
     # 実行制御
     # ════════════════════════════════════════
 
     def _resolve_target(self, target: str) -> List[str]:
-        """ターゲットをサブステージリストに展開（"F"→["F1","F3","F5"]）"""
+        """ターゲットをサブステージリストに展開（"F"→["F11","F13","F17"]、"G"→["G11"]）"""
+        for legacy, new in (("F20", "F11"), ("F30", "F13"), ("F40", "F17"), ("F50", "F17"), ("F60", "G11")):
+            if target == legacy:
+                target = new
+                break
         if target in self.STAGES:
             return self.SUBSTAGES[target]
         if target in self.ALL_SUBSTAGES:
@@ -720,124 +722,129 @@ class DebugPipeline:
         ctx["E"] = stage_e
 
     # ════════════════════════════════════════
-    # Stage F（サブステージ: F1→F3→F5）
+    # Stage F（サブステージ: F11→F13→F17。データ平面のみ）
     # ════════════════════════════════════════
 
     def _exec_stage_f(self, ctx, active_set, force):
-        f_subs = {"F1", "F3", "F5"}
+        f_subs = {"F11", "F13", "F17"}
         if not (f_subs & active_set):
             ctx["F"] = self.load_stage("F")
             return
 
-        # F1: Data Fusion Merger
-        f1 = self.load_substage("F1")
-        if self._should_run("F1", active_set, force, f1 is not None):
-            logger.info("[F1] Data Fusion Merger 実行中...")
-            f1 = self._f1.merge(
+        # F11: Data Fusion Merger
+        f11 = self._load_f_substage("F11")
+        if self._should_run("F11", active_set, force, f11 is not None):
+            logger.info("[F11] Data Fusion Merger 実行中...")
+            f11 = self._f11.merge(
                 stage_a_result=ctx.get("A") or self.load_stage("A"),
                 stage_b_result=ctx.get("B") or self.load_stage("B"),
                 stage_d_result=ctx.get("D") or self.load_stage("D"),
                 stage_e_result=ctx.get("E") or self.load_stage("E"),
             )
-            self.save_substage("F1", f1)
-        ctx["F1"] = f1
+            self.save_substage("F11", f11)
+        ctx["F11"] = f11
 
-        if not f1 or not f1.get('success'):
-            logger.error("[F1] 統合失敗")
-            ctx["F"] = f1 or {'success': False}
+        if not f11 or not f11.get('success'):
+            logger.error("[F11] 統合失敗")
+            ctx["F"] = f11 or {'success': False}
             self.save_stage("F", ctx["F"])
             return
 
-        # F3: Smart Date/Time Normalizer
-        f3 = self.load_substage("F3")
-        if self._should_run("F3", active_set, force, f3 is not None):
-            logger.info("[F3] Smart Date/Time Normalizer 実行中...")
-            events = f1.get('events', [])
-            year_ctx = f1.get('document_info', {}).get('year_context')
-            if events:
-                f3 = self._f3.normalize_dates(events=events, year_context=year_ctx)
-            else:
-                f3 = {'success': True, 'normalized_events': [], 'normalization_count': 0}
-            self.save_substage("F3", f3)
-        ctx["F3"] = f3
+        merge_payload = dict(f11)
 
-        normalized_events = (
-            f3.get('normalized_events', [])
-            if f3 and f3.get('success')
-            else f1.get('events', [])
-        )
+        # F13: Smart Date/Time Normalizer
+        f13_cached = self._load_f_substage("F13")
+        if self._should_run("F13", active_set, force, f13_cached is not None):
+            logger.info("[F13] Smart Date/Time Normalizer 実行中...")
+            events = merge_payload.get('events', [])
+            year_ctx = merge_payload.get('document_info', {}).get('year_context')
+            merge_payload = self._f13.normalize(
+                events=events,
+                year_context=year_ctx,
+                merge_result=merge_payload,
+            )
+            self.save_substage("F13", {
+                'success': merge_payload.get('success', True),
+                'normalized_events': merge_payload.get(
+                    'normalized_events', merge_payload.get('events', [])
+                ),
+            })
+        elif f13_cached and f13_cached.get('success'):
+            merge_payload['normalized_events'] = f13_cached.get(
+                'normalized_events', merge_payload.get('events', [])
+            )
 
-        # F5: Logical Table Joiner
-        f5 = self.load_substage("F5")
-        if self._should_run("F5", active_set, force, f5 is not None):
-            logger.info("[F5] Logical Table Joiner 実行中...")
-            tables = f1.get('tables', [])
-            if tables:
-                f5 = self._f5.join_tables(tables)
-            else:
-                f5 = {'success': True, 'joined_tables': [], 'join_count': 0}
-            self.save_substage("F5", f5)
-        ctx["F5"] = f5
+        if not merge_payload.get('success', True):
+            logger.error("[F13] 日付正規化失敗")
+            ctx["F"] = merge_payload
+            self.save_stage("F", ctx["F"])
+            return
 
-        consolidated_tables = (
-            f5.get('joined_tables', [])
-            if f5 and f5.get('success')
-            else f1.get('tables', [])
-        )
+        # F17: Stage F データ平面出口
+        f17_cached = self._load_f_substage("F17")
+        if self._should_run("F17", active_set, force, f17_cached is not None):
+            logger.info("[F17] Stage F データ平面出口...")
+            stage_f = self._f17.join(merge_result=merge_payload)
+            self.save_substage("F17", stage_f)
+        else:
+            stage_f = f17_cached or self._f17.join(merge_result=merge_payload)
 
-        # Stage F 結果を合成・保存
-        metadata = f1.get('metadata', {})
-        if f3 and f3.get('success'):
-            metadata['total_tokens'] = metadata.get('total_tokens', 0) + f3.get('tokens_used', 0)
+        ctx["F17"] = stage_f
+        if not stage_f or not stage_f.get('success'):
+            logger.error("[F17] データ平面出口失敗")
+            ctx["F"] = stage_f or {'success': False}
+            self.save_stage("F", ctx["F"])
+            return
 
-        stage_f = {
-            'success': True,
-            'document_info': f1.get('document_info', {}),
-            'normalized_events': normalized_events,
-            'tasks': f1.get('tasks', []),
-            'notices': f1.get('notices', []),
-            'consolidated_tables': consolidated_tables,
-            'raw_integrated_text': f1.get('raw_integrated_text', ''),
-            'non_table_text': f1.get('non_table_text', ''),
-            'metadata': metadata
-        }
         self.save_stage("F", stage_f)
         ctx["F"] = stage_f
 
     # ════════════════════════════════════════
-    # Stage G（G1Controller: G1→G3→G5→G11→G17→G21→G22）
+    # Stage G（G11: レビュー用 ui_data）
     # ════════════════════════════════════════
 
     def _exec_stage_g(self, ctx, active_set, force):
-        g_subs = {"G1", "G3", "G5", "G11", "G17", "G21", "G22", "G"}
-        if not (g_subs & active_set):
+        if "G11" not in active_set:
             ctx["G"] = self.load_stage("G")
             return
 
         stage_f = ctx.get("F") or self.load_stage("F")
         if not stage_f:
-            logger.warning("[Stage G] Stage F データなし。スキップ。")
-            ctx["G"] = {'success': False, 'error': 'No Stage F data'}
+            logger.warning("[Stage G] G11 のみ指定だが Stage F のキャッシュがありません")
+            ctx["G"] = {"success": False, "error": "No Stage F data for G11"}
+            self.save_stage("G", ctx["G"])
             return
 
-        logger.info("[Stage G] G1Controller 実行中（G1→G3→G5→G11→G17→G21→G22）...")
-        # ★G-1はF-5の結果のみを受け取る（直前ステージのみ）
-        stage_g = self._g_controller.process(f5_result=stage_f)
-        self.save_stage("G", stage_g)
-        ctx["G"] = stage_g
+        g11_cached = self._load_g_substage("G11")
+        if not self._should_run("G11", active_set, force, g11_cached is not None):
+            ctx["G"] = self.load_stage("G") or g11_cached
+            return
 
-        ui_data = stage_g.get('ui_data', {})
-        final_metadata = stage_g.get('final_metadata', {})
+        logger.info("[G11] レビュー用 ui_data 組立（G11Controller）...")
+        out = self._g11_controller.process(stage_f_result=stage_f, log_dir=self.output_dir)
+        self.save_substage("G11", out)
 
-        if stage_g.get('success') and ui_data:
-            ui_path = self.output_dir / f"{self.uuid}_ui_data.json"
-            self._save_json(ui_path, ui_data)
-            logger.info(f"[Stage G] UI用データを保存: {ui_path}")
+        g_result: Dict[str, Any] = {
+            "success": bool(out.get("success")),
+            "ui_data": out.get("ui_data"),
+            "final_metadata": out.get("final_metadata"),
+        }
+        if not out.get("success"):
+            g_result["error"] = out.get("error")
+        else:
+            ui_data = out.get("ui_data") or {}
+            final_metadata = out.get("final_metadata") or {}
+            if ui_data:
+                ui_path = self.output_dir / f"{self.uuid}_ui_data.json"
+                self._save_json(ui_path, ui_data)
+                logger.info(f"[G11] UI用データを保存: {ui_path}")
+            if final_metadata:
+                meta_path = self.output_dir / f"{self.uuid}_final_metadata.json"
+                self._save_json(meta_path, final_metadata)
+                logger.info(f"[G11] final_metadata を保存: {meta_path}")
 
-        if stage_g.get('success') and final_metadata:
-            meta_path = self.output_dir / f"{self.uuid}_final_metadata.json"
-            self._save_json(meta_path, final_metadata)
-            logger.info(f"[Stage G] final_metadata（G11/G17/G21/G22）を保存: {meta_path}")
+        self.save_stage("G", g_result)
+        ctx["G"] = g_result
 
 
 def main():
@@ -852,20 +859,23 @@ def main():
   # Stage Bだけを再実行
   python run_debug_pipeline.py abc123 --stage B --force
 
-  # Stage DからGまで実行
-  python run_debug_pipeline.py abc123 --start D --end G --force
+  # Stage DからFまで実行
+  python run_debug_pipeline.py abc123 --start D --end F --force
 
-  # サブステージ F3（日付正規化）だけを再実行
-  python run_debug_pipeline.py abc123 --stage F3 --force
+  # サブステージ F13（日付正規化）だけを再実行
+  python run_debug_pipeline.py abc123 --stage F13 --force
 
   # サブステージ D8（格子解析）だけを再実行
   python run_debug_pipeline.py abc123 --stage D8 --force
 
-  # サブステージ G1からG5まで実行
-  python run_debug_pipeline.py abc123 --start G1 --end G5 --force
+  # サブステージ G11 のみ（レビュー用 ui_data。Stage F キャッシュ必須）
+  python run_debug_pipeline.py abc123 --stage G11 --force
 
-  # サブステージ D8からF3まで実行
-  python run_debug_pipeline.py abc123 --start D8 --end F3 --force
+  # レガシー: F60 は G11 と同義
+  python run_debug_pipeline.py abc123 --stage F60 --force
+
+  # サブステージ D8からF13まで実行
+  python run_debug_pipeline.py abc123 --start D8 --end F13 --force
 
   # タグ付きで保存（比較用）
   python run_debug_pipeline.py abc123 --stage E --tag "v2_test" --force
@@ -875,8 +885,8 @@ def main():
   Stage B: B1(Controller: 抽出＋削除統合)
   Stage D: D3(罫線抽出) D5(ラスター検出) D8(格子解析) D9(セル特定) D10(画像分割)
   Stage E: E1(OCR) E5(ブロック認識) E20(地の文抽出) E30(表抽出)
-  Stage F: F1(データ統合) F3(日付正規化) F5(表結合)
-  Stage G: G1(表再現) G3(ブロック整頓) G5(ノイズ除去)
+  Stage F: F11(データ統合) F13(日付正規化) F17(データ平面出口)
+  Stage G: G11(レビュー用 ui_data・表チェーン)
         """
     )
     parser.add_argument("uuid", help="対象のUUID（任意の識別子）")
@@ -884,17 +894,17 @@ def main():
     parser.add_argument(
         "--stage",
         choices=DebugPipeline.VALID_TARGETS,
-        help="対象ステージ/サブステージ（例: F, F3, D8）"
+        help="対象ステージ/サブステージ（例: F, F13, D8）"
     )
     parser.add_argument(
         "--start",
         choices=DebugPipeline.VALID_TARGETS,
-        help="開始ステージ/サブステージ（例: D, D8, F3）"
+        help="開始ステージ/サブステージ（例: D, D8, F13）"
     )
     parser.add_argument(
         "--end",
         choices=DebugPipeline.VALID_TARGETS,
-        help="終了ステージ/サブステージ（例: G, G5, F5）"
+        help="終了ステージ/サブステージ（例: F, G, G11, F17）"
     )
     parser.add_argument(
         "--force",

@@ -1,0 +1,2205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>パイプライン・ラボ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --bg-color: #f8fafc;
+            --surface: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --success: #059669;
+        }
+        body {
+            font-family: Inter, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: var(--surface);
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            z-index: 10;
+            flex-shrink: 0;
+        }
+        h1 { font-size: 1.25rem; font-weight: 700; margin: 0; color: var(--primary); }
+        button.btn-primary {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 0.65rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button.btn-primary:hover { background: var(--primary-hover); }
+        button.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+        button.btn-outline {
+            background: transparent;
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        #uploadView {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+        .upload-card {
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 3rem;
+            width: 100%;
+            max-width: 600px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8fafc;
+        }
+        .upload-area.dragover, .upload-area:hover {
+            border-color: var(--primary);
+            background: #eff6ff;
+        }
+        input[type="file"] { display: none; }
+        #workspaceView {
+            display: none;
+            flex: 1;
+            height: calc(100vh - 61px);
+            overflow: hidden;
+            min-height: 0;
+        }
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 120px 1fr 1fr;
+            height: 100%;
+            width: 100%;
+        }
+        .thumbnails {
+            background: #f1f5f9;
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 1rem 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        .thumb-wrap { position: relative; cursor: pointer; }
+        .thumb-item {
+            width: 80px;
+            height: 110px;
+            background: #fff;
+            border: 2px solid transparent;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+            object-fit: cover;
+            display: block;
+        }
+        .thumb-wrap.active .thumb-item { border-color: var(--primary); }
+        .thumb-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: var(--success);
+            color: #fff;
+            font-size: 0.6rem;
+            padding: 2px 5px;
+            border-radius: 10px;
+            display: none;
+        }
+        .thumb-wrap.has-data .thumb-badge { display: block; }
+        .preview-pane {
+            background: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            overflow: auto;
+            border-right: 1px solid var(--border);
+        }
+        #mainPreviewImg {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            background: #fff;
+        }
+        .data-pane {
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            min-height: 0;
+        }
+        .lab-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.92);
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .lab-overlay h2 { margin-top: 0; font-size: 1.1rem; }
+        .lab-overlay p { color: var(--text-muted); margin-bottom: 1rem; max-width: 360px; font-size: 0.9rem; line-height: 1.5; }
+        .data-header {
+            padding: 0.85rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            background: #f8fafc;
+            flex-shrink: 0;
+        }
+        .data-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        .edit-tabs { display: flex; gap: 0.45rem; }
+        .edit-tabs .tab-btn {
+            background: #f1f5f9;
+            border: 1px solid var(--border);
+            padding: 0.45rem 0.95rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-main);
+            font-family: inherit;
+        }
+        .edit-tabs .tab-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+        .data-body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            position: relative;
+        }
+        .editor-pane {
+            display: none;
+            flex: 1;
+            overflow: auto;
+            padding: 1.25rem 1.35rem;
+            min-height: 0;
+        }
+        .editor-pane.active { display: block; }
+        .editor-pane.raw-md-pane.active {
+            display: flex;
+            flex-direction: column;
+        }
+        .raw-md-wrap {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            gap: 0.5rem;
+        }
+        .lab-raw-md {
+            flex: 1;
+            width: 100%;
+            min-height: 220px;
+            resize: none;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.82rem;
+            line-height: 1.45;
+            box-sizing: border-box;
+        }
+        .reading-root { max-width: 100%; }
+        .reading-lead {
+            font-size: 0.95rem;
+            line-height: 1.65;
+            color: var(--text-main);
+            margin: 0 0 1rem;
+            padding: 1rem 1.1rem;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+        .reading-lead.muted { color: var(--text-muted); font-style: italic; }
+        .reading-tags { margin-bottom: 1.1rem; }
+        .reading-section {
+            margin-bottom: 1.5rem;
+        }
+        .reading-section h3 {
+            margin: 0 0 0.5rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: none;
+            letter-spacing: 0.02em;
+        }
+        .reading-prose {
+            font-size: 0.92rem;
+            line-height: 1.65;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 0;
+            padding: 0.85rem 1rem;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+        .reading-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.65rem;
+            font-size: 0.88rem;
+            line-height: 1.55;
+        }
+        .reading-card .rc-title { font-weight: 700; margin-bottom: 0.35rem; color: var(--text-main); }
+        .reading-card .rc-meta { font-size: 0.74rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+        table.reading-table {
+            width: max-content;
+            max-width: 100%;
+            min-width: min(100%, 320px);
+            table-layout: auto;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+            background: #fff;
+            font-size: 0.82rem;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        table.reading-table th, table.reading-table td {
+            border: 1px solid var(--border);
+            padding: 0.45rem 0.55rem;
+            text-align: left;
+            vertical-align: top;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            /* セル幅を強く絞ると行数だけ増え、内側スクロールと同様に一覧性が落ちる */
+            max-width: none;
+        }
+        table.reading-table th {
+            background: #f8fafc;
+            font-weight: 600;
+            font-size: 0.78rem;
+        }
+        /* 縦は親（.editor-pane）に任せ、表を切らない。横にだけはみ出す表は横スクロール */
+        .reading-table-wrap {
+            overflow-x: auto;
+            overflow-y: visible;
+            max-height: none;
+            margin-bottom: 0.25rem;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            -webkit-overflow-scrolling: touch;
+        }
+        .reading-table-wrap table.reading-table { margin-bottom: 0; border-radius: 0; border: none; }
+        .reading-table-caption {
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin: 0.75rem 0 0.4rem;
+            color: var(--text-main);
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #e0e7ff;
+            color: #3730a3;
+            font-size: 0.72rem;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .error-box {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+        pre.raw {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: ui-monospace, monospace;
+            font-size: 0.76rem;
+            background: #f8fafc;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            max-height: 380px;
+            overflow: auto;
+        }
+        pre.log-pre {
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: ui-monospace, monospace;
+            font-size: 0.72rem;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 0.75rem;
+            border-radius: 8px;
+            max-height: min(52vh, 480px);
+            overflow: auto;
+            margin: 0;
+        }
+        details.acc-panel {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.65rem;
+            background: #fafafa;
+        }
+        details.acc-panel > summary {
+            padding: 0.55rem 0.9rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.84rem;
+            color: var(--text-main);
+            list-style: none;
+            user-select: none;
+        }
+        details.acc-panel > summary::-webkit-details-marker { display: none; }
+        details.acc-panel[open] > summary {
+            border-bottom: 1px solid var(--border);
+            background: #f1f5f9;
+        }
+        .acc-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0.75rem 0;
+        }
+        button.btn-copy {
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: #fff;
+            cursor: pointer;
+            color: var(--text-main);
+        }
+        button.btn-copy:hover { border-color: var(--primary); color: var(--primary); }
+        .acc-body { padding: 0.65rem 0.9rem 0.85rem; }
+        .log-note { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 0.5rem; }
+        .loader-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.82);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        dialog.lab-dialog {
+            max-width: min(920px, 96vw);
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0;
+        }
+        dialog.lab-dialog pre {
+            margin: 0;
+            max-height: 70vh;
+            overflow: auto;
+            padding: 1rem;
+            font-size: 0.72rem;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+            gap: 0.5rem;
+            margin: 0.65rem 0 0.85rem;
+        }
+        .stat-cell {
+            background: #f1f5f9;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.45rem 0.55rem;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+        .stat-cell strong {
+            display: block;
+            font-size: 1.05rem;
+            color: var(--primary);
+            margin-top: 2px;
+        }
+        .tag-pill {
+            display: inline-block;
+            background: #ede9fe;
+            color: #5b21b6;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            margin: 2px 4px 2px 0;
+            font-weight: 500;
+        }
+        .struct-block { margin: 0.65rem 0; }
+        .struct-block h5 {
+            margin: 0 0 0.35rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+        .data-table-wrap {
+            overflow-x: auto;
+            overflow-y: visible;
+            max-height: none;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.65rem;
+        }
+        table.lab-grid {
+            border-collapse: collapse;
+            font-size: 0.72rem;
+            width: 100%;
+        }
+        table.lab-grid td, table.lab-grid th {
+            border: 1px solid var(--border);
+            padding: 4px 6px;
+            vertical-align: top;
+        }
+        .debug-stack { font-size: 0.82rem; line-height: 1.55; }
+        table.lab-grid th {
+            background: #f1f5f9;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        ul.struct-list { margin: 0; padding-left: 1.05rem; font-size: 0.76rem; }
+        .empty-hint { color: var(--text-muted); font-size: 0.76rem; font-style: italic; margin: 0.35rem 0; }
+        .lab-glossary {
+            font-size: 0.74rem;
+            color: var(--text-muted);
+            line-height: 1.55;
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.55rem 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .lab-glossary summary { cursor: pointer; font-weight: 600; color: var(--text-main); }
+        .lab-glossary code { font-size: 0.68rem; }
+        .pre-reading-plain {
+            max-height: min(48vh, 400px);
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            margin: 0;
+            padding: 0.65rem 0.75rem;
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .reading-stream-para { margin-bottom: 0.65rem; }
+        .reading-stream-d { margin-bottom: 0.85rem; }
+        .reading-stream-d img { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+        details.reading-table-fold {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            background: #fff;
+        }
+        details.reading-table-fold > summary {
+            cursor: pointer;
+            padding: 0.45rem 0.65rem;
+            font-weight: 600;
+            font-size: 0.82rem;
+            list-style: none;
+        }
+        details.reading-table-fold > summary::-webkit-details-marker { display: none; }
+        details.reading-table-fold[open] > summary { border-bottom: 1px solid var(--border); }
+        details.reading-table-fold .reading-table-wrap { margin: 0; border-radius: 0 0 8px 8px; border: none; max-height: none; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>パイプライン・ラボ</h1>
+        <div style="display:flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);" id="headerStatus">アップロード待ち…</span>
+            <button type="button" class="btn-outline" id="btnFullJson" disabled>詳細 JSON</button>
+        </div>
+    </header>
+
+    <div id="uploadView">
+        <div class="upload-card">
+            <h2 style="margin-top:0">PDF を 1 ファイル選択</h2>
+            <p style="color:var(--text-muted); margin-bottom:2rem;">
+                左でページ選択 → 実行で <strong>A→G</strong>（<code>ui_data</code> 等）。右は <strong>Visual Editor / Raw MD / ログ</strong> の 3 タブ。
+                1 ページずつ手動実行（キュー・別プロセスなし）。<strong>このページと同じオリジン</strong>で Flask を起動して開いてください（<code>file://</code> 直開きは不可）。既定ポートは 5055。
+            </p>
+            <p id="labApiPing" class="empty-hint" style="margin-top:-0.75rem;margin-bottom:1.25rem;font-style:normal;line-height:1.45;"></p>
+            <div class="upload-area" id="dropZone">
+                <p>PDF をドラッグ＆ドロップ</p>
+                <div style="display:flex;gap:0.75rem;justify-content:center;margin-top:1rem;flex-wrap:wrap;">
+                    <button type="button" class="btn-primary" style="padding:0.5rem 1rem;" id="localUploadBtn">ローカルから追加</button>
+                    <button type="button" class="btn-outline" style="padding:0.5rem 1rem;" id="driveUploadBtn">Googleドライブから追加</button>
+                </div>
+                <input type="file" id="fileInput" accept=".pdf,application/pdf">
+            </div>
+            <p style="margin-top:1rem;font-size:0.75rem;color:var(--text-muted);">要 GOOGLE_AI_API_KEY（.env）</p>
+        </div>
+    </div>
+
+    <div id="workspaceView">
+        <div class="workspace-grid">
+            <div class="thumbnails" id="thumbnailList"></div>
+            <div class="preview-pane"><img id="mainPreviewImg" src="" alt="Preview"></div>
+            <div class="data-pane" id="dataPane">
+                <div class="lab-overlay" id="labOverlay">
+                    <h2>このページは未処理です</h2>
+                    <p>サムネでページを選び、<strong>このページだけ</strong>パイプラインを実行します。</p>
+                    <button type="button" class="btn-primary" style="width:280px;" id="overlayRunBtn">A→G を実行（ページ <span id="overlayPageNum">1</span>）</button>
+                </div>
+                <div class="data-header">
+                    <div class="data-header-row">
+                        <div class="edit-tabs" role="tablist">
+                            <button type="button" class="tab-btn active" id="tabVisualEditor" role="tab" aria-selected="true">Visual Editor</button>
+                            <button type="button" class="tab-btn" id="tabRawMd" role="tab" aria-selected="false">Raw MD</button>
+                            <button type="button" class="tab-btn" id="tabLog" role="tab" aria-selected="false">ログ</button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;">
+                            <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;" id="dataHeaderMeta">ページ 1 / 1</span>
+                            <button type="button" class="btn-primary" style="padding:0.45rem 1rem;font-size:0.8rem;" id="headerRunBtn">再実行 / このページで実行</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 1rem;font-size:0.8rem;" id="downloadResultBtn">MD保存PDFをダウンロード</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 1rem;font-size:0.8rem;display:none;" id="saveToDriveBtn">ドライブ上書き</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="data-body">
+                    <div id="paneVisualEditor" class="editor-pane active" aria-label="Visual Editor"></div>
+                    <div id="paneRawMd" class="editor-pane raw-md-pane" aria-label="Raw MD"></div>
+                    <div id="paneLog" class="editor-pane" aria-label="ログ"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loader-overlay" id="loaderOverlay">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem; font-weight: 600;" id="loaderText">処理中…</p>
+    </div>
+
+    <dialog class="lab-dialog" id="dlgDrive" style="width:480px;max-width:95vw;">
+        <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;flex:1;min-width:0;">
+                <button type="button" class="btn-outline" id="dlgDriveBack" style="padding:0.3rem 0.6rem;font-size:0.8rem;">← 戻る</button>
+                <span id="dlgDrivePath" style="font-size:0.8rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            </div>
+            <button type="button" class="btn-outline" id="dlgDriveClose">閉じる</button>
+        </div>
+        <ul id="driveFileList" style="margin:0;padding:0;list-style:none;max-height:60vh;overflow-y:auto;"></ul>
+    </dialog>
+
+    <dialog class="lab-dialog" id="dlgJson">
+        <div style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <strong id="dlgJsonTitle">JSON</strong>
+            <button type="button" class="btn-outline" id="dlgClose">閉じる</button>
+        </div>
+        <pre id="dlgJsonBody"></pre>
+    </dialog>
+
+<script>
+(function(){
+    if (window.location.protocol === 'file:') {
+        document.body.innerHTML = '<div style="padding:2rem;font-family:system-ui,Segoe UI,sans-serif;max-width:36rem;line-height:1.5">' +
+            '<h1 style="margin-top:0">pipeline-lab</h1>' +
+            '<p>この UI は <strong>ファイルを直接開く（file://）</strong> では動きません。ブラウザの「Failed to fetch」はこの場合に典型です。</p>' +
+            '<p>リポジトリルートで <code style="background:#f1f5f9;padding:0.15rem 0.4rem;border-radius:4px">python services/pipeline-lab/app.py</code> を実行し、次を開いてください。</p>' +
+            '<p><a href="http://127.0.0.1:5055/pipeline-lab/">http://127.0.0.1:5055/pipeline-lab/</a></p></div>';
+        return;
+    }
+    /** リバースプロキシで /prefix/pipeline-lab/ となる場合も、現在の URL から API ベースを決める */
+    const API_PREFIX = (function () {
+        const path = window.location.pathname || '';
+        const key = '/pipeline-lab';
+        const idx = path.indexOf(key);
+        if (idx === -1) return key;
+        const after = path.slice(idx + key.length);
+        if (after === '' || after === '/' || after.startsWith('/')) {
+            return path.slice(0, idx + key.length);
+        }
+        return key;
+    })();
+
+    const labApiPing = document.getElementById('labApiPing');
+    async function refreshLabApiPing() {
+        if (!labApiPing) return;
+        const healthUrl = window.location.origin + API_PREFIX + '/api/health';
+        try {
+            const r = await fetch(API_PREFIX + '/api/health', { method: 'GET', cache: 'no-store' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            labApiPing.textContent = '接続 OK';
+            labApiPing.style.color = 'var(--text-muted)';
+        } catch (e) {
+            labApiPing.style.color = '#b91c1c';
+            labApiPing.innerHTML = 'サーバーに届いていません。ターミナルで ' +
+                '<code style="background:#f1f5f9;padding:0.08rem 0.3rem;border-radius:4px">python services/pipeline-lab/app.py</code> を実行（ブラウザは自動で開きます）→ ' +
+                '<a href="' + healthUrl + '" target="_blank" rel="noopener">health</a>';
+        }
+    }
+    void refreshLabApiPing();
+
+    /** reading の数値は reading のみ。欠けていれば欠損として扱う（別フィールドからは推測しない） */
+    function readingGUiTableCount(r) {
+        if (!r || typeof r !== 'object') return null;
+        if (r.g_ui_table_count != null) return r.g_ui_table_count;
+        return null;
+    }
+    function readingStageDTableCount(r) {
+        if (!r || typeof r !== 'object') return null;
+        if (r.stage_d_table_count != null) return r.stage_d_table_count;
+        return null;
+    }
+    /** reading.stage_e_non_table_plain … lab では F 出口の non_table_text（B+E 統合）。欠損は旧 JSON。 */
+    function readingStageEPlainState(r) {
+        if (!r || typeof r !== 'object') return { kind: 'missing_key', text: '' };
+        if (!Object.prototype.hasOwnProperty.call(r, 'stage_e_non_table_plain')) {
+            return { kind: 'missing_key', text: '' };
+        }
+        var t = r.stage_e_non_table_plain;
+        if (typeof t !== 'string') return { kind: 'bad_type', text: '' };
+        return { kind: 'ok', text: t };
+    }
+
+    const uploadView = document.getElementById('uploadView');
+    const workspaceView = document.getElementById('workspaceView');
+    const loaderOverlay = document.getElementById('loaderOverlay');
+    const loaderText = document.getElementById('loaderText');
+    const headerStatus = document.getElementById('headerStatus');
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const labOverlay = document.getElementById('labOverlay');
+    const overlayRunBtn = document.getElementById('overlayRunBtn');
+    const overlayPageNum = document.getElementById('overlayPageNum');
+    const headerRunBtn = document.getElementById('headerRunBtn');
+    const btnFullJson = document.getElementById('btnFullJson');
+    const paneVisualEditor = document.getElementById('paneVisualEditor');
+    const paneRawMd = document.getElementById('paneRawMd');
+    const paneLog = document.getElementById('paneLog');
+    const tabVisualEditor = document.getElementById('tabVisualEditor');
+    const tabRawMd = document.getElementById('tabRawMd');
+    const tabLog = document.getElementById('tabLog');
+    const dataHeaderMeta = document.getElementById('dataHeaderMeta');
+
+    let appState = {
+        sessionId: null,
+        safeFilename: null,
+        pages: [],
+        currentPage: 0,
+    };
+
+    function showLoader(t) {
+        loaderText.textContent = t || '処理中…';
+        loaderOverlay.style.display = 'flex';
+    }
+    function hideLoader() { loaderOverlay.style.display = 'none'; }
+
+    ['dragenter','dragover','dragleave','drop'].forEach(ev => {
+        dropZone.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); });
+    });
+    dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+        dropZone.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (!files || !files.length) return;
+        if (files.length > 1) {
+            alert('PDF は 1 ファイルだけドロップしてください。');
+            return;
+        }
+        const f = files[0];
+        if (f && f.name.toLowerCase().endsWith('.pdf')) handleFile(f);
+        else alert('PDF のみ対応です');
+    });
+    dropZone.addEventListener('click', e => {
+        if (e.target !== document.getElementById('localUploadBtn')) fileInput.click();
+    });
+    document.getElementById('localUploadBtn').addEventListener('click', e => {
+        e.stopPropagation();
+        fileInput.click();
+    });
+    fileInput.addEventListener('change', e => {
+        const f = e.target.files && e.target.files[0];
+        if (f) handleFile(f);
+    });
+
+    async function handleFile(file) {
+        if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+            alert('PDF のみ対応です');
+            return;
+        }
+        showLoader('アップロードとページ準備中…');
+        const fd = new FormData();
+        fd.append('pdf_file', file);
+        try {
+            const res = await fetch(API_PREFIX + '/api/upload', { method: 'POST', body: fd });
+            if (!res.ok) {
+                let detail = 'HTTP ' + res.status;
+                try {
+                    const errBody = await res.json();
+                    if (errBody && errBody.error) detail = String(errBody.error);
+                } catch (_) { /* keep detail */ }
+                throw new Error(detail);
+            }
+            let json;
+            try {
+                json = await res.json();
+            } catch (_) {
+                throw new Error('サーバーの応答が JSON ではありません。pipeline-lab が起動しているか確認してください。');
+            }
+            if (!json.success) throw new Error(json.error || 'upload failed');
+            appState.sessionId = json.session_id || json.file_id;
+            appState.safeFilename = json.safe_filename || json.filename || file.name;
+            appState.pages = (json.pages || []).map((p) => ({
+                page_index: p.page_index,
+                image_url: p.image_url || p.preview_url,
+                pipeline_result: null,
+            }));
+            appState.currentPage = 0;
+            initWorkspace();
+        } catch (err) {
+            var em = (err && err.message) ? String(err.message) : String(err);
+            if (err && err.name === 'TypeError' && /fetch|Load failed|NetworkError/i.test(em)) {
+                em = '接続失敗（Failed to fetch）。上の「API に届いていません」案内を確認し、pipeline-lab を起動してから再試行してください。（' + em + '）';
+            }
+            alert(em);
+        } finally {
+            hideLoader();
+        }
+    }
+
+    function initWorkspace() {
+        uploadView.style.display = 'none';
+        workspaceView.style.display = 'block';
+        headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ' + appState.pages.length + ' ページ';
+        btnFullJson.disabled = true;
+        renderThumbnails();
+        loadActivePage();
+    }
+
+    function pageHasSuccess(pi) {
+        const p = appState.pages[pi];
+        return !!(p && p.pipeline_result && p.pipeline_result.success);
+    }
+
+    function renderThumbnails() {
+        const list = document.getElementById('thumbnailList');
+        list.innerHTML = '';
+        appState.pages.forEach((p, idx) => {
+            const wrap = document.createElement('div');
+            const ok = pageHasSuccess(idx);
+            wrap.className = 'thumb-wrap' + (idx === appState.currentPage ? ' active' : '') + (ok ? ' has-data' : '');
+            wrap.innerHTML = '<img class="thumb-item" src="' + p.image_url + '" alt=""><div class="thumb-badge">✓</div>';
+            wrap.onclick = () => {
+                appState.currentPage = idx;
+                document.querySelectorAll('.thumb-wrap').forEach(w => w.classList.remove('active'));
+                wrap.classList.add('active');
+                loadActivePage();
+            };
+            list.appendChild(wrap);
+        });
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    /** 読み取り用：先頭行から列数を推定（ヘッダーが広い表で null 列だらけになるのを防ぐ） */
+    function readingGuessTableMaxCols(rows) {
+        if (!rows || !rows.length) return 32;
+        var r0 = rows[0];
+        if (r0 != null && typeof r0 === 'object' && !Array.isArray(r0)) {
+            return Math.min(80, Math.max(4, Object.keys(r0).length));
+        }
+        if (Array.isArray(r0)) return Math.min(80, Math.max(4, r0.length));
+        return 32;
+    }
+
+    function setLabTab(which) {
+        var v = which === 'visual';
+        var r = which === 'rawmd';
+        var l = which === 'log';
+        tabVisualEditor.classList.toggle('active', v);
+        tabRawMd.classList.toggle('active', r);
+        tabLog.classList.toggle('active', l);
+        tabVisualEditor.setAttribute('aria-selected', v ? 'true' : 'false');
+        tabRawMd.setAttribute('aria-selected', r ? 'true' : 'false');
+        tabLog.setAttribute('aria-selected', l ? 'true' : 'false');
+        paneVisualEditor.classList.toggle('active', v);
+        paneRawMd.classList.toggle('active', r);
+        paneLog.classList.toggle('active', l);
+    }
+    tabVisualEditor.addEventListener('click', function () { setLabTab('visual'); });
+    tabRawMd.addEventListener('click', function () { setLabTab('rawmd'); });
+    tabLog.addEventListener('click', function () { setLabTab('log'); });
+
+    function pickStr(obj, keys) {
+        if (!obj || typeof obj !== 'object') return '';
+        for (var i = 0; i < keys.length; i++) {
+            var v = obj[keys[i]];
+            if (v != null && String(v).trim()) return String(v).trim();
+        }
+        return '';
+    }
+
+    function formatKeyValues(item, maxKeys) {
+        maxKeys = maxKeys || 8;
+        var parts = [];
+        var keys = Object.keys(item || {});
+        for (var i = 0; i < keys.length && parts.length < maxKeys; i++) {
+            var k = keys[i], val = item[k];
+            if (val == null || val === '') continue;
+            if (typeof val === 'object') val = JSON.stringify(val);
+            var s = String(val);
+            if (s.length > 140) s = s.slice(0, 140) + '…';
+            parts.push(k + ': ' + s);
+        }
+        return parts.join(' · ');
+    }
+
+    function copyToClipboard(text) {
+        const t = text || '';
+        if (!t) {
+            alert('コピーする内容がありません。');
+            return;
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(() => alert('クリップボードにコピーしました')).catch(fallbackCopy);
+        } else {
+            fallbackCopy();
+        }
+        function fallbackCopy() {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = t;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+                alert('クリップボードにコピーしました');
+            } catch (e2) {
+                alert('コピーに失敗しました: ' + e2);
+            }
+        }
+    }
+
+    function wireCopyButtons() {
+        const b1 = document.getElementById('btnCopyPipelineLog');
+        const b2 = document.getElementById('btnCopyStageD');
+        if (b1) {
+            b1.onclick = function () {
+                copyToClipboard(window.__lastPipelineLog || '');
+            };
+        }
+        const b56 = document.getElementById('btnCopyF46Log');
+        const b57 = document.getElementById('btnCopyF47Log');
+        if (b56) {
+            b56.onclick = function () {
+                copyToClipboard(window.__lastF46Log || '');
+            };
+        }
+        if (b57) {
+            b57.onclick = function () {
+                copyToClipboard(window.__lastF47Log || '');
+            };
+        }
+        if (b2) {
+            b2.onclick = function () {
+                copyToClipboard(window.__lastStageDJson || '');
+            };
+        }
+    }
+
+    /** 表セル表示: JSON の null / 文字列 "null" を空セルに（PDF と一致しないプレースホルダの視覚ノイズを減らす） */
+    function labEscapeCellContent(v) {
+        if (v != null && typeof v === 'object') {
+            return escapeHtml(JSON.stringify(v));
+        }
+        if (v == null || v === '') {
+            return '';
+        }
+        if (typeof v === 'string') {
+            var t = v.trim();
+            if (t === '' || t.toLowerCase() === 'null') {
+                return '';
+            }
+            return escapeHtml(v);
+        }
+        return escapeHtml(String(v));
+    }
+
+    function renderTableHtml(rows, maxR, maxC, variant) {
+        variant = variant || 'compact';
+        maxR = maxR || 25;
+        maxC = maxC || 14;
+        var wrapClass = variant === 'reading' ? 'reading-table-wrap' : 'data-table-wrap';
+        var tblClass = variant === 'reading' ? 'reading-table' : 'lab-grid';
+        if (!rows || !rows.length) {
+            return '<p class="empty-hint">行データなし</p>';
+        }
+        var slice = rows.slice(0, maxR);
+        var first = slice[0];
+        var thead = '';
+        var body = '';
+        if (first != null && typeof first === 'object' && !Array.isArray(first)) {
+            var keys = Object.keys(first);
+            var cols = keys.slice(0, maxC);
+            thead = '<tr>' + cols.map(function (k) { return '<th>' + escapeHtml(k) + '</th>'; }).join('') + '</tr>';
+            body = slice.map(function (row) {
+                return '<tr>' + cols.map(function (k) {
+                    var v = row[k];
+                    return '<td>' + labEscapeCellContent(v) + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+        } else {
+            body = slice.map(function (row) {
+                var cells = Array.isArray(row) ? row.slice(0, maxC) : [row];
+                return '<tr>' + cells.map(function (c) {
+                    return '<td>' + labEscapeCellContent(c) + '</td>';
+                }).join('') + '</tr>';
+            }).join('');
+        }
+        var more = rows.length > maxR
+            ? '<p class="log-note">+' + (rows.length - maxR) + ' 行（全文は詳細 JSON）</p>'
+            : '';
+        return '<div class="' + wrapClass + '"><table class="' + tblClass + '">' +
+            (thead ? '<thead>' + thead + '</thead>' : '') +
+            '<tbody>' + body + '</tbody></table></div>' + more;
+    }
+
+    function renderHtmlTableFromRows(rows, maxR, maxC) {
+        return renderTableHtml(rows, maxR, maxC, 'compact');
+    }
+
+    function mdEscapeCell(c) {
+        if (c != null && typeof c === 'object') {
+            return JSON.stringify(c).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
+        }
+        if (c == null || c === '') {
+            return '';
+        }
+        if (typeof c === 'string' && c.trim().toLowerCase() === 'null') {
+            return '';
+        }
+        return String(c).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
+    }
+
+    function labNormalizeHeaderRowsForMd(meta, numRows) {
+        var raw = meta && meta.header_rows;
+        if (!raw || !numRows) return [];
+        var hr = [];
+        for (var i = 0; i < raw.length; i++) {
+            var x = raw[i];
+            var n = typeof x === 'number' ? x : parseInt(String(x), 10);
+            if (!isNaN(n) && n >= 0 && n < numRows) hr.push(n);
+        }
+        hr.sort(function (a, b) { return a - b; });
+        var uniq = [];
+        for (var j = 0; j < hr.length; j++) {
+            if (j === 0 || hr[j] !== hr[j - 1]) uniq.push(hr[j]);
+        }
+        hr = uniq;
+        if (!hr.length) return [];
+        var mx = Math.max.apply(null, hr);
+        if (mx >= numRows - 1) {
+            if (numRows === 1) return [];
+            return [0];
+        }
+        return hr;
+    }
+
+    function mdArrayTableBodyStart(tbl, rows, maxR) {
+        if (maxR <= 1) {
+            var dsr0 = (tbl.metadata || {}).data_start_row;
+            if (typeof dsr0 === 'number' && dsr0 === 0) return 0;
+            return maxR;
+        }
+        var meta = tbl.metadata || {};
+        var dsr = meta.data_start_row;
+        if (typeof dsr === 'number' && dsr === Math.floor(dsr) && dsr >= 0 && dsr <= rows.length) {
+            return Math.min(dsr, maxR);
+        }
+        var hr = labNormalizeHeaderRowsForMd(meta, rows.length);
+        if (hr.length) {
+            return Math.min(Math.max.apply(null, hr) + 1, maxR);
+        }
+        if (tbl.headers && tbl.headers.length && maxR >= 2 && Array.isArray(rows[0])) {
+            if (typeof dsr === 'number' && dsr === Math.floor(dsr) && dsr >= 0) {
+                return Math.min(dsr, maxR);
+            }
+            var h0 = rows[0];
+            var c0 = h0 && h0.length ? String(h0[0] || '').trim() : '';
+            if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(c0)) {
+                return 0;
+            }
+            return 1;
+        }
+        return 0;
+    }
+
+    function mdColumnHeadersFromTable(tbl, rows, maxR, maxC) {
+        var hdr = tbl.headers;
+        if (hdr && hdr.length) {
+            var out = hdr.slice(0, maxC);
+            while (out.length < maxC) {
+                out.push('列' + (out.length + 1));
+            }
+            return out.map(mdEscapeCell);
+        }
+        var meta = tbl.metadata || {};
+        var hNorm = labNormalizeHeaderRowsForMd(meta, rows.length);
+        if (hNorm.length > 0 && rows.length > hNorm.length) {
+            var hEndRaw = Math.max.apply(null, hNorm) + 1;
+            var dsrL = meta.data_start_row;
+            var hEnd = hEndRaw;
+            if (typeof dsrL === 'number' && dsrL === Math.floor(dsrL) && dsrL > 0 && dsrL <= rows.length) {
+                hEnd = Math.min(dsrL, hEndRaw, maxR);
+            } else {
+                hEnd = Math.min(hEndRaw, maxR);
+            }
+            var names = [];
+            for (var c = 0; c < maxC; c++) {
+                var parts = [];
+                for (var hi = 0; hi < hEnd && hi < maxR; hi++) {
+                    var rw = rows[hi];
+                    var cells = Array.isArray(rw) ? rw : [];
+                    if (c < cells.length && cells[c] != null && String(cells[c]).trim()) {
+                        parts.push(String(cells[c]).trim());
+                    }
+                }
+                names.push(parts.length ? mdEscapeCell(parts.join(' / ')) : ('列' + (c + 1)));
+            }
+            return names;
+        }
+        if (maxR >= 2 && Array.isArray(rows[0])) {
+            var h0 = rows[0];
+            var ns = [];
+            for (var c2 = 0; c2 < maxC; c2++) {
+                var v = c2 < h0.length ? h0[c2] : '';
+                ns.push(mdEscapeCell(v) || ('列' + (c2 + 1)));
+            }
+            return ns;
+        }
+        return Array.from({ length: maxC }, function (_, c) { return '列' + (c + 1); });
+    }
+
+    function appendMarkdownForTable(lines, tbl, ti) {
+        var cap = tbl.table_id || tbl.description || ('表 ' + (ti + 1));
+        lines.push('## ' + String(cap));
+        lines.push('');
+        var rows = tbl.rows || [];
+        var maxR = Math.min(rows.length, 400);
+        if (!maxR) {
+            lines.push('_(行なし)_');
+            lines.push('');
+            return;
+        }
+        var first = rows[0];
+        if (first != null && typeof first === 'object' && !Array.isArray(first)) {
+            var colKeys = Object.keys(first);
+            lines.push('| ' + colKeys.map(function (k) { return mdEscapeCell(k); }).join(' | ') + ' |');
+            lines.push('| ' + colKeys.map(function () { return '---'; }).join(' | ') + ' |');
+            for (var ri = 0; ri < maxR; ri++) {
+                var row = rows[ri];
+                lines.push('| ' + colKeys.map(function (k) {
+                    return mdEscapeCell(row && row[k] != null ? row[k] : '');
+                }).join(' | ') + ' |');
+            }
+        } else {
+            var maxC = 0;
+            for (var j = 0; j < maxR; j++) {
+                var rw = rows[j];
+                var cells = Array.isArray(rw) ? rw : (rw != null ? [rw] : []);
+                maxC = Math.max(maxC, cells.length);
+            }
+            if (maxC < 1) maxC = 1;
+            var hdrCells = mdColumnHeadersFromTable(tbl, rows, maxR, maxC);
+            var bodyStart = mdArrayTableBodyStart(tbl, rows, maxR);
+            lines.push('| ' + hdrCells.join(' | ') + ' |');
+            lines.push('| ' + hdrCells.map(function () { return '---'; }).join(' | ') + ' |');
+            for (var ri2 = bodyStart; ri2 < maxR; ri2++) {
+                var rw2 = rows[ri2];
+                var cells2 = Array.isArray(rw2) ? rw2.slice(0, maxC) : [rw2];
+                while (cells2.length < maxC) cells2.push('');
+                lines.push('| ' + cells2.map(mdEscapeCell).join(' | ') + ' |');
+            }
+        }
+        if (rows.length > maxR) {
+            lines.push('');
+            lines.push('_… +' + (rows.length - maxR) + ' 行省略_');
+        }
+        lines.push('');
+    }
+
+    /** embedder の Raw MD に近い参照用: Visual と同じ visual_stream 配列順（結合なし）、または従来の非表一括 + 表 */
+    function buildSyntheticMarkdown(data) {
+        var lines = [];
+        var r = data.reading || {};
+        var ud = data.ui_data_json || {};
+        var tabs = Array.isArray(ud.tables) ? ud.tables : [];
+        var vs = readingVisualStream(data);
+        if (vs.length) {
+            var proseHdr = false;
+            var tableHdr = false;
+            vs.forEach(function (seg) {
+                if (!seg) return;
+                var k = seg.kind;
+                if (k === 'non_table_paragraph') {
+                    var t = String(seg.text || '').trim();
+                    if (!t) return;
+                    if (!proseHdr) {
+                        lines.push('## 非表（F 地の文）');
+                        lines.push('');
+                        proseHdr = true;
+                    } else {
+                        lines.push('');
+                    }
+                    lines.push(t);
+                } else if (k === 'g21_article') {
+                    if (streamHasF1ProseSegments(vs)) return;
+                    var gb = String(seg.body || '').trim();
+                    if (!gb) return;
+                    if (!proseHdr) {
+                        lines.push('## 非表（F 地の文）');
+                        lines.push('');
+                        proseHdr = true;
+                    } else {
+                        lines.push('');
+                    }
+                    lines.push(gb);
+                } else if (k === 'g_table') {
+                    var ti = typeof seg.table_index === 'number' ? seg.table_index : 0;
+                    var tbl = tabs[ti];
+                    if (!tbl) return;
+                    if (!tableHdr) {
+                        lines.push('');
+                        lines.push('## 表（ui_data.tables）');
+                        lines.push('');
+                        tableHdr = true;
+                    }
+                    appendMarkdownForTable(lines, tbl, ti);
+                } else if (k === 'g_table_group') {
+                    if (!tableHdr) {
+                        lines.push('');
+                        lines.push('## 表（ui_data.tables）');
+                        lines.push('');
+                        tableHdr = true;
+                    }
+                    var idxs = Array.isArray(seg.table_indices) ? seg.table_indices : [];
+                    idxs.forEach(function (ti) {
+                        var tbl = tabs[ti];
+                        if (!tbl) return;
+                        appendMarkdownForTable(lines, tbl, ti);
+                    });
+                }
+            });
+        } else {
+            var f1Blocks = Array.isArray(r.non_table_text_blocks) ? r.non_table_text_blocks.slice() : [];
+            if (f1Blocks.length) {
+                f1Blocks.sort(function (a, b) {
+                    var ya = Number(a && a.y0) || 0;
+                    var yb = Number(b && b.y0) || 0;
+                    if (ya !== yb) return ya - yb;
+                    return (Number(a && a.x0) || 0) - (Number(b && b.x0) || 0);
+                });
+                lines.push('## 非表（F 地の文）');
+                lines.push('');
+                f1Blocks.forEach(function (b, bi) {
+                    var t = String((b && b.text) || '').trim();
+                    if (!t) return;
+                    if (bi > 0) lines.push('');
+                    lines.push(t);
+                });
+                lines.push('');
+            } else {
+                var st = readingStageEPlainState(r);
+                if (st.kind === 'ok' && st.text.trim()) {
+                    lines.push('## 非表（F 地の文）');
+                    lines.push('');
+                    lines.push(st.text.trim());
+                    lines.push('');
+                }
+            }
+            if (tabs.length) {
+                lines.push('## 表（ui_data.tables）');
+                lines.push('');
+                tabs.forEach(function (tbl, ti) {
+                    appendMarkdownForTable(lines, tbl, ti);
+                });
+            }
+        }
+        if (String(ud.tables_md_embed || '').trim()) {
+            lines.push('## 表（埋め込み）');
+            lines.push('');
+            lines.push(String(ud.tables_md_embed).trim());
+            lines.push('');
+        }
+        if (lines.length <= 1) {
+            return '（非表も表もまだありません。パイプライン実行後に再度開いてください。）';
+        }
+        return lines.join('\n');
+    }
+
+    function renderRawMdPane(data) {
+        var md = buildSyntheticMarkdown(data);
+        return (
+            '<div class="raw-md-wrap">' +
+            '<textarea id="labRawMarkdownBody" class="lab-raw-md" readonly spellcheck="false" title="Visual Editor と同じ visual_stream 順（結合なし）">' + escapeHtml(md) + '</textarea></div>'
+        );
+    }
+
+    function readingCardFromItem(item, fallbackTitle) {
+        var title = pickStr(item, ['title', 'event_title', 'name', 'subject', 'label', 'headline', 'event']) || fallbackTitle;
+        var d1 = pickStr(item, ['date', 'start_date', 'start', 'event_date', 'datetime', 'due_date', 'day']);
+        var d2 = pickStr(item, ['end_date', 'end', 'time', 'until']);
+        var meta = [d1, d2].filter(Boolean).join(' — ');
+        var body = pickStr(item, ['body', 'description', 'summary', 'content', 'details', 'note', 'message', 'location', 'place']);
+        if (!body && typeof item === 'object') {
+            body = formatKeyValues(item, 10);
+        }
+        var h = '<div class="reading-card">';
+        if (title) h += '<div class="rc-title">' + escapeHtml(title) + '</div>';
+        if (meta) h += '<div class="rc-meta">' + escapeHtml(meta) + '</div>';
+        if (body) {
+            h += '<div style="font-size:0.86rem;line-height:1.55;">' + escapeHtml(body.slice(0, 1400)) + (body.length > 1400 ? '…' : '') + '</div>';
+        }
+        h += '</div>';
+        return h;
+    }
+
+    function bboxTopNormForStream(bbox) {
+        if (!bbox || !Array.isArray(bbox) || bbox.length < 4) return null;
+        var vals = bbox.slice(0, 4).map(function (x) { return Number(x); });
+        if (vals.some(function (v) { return isNaN(v); })) return null;
+        if (vals.some(function (v) { return v > 2.5 || v < -0.5; })) return null;
+        return vals[1];
+    }
+
+    function bboxTopFromStructuredTable(bt, pageHeightPt) {
+        var y = bboxTopNormForStream(bt && bt.bbox);
+        if (y != null) return y;
+        if (!bt || !bt.bbox || !pageHeightPt || pageHeightPt <= 0) return null;
+        var y0 = Number(bt.bbox[1]);
+        if (isNaN(y0)) return null;
+        return Math.max(0, Math.min(1, y0 / pageHeightPt));
+    }
+
+    function inferPageHeightPtFromBlocks(blocks) {
+        var m = 0;
+        blocks.forEach(function (b) {
+            var bb = b && b.bbox;
+            if (!bb || bb.length < 4) return;
+            var y = Number(bb[3]);
+            if (!isNaN(y)) m = Math.max(m, y);
+        });
+        return m > 10 ? m : null;
+    }
+
+    /** F1 ブロック + Stage B 表 bbox で visual_stream を再構成（欠損時のみ） */
+    function synthesizeVisualStreamFromF1Blocks(pr) {
+        var r = pr.reading || {};
+        var blocks = Array.isArray(r.non_table_text_blocks) ? r.non_table_text_blocks.slice() : [];
+        var ud = pr.ui_data_json || {};
+        var tabs = ud.tables || [];
+        var bTables = Array.isArray(ud.g11_structured_tables) ? ud.g11_structured_tables.filter(function (t) {
+            return t && t.bbox;
+        }) : [];
+        if (!blocks.length && !tabs.length) return [];
+        var pageH = inferPageHeightPtFromBlocks(blocks);
+        var proseRows = [];
+        blocks.forEach(function (b, i) {
+            var t = String((b && b.text) || '').trim();
+            if (!t) return;
+            var sy = Number(b.y0);
+            if (!isNaN(sy) && sy > 0 && sy <= 1.6) {
+                proseRows.push({ text: t, sort_y: sy, order: i });
+            } else if (!isNaN(sy) && pageH) {
+                proseRows.push({ text: t, sort_y: Math.max(0, Math.min(1, sy / pageH)), order: i });
+            } else {
+                proseRows.push({ text: t, sort_y: null, order: i });
+            }
+        });
+        var bSorted = bTables.map(function (bt, bi) {
+            return { bi: bi, sy: bboxTopFromStructuredTable(bt, pageH) };
+        }).filter(function (x) { return x.sy != null; });
+        bSorted.sort(function (a, b) { return a.sy - b.sy || a.bi - b.bi; });
+        var pieces = [];
+        var tie = 0;
+        proseRows.forEach(function (p) {
+            if (p.sort_y == null) return;
+            pieces.push({ k: 'p', y: p.sort_y, o: p.order, text: p.text });
+        });
+        tabs.forEach(function (_tbl, ti) {
+            var sy = null;
+            if (ti < bSorted.length) sy = bSorted[ti].sy;
+            if (sy == null) return;
+            pieces.push({ k: 't', y: sy, o: 10_000 + ti, table_index: ti });
+        });
+        var geoOk = pieces.length > 0 && proseRows.every(function (p) { return p.sort_y != null; }) &&
+            tabs.length > 0 && pieces.some(function (z) { return z.k === 't'; });
+        var out = [];
+        if (geoOk) {
+            pieces.sort(function (a, b) { return a.y - b.y || a.o - b.o; });
+            pieces.forEach(function (z) {
+                if (z.k === 'p') {
+                    out.push({
+                        kind: 'non_table_paragraph',
+                        text: z.text,
+                        sort_y: z.y,
+                        source: 'f1_block',
+                        tie: tie++
+                    });
+                } else {
+                    out.push({
+                        kind: 'g_table',
+                        table_index: z.table_index,
+                        sort_y: z.y,
+                        tie: tie++
+                    });
+                }
+            });
+            proseRows.filter(function (p) { return p.sort_y == null; }).forEach(function (p) {
+                out.push({ kind: 'non_table_paragraph', text: p.text, source: 'f1_block', tie: tie++ });
+            });
+            tabs.forEach(function (_tbl, ti) {
+                if (pieces.some(function (z) { return z.k === 't' && z.table_index === ti; })) return;
+                out.push({ kind: 'g_table', table_index: ti, tie: tie++ });
+            });
+            return out;
+        }
+        proseRows.sort(function (a, b) { return a.order - b.order; });
+        proseRows.forEach(function (p) {
+            var row = { kind: 'non_table_paragraph', text: p.text, source: 'f1_block', tie: tie++ };
+            if (p.sort_y != null) row.sort_y = p.sort_y;
+            out.push(row);
+        });
+        tabs.forEach(function (_tbl, ti) {
+            out.push({ kind: 'g_table', table_index: ti, tie: tie++ });
+        });
+        return out;
+    }
+
+    function sortVisualStreamByY(stream) {
+        if (!stream.length) return stream;
+        var allY = stream.every(function (s) {
+            return s && s.sort_y != null && !isNaN(Number(s.sort_y));
+        });
+        if (!allY) return stream;
+        return stream.slice().sort(function (a, b) {
+            var ya = Number(a.sort_y);
+            var yb = Number(b.sort_y);
+            if (ya !== yb) return ya - yb;
+            return (Number(a.tie) || 0) - (Number(b.tie) || 0);
+        });
+    }
+
+    /** Visual / Raw MD 共通: サーバー visual_stream 優先。欠損時は F1+B bbox で合成。 */
+    function readingVisualStream(pr) {
+        var raw = (pr.reading && Array.isArray(pr.reading.visual_stream)) ? pr.reading.visual_stream : [];
+        var stream = raw.length ? raw.slice() : synthesizeVisualStreamFromF1Blocks(pr);
+        return sortVisualStreamByY(stream);
+    }
+
+    function streamHasF1ProseSegments(stream) {
+        return stream.some(function (s) {
+            return s && s.kind === 'non_table_paragraph' && String(s.text || '').trim();
+        });
+    }
+
+    function renderReadingBodyStream(pr) {
+        var ud = pr.ui_data_json || {};
+        var tables = ud.tables || [];
+        var stream = readingVisualStream(pr);
+        var html = '<div class="reading-section">';
+        stream.forEach(function (seg) {
+            if (!seg) return;
+            var k = seg.kind;
+            if (k === 'non_table_paragraph') {
+                html += '<div class="reading-card reading-stream-para"><div class="reading-prose" style="border:1px solid var(--border);padding:0.5rem 0.65rem;border-radius:8px;background:#fff;font-size:0.88rem;line-height:1.55;">' +
+                    escapeHtml(seg.text || '') + '</div></div>';
+            } else if (k === 'g_table_group') {
+                var idxs = Array.isArray(seg.table_indices) ? seg.table_indices : [];
+                if (!idxs.length) return;
+                var openAttr = ' open';
+                var sum = '<span>表 <strong>' + idxs.length + '</strong></span>';
+                html += '<details class="reading-table-fold"' + openAttr + '><summary>' + sum + '</summary>';
+                html += '<div style="padding:0.35rem 0.5rem 0.65rem;">';
+                idxs.forEach(function (ti, gi) {
+                    var tbl = tables[ti];
+                    if (!tbl) return;
+                    var cap = tbl.table_id || tbl.description || ('表 ' + (ti + 1));
+                    var rows = tbl.rows || [];
+                    var maxC = readingGuessTableMaxCols(rows);
+                    var maxR = Math.max(rows.length, 1);
+                    if (gi > 0) {
+                        html += '<hr style="border:none;border-top:1px dashed var(--border);margin:0.85rem 0;">';
+                    }
+                    html += '<h4 style="margin:0 0 0.4rem;font-size:0.82rem;color:var(--text-main);">' +
+                        escapeHtml(String(cap)) + '</h4>';
+                    html += renderTableHtml(rows, maxR, maxC, 'reading');
+                });
+                html += '</div></details>';
+            } else if (k === 'g_table') {
+                var ti = typeof seg.table_index === 'number' ? seg.table_index : 0;
+                var tbl = tables[ti];
+                if (!tbl) return;
+                var cap = tbl.table_id || tbl.description || ('表 ' + (ti + 1));
+                var rows = tbl.rows || [];
+                var maxC = readingGuessTableMaxCols(rows);
+                var maxR = Math.max(rows.length, 1);
+                var sum = '<span>' + escapeHtml(String(cap)) + '</span>';
+                var openAttr = ' open';
+                html += '<details class="reading-table-fold"' + openAttr + '><summary>' + sum + '</summary>';
+                html += '<div style="padding:0.35rem 0.5rem 0.65rem;">' + renderTableHtml(rows, maxR, maxC, 'reading') + '</div></details>';
+            } else if (k === 'tables_md_embed') {
+                var md = seg.markdown || '';
+                if (!md.trim()) return;
+                html += '<details class="reading-table-fold"><summary><span>tables_md_embed</span></summary>';
+                html += '<pre class="pre-reading-plain" style="max-height:50vh;overflow:auto;white-space:pre-wrap;font-size:0.78rem;">' +
+                    escapeHtml(md) + '</pre></details>';
+            } else if (k === 'g21_article') {
+                if (streamHasF1ProseSegments(stream)) return;
+                var title = String(seg.title || '').trim();
+                var body = String(seg.body || '').trim();
+                if (!title && !body) return;
+                html += '<div class="reading-card" style="margin-bottom:0.65rem;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">';
+                if (title) html += '<div class="rc-title">' + escapeHtml(title) + '</div>';
+                if (body) html += '<div class="reading-prose" style="border:none;padding:0.25rem 0 0;background:transparent;">' + escapeHtml(body) + '</div>';
+                html += '</div>';
+            } else if (k === 'timeline_tail') {
+                var timeline = ud.timeline || [];
+                if (!timeline.length) return;
+                html += '<h4 style="margin:1rem 0 0.4rem;font-size:0.9rem;">スケジュール・予定</h4>';
+                timeline.slice(0, 35).forEach(function (item, i) {
+                    html += readingCardFromItem(item, '予定 ' + (i + 1));
+                });
+            } else if (k === 'actions_tail') {
+                var actions = ud.actions || [];
+                if (!actions.length) return;
+                html += '<h4 style="margin:1rem 0 0.4rem;font-size:0.9rem;">タスク・持ち物など</h4>';
+                actions.slice(0, 28).forEach(function (item, i) {
+                    html += readingCardFromItem(item, '項目 ' + (i + 1));
+                });
+            } else if (k === 'notices_tail') {
+                var notices = ud.notices || [];
+                if (!notices.length) return;
+                html += '<h4 style="margin:1rem 0 0.4rem;font-size:0.9rem;">注意事項・お知らせ</h4>';
+                notices.slice(0, 22).forEach(function (item, i) {
+                    html += readingCardFromItem(item, 'お知らせ ' + (i + 1));
+                });
+            }
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function renderReadingBodyLegacy(data) {
+        var synth = synthesizeVisualStreamFromF1Blocks(data);
+        if (synth.length) {
+            var patched = {
+                ui_data_json: data.ui_data_json || {},
+                reading: Object.assign({}, data.reading || {}, { visual_stream: synth }),
+                g22_summary: data.g22_summary || {}
+            };
+            return renderReadingBodyStream(patched);
+        }
+        var ud = data.ui_data_json || null;
+        var html = '';
+        var tables = (ud && ud.tables) ? ud.tables : [];
+        if (tables.length) {
+            html += '<div class="reading-section">';
+            html += '<h3>表（' + tables.length + '）</h3>';
+            tables.forEach(function (tbl, ti) {
+                var cap = tbl.table_id || tbl.description || ('表 ' + (ti + 1));
+                var rows = tbl.rows || [];
+                var maxC = readingGuessTableMaxCols(rows);
+                var maxR = Math.max(rows.length, 1);
+                var sum = '<span>' + escapeHtml(String(cap)) + '</span>';
+                html += '<details class="reading-table-fold" open><summary>' + sum + '</summary>';
+                html += '<div style="padding:0.35rem 0.5rem 0.65rem;">';
+                html += renderTableHtml(rows, maxR, maxC, 'reading');
+                html += '</div></details>';
+            });
+            html += '</div>';
+        }
+        var articles = (ud && ud.g21_articles) ? ud.g21_articles : [];
+        if (articles.length) {
+            html += '<div class="reading-section"><details class="reading-table-fold">';
+            html += '<summary>g21_articles（' + articles.length + ' 件）</summary>';
+            html += '<div style="padding:0.35rem 0.5rem 0.65rem;">';
+            articles.forEach(function (a) {
+                var title = a.title || '';
+                var body = (a.body || '').trim();
+                html += '<div class="reading-card" style="margin-bottom:0.65rem;">';
+                if (title) html += '<div class="rc-title">' + escapeHtml(title) + '</div>';
+                if (body) {
+                    html += '<div class="reading-prose" style="border:none;padding:0.25rem 0 0;background:transparent;">' + escapeHtml(body) + '</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div></details></div>';
+        }
+        var r = data.reading || {};
+        var stE = readingStageEPlainState(r);
+        html += '<div class="reading-section"><h3>非表（プレーン）</h3>';
+        if (stE.kind === 'missing_key') {
+            html += '<p class="empty-hint">保存結果に <code>stage_e_non_table_plain</code> がありません（旧形式の JSON です）。このページを<strong>再実行</strong>してください。</p>';
+        } else if (stE.kind === 'bad_type') {
+            html += '<p class="empty-hint"><code>stage_e_non_table_plain</code> が文字列ではありません。保存 JSON を確認してください。</p>';
+        } else if (stE.text.length) {
+            html += '<pre class="pre-reading-plain">' + escapeHtml(stE.text) + '</pre>';
+        } else {
+            html += '<p class="empty-hint">このページでは <code>non_table_content</code> の本文が空です（表のみ・別ページ扱い・すべて表経路に入った等）。</p>';
+        }
+        html += '</div>';
+        var sections = (ud && ud.sections) ? ud.sections : [];
+        if (sections.length && !articles.length) {
+            html += '<div class="reading-section"><h3>sections[]（抜粋）</h3>';
+            sections.slice(0, 15).forEach(function (blk) {
+                var t = (blk.text || blk.content || blk.body || '');
+                if (!t && typeof blk === 'object') t = JSON.stringify(blk);
+                t = String(t).trim();
+                if (!t) return;
+                html += '<div class="reading-card"><div class="reading-prose" style="border:none;padding:0;background:transparent;font-size:0.88rem;">' +
+                    escapeHtml(t.slice(0, 2800)) + (t.length > 2800 ? '…' : '') + '</div></div>';
+            });
+            html += '</div>';
+        }
+        var timeline = (ud && ud.timeline) ? ud.timeline : [];
+        if (timeline.length) {
+            html += '<div class="reading-section"><h3>スケジュール・予定</h3>';
+            timeline.slice(0, 35).forEach(function (item, i) {
+                html += readingCardFromItem(item, '予定 ' + (i + 1));
+            });
+            html += '</div>';
+        }
+        var actions = (ud && ud.actions) ? ud.actions : [];
+        if (actions.length) {
+            html += '<div class="reading-section"><h3>タスク・持ち物など</h3>';
+            actions.slice(0, 28).forEach(function (item, i) {
+                html += readingCardFromItem(item, '項目 ' + (i + 1));
+            });
+            html += '</div>';
+        }
+        var notices = (ud && ud.notices) ? ud.notices : [];
+        if (notices.length) {
+            html += '<div class="reading-section"><h3>注意事項・お知らせ</h3>';
+            notices.slice(0, 22).forEach(function (item, i) {
+                html += readingCardFromItem(item, 'お知らせ ' + (i + 1));
+            });
+            html += '</div>';
+        }
+        return html;
+    }
+
+    function renderReadingHtml(data) {
+        var ud = data.ui_data_json || null;
+        var g = data.g22_summary || {};
+        var r = data.reading || {};
+        var html = '<div class="reading-root">';
+
+        var useStream = readingVisualStream(data).length > 0;
+        if (useStream) {
+            html += renderReadingBodyStream(data);
+            var g21 = (ud && ud.g21_articles) ? ud.g21_articles : [];
+            var hasG21Body = g21.some(function (a) { return a && String(a.body || '').trim().length > 0; });
+            var stE2 = readingStageEPlainState(r);
+            if (stE2.text && stE2.text.length && !hasG21Body) {
+                html += '<details class="reading-table-fold" style="margin-top:0.75rem;"><summary>非表プレーン全文</summary>';
+                html += '<div style="padding:0.35rem 0.5rem 0.65rem;"><pre class="pre-reading-plain" style="max-height:min(40vh,320px);">' +
+                    escapeHtml(stE2.text) + '</pre></div></details>';
+            }
+        } else {
+            html += renderReadingBodyLegacy(data);
+        }
+
+        var gPeople = (g.people || []).length;
+        if (gPeople) {
+            html += '<div class="reading-section"><h3>抽出人物（final_metadata.g22_output）</h3>';
+            html += '<pre class="raw" style="max-height:200px;">' + escapeHtml(JSON.stringify(g.people, null, 2)) + '</pre></div>';
+        }
+
+        if (!ud) {
+            html += '<p class="empty-hint" style="margin-top:1rem;">構造化データ（ui_data）をまだ取得できていません。再実行するか、しばらくしてからページを切り替えて戻ってください。</p>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderStructuredPanels(data) {
+        const ud = data.ui_data_json || null;
+        const uu = data.ui_data_summary || {};
+        let html = '';
+        html += '<details class="acc-panel"><summary>構造化データ（ui_data / final_metadata・開発者向け）</summary><div class="acc-body">';
+
+        const g = data.g22_summary || {};
+        html += '<div class="struct-block"><h5>人物（g22_output 互換）</h5>';
+        if ((g.people || []).length) {
+            html += '<pre class="raw" style="max-height:140px;">' +
+                escapeHtml(JSON.stringify(g.people, null, 2)) + '</pre>';
+        } else {
+            html += '<p class="empty-hint">抽出人物なし</p>';
+        }
+        const evc = g.calendar_events_count || 0, tkc = g.tasks_count || 0, ntc = g.notices_count || 0;
+        if (evc + tkc + ntc > 0) {
+            html += '<p style="font-size:0.74rem;color:var(--text-muted);margin:0.45rem 0 0;">互換メタ件数: イベント ' + evc +
+                ' · タスク ' + tkc + ' · お知らせ ' + ntc + '</p>';
+        }
+        html += '</div>';
+
+        html += '<div class="stat-grid">';
+        [
+            ['sections_count', 'sections[]'],
+            ['g21_articles_count', 'g21_articles'],
+            ['tables_count', '表（F6）'],
+            ['timeline_count', 'タイムライン'],
+            ['actions_count', 'タスク'],
+            ['notices_count', 'お知らせ'],
+        ].forEach(function (pair) {
+            const k = pair[0], label = pair[1];
+            const v = uu[k] != null ? uu[k] : '—';
+            html += '<div class="stat-cell"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(String(v)) + '</strong></div>';
+        });
+        html += '</div>';
+
+        if (!ud) {
+            html += '<p class="empty-hint">ui_data の本体は実行直後に自動取得します。表示されない場合はヘッダの「詳細 JSON」を開いて <code>ui_data_json</code> を確認してください。</p>';
+            html += '</div></details>';
+            return html;
+        }
+
+        const timeline = ud.timeline || [];
+        if (timeline.length) {
+            html += '<div class="struct-block"><h5>タイムライン（先頭10件）</h5><ul class="struct-list">';
+            timeline.slice(0, 10).forEach(function (item) {
+                html += '<li><pre style="margin:0.2rem 0;font-size:0.68rem;white-space:pre-wrap;">' +
+                    escapeHtml(JSON.stringify(item, null, 2)) + '</pre></li>';
+            });
+            html += '</ul></div>';
+        }
+        const actions = ud.actions || [];
+        if (actions.length) {
+            html += '<div class="struct-block"><h5>タスク（先頭10件）</h5><ul class="struct-list">';
+            actions.slice(0, 10).forEach(function (item) {
+                html += '<li><pre style="margin:0.2rem 0;font-size:0.68rem;white-space:pre-wrap;">' +
+                    escapeHtml(JSON.stringify(item, null, 2)) + '</pre></li>';
+            });
+            html += '</ul></div>';
+        }
+        const notices = ud.notices || [];
+        if (notices.length) {
+            html += '<div class="struct-block"><h5>お知らせ（先頭10件）</h5><ul class="struct-list">';
+            notices.slice(0, 10).forEach(function (item) {
+                html += '<li><pre style="margin:0.2rem 0;font-size:0.68rem;white-space:pre-wrap;">' +
+                    escapeHtml(JSON.stringify(item, null, 2)) + '</pre></li>';
+            });
+            html += '</ul></div>';
+        }
+
+        const articles = ud.g21_articles || [];
+        if (articles.length) {
+            html += '<div class="struct-block"><h5>g21_articles（先頭8件）</h5>';
+            articles.slice(0, 8).forEach(function (a) {
+                const title = a.title || '(無題)';
+                const rawBody = a.body || '';
+                const cut = rawBody.length > 900;
+                const body = rawBody.slice(0, 900) + (cut ? '…' : '');
+                html += '<div style="border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.65rem;margin-bottom:0.4rem;">';
+                html += '<strong style="font-size:0.8rem;">' + escapeHtml(title) + '</strong>';
+                html += '<pre class="raw" style="max-height:120px;margin-top:0.3rem;">' + escapeHtml(body) + '</pre></div>';
+            });
+            html += '</div>';
+        }
+
+        const sections = ud.sections || [];
+        if (sections.length) {
+            html += '<div class="struct-block"><h5>sections（先頭5ブロック・抜粋）</h5>';
+            sections.slice(0, 5).forEach(function (blk) {
+                let t = (blk.text || blk.content || blk.body || '');
+                if (!t && typeof blk === 'object') {
+                    t = JSON.stringify(blk);
+                }
+                t = String(t);
+                const cut = t.length > 600;
+                html += '<pre class="raw" style="max-height:90px;">' + escapeHtml(t.slice(0, 600) + (cut ? '…' : '')) + '</pre>';
+            });
+            html += '</div>';
+        }
+
+        const tables = ud.tables || [];
+        if (tables.length) {
+            html += '<div class="struct-block"><h5>ui_data.tables</h5>';
+            tables.forEach(function (tbl, ti) {
+                const desc = tbl.table_id || tbl.description || ('表 ' + (ti + 1));
+                html += '<p style="font-size:0.76rem;font-weight:600;margin:0.45rem 0 0.2rem;">' + escapeHtml(String(desc)) + '</p>';
+                html += renderHtmlTableFromRows(tbl.rows || [], 25, 14);
+            });
+            html += '</div>';
+        } else if ((uu.tables_count || 0) > 0) {
+            html += '<p class="empty-hint">ui_data_summary の表（F6）件数があるのに ui_data.tables が空です。final_metadata_json の table_analyses 等を参照してください。</p>';
+        }
+
+        html += '</div></details>';
+        return html;
+    }
+
+    function renderLogHtml(data) {
+        const r = data.reading || {};
+        const d = data.stage_d || {};
+        const sa = data.stage_a || {};
+        const pi = typeof data.page_index === 'number' ? data.page_index : appState.currentPage;
+        const truncNote = data.pipeline_log_truncated
+            ? '<p class="log-note">※ 応答用にログ末尾のみ表示しています。全文は <code>page_results/' + pi + '_pipeline.log</code> に保存されています。</p>'
+            : '<p class="log-note">loguru · ロガー名 <code>dms.pipeline*</code> の行のみ収集しています。</p>';
+        const f46Trunc = !!data.f46_log_truncated;
+        const f47Trunc = !!data.f47_log_truncated;
+        const f46Note = f46Trunc
+            ? '<p class="log-note">※ 長い場合は末尾のみ。ファイル: <code>page_results/' + pi + '_f46_table_line_semantics.log</code></p>' : '';
+        const f47Note = f47Trunc
+            ? '<p class="log-note">※ 長い場合は末尾のみ。ファイル: <code>page_results/' + pi + '_f47_table_ai_processor.log</code></p>' : '';
+        const f46 = data.f46_log || '';
+        const f47 = data.f47_log || '';
+
+        const sumParts = [];
+        sumParts.push('<div><span class="badge">処理ページ: ' + (pi + 1) + '</span></div>');
+        var dtc = readingStageDTableCount(r);
+        var gtc = readingGUiTableCount(r);
+        sumParts.push('<p class="log-note" style="margin:0 0 0.35rem;">非表 <strong>' + (r.non_table_chars != null ? r.non_table_chars : '—') + '</strong> 字 · D表 <strong>' + (dtc != null ? dtc : '—') + '</strong> · ui_data 表 <strong>' + (gtc != null ? gtc : '—') + '</strong></p>');
+        var uu = data.ui_data_summary || {};
+        if (uu.table_ids && uu.table_ids.length) {
+            sumParts.push('<p class="log-note" style="margin:0 0 0.35rem;">table_ids: <code>' + escapeHtml(uu.table_ids.join(', ')) + '</code></p>');
+        }
+        if (uu.g36_rebuild && uu.g36_rebuild.length) {
+            sumParts.push('<p class="log-note" style="margin:0 0 0.35rem;">G36 再構成: <code>' + escapeHtml(uu.g36_rebuild.join(', ')) + '</code></p>');
+        } else if ((uu.table_ids || []).indexOf('B_T1_S1') >= 0 || (uu.table_ids || []).indexOf('B_T1_S2') >= 0) {
+            sumParts.push('<p class="log-note" style="margin:0.35rem 0;color:#b45309;">収支表が <code>B_T1_S1/S2</code> に分割されています。最新コードでは <code>B_T1</code> 1 表のままです。<strong>再実行</strong>してください。</p>');
+        } else if ((uu.table_ids || []).indexOf('B_T1') < 0) {
+            sumParts.push('<p class="log-note" style="margin:0.35rem 0;color:#b45309;">収支表 <code>B_T1</code> がありません。PDF を<strong>再実行</strong>してください。</p>');
+        }
+        if (Object.keys(sa).length) {
+            sumParts.push('<details class="acc-panel" style="margin:0.25rem 0;"><summary>Stage A（JSON）</summary><div class="acc-body"><pre class="raw" style="max-height:120px;">' + escapeHtml(JSON.stringify(sa, null, 2)) + '</pre></div></details>');
+        }
+        if (Object.keys(d).length) {
+            sumParts.push('<details class="acc-panel" style="margin:0.25rem 0;"><summary>Stage D 要約（JSON）</summary><div class="acc-body"><pre class="raw" style="max-height:160px;">' + escapeHtml(JSON.stringify(d, null, 2)) + '</pre></div></details>');
+        }
+        var stE = readingStageEPlainState(r);
+        sumParts.push('<h4 style="margin:0.75rem 0 0.35rem;font-size:0.85rem;">非表プレーン（Visual と同一）</h4>');
+        if (stE.kind === 'missing_key') {
+            sumParts.push('<p class="empty-hint"><code>stage_e_non_table_plain</code> がありません。再実行してください。</p>');
+        } else if (stE.kind === 'bad_type') {
+            sumParts.push('<p class="empty-hint"><code>stage_e_non_table_plain</code> が文字列ではありません。</p>');
+        } else if (stE.text.length) {
+            sumParts.push('<pre class="pre-reading-plain">' + escapeHtml(stE.text) + '</pre>');
+        } else {
+            sumParts.push('<p class="empty-hint">非表プレーンは空です。</p>');
+        }
+
+        return (
+            '<div class="debug-stack acc-stack">' +
+            renderStructuredPanels(data) +
+            '<details class="acc-panel"><summary>テキスト・ステージ要約</summary><div class="acc-body">' + sumParts.join('') + '</div></details>' +
+            '<details class="acc-panel"><summary>F-46 専用ログ（線意味・表トポロジ）</summary>' +
+            '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyF46Log">コピー</button></div>' +
+            '<div class="acc-body">' + f46Note +
+            '<pre class="log-pre" id="labF46LogPre">' + escapeHtml(f46) + '</pre></div></details>' +
+            '<details class="acc-panel"><summary>F-47 専用ログ（表 AI・ヘッダー意味）</summary>' +
+            '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyF47Log">コピー</button></div>' +
+            '<div class="acc-body">' + f47Note +
+            '<pre class="log-pre" id="labF47LogPre">' + escapeHtml(f47) + '</pre></div></details>' +
+            '<details class="acc-panel" open><summary>パイプラインログ（loguru・全般）</summary>' +
+            '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyPipelineLog">ログをコピー</button></div>' +
+            '<div class="acc-body">' + truncNote +
+            '<pre class="log-pre" id="labPipelineLogPre">' + escapeHtml(window.__lastPipelineLog || '') + '</pre></div></details>' +
+            '<details class="acc-panel"><summary>Stage D 詳細（JSON）</summary>' +
+            '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyStageD">JSON をコピー</button></div>' +
+            '<div class="acc-body"><pre class="raw" id="labStageDPre">' + escapeHtml(window.__lastStageDJson || '') + '</pre></div></details>' +
+            '</div>'
+        );
+    }
+
+    function renderErrorReadingHtml(pr) {
+        var h = '<div class="error-box">' + escapeHtml(pr.error || '失敗') +
+            (pr.stage ? ' <span class="badge">' + escapeHtml(pr.stage) + '</span>' : '') + '</div>';
+        h += '<p class="empty-hint" style="margin-top:1rem;line-height:1.6;">'
+            + 'エラー内容は上記メッセージに含まれます。<strong>ログ</strong>タブで詳細を確認してください（失敗時もパイプラインログは応答に含まれます）。'
+            + '</p>';
+        return h;
+    }
+
+    function renderErrorDebugHtml(pr) {
+        window.__lastPipelineLog = pr.pipeline_log || '';
+        window.__lastF46Log = pr.f46_log || '';
+        window.__lastF47Log = pr.f47_log || '';
+        window.__lastStageDJson = '';
+        if (!window.__lastPipelineLog && !window.__lastF46Log && !window.__lastF47Log) {
+            return '<p class="empty-hint">ログの行はありません。</p>';
+        }
+        var parts = '<p class="log-note" style="margin-top:0;">失敗までの出力です。</p>';
+        if (window.__lastF46Log) {
+            parts += '<details class="acc-panel" open><summary>F-46 専用ログ（失敗まで）</summary><div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyF46Log">コピー</button></div><div class="acc-body"><pre class="log-pre">' +
+                escapeHtml(window.__lastF46Log) + '</pre></div></details>';
+        }
+        if (window.__lastF47Log) {
+            parts += '<details class="acc-panel" open><summary>F-47 専用ログ（失敗まで）</summary><div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyF47Log">コピー</button></div><div class="acc-body"><pre class="log-pre">' +
+                escapeHtml(window.__lastF47Log) + '</pre></div></details>';
+        }
+        if (window.__lastPipelineLog) {
+            parts += '<details class="acc-panel" open><summary>パイプラインログ（失敗まで）</summary>' +
+                '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyPipelineLog">ログをコピー</button></div>' +
+                '<div class="acc-body"><pre class="log-pre" id="labPipelineLogPre">' +
+                escapeHtml(window.__lastPipelineLog) + '</pre></div></details>';
+        }
+        return parts;
+    }
+
+    async function hydratePageResult(pr, pg) {
+        if (!appState.sessionId || !pr || !pr.success) return;
+        var needUi = !pr.ui_data_json;
+        var needSd = !pr.stage_d_tables || !pr.stage_d_tables.length;
+        var needPlain = !(pr.reading && Object.prototype.hasOwnProperty.call(pr.reading, 'stage_e_non_table_plain'));
+        var needChainLogs = pr.f46_log === undefined && pr.f47_log === undefined;
+        if (!needUi && !needSd && !needPlain && !needChainLogs) return;
+        try {
+            const resFull = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + pg);
+            if (!resFull.ok) return;
+            const full = await resFull.json();
+            if (needUi && full.ui_data_json) pr.ui_data_json = full.ui_data_json;
+            if (needUi && full.final_metadata_json) pr.final_metadata_json = full.final_metadata_json;
+            if (full.ui_data_summary) pr.ui_data_summary = full.ui_data_summary;
+            if (full.g22_summary) pr.g22_summary = full.g22_summary;
+            if (full.stage_d_tables) pr.stage_d_tables = full.stage_d_tables;
+            if (full.reading && typeof full.reading === 'object') {
+                pr.reading = Object.assign({}, pr.reading || {}, full.reading);
+            }
+            if (full.pipeline_log) pr.pipeline_log = full.pipeline_log;
+            if (Object.prototype.hasOwnProperty.call(full, 'f46_log')) pr.f46_log = full.f46_log;
+            if (Object.prototype.hasOwnProperty.call(full, 'f47_log')) pr.f47_log = full.f47_log;
+            if (full.pipeline_log_truncated != null) pr.pipeline_log_truncated = full.pipeline_log_truncated;
+            if (full.f46_log_truncated != null) pr.f46_log_truncated = full.f46_log_truncated;
+            if (full.f47_log_truncated != null) pr.f47_log_truncated = full.f47_log_truncated;
+        } catch (ignore) { }
+    }
+
+    async function loadActivePage() {
+        const p = appState.pages[appState.currentPage];
+        if (!p) return;
+        document.getElementById('mainPreviewImg').src = p.image_url;
+        overlayPageNum.textContent = String(appState.currentPage + 1);
+        dataHeaderMeta.textContent = 'ページ ' + (appState.currentPage + 1) + ' / ' + appState.pages.length;
+
+        const pr = p.pipeline_result;
+        if (pr && pr.success) {
+            await hydratePageResult(pr, appState.currentPage);
+            window.__lastPipelineLog = pr.pipeline_log || '';
+            window.__lastF46Log = pr.f46_log || '';
+            window.__lastF47Log = pr.f47_log || '';
+            window.__lastStageDJson = JSON.stringify(pr.stage_d_detail != null ? pr.stage_d_detail : {}, null, 2);
+            labOverlay.style.display = 'none';
+            paneVisualEditor.innerHTML = renderReadingHtml(pr);
+            paneRawMd.innerHTML = renderRawMdPane(pr);
+            paneLog.innerHTML = renderLogHtml(pr);
+            setLabTab('visual');
+            wireCopyButtons();
+            btnFullJson.disabled = false;
+        } else if (pr && !pr.success) {
+            labOverlay.style.display = 'none';
+            window.__lastStageDJson = '';
+            paneVisualEditor.innerHTML = renderErrorReadingHtml(pr);
+            paneRawMd.innerHTML = renderRawMdPane(pr);
+            paneLog.innerHTML = renderErrorDebugHtml(pr);
+            setLabTab('log');
+            wireCopyButtons();
+            btnFullJson.disabled = true;
+        } else {
+            labOverlay.style.display = 'flex';
+            paneVisualEditor.innerHTML = '';
+            paneRawMd.innerHTML = '';
+            paneLog.innerHTML = '';
+            btnFullJson.disabled = true;
+        }
+    }
+
+    async function runPipelineForCurrentPage() {
+        if (!appState.sessionId) return;
+        const pg = appState.currentPage;
+        showLoader('ページ ' + (pg + 1) + ' をパイプライン処理中…');
+        try {
+            const res = await fetch(API_PREFIX + '/api/run/' + appState.sessionId + '/' + pg, { method: 'POST' });
+            if (!res.ok) {
+                let detail = 'HTTP ' + res.status;
+                let errPipelineLog = '';
+                let errF46Log = '';
+                let errF47Log = '';
+                try {
+                    const errBody = await res.json();
+                    if (errBody && errBody.error) detail = String(errBody.error);
+                    if (errBody && errBody.pipeline_log) errPipelineLog = String(errBody.pipeline_log);
+                    if (errBody && errBody.f46_log) errF46Log = String(errBody.f46_log);
+                    if (errBody && errBody.f47_log) errF47Log = String(errBody.f47_log);
+                } catch (_) { /* keep detail */ }
+                const _err = new Error(detail);
+                _err.__pipelineLog = errPipelineLog;
+                _err.__f46Log = errF46Log;
+                _err.__f47Log = errF47Log;
+                throw _err;
+            }
+            let json;
+            try {
+                json = await res.json();
+            } catch (_) {
+                throw new Error('サーバーの応答が JSON ではありません。処理が長すぎて切断された可能性もあります。');
+            }
+            if (json.success) {
+                try {
+                    const resFull = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + pg);
+                    if (resFull.ok) {
+                        const full = await resFull.json();
+                        if (full.ui_data_json) {
+                            json.ui_data_json = full.ui_data_json;
+                        }
+                        if (full.final_metadata_json) {
+                            json.final_metadata_json = full.final_metadata_json;
+                        }
+                        if (full.ui_data_summary) {
+                            json.ui_data_summary = full.ui_data_summary;
+                        }
+                        if (full.g22_summary) {
+                            json.g22_summary = full.g22_summary;
+                        }
+                        if (full.stage_d_tables) {
+                            json.stage_d_tables = full.stage_d_tables;
+                        }
+                        if (full.reading && typeof full.reading === 'object') {
+                            json.reading = Object.assign({}, json.reading || {}, full.reading);
+                        }
+                    }
+                } catch (ignore) { /* サマリーのみ表示 */ }
+            }
+            appState.pages[pg].pipeline_result = json;
+            renderThumbnails();
+            loadActivePage();
+            if (json.success) {
+                const u = json.ui_data_summary || {};
+                var g21c = u.g21_articles_count != null ? u.g21_articles_count : '—';
+                headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ページ ' + (pg + 1) + ' 完了 · g21 ' + g21c +
+                    ' · 表（F6） ' + (u.tables_count != null ? u.tables_count : '—');
+            }
+        } catch (e) {
+            var em = (e && e.message) ? String(e.message) : String(e);
+            if (e && e.name === 'TypeError' && /fetch|Load failed|NetworkError/i.test(em)) {
+                em = '接続失敗（Failed to fetch）。アップロード画面の API 接続メッセージを確認し、pipeline-lab を起動してから再実行してください。（' + em + '）';
+            }
+            appState.pages[pg].pipeline_result = {
+                success: false,
+                error: em,
+                pipeline_log: (e && e.__pipelineLog) || '',
+                f46_log: (e && e.__f46Log) || '',
+                f47_log: (e && e.__f47Log) || '',
+            };
+            renderThumbnails();
+            loadActivePage();
+        } finally {
+            hideLoader();
+        }
+    }
+
+    overlayRunBtn.addEventListener('click', runPipelineForCurrentPage);
+    headerRunBtn.addEventListener('click', runPipelineForCurrentPage);
+
+    btnFullJson.addEventListener('click', async () => {
+        if (!appState.sessionId) return;
+        const pg = appState.currentPage;
+        showLoader('JSON を読み込み中…');
+        try {
+            const res = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + pg);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '読込に失敗しました');
+            document.getElementById('dlgJsonTitle').textContent = 'page_' + pg + '.json（フル結果）';
+            document.getElementById('dlgJsonBody').textContent = JSON.stringify(data, null, 2);
+            document.getElementById('dlgJson').showModal();
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            hideLoader();
+        }
+    });
+    document.getElementById('dlgClose').addEventListener('click', () => document.getElementById('dlgJson').close());
+
+    // -----------------------------------------------------------------------
+    // Drive ファイルピッカー
+    // -----------------------------------------------------------------------
+    const driveDlg = document.getElementById('dlgDrive');
+    const driveList = document.getElementById('driveFileList');
+    let driveFolderStack = [{ id: 'root', name: 'マイドライブ' }];
+
+    document.getElementById('driveUploadBtn').addEventListener('click', () => {
+        driveFolderStack = [{ id: 'root', name: 'マイドライブ' }];
+        loadDriveFolder('root');
+        driveDlg.showModal();
+    });
+    document.getElementById('dlgDriveClose').addEventListener('click', () => driveDlg.close());
+    document.getElementById('dlgDriveBack').addEventListener('click', () => {
+        if (driveFolderStack.length > 1) {
+            driveFolderStack.pop();
+            const prev = driveFolderStack[driveFolderStack.length - 1];
+            loadDriveFolder(prev.id);
+        }
+    });
+
+    async function loadDriveFolder(folderId) {
+        driveList.innerHTML = '<li style="color:var(--text-muted);padding:0.5rem;">読み込み中…</li>';
+        document.getElementById('dlgDrivePath').textContent = driveFolderStack.map(f => f.name).join(' / ');
+        try {
+            const res = await fetch(API_PREFIX + '/api/list_drive_files', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ folder_id: folderId }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '取得失敗');
+            driveList.innerHTML = '';
+            if (!data.files || !data.files.length) {
+                driveList.innerHTML = '<li style="color:var(--text-muted);padding:0.5rem;">ファイルがありません</li>';
+                return;
+            }
+            data.files.forEach(f => {
+                const isFolder = f.mimeType === 'application/vnd.google-apps.folder';
+                const li = document.createElement('li');
+                li.style.cssText = 'padding:0.5rem 0.75rem;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.5rem;';
+                li.innerHTML = `<span>${isFolder ? '📁' : '📄'}</span><span>${f.name}</span>`;
+                li.addEventListener('click', () => {
+                    if (isFolder) {
+                        driveFolderStack.push({ id: f.id, name: f.name });
+                        loadDriveFolder(f.id);
+                    } else if (f.mimeType === 'application/pdf') {
+                        driveDlg.close();
+                        loadFromDrive(f.id, f.name);
+                    } else {
+                        alert('PDF ファイルを選択してください');
+                    }
+                });
+                driveList.appendChild(li);
+            });
+        } catch (e) {
+            driveList.innerHTML = `<li style="color:red;padding:0.5rem;">エラー: ${e.message}</li>`;
+        }
+    }
+
+    async function loadFromDrive(driveFileId, filename) {
+        showLoader('Googleドライブから読み込み中…');
+        try {
+            const res = await fetch(API_PREFIX + '/api/load_from_drive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drive_file_id: driveFileId }),
+            });
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || '読み込み失敗');
+            appState.sessionId = json.session_id || json.file_id;
+            appState.safeFilename = json.safe_filename || json.filename || filename;
+            appState.driveFileId = driveFileId;
+            appState.pages = (json.pages || []).map(p => ({
+                page_index: p.page_index,
+                image_url: p.image_url || p.preview_url,
+                pipeline_result: null,
+            }));
+            appState.currentPage = 0;
+            document.getElementById('saveToDriveBtn').style.display = '';
+            initWorkspace();
+        } catch (e) {
+            alert('Drive 読み込みエラー: ' + e.message);
+        } finally {
+            hideLoader();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // MD保存PDF ダウンロード
+    // -----------------------------------------------------------------------
+    document.getElementById('downloadResultBtn').addEventListener('click', () => {
+        if (!appState.sessionId) { alert('セッションがありません'); return; }
+        window.location.href = API_PREFIX + '/api/download_result_pdf/' + appState.sessionId;
+    });
+
+    // -----------------------------------------------------------------------
+    // ドライブ上書き
+    // -----------------------------------------------------------------------
+    document.getElementById('saveToDriveBtn').addEventListener('click', async () => {
+        if (!appState.sessionId) { alert('セッションがありません'); return; }
+        showLoader('Googleドライブに保存中…');
+        try {
+            const res = await fetch(API_PREFIX + '/api/save_to_drive/' + appState.sessionId, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || '保存失敗');
+            alert('Googleドライブへの保存が完了しました');
+        } catch (e) {
+            alert('エラー: ' + e.message);
+        } finally {
+            hideLoader();
+        }
+    });
+
+})();
+</script>
+</body>
+</html>

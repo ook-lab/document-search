@@ -26,7 +26,7 @@ _RUN_LEGACY_HOST = re.compile(
 
 
 def _pdf_toolbox_from_cloud_run_host(host: Optional[str]) -> str:
-    """doc-processor-….run.app 形式のホストから、同一番号・リージョンの pdf-toolbox URL を組み立てる。"""
+    """同一プロジェクトの Cloud Run ホスト名から pdf-toolbox URL を組み立てる（ヒューリスティック）。"""
     if not host:
         return ""
     h = host.split(":")[0].strip().lower()

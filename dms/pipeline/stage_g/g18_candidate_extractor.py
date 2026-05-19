@@ -26,7 +26,6 @@ JST = timezone(timedelta(hours=9))
 
 # ソーステーブル定数（g31 と同じ）
 RAW_GCAL      = "02_gcal_01_raw"
-RAW_GMAIL     = "01_gmail_01_raw"
 RAW_EMA_CLASS = "03_ema_classroom_01_raw"
 RAW_IKU_CLASS = "04_ikuya_classroom_01_raw"
 RAW_IKU_WASE  = "05_ikuya_waseaca_01_raw"
@@ -38,7 +37,6 @@ SOURCE_PRIORITY: Dict[str, int] = {
     RAW_EMA_CLASS: 2,
     RAW_IKU_CLASS: 2,
     RAW_IKU_WASE:  2,
-    RAW_GMAIL:     5,
     "08_file_only_01_raw": 3,
 }
 

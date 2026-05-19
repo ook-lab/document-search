@@ -9,10 +9,9 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-COPY dms/ /app/dms/
 COPY services/gmail-service/ /app/services/gmail-service/
 
-ENV PYTHONPATH=/app:/app/services/gmail-service
+ENV PYTHONPATH=/app/services/gmail-service
 ENV PORT=5010
 
 CMD exec gunicorn --bind :$PORT --workers 1 --threads 4 --timeout 300 --chdir services/gmail-service app:app

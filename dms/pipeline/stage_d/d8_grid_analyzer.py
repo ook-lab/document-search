@@ -127,9 +127,9 @@ class D8GridAnalyzer:
         intersections = self._find_intersections(h_lines, v_lines)
         logger.info(f"[D-8] 交点計算完了: {len(intersections)}個")
         if intersections:
-            logger.info(f"[D-8] 交点 全件:")
+            logger.debug("[D-8] 交点 全件:")
             for i, point in enumerate(intersections, 1):
-                logger.info(f"  {i}. x={point['x']:.3f}, y={point['y']:.3f}")
+                logger.debug(f"  {i}. x={point['x']:.3f}, y={point['y']:.3f}")
 
         # 表領域を特定
         table_regions = self._identify_table_regions(
@@ -140,13 +140,18 @@ class D8GridAnalyzer:
         )
         logger.info(f"[D-8] 表領域特定完了: {len(table_regions)}個")
         for region in table_regions:
-            bbox = region.get('bbox', [])
-            logger.info(f"[D-8] 表領域 {region.get('table_id')}:")
-            logger.info(f"  ├─ Bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]")
-            logger.info(f"  ├─ サイズ: {bbox[2]-bbox[0]:.3f} x {bbox[3]-bbox[1]:.3f}")
-            logger.info(f"  ├─ 交点数: {region.get('intersection_count')}")
-            logger.info(f"  ├─ 水平線数: {region.get('h_line_count')}")
-            logger.info(f"  └─ 垂直線数: {region.get('v_line_count')}")
+            bbox = region.get("bbox", []) or []
+            logger.debug(f"[D-8] 表領域 {region.get('table_id')}:")
+            if len(bbox) >= 4:
+                logger.debug(
+                    f"  ├─ Bbox: [{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}]"
+                )
+                logger.debug(f"  ├─ サイズ: {bbox[2]-bbox[0]:.3f} x {bbox[3]-bbox[1]:.3f}")
+            else:
+                logger.debug(f"  ├─ Bbox: (invalid len={len(bbox)})")
+            logger.debug(f"  ├─ 交点数: {region.get('intersection_count')}")
+            logger.debug(f"  ├─ 水平線数: {region.get('h_line_count')}")
+            logger.debug(f"  └─ 垂直線数: {region.get('v_line_count')}")
 
         return {
             'page_index': page_index,

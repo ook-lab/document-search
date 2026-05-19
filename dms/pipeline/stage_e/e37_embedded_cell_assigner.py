@@ -86,6 +86,21 @@ class E37EmbeddedCellAssigner:
                 'text_candidates': [],
             }
 
+        # D10 テーブル全体の bbox を cell_map から算出（正規化座標）
+        d10_table_bbox = None
+        cell_bboxes = [
+            c.get('bbox') or c.get('bbox_norm')
+            for c in cell_map
+            if (c.get('bbox') or c.get('bbox_norm')) and len(c.get('bbox') or c.get('bbox_norm', [])) >= 4
+        ]
+        if cell_bboxes:
+            d10_table_bbox = [
+                min(b[0] for b in cell_bboxes),
+                min(b[1] for b in cell_bboxes),
+                max(b[2] for b in cell_bboxes),
+                max(b[3] for b in cell_bboxes),
+            ]
+
         # 全 B 表をループして D10 セルにテキストを収集
         for b_table in b_tables:
             b_data = b_table.get('data', [])  # List[List[str | None]]
@@ -100,6 +115,19 @@ class E37EmbeddedCellAssigner:
                     b_bbox_raw[2] / pw,
                     b_bbox_raw[3] / ph,
                 ]
+
+            # B テーブルが D10 テーブルと空間的に重ならなければスキップ
+            # （別テーブルのテキストが D10 セルに混入するのを防ぐ）
+            if d10_table_bbox and b_bbox_norm:
+                dx0, dy0, dx1, dy1 = d10_table_bbox
+                bx0, by0, bx1, by1 = b_bbox_norm
+                overlap_x = max(0.0, min(bx1, dx1) - max(bx0, dx0))
+                overlap_y = max(0.0, min(by1, dy1) - max(by0, dy0))
+                if overlap_x <= 0 or overlap_y <= 0:
+                    logger.debug(
+                        f"[E-37] B table {b_origin_uid} は D10 と空間的に重ならない → スキップ"
+                    )
+                    continue
 
             for r_idx, row in enumerate(b_data):
                 if not isinstance(row, list):

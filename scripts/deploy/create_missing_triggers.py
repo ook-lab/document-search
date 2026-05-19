@@ -40,7 +40,6 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("calendar-register", "services/calendar-register/cloudbuild.yaml", "services/calendar-register/**"),
     ("daily-report-deploy", "services/daily-report/cloudbuild.yaml", "services/daily-report/**"),
     ("data-ingestion-deploy-trigger", "services/data-ingestion/cloudbuild.yaml", "services/data-ingestion/**"),
-    ("doc-processor", "services/doc-processor/cloudbuild.yaml", "services/doc-processor/**"),
     ("doc-search", "services/doc-search/cloudbuild.yaml", "services/doc-search/**"),
     ("doda-scraper", "services/doda-scraper/cloudbuild.yaml", "services/doda-scraper/**"),
     ("drive-checker-deploy", "services/drive-duplicate-checker/cloudbuild.yaml", "services/drive-duplicate-checker/**"),
@@ -49,6 +48,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("kakeibo-ui", "services/kakeibo/cloudbuild.yaml", "services/kakeibo/**"),
     ("my-calendar-app", "my-calendar-app/cloudbuild.yaml", "my-calendar-app/**"),
     ("pdf-toolbox", "services/pdf-toolbox/cloudbuild.yaml", "services/pdf-toolbox/**"),
+    ("pipeline-lab", "services/pipeline-lab/cloudbuild.yaml", "services/pipeline-lab/**"),
     ("portal-deploy", "portal-app/cloudbuild.yaml", "portal-app/**"),
     ("rag-prepare", "services/rag-prepare/cloudbuild.yaml", "services/rag-prepare/**"),
     ("reading-context-editor", "services/reading-context-editor/cloudbuild.yaml", "services/reading-context-editor/**"),
@@ -58,7 +58,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
 
 # export に使う候補（先頭から順に試す）
 _EXPORT_TEMPLATE_CANDIDATES: tuple[str, ...] = (
-    "doc-processor",
+    "doc-search",
     "ai-cost-tracker",
     "calendar-register",
     "kakeibo-ui",

@@ -9,12 +9,12 @@
 ## Per-service triggers (recommended)
 
 - Point each GitHub / Cloud Source trigger at **`services/<service>/cloudbuild.yaml`** only.
-- Set **`includedFiles`** to that service tree only, for example `services/doc-processor/**`.
+- Set **`includedFiles`** to that service tree only, for example `services/doc-search/**`.
 - Do **not** add a second trigger on the same branch that also fires on every push (for example a root **`cloudbuild.yaml`** batch plus a per-service trigger for the same service), or you get duplicate builds.
 
-## Root `cloudbuild.yaml` (batch: doc-processor + html-to-a4)
+## Root `cloudbuild.yaml` (html-to-a4 batch)
 
-The repository root file builds two services in one pipeline. Keep it for manual or special batch deploys if you need it, but **do not** mirror the same branch with overlapping triggers. If you use a root trigger, narrow **`includedFiles`** in the console (for example only the two service directories), and avoid **`dms/**`** alone so a change under `dms/` does not fan out to unrelated services.
+The repository root file builds **html-to-a4** only. Keep it for manual or special batch deploys if you need it, but **do not** mirror the same branch with overlapping triggers. If you use a root trigger, narrow **`includedFiles`** in the console (for example only `services/html-to-a4/**`), and avoid **`dms/**`** alone so a change under `dms/` does not fan out to unrelated services.
 
 ## Monorepo library (`dms/`)
 

@@ -15,6 +15,14 @@ from standalone import (
     resolve_pdf_toolbox_base,
 )
 
+
+def resolve_pipeline_lab_base(request_host: str = None) -> str:
+    """PIPELINE_LAB_BASE 環境変数、またはホスト名から推測。"""
+    explicit = os.environ.get('PIPELINE_LAB_BASE', '').strip().rstrip('/')
+    if explicit:
+        return explicit
+    return ''
+
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,11 +65,14 @@ def index():
             "カスタムドメインのみの場合は RAG_PREPARE_PDF_TOOLBOX_BASE を設定してください。"
         )
 
+    pipeline_lab = resolve_pipeline_lab_base(request_host=req_host or None)
+
     return render_template(
         "search_data_prep.html",
         docs=pending_docs,
         list_error=list_error,
         pdf_toolbox_base=toolbox,
+        pipeline_lab_base=pipeline_lab,
         process_post_url="/process",
     )
 

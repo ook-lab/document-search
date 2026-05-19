@@ -169,6 +169,13 @@ class B1Controller:
                 "processor_name": "B1_CONTROLLER"
             }
 
+        low_conf_pages_early: List[int] = []
+        if a_result:
+            pcm = a_result.get("page_confidence_map", {}) or {}
+            low_conf_pages_early = sorted(
+                int(idx) for idx, conf in pcm.items() if conf == "LOW"
+            )
+
         # 本番モード: PRODUCTION_ALLOWED_PROCESSORS のみ許可（他は全遮断）
         if production_mode:
             allowed = self.PRODUCTION_ALLOWED_PROCESSORS
@@ -184,7 +191,19 @@ class B1Controller:
                     "error": f"GATE_ROUTE_BLOCKED: forced processor {force_processor} not allowed (allowed={allowed})",
                     "processor_name": force_processor
                 }
-            return self._execute_processor(force_processor, file_path)
+            if file_ext == ".pdf":
+                return self._process_pdf_page_by_page(
+                    force_processor,
+                    file_path,
+                    log_dir=_log_dir,
+                    low_conf_pages=low_conf_pages_early,
+                )
+            return self._execute_processor(
+                force_processor,
+                file_path,
+                masked_pages=low_conf_pages_early if low_conf_pages_early else None,
+                log_dir=_log_dir,
+            )
 
         # Stage A の結果から origin_app と layout_profile を取得
         origin_app = None
@@ -224,8 +243,13 @@ class B1Controller:
                           if t not in _NON_CONTENT_TYPES}
         if len(content_groups) > 1:
             return self._process_multi_type(
-                file_path, content_groups, page_type_map, allowed, layout_profile,
+                file_path,
+                content_groups,
+                page_type_map,
+                allowed,
+                layout_profile,
                 log_dir=_log_dir,
+                low_conf_pages=low_conf_pages,
             )
 
         # ── 単一型（従来動作）──
@@ -252,11 +276,66 @@ class B1Controller:
         logger.info(f"[B-1] 選択されたプロセッサ: {processor_name}")
         logger.info("=" * 60)
 
+        if file_ext == ".pdf":
+            return self._process_pdf_page_by_page(
+                processor_name,
+                file_path,
+                log_dir=_log_dir,
+                low_conf_pages=low_conf_pages,
+            )
+
         # プロセッサを実行（LOW 信頼度ページは masked_pages として渡す）
         return self._execute_processor(
             processor_name, file_path,
             masked_pages=low_conf_pages if low_conf_pages else None,
             log_dir=_log_dir,
+        )
+
+    def _process_pdf_page_by_page(
+        self,
+        processor_name: str,
+        file_path: Path,
+        log_dir=None,
+        low_conf_pages: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        """PDF は常に1ページのみ受け付ける（複数ページはエラー）。"""
+        try:
+            import fitz
+        except ImportError:
+            logger.error("[B-1] PyMuPDF (fitz) 未導入のため PDF を検査できません")
+            return {
+                "is_structured": False,
+                "error": "PAGE_BY_PAGE_REQUIRES_PYMUPDF: install PyMuPDF (fitz)",
+                "processor_name": "B1_CONTROLLER",
+            }
+
+        low_set = set(low_conf_pages or [])
+        doc = fitz.open(str(file_path))
+        n = len(doc)
+        doc.close()
+        if n == 0:
+            return {
+                "is_structured": False,
+                "error": "PDF has no pages",
+                "processor_name": "B1_CONTROLLER",
+            }
+        if n > 1:
+            logger.error(f"[B-1] 複数ページ PDF は受け付けません（{n}ページ）: {file_path.name}")
+            return {
+                "is_structured": False,
+                "error": (
+                    f"MULTI_PAGE_PDF_FORBIDDEN: {n} ページの PDF は B1 に渡せません。"
+                    "1ページに分割した PDF のみ渡してください。"
+                ),
+                "processor_name": "B1_CONTROLLER",
+            }
+
+        masked = [0] if 0 in low_set else None
+        return self._execute_processor(
+            processor_name,
+            file_path,
+            masked_pages=masked,
+            log_dir=log_dir,
         )
 
     def _process_multi_type(
@@ -267,6 +346,7 @@ class B1Controller:
         allowed: List[str],
         layout_profile: str,
         log_dir=None,
+        low_conf_pages: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """
         MIXED 文書: B1 でページ種別ごとにスプリット → 各プロセッサに渡す → B90 でマージ
@@ -275,6 +355,7 @@ class B1Controller:
         logger.info(f"[B-1] MIXED 処理開始（スプリット方式）: {len(content_groups)}型 / {total_pages}ページ")
 
         raw_results: List[Dict[str, Any]] = []
+        low_set = set(low_conf_pages or [])
 
         for ptype, page_indices in content_groups.items():
             processor_name = _TYPE_TO_PROCESSOR.get(ptype)
@@ -299,16 +380,36 @@ class B1Controller:
                     'processor_name': 'B1_CONTROLLER',
                 }
 
-            # B1 でページをスプリット（マスクではなく分断して渡す）
+            # 同一型グループは1ページのみ（複数ページまとめ禁止）
             source_pages = sorted(page_indices)
+            if len(source_pages) > 1:
+                return {
+                    'is_structured': False,
+                    'error': (
+                        f'MIXED_MULTI_PAGE_FORBIDDEN: 同一型グループに複数ページ {source_pages} '
+                        'をまとめて渡すことはできません。'
+                    ),
+                    'processor_name': 'B1_CONTROLLER',
+                }
+
             sub_pdf = self._split_pdf_by_pages(file_path, source_pages, ptype)
-            logger.info(f"[B-1]   {ptype}: {processor_name} → {sub_pdf.name} ({len(source_pages)}ページ)")
+            logger.info(
+                f"[B-1]   {ptype}: {processor_name} → {sub_pdf.name} "
+                f"({len(source_pages)}ページ)"
+            )
 
-            result = self._execute_processor(processor_name, sub_pdf, log_dir=log_dir)
-            result['_source_type'] = ptype
-            result['_source_pages'] = source_pages  # 元PDFでのページ番号
+            masked_sub = [
+                si for si, pg in enumerate(source_pages) if pg in low_set
+            ]
+            result = self._execute_processor(
+                processor_name,
+                sub_pdf,
+                masked_pages=masked_sub if masked_sub else None,
+                log_dir=log_dir,
+            )
+            result["_source_type"] = ptype
+            result["_source_pages"] = source_pages
 
-            # サブPDFのページ番号を元PDFのページ番号に戻す
             self._remap_pages(result, source_pages)
 
             raw_results.append(result)

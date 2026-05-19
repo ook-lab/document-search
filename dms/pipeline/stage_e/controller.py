@@ -22,6 +22,8 @@ E-1: Stage E Controller（唯一の執行者）
   table_contents     = E40 table_ssot リスト（F1 が読む正本）
   table_audit        = E37 監査リスト（F に渡さない）
   metadata           = トークン情報（F1 が読む）
+
+  表の成型・表AIチェーンは Stage F（F52 以降）のみ。E 出口では行わない。
 """
 
 from loguru import logger
@@ -40,6 +42,8 @@ from .e32_table_cell_merger import E32TableCellMerger
 from .e37_embedded_cell_assigner import E37EmbeddedCellAssigner
 from .e40_image_ssot_consolidator import E40ImageSsotConsolidator
 
+from dms.common.gemini_studio_key import google_ai_studio_api_key
+
 # 表 OCR（E30/E31）を実行する最低文字数閾値
 _TABLE_OCR_THRESHOLD = 500
 
@@ -53,21 +57,23 @@ class E1Controller:
       E40 は controller が明示実行（next_stage 連鎖は禁止）
     """
 
-    def __init__(self, ):
+    def __init__(self, gemini_api_key: Optional[str] = None):
+        api_key = (gemini_api_key or "").strip() or google_ai_studio_api_key() or None
+
         self.scouter = E1OcrScouter()
         self.visualizer = E5TextBlockVisualizer()
 
         # 非表処理
         self.line_eraser = E16LineEraser()
         self.non_table_vision_ocr = E20NonTableVisionOcr()
-        self.context_extractor = E21ContextExtractor(api_key=gemini_api_key)
+        self.context_extractor = E21ContextExtractor(api_key=api_key)
         self.coordinate_fitter = E25ParagraphGrouper()
 
         # 表処理チェーン: E30 → E31 → E32（E32 で止まる。E40 は controller が呼ぶ）
         e32 = E32TableCellMerger()                         # ★ next_stage なし
         e31 = E31TableVisionOcr(next_stage=e32)
         self.table_extractor = E30TableStructureExtractor(
-            api_key=gemini_api_key,
+            api_key=api_key,
             next_stage=e31
         )
 
@@ -173,10 +179,9 @@ class E1Controller:
             stage_d_result: Stage D の結果
             stage_b_result: Stage B の結果（E37 監査用。なくても動作）
             output_dir: 出力ディレクトリ
-            gemini_api_key: API Key（オプション）
-            log_dir: ログディレクトリ（オプション）
+            log_dir: ログディレクトリ（オプション・現状未使用）
             min_gemini_chars: Gemini 呼び出しに必要な最小文字数（0=常に呼び出す）
-                              Gmail など画像が多い用途で Gemini コストを削減する目的で使用。
+                              画像中心ページでコストを抑えたい場合に使用。
 
         Returns:
             {
@@ -189,7 +194,10 @@ class E1Controller:
             }
         """
         return self._process_impl(
-            purged_pdf_path, stage_d_result, stage_b_result, output_dir, gemini_api_key,
+            purged_pdf_path,
+            stage_d_result,
+            stage_b_result=stage_b_result,
+            output_dir=output_dir,
             min_gemini_chars=min_gemini_chars,
             session_id=session_id,
         )
@@ -425,7 +433,7 @@ class E1Controller:
         )
         logger.info("=" * 90)
 
-        return {
+        result: dict = {
             'success': True,
             'non_table_content': non_table_content,  # F1 互換キー
             'table_contents': table_contents,         # E40 SSOT → F1 が読む正本
@@ -433,3 +441,5 @@ class E1Controller:
             'page_scout': {},
             'metadata': {'total_tokens': total_tokens, 'models_used': models_used},
         }
+
+        return result

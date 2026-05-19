@@ -77,23 +77,25 @@ class D9CellIdentifier:
         logger.info(f"  └─ Y座標数: {len(y_coords)}")
 
         # 座標リストをログ出力（全件）
-        logger.info(f"[D-9] X座標リスト 全件: {[f'{x:.3f}' for x in x_coords]}")
-        logger.info(f"[D-9] Y座標リスト 全件: {[f'{y:.3f}' for y in y_coords]}")
+        logger.debug(f"[D-9] X座標リスト 全件: {[f'{x:.3f}' for x in x_coords]}")
+        logger.debug(f"[D-9] Y座標リスト 全件: {[f'{y:.3f}' for y in y_coords]}")
 
         # セルを生成
         cells = self._generate_cells(x_coords, y_coords)
 
-        # 結合セルを検出（オプション）
-        # cells = self._detect_merged_cells(cells, h_lines, v_lines)
+        cells = self._detect_merged_cells(cells, h_lines, v_lines)
 
         logger.info(f"[D-9] セル特定完了: {len(cells)}個")
 
         # セルの全件ログ
         if cells:
-            logger.info(f"[D-9] セル 全件:")
+            logger.debug("[D-9] セル 全件:")
             for cell in cells:
                 bbox = cell.get('bbox', [])
-                logger.info(f"  {cell.get('cell_id')}: bbox=[{bbox[0]:.3f}, {bbox[1]:.3f}, {bbox[2]:.3f}, {bbox[3]:.3f}], row={cell.get('row')}, col={cell.get('col')}")
+                logger.debug(
+                    f"  {cell.get('cell_id')}: bbox=[{bbox[0]:.3f}, {bbox[1]:.3f}, "
+                    f"{bbox[2]:.3f}, {bbox[3]:.3f}], row={cell.get('row')}, col={cell.get('col')}"
+                )
 
         return {
             'cells': cells,
@@ -149,22 +151,82 @@ class D9CellIdentifier:
         self,
         cells: List[Dict[str, Any]],
         h_lines: List[Dict[str, Any]],
-        v_lines: List[Dict[str, Any]]
+        v_lines: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
         """
-        結合セルを検出
-
-        Args:
-            cells: セルリスト
-            h_lines: 水平線リスト
-            v_lines: 垂直線リスト
-
-        Returns:
-            結合セル処理済みセルリスト
+        セル境界に罫線が無い隣接ペアへ rowspan / colspan を付与（語彙不使用）。
         """
-        # 簡易実装: セル間に罫線がない場合、結合セルと判定
-        # 実装は複雑になるため、現時点ではスキップ
-        # TODO: 必要に応じて実装
+        if not cells or not h_lines:
+            return cells
+
+        by_rc: Dict[Tuple[int, int], Dict[str, Any]] = {}
+        for c in cells:
+            by_rc[(int(c["row"]), int(c["col"]))] = c
+
+        def _h_line_covers(line: Dict[str, Any], x0: float, x1: float, y_edge: float) -> bool:
+            ly = (float(line.get("y0", 0)) + float(line.get("y1", 0))) / 2.0
+            if abs(ly - y_edge) > self.merge_threshold:
+                return False
+            lx0, lx1 = float(line.get("x0", 0)), float(line.get("x1", 0))
+            col_w = max(x1 - x0, 1e-6)
+            overlap = max(0.0, min(x1, lx1) - max(x0, lx0))
+            return overlap / col_w >= 0.35
+
+        def _v_line_covers(line: Dict[str, Any], y0: float, y1: float, x_edge: float) -> bool:
+            lx = (float(line.get("x0", 0)) + float(line.get("x1", 0))) / 2.0
+            if abs(lx - x_edge) > self.merge_threshold:
+                return False
+            ly0, ly1 = float(line.get("y0", 0)), float(line.get("y1", 0))
+            row_h = max(y1 - y0, 1e-6)
+            overlap = max(0.0, min(y1, ly1) - max(y0, ly0))
+            return overlap / row_h >= 0.35
+
+        for c in cells:
+            c.setdefault("rowspan", 1)
+            c.setdefault("colspan", 1)
+
+        max_row = max(int(c["row"]) for c in cells)
+        max_col = max(int(c["col"]) for c in cells)
+
+        for r in range(1, max_row):
+            for col in range(1, max_col + 1):
+                cur = by_rc.get((r, col))
+                nxt = by_rc.get((r + 1, col))
+                if not cur or not nxt:
+                    continue
+                bb = cur.get("bbox") or []
+                if len(bb) < 4:
+                    continue
+                y_edge = float(bb[3])
+                x0, x1 = float(bb[0]), float(bb[2])
+                blocked = any(
+                    _h_line_covers(ln, x0, x1, y_edge)
+                    for ln in h_lines
+                    if isinstance(ln, dict)
+                )
+                if not blocked:
+                    cur["rowspan"] = int(cur.get("rowspan", 1)) + int(nxt.get("rowspan", 1))
+                    nxt["merged_into"] = cur.get("cell_id")
+
+        for r in range(1, max_row + 1):
+            for col in range(1, max_col):
+                cur = by_rc.get((r, col))
+                nxt = by_rc.get((r, col + 1))
+                if not cur or not nxt:
+                    continue
+                bb = cur.get("bbox") or []
+                if len(bb) < 4:
+                    continue
+                x_edge = float(bb[2])
+                y0, y1 = float(bb[1]), float(bb[3])
+                blocked = any(
+                    _v_line_covers(ln, y0, y1, x_edge)
+                    for ln in v_lines
+                    if isinstance(ln, dict)
+                )
+                if not blocked:
+                    cur["colspan"] = int(cur.get("colspan", 1)) + int(nxt.get("colspan", 1))
+                    nxt["merged_into"] = cur.get("cell_id")
 
         return cells
 

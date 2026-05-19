@@ -217,7 +217,7 @@ class StateManager:
                 'current_workers': 0
             }
 
-        # DBロック設定（失敗しても処理は継続。dequeue_pipeline RPC が並列安全を保証）
+        # DBロック設定（失敗しても処理は継続）
         self._set_lock(True)
         self.add_log(f"処理開始: {total_count}件")
         self._reset_stuck_documents()
@@ -420,18 +420,8 @@ class StateManager:
             return False
 
     def _reset_stuck_documents(self):
-        """processing状態でスタックしているドキュメントをpendingにリセット"""
-        try:
-            result = self.client.table('pipeline_meta').select('id').eq('processing_status', 'processing').execute()
-            if result.data:
-                stuck_ids = [row['id'] for row in result.data]
-                if stuck_ids:
-                    self.client.table('pipeline_meta').update({
-                        'processing_status': 'pending'
-                    }).in_('id', stuck_ids).execute()
-                    logger.info(f"Reset {len(stuck_ids)} stuck documents to pending")
-        except Exception as e:
-            logger.error(f"Failed to reset stuck documents: {e}")
+        """pipeline_meta のキュー状態は Worker から更新しない（スタック掃除は行わない）。"""
+        return
 
 
 def get_state_manager() -> StateManager:

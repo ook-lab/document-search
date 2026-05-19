@@ -15,8 +15,9 @@ D-9: Cell Identifier（セル特定）
 D-10: Image Slicer（画像分割）
 """
 
+import json
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 
 from .d3_vector_line_extractor import D3VectorLineExtractor
@@ -24,6 +25,143 @@ from .d5_raster_line_detector import D5RasterLineDetector
 from .d8_grid_analyzer import D8GridAnalyzer
 from .d9_cell_identifier import D9CellIdentifier
 from .d10_image_slicer import D10ImageSlicer
+
+_REPLAY_LIST_CAP = 128
+
+
+def _r4(x: float) -> float:
+    return round(float(x), 4)
+
+
+def _unique_sorted_line_mids(lines: List[Dict[str, Any]], vertical: bool) -> List[float]:
+    mids: List[float] = []
+    for ln in lines or []:
+        try:
+            if vertical:
+                mids.append(_r4((ln["x0"] + ln["x1"]) / 2))
+            else:
+                mids.append(_r4((ln["y0"] + ln["y1"]) / 2))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(set(mids))
+
+
+def _cap_list(xs: List[float], limit: int) -> Tuple[List[float], bool]:
+    if len(xs) <= limit:
+        return xs, False
+    return xs[:limit], True
+
+
+def build_stage_d_replay_record(
+    *,
+    pdf_path: Path,
+    page_num: int,
+    purged_image_path: Optional[Path],
+    output_dir: Path,
+    vector_result: Dict[str, Any],
+    raster_result: Optional[Dict[str, Any]],
+    grid_result: Dict[str, Any],
+    cell_result: Dict[str, Any],
+    tables: List[Dict[str, Any]],
+    non_table_image_path: str,
+) -> Dict[str, Any]:
+    """
+    ログ1行で「目視レイアウトと数値の対応」を追える JSON 用 dict。
+    全線・全セルのダンプはせず、ガイド座標・bbox・出力ファイル名に絞る。
+    """
+    unified = grid_result.get("unified_lines") or {}
+    uh = unified.get("horizontal") or []
+    uv = unified.get("vertical") or []
+    vx_u = _unique_sorted_line_mids(uv, vertical=True)
+    vy_u = _unique_sorted_line_mids(uh, vertical=False)
+    vx_u, vx_trunc = _cap_list(vx_u, _REPLAY_LIST_CAP)
+    vy_u, vy_trunc = _cap_list(vy_u, _REPLAY_LIST_CAP)
+
+    gi = cell_result.get("grid_info") or {}
+    raw_xs = [_r4(x) for x in (gi.get("x_coords") or [])]
+    raw_ys = [_r4(y) for y in (gi.get("y_coords") or [])]
+    gx, gx_trunc = _cap_list(raw_xs, _REPLAY_LIST_CAP)
+    gy, gy_trunc = _cap_list(raw_ys, _REPLAY_LIST_CAP)
+
+    regions_out: List[Dict[str, Any]] = []
+    for reg in grid_result.get("table_regions") or []:
+        bb = reg.get("bbox") or [0, 0, 0, 0]
+        regions_out.append(
+            {
+                "table_id": reg.get("table_id"),
+                "origin_uid": reg.get("origin_uid"),
+                "bbox_norm": [_r4(bb[0]), _r4(bb[1]), _r4(bb[2]), _r4(bb[3])],
+                "intersection_count": reg.get("intersection_count"),
+                "h_line_count": reg.get("h_line_count"),
+                "v_line_count": reg.get("v_line_count"),
+            }
+        )
+
+    outs: List[Dict[str, Any]] = []
+    for t in tables or []:
+        bb = t.get("bbox") or [0, 0, 0, 0]
+        p = t.get("image_path") or ""
+        outs.append(
+            {
+                "table_id": t.get("table_id"),
+                "origin_uid": t.get("origin_uid"),
+                "image_file": Path(p).name if p else "",
+                "bbox_norm": [_r4(bb[0]), _r4(bb[1]), _r4(bb[2]), _r4(bb[3])],
+            }
+        )
+
+    rsz = raster_result.get("image_size") if raster_result else None
+    raster_wh = [int(rsz[0]), int(rsz[1])] if rsz and len(rsz) >= 2 else None
+
+    return {
+        "schema_version": 1,
+        "kind": "stage_d_replay",
+        "pdf": pdf_path.name,
+        "page_index": page_num,
+        "purged_image": purged_image_path.name if purged_image_path else None,
+        "output_dir": output_dir.name,
+        "page_size_pt": list(vector_result.get("page_size") or [])
+        if vector_result.get("page_size")
+        else None,
+        "raster_px": raster_wh,
+        "counts": {
+            "vector_h": len(vector_result.get("horizontal_lines") or []),
+            "vector_v": len(vector_result.get("vertical_lines") or []),
+            "vector_total": len(vector_result.get("all_lines") or []),
+            "raster_h": len(raster_result.get("horizontal_lines") or [])
+            if raster_result
+            else 0,
+            "raster_v": len(raster_result.get("vertical_lines") or [])
+            if raster_result
+            else 0,
+            "raster_total": len(raster_result.get("all_lines") or [])
+            if raster_result
+            else 0,
+            "unified_h": len(uh),
+            "unified_v": len(uv),
+            "intersections": len(grid_result.get("intersections") or []),
+            "table_regions": len(grid_result.get("table_regions") or []),
+            "cells": len(cell_result.get("cells") or []),
+            "grid_cell_rows": gi.get("rows"),
+            "grid_cell_cols": gi.get("cols"),
+            "output_tables": len(tables or []),
+        },
+        "geometry": {
+            "unified_vertical_x_norm_unique": vx_u,
+            "unified_vertical_x_norm_unique_truncated": vx_trunc,
+            "unified_horizontal_y_norm_unique": vy_u,
+            "unified_horizontal_y_norm_unique_truncated": vy_trunc,
+            "grid_divider_x_norm": gx,
+            "grid_divider_x_norm_truncated": gx_trunc,
+            "grid_divider_y_norm": gy,
+            "grid_divider_y_norm_truncated": gy_trunc,
+        },
+        "table_regions": regions_out,
+        "outputs": outs,
+        "non_table_image": Path(non_table_image_path).name
+        if non_table_image_path
+        else "",
+    }
 
 
 class D1Controller:
@@ -128,9 +266,9 @@ class D1Controller:
             logger.info(f"  ├─ 合計線: {len(vector_result.get('all_lines', []))}本")
             logger.info(f"  └─ ページサイズ: {vector_result.get('page_size', (0, 0))}")
             if vector_result.get('all_lines'):
-                logger.info(f"[D-1] ベクトル線 全件:")
+                logger.debug("[D-1] ベクトル線 全件:")
                 for line_idx, line in enumerate(vector_result['all_lines']):
-                    logger.info(f"[D-1]   線{line_idx}: {line}")
+                    logger.debug(f"[D-1]   線{line_idx}: {line}")
 
             # D-5: ラスター罫線検出（画像がある場合のみ）
             raster_result = None
@@ -147,9 +285,9 @@ class D1Controller:
                 logger.info(f"  ├─ 合計線: {len(raster_result.get('all_lines', []))}本")
                 logger.info(f"  └─ 画像サイズ: {raster_result.get('image_size', (0, 0))}")
                 if raster_result.get('all_lines'):
-                    logger.info(f"[D-1] ラスター線 全件:")
+                    logger.debug("[D-1] ラスター線 全件:")
                     for line_idx, line in enumerate(raster_result['all_lines']):
-                        logger.info(f"[D-1]   線{line_idx}: {line}")
+                        logger.debug(f"[D-1]   線{line_idx}: {line}")
             else:
                 logger.info("\n[D-1] ステップ2: ラスター罫線検出（スキップ: 画像なし）")
 
@@ -170,9 +308,9 @@ class D1Controller:
             logger.info(f"  ├─ 統合水平線: {len(unified_lines.get('horizontal', []))}本")
             logger.info(f"  └─ 統合垂直線: {len(unified_lines.get('vertical', []))}本")
             if grid_result.get('intersections'):
-                logger.info(f"[D-1] 交点 全件:")
+                logger.debug("[D-1] 交点 全件:")
                 for pt_idx, pt in enumerate(grid_result['intersections']):
-                    logger.info(f"[D-1]   交点{pt_idx}: {pt}")
+                    logger.debug(f"[D-1]   交点{pt_idx}: {pt}")
             if grid_result.get('table_regions'):
                 for region in grid_result['table_regions']:
                     logger.info(f"[D-1] 表領域 {region.get('table_id')}: bbox={region.get('bbox')}, 交点={region.get('intersection_count')}")
@@ -190,9 +328,11 @@ class D1Controller:
             logger.info(f"  ├─ 行数: {grid_info.get('rows', 0)}")
             logger.info(f"  └─ 列数: {grid_info.get('cols', 0)}")
             if cell_result.get('cells'):
-                logger.info(f"[D-1] セル 全件:")
+                logger.debug("[D-1] セル 全件:")
                 for cell_idx, cell in enumerate(cell_result['cells']):
-                    logger.info(f"[D-1]   セル{cell_idx}: {cell.get('cell_id')} bbox={cell.get('bbox')}")
+                    logger.debug(
+                        f"[D-1]   セル{cell_idx}: {cell.get('cell_id')} bbox={cell.get('bbox')}"
+                    )
 
             # B/D 重複排除（D-10実行前に行い、無駄な画像生成を防ぐ）
             if (b_structured_tables is not None
@@ -220,7 +360,7 @@ class D1Controller:
                 logger.info(f"  ├─ 表画像数: {len(slice_result.get('tables', []))}枚")
                 logger.info(f"  └─ 非表画像: {slice_result.get('non_table_image_path', 'なし')}")
                 for table in slice_result.get('tables', []):
-                    logger.info(f"[D-1] {table.get('table_id')}: {table.get('image_path')}")
+                    logger.debug(f"[D-1] {table.get('table_id')}: {table.get('image_path')}")
             else:
                 logger.info("\n[D-1] ステップ5: 画像分割（スキップ: 画像なし）")
                 slice_result = {
@@ -269,8 +409,27 @@ class D1Controller:
             logger.info(f"[D-1] 出力ディレクトリ: {output_dir}")
             logger.info("=" * 60)
 
+            try:
+                replay = build_stage_d_replay_record(
+                    pdf_path=pdf_path,
+                    page_num=page_num,
+                    purged_image_path=purged_image_path,
+                    output_dir=output_dir,
+                    vector_result=vector_result,
+                    raster_result=raster_result,
+                    grid_result=grid_result,
+                    cell_result=cell_result,
+                    tables=result["tables"],
+                    non_table_image_path=result["non_table_image_path"] or "",
+                )
+                logger.info(
+                    "[D-1] REPLAY_RECORD "
+                    + json.dumps(replay, ensure_ascii=False, separators=(",", ":"))
+                )
+            except Exception as e:
+                logger.warning(f"[D-1] REPLAY_RECORD 生成失敗: {e}")
+
             # デバッグ情報の詳細ダンプ
-            import json
             logger.debug("[D-1] Debug情報 JSON dump:")
             try:
                 debug_summary = {
