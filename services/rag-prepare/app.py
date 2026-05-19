@@ -165,6 +165,23 @@ def process_date_signals():
 def backfill_date_signals():
     return _run_date_signals_backfill()
 
+@app.route('/skip-ix', methods=['POST'])
+def skip_ix():
+    data = request.get_json(silent=True) or {}
+    raw_table = (data.get("raw_table") or "").strip()
+    raw_id = (data.get("raw_id") or "").strip()
+    if not raw_table or not raw_id:
+        return jsonify({"success": False, "error": "Missing raw_table or raw_id"}), 400
+    IndexerClass, _ = get_indexer_tools()
+    if not IndexerClass:
+        return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
+    indexer = IndexerClass()
+    success, err_msg = indexer.skip_document(raw_table=raw_table, raw_id=raw_id)
+    if success:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': err_msg or 'Failed'})
+
+
 @app.route('/reset-ix-all', methods=['POST'])
 def reset_ix_all():
     IndexerClass, _ = get_indexer_tools()

@@ -200,6 +200,27 @@ class RagPrepareSearchIndexer:
             logger.error("date_signals update failed: %s", e, exc_info=True)
             return False, str(e)
 
+    def skip_document(self, *, raw_table: str, raw_id: str) -> tuple[bool, Optional[str]]:
+        """ベクトル化せずにリストから除外する（ix_vectorized_at だけ記録）。"""
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            upd = (
+                self.db.client.table(UD_META_TABLE)
+                .update({"ix_vectorized_at": now_iso, "updated_at": now_iso})
+                .eq("raw_table", raw_table)
+                .eq("raw_id", raw_id)
+                .select("raw_id")
+                .execute()
+            )
+            if not upd.data:
+                self.db.client.table(UD_META_TABLE).insert(
+                    {"raw_table": raw_table, "raw_id": raw_id, "ix_vectorized_at": now_iso, "updated_at": now_iso}
+                ).execute()
+            return True, None
+        except Exception as e:
+            logger.error("skip_document failed: %s", e, exc_info=True)
+            return False, str(e)
+
     def reset_all_ix_vectorized_at(self, raw_tables: List[str]) -> Dict[str, Any]:
         """ix_vectorized_at を NULL に戻し、全行を未処理状態に戻す。10_ix_search_index は触らない（再登録時に上書きされる）。"""
         if not raw_tables:

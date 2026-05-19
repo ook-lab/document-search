@@ -126,6 +126,17 @@
             background: #059669;
         }
 
+        .btn-skip {
+            background: #fff;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+        }
+
+        .btn-skip:hover:not(:disabled) {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
         .actions-cell {
             display: flex;
             flex-direction: column;
@@ -235,7 +246,7 @@
                                 {% else %}
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
                                 {% endif %}
-                                <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/embedder/{% if doc.resolved_drive_id %}?drive_id={{ doc.resolved_drive_id }}{% endif %}" target="_blank" rel="noopener">帳票→Markdown抽出＆PDF埋め込み</a>
+                                <button type="button" class="btn btn-skip" onclick="skipIx('{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">検索対象にしない</button>
                                 <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runVectorRegister('{{ doc.unified_doc_id or '' }}', '{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">ベクトル化登録</button>
                             </div>
                         </td>
@@ -253,6 +264,33 @@
     </div>
 
     <script>
+        async function skipIx(rawTable, rawId, btn) {
+            const original = btn.innerText;
+            btn.innerText = '処理中...';
+            btn.disabled = true;
+            try {
+                const res = await fetch('/skip-ix', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ raw_table: rawTable, raw_id: rawId })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const row = btn.closest('tr');
+                    if (row) row.style.opacity = '0.35';
+                    btn.innerText = '除外済';
+                } else {
+                    alert('エラー: ' + data.error);
+                    btn.innerText = original;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信エラーが発生しました');
+                btn.innerText = original;
+                btn.disabled = false;
+            }
+        }
+
         async function resetAllIx(btn) {
             if (!confirm('全ての登録済みデータを未処理に戻しますか？\n（10_ix_search_index は再登録時に上書きされます）')) return;
             const original = btn.innerText;
