@@ -1503,11 +1503,13 @@ def api_load_from_drive():
         session_dir.mkdir(parents=True, exist_ok=True)
 
         drive = GoogleDriveConnector()
-        # ファイル名取得
-        meta = drive.service.files().get(fileId=drive_file_id, fields='name', supportsAllDrives=True).execute()
+        # ファイル名・mimeType 取得
+        meta = drive.service.files().get(fileId=drive_file_id, fields='name,mimeType', supportsAllDrives=True).execute()
         filename = meta.get('name', 'drive.pdf')
-        is_img = _is_image(filename)
-        if not filename.lower().endswith('.pdf') and not is_img:
+        mime_type = meta.get('mimeType', '')
+        is_img = _is_image(filename) or (mime_type.startswith('image/') if mime_type else False)
+        is_pdf = filename.lower().endswith('.pdf') or mime_type == 'application/pdf'
+        if not is_pdf and not is_img:
             shutil.rmtree(session_dir, ignore_errors=True)
             return jsonify({'success': False, 'error': 'PDF または画像ファイルのみ対応しています'}), 400
 
