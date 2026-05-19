@@ -320,6 +320,15 @@
             font-weight: 600;
             font-size: 0.78rem;
         }
+        /* AI直接抽出モード Visual Editor */
+        .dme-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 2rem; background: white; font-size: 0.85rem; }
+        .dme-table th, .dme-table td { border: 1px solid var(--border); padding: 0.5rem; text-align: left; vertical-align: top; }
+        .dme-table th { background: #f8fafc; font-weight: 600; }
+        .dme-table textarea { width: 100%; min-height: 2.2rem; border: none; background: transparent; font-family: inherit; font-size: inherit; line-height: 1.5; outline: none; padding: 2px; resize: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; }
+        .dme-table textarea:focus { background: #eff6ff; }
+        .dme-text-section { margin-bottom: 1.5rem; }
+        .dme-text-section textarea { width: 100%; min-height: 4rem; border: 1px solid #eee; border-radius: 4px; padding: 0.5rem; font-family: inherit; font-size: 0.95rem; line-height: 1.6; resize: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; }
+        .dme-table-actions { display: flex; gap: 0.5rem; margin-top: -1.5rem; margin-bottom: 1.5rem; justify-content: flex-end; }
         /* 縦は親（.editor-pane）に任せ、表を切らない。横にだけはみ出す表は横スクロール */
         .reading-table-wrap {
             overflow-x: auto;
@@ -859,6 +868,20 @@
             wrap.className = 'thumb-wrap' + (idx === appState.currentPage ? ' active' : '') + (ok ? ' has-data' : '');
             wrap.innerHTML = '<img class="thumb-item" src="' + p.image_url + '" alt=""><div class="thumb-badge">✓</div>';
             wrap.onclick = () => {
+                // 直接抽出モードで Visual Editor が表示中なら切替前に同期
+                const prevPg = appState.currentPage;
+                if (appState.pages[prevPg] && appState.pages[prevPg].direct_md != null
+                        && paneVisualEditor.classList.contains('active')) {
+                    const synced = _dmeSyncVisualToMd(paneVisualEditor);
+                    appState.pages[prevPg].direct_md = synced;
+                    if (appState.sessionId) {
+                        fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + prevPg, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ markdown_text: synced }),
+                        }).catch(() => {});
+                    }
+                }
                 appState.currentPage = idx;
                 document.querySelectorAll('.thumb-wrap').forEach(w => w.classList.remove('active'));
                 wrap.classList.add('active');
@@ -884,6 +907,26 @@
     }
 
     function setLabTab(which) {
+        const pg = appState.currentPage;
+        const isDirectMode = appState.pages[pg] && appState.pages[pg].direct_md != null;
+        // 直接抽出モード: タブ切替時に Visual ↔ Raw MD を同期
+        if (isDirectMode) {
+            const prevVisual = paneVisualEditor.classList.contains('active');
+            const prevRaw = paneRawMd.classList.contains('active');
+            if (prevVisual && which === 'rawmd') {
+                // Visual → Raw MD: Visual Editor の内容を Raw MD テキストエリアに反映
+                const md = _dmeSyncVisualToMd(paneVisualEditor);
+                appState.pages[pg].direct_md = md;
+                paneRawMd.innerHTML = _makeRawMdTextarea(md);
+                _wireRawMdSync(pg);
+            } else if (prevRaw && which === 'visual') {
+                // Raw MD → Visual: テキストエリアの内容を Visual Editor に反映
+                const ta = document.getElementById('labRawMarkdownBody');
+                const md = ta ? ta.value : (appState.pages[pg].direct_md || '');
+                appState.pages[pg].direct_md = md;
+                _dmeRenderVisualEditor(paneVisualEditor, md);
+            }
+        }
         var v = which === 'visual';
         var r = which === 'rawmd';
         var l = which === 'log';
@@ -1970,12 +2013,11 @@
         // AI直接抽出結果を優先表示（パイプライン結果より先に確認）
         if (p.direct_md != null) {
             labOverlay.style.display = 'none';
-            paneVisualEditor.contentEditable = 'false';
-            paneVisualEditor.innerHTML = '<div style="padding:1rem;color:var(--text-muted);font-size:0.9rem;">AI直接抽出モード（Visual Editor は使用しません）</div>';
+            _dmeRenderVisualEditor(paneVisualEditor, p.direct_md);
             paneRawMd.innerHTML = _makeRawMdTextarea(p.direct_md);
             _wireRawMdSync(appState.currentPage);
             paneLog.innerHTML = '';
-            setLabTab('rawmd');
+            setLabTab('visual');
             btnFullJson.disabled = true;
             return;
         }
@@ -2131,15 +2173,14 @@
             let data;
             try { data = await res.json(); } catch (_) { throw new Error('サーバーの応答が JSON ではありません。'); }
             if (!res.ok) throw new Error((data && data.error) || 'HTTP ' + res.status);
-            // Raw MD タブに結果を表示してタブ切り替え
+            // 結果を Visual Editor と Raw MD 両方に表示
             appState.pages[pg].direct_md = data.markdown || '';
             labOverlay.style.display = 'none';
-            paneVisualEditor.contentEditable = 'false';
-            paneVisualEditor.innerHTML = '<div style="padding:1rem;color:var(--text-muted);font-size:0.9rem;">AI直接抽出モード（Visual Editor は使用しません）</div>';
+            _dmeRenderVisualEditor(paneVisualEditor, appState.pages[pg].direct_md);
             paneRawMd.innerHTML = _makeRawMdTextarea(appState.pages[pg].direct_md);
             _wireRawMdSync(pg);
             paneLog.innerHTML = '';
-            setLabTab('rawmd');
+            setLabTab('visual');
             btnFullJson.disabled = true;
             // 即時永続化（保存ボタンがユーザー入力前でも機能するよう）
             fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
@@ -2447,6 +2488,128 @@
     }
 
     // -----------------------------------------------------------------------
+    // AI直接抽出モード Visual Editor（md_embedder と同等の実装）
+    // -----------------------------------------------------------------------
+    function _dmeAutoResize(ta) {
+        ta.style.height = 'auto';
+        ta.style.height = (ta.scrollHeight + 2) + 'px';
+    }
+    function _dmeAutoResizeAll(root) {
+        root.querySelectorAll('textarea.dme-grow').forEach(_dmeAutoResize);
+    }
+    // escapeHtml（同名関数が下で定義されているが DME 関数群はそれより先に定義されるため別名で参照）
+    function _dmeEsc(s) { return escapeHtml(String(s ?? '')); }
+    function _dmeSplitMd(md) {
+        const lines = (md || '').split('\n');
+        const sections = [];
+        let buf = [], inTable = false;
+        lines.forEach(line => {
+            const isTable = line.trim().startsWith('|') && line.trim().endsWith('|');
+            if (isTable) {
+                if (!inTable) { if (buf.length) sections.push({type:'text', content:buf.join('\n')}); buf = []; inTable = true; }
+                buf.push(line);
+            } else {
+                if (inTable) { sections.push({type:'table', content:buf.join('\n')}); buf = []; inTable = false; }
+                buf.push(line);
+            }
+        });
+        if (buf.length) sections.push({type: inTable ? 'table' : 'text', content: buf.join('\n')});
+        return sections;
+    }
+    function _dmeParseMdTable(md) {
+        const lines = md.trim().split('\n').filter(l => l.includes('|'));
+        if (lines.length < 2) return {headers: [], rows: []};
+        const parseLine = l => l.split('|').map(s => s.trim()).filter((s,i,a) => i > 0 && i < a.length - 1);
+        return {headers: parseLine(lines[0]), rows: lines.slice(2).map(parseLine)};
+    }
+    function _dmeCreateTable(tableObj, sIdx) {
+        const wrapper = document.createElement('div');
+        const table = document.createElement('table');
+        table.className = 'dme-table';
+        table.dataset.index = sIdx;
+        const thead = document.createElement('thead');
+        const hRow = document.createElement('tr');
+        tableObj.headers.forEach(h => {
+            const th = document.createElement('th');
+            th.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)">' + _dmeEsc(h) + '</textarea>';
+            hRow.appendChild(th);
+        });
+        thead.appendChild(hRow);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        tableObj.rows.forEach(r => {
+            const tr = document.createElement('tr');
+            r.forEach(cell => {
+                const td = document.createElement('td');
+                td.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)">' + _dmeEsc(cell) + '</textarea>';
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        wrapper.appendChild(table);
+        const actions = document.createElement('div');
+        actions.className = 'dme-table-actions';
+        // sIdx を data 属性で持たせてクロージャ問題を回避
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn-outline';
+        addBtn.style.fontSize = '0.6rem';
+        addBtn.textContent = '+ 行追加';
+        addBtn.addEventListener('click', () => {
+            const cols = table.rows[0] ? table.rows[0].cells.length : 0;
+            const newRow = tbody.insertRow();
+            for (let i = 0; i < cols; i++) {
+                const cell = newRow.insertCell();
+                cell.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)"></textarea>';
+            }
+        });
+        actions.appendChild(addBtn);
+        wrapper.appendChild(actions);
+        return wrapper;
+    }
+    function _dmeRenderVisualEditor(container, md) {
+        container.innerHTML = '';
+        container.contentEditable = 'false';
+        const sections = _dmeSplitMd(md);
+        sections.forEach((sec, sIdx) => {
+            if (sec.type === 'table') {
+                container.appendChild(_dmeCreateTable(_dmeParseMdTable(sec.content), sIdx));
+            } else if (sec.content.trim()) {
+                const div = document.createElement('div');
+                div.className = 'dme-text-section';
+                const ta = document.createElement('textarea');
+                ta.className = 'dme-grow';
+                ta.dataset.index = sIdx;
+                ta.addEventListener('input', () => _dmeAutoResize(ta));
+                ta.value = sec.content;
+                div.appendChild(ta);
+                container.appendChild(div);
+            }
+        });
+        _dmeAutoResizeAll(container);
+    }
+    function _dmeSyncVisualToMd(container) {
+        const parts = [];
+        for (const child of container.children) {
+            const table = child.querySelector('.dme-table');
+            if (table) {
+                const headers = Array.from(table.querySelectorAll('thead th textarea')).map(t => t.value);
+                const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
+                    Array.from(tr.querySelectorAll('td textarea')).map(t => t.value)
+                );
+                let mdT = '| ' + headers.join(' | ') + ' |\n';
+                mdT += '| ' + headers.map(() => '---').join(' | ') + ' |\n';
+                rows.forEach(r => { mdT += '| ' + r.join(' | ') + ' |\n'; });
+                parts.push(mdT);
+            } else {
+                const ta = child.querySelector('textarea');
+                if (ta) parts.push(ta.value);
+            }
+        }
+        return parts.join('\n');
+    }
+
+    // -----------------------------------------------------------------------
     // Raw MD 編集同期
     // -----------------------------------------------------------------------
     let _rawMdSyncTimer = null;
@@ -2457,30 +2620,57 @@
             clearTimeout(_rawMdSyncTimer);
             _rawMdSyncTimer = setTimeout(() => {
                 if (!appState.sessionId) return;
+                const val = ta.value;
+                // メモリにも反映（ページ切替後も保持）
+                if (appState.pages[pageIdx] && appState.pages[pageIdx].direct_md != null) {
+                    appState.pages[pageIdx].direct_md = val;
+                }
                 fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pageIdx, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ markdown_text: ta.value }),
+                    body: JSON.stringify({ markdown_text: val }),
                 }).catch(() => {});
             }, 800);
         });
     }
 
     // -----------------------------------------------------------------------
+    // 保存前フラッシュ（Visual Editor 編集中に保存ボタンを押した場合に同期）
+    // -----------------------------------------------------------------------
+    async function _dmeFlushBeforeSave() {
+        const pg = appState.currentPage;
+        if (!appState.pages[pg] || appState.pages[pg].direct_md == null) return;
+        if (!paneVisualEditor.classList.contains('active')) return;
+        const md = _dmeSyncVisualToMd(paneVisualEditor);
+        appState.pages[pg].direct_md = md;
+        if (!appState.sessionId) return;
+        try {
+            await fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ markdown_text: md }),
+            });
+        } catch (_) {}
+    }
+
+    // -----------------------------------------------------------------------
     // 保存ボタン群
     // -----------------------------------------------------------------------
-    document.getElementById('downloadMdBtn').addEventListener('click', () => {
+    document.getElementById('downloadMdBtn').addEventListener('click', async () => {
         if (!appState.sessionId) { alert('セッションがありません'); return; }
+        await _dmeFlushBeforeSave();
         window.location.href = API_PREFIX + '/api/download_md/' + appState.sessionId;
     });
 
-    document.getElementById('downloadResultBtn').addEventListener('click', () => {
+    document.getElementById('downloadResultBtn').addEventListener('click', async () => {
         if (!appState.sessionId) { alert('セッションがありません'); return; }
+        await _dmeFlushBeforeSave();
         window.location.href = API_PREFIX + '/api/download_result_pdf/' + appState.sessionId;
     });
 
     document.getElementById('saveMdToDriveBtn').addEventListener('click', async () => {
         if (!appState.sessionId) { alert('セッションがありません'); return; }
+        await _dmeFlushBeforeSave();
         showLoader('MD を Googleドライブに保存中…');
         try {
             const res = await fetch(API_PREFIX + '/api/save_md_to_drive/' + appState.sessionId, { method: 'POST' });
@@ -2496,6 +2686,7 @@
 
     document.getElementById('saveToDriveBtn').addEventListener('click', async () => {
         if (!appState.sessionId) { alert('セッションがありません'); return; }
+        await _dmeFlushBeforeSave();
         showLoader('MD入りPDF を Googleドライブに保存中…');
         try {
             const res = await fetch(API_PREFIX + '/api/save_to_drive/' + appState.sessionId, { method: 'POST' });
@@ -2512,6 +2703,7 @@
     document.getElementById('saveToSupabaseBtn').addEventListener('click', async () => {
         if (!appState.sessionId) { alert('セッションがありません'); return; }
         if (!appState.ragContext) { alert('rag-prepare コンテキストがありません'); return; }
+        await _dmeFlushBeforeSave();
         showLoader('Supabase に保存中…');
         try {
             const res = await fetch(API_PREFIX + '/api/save_md_to_supabase/' + appState.sessionId, {
