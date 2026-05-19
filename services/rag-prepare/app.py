@@ -165,6 +165,16 @@ def process_date_signals():
 def backfill_date_signals():
     return _run_date_signals_backfill()
 
+@app.route('/reset-ix-all', methods=['POST'])
+def reset_ix_all():
+    IndexerClass, _ = get_indexer_tools()
+    if not IndexerClass:
+        return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
+    indexer = IndexerClass()
+    result = indexer.reset_all_ix_vectorized_at(list(RAG_PREPARE_VECTORIZE_RAW_TABLES))
+    return jsonify(result)
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     IndexerClass, DbClass = get_indexer_tools()

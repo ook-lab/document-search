@@ -1293,6 +1293,10 @@ _DIRECT_EXTRACT_PROMPT = """
 3. **結合セルの完全展開**: 縦または横に結合されたセル（学年、校舎など）は、その範囲に含まれる**すべての行・列にその値をコピー**して出力してください。
 4. **言語**: 日本語のまま抽出してください。
 5. **AI の説明不要**: 「抽出しました」等の説明文は一切省いてください。
+6. **第1列ヘッダーは必ず `header` と記述**: 表の第1列のヘッダーセルは、画像上の表ラベルや列名に関わらず、必ず `header` と書いてください。`【小学校】` などのシート名を第1列ヘッダーにしてはいけません。
+7. **表の外にある見出し・シート名は非表テキストに記述**: 表本体の外側に書かれたシート名・セクション見出しは表のヘッダーセルにしないで、`## 非表（F 地の文）` セクションに記述してください。
+8. **縦結合された行カテゴリラベルは第1列に展開**: 縦方向に結合されているカテゴリ・分類セル（行グループの親ラベル）は、その列のすべての対象行に繰り返しコピーしてください。列の位置をずらして隣の列に書いてはいけません。
+9. **各表の直後に説明を1行**: `## T1` の次の行に `> （この表が何のための表かを20〜40文字で説明）` を必ず書いてください。表全体を見渡した上で「何の表か」を端的に記述してください。
 
 【出力形式（必須・厳守）】
 以下の2セクション構成で出力してください。セクション名は一字一句変えないでください。
@@ -1305,15 +1309,85 @@ _DIRECT_EXTRACT_PROMPT = """
 
 ## 表（ui_data.tables）
 
-（表ごとに `## T1`, `## T2`, ... と見出しを付けてマークダウン表を記述。表が複数ある場合は順番に並べる。表がない場合はこのセクションごと省略。）
+（表ごとに `## T1`, `## T2`, ... と見出しを付け、その直後に `> 説明` を1行書いてからマークダウン表を記述。表が複数ある場合は順番に並べる。表がない場合はこのセクションごと省略。）
 
 ---
 """
 
 
+def _cell_to_yaml_item(cell: str) -> str:
+    """YAML cells リストアイテム（4スペースインデント）。純整数はクォートして文字列扱い。"""
+    import re as _r
+    prefix = '    - '
+    if not cell:
+        return prefix + "''"
+    if _r.match(r'^\d+$', cell.strip()):
+        return f"{prefix}'{cell.strip()}'"
+    return f"{prefix}{cell}"
+
+
+def _infer_table_semantics(headers: List[str], rows: List[List[str]]) -> Dict[str, Any]:
+    """表内容から table_semantics を推定する。"""
+    financial_kw = {'収入', '支出', '決算', '予算', '繰越', '合計', '収支', '会費'}
+    all_text = ' '.join(str(h) for h in headers) + ' ' + ' '.join(
+        str(c) for row in rows for c in row
+    )
+    if any(kw in all_text for kw in financial_kw):
+        return {
+            'type': 'financial_report',
+            'type_ja': '財務諸表',
+            'target': None,
+            'scope': None,
+            'date_range': None,
+            'confidence': 0.9,
+        }
+    return {
+        'type': 'unknown',
+        'type_ja': None,
+        'target': None,
+        'scope': None,
+        'date_range': None,
+        'confidence': 0.5,
+    }
+
+
+def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
+    """tables リストから YAML テキストを生成する。"""
+    lines = ['tables:']
+    for tbl in tables_data:
+        tbl_id = tbl['table_id']
+        rows = tbl['data_rows']
+        headers = tbl['headers']
+        sem = _infer_table_semantics(headers, rows)
+        type_ja_str = sem['type_ja'] if sem['type_ja'] else 'null'
+
+        description = str(tbl.get('description') or '')
+        desc_yaml = f"'{description}'" if description else "''"
+        lines.append(f'- table_id: {tbl_id}')
+        lines.append(f'  description: {desc_yaml}')
+        lines.append('  table_semantics:')
+        lines.append(f"    type: {sem['type']}")
+        lines.append(f'    type_ja: {type_ja_str}')
+        lines.append('    target: null')
+        lines.append('    scope: null')
+        lines.append('    date_range: null')
+        lines.append(f"    confidence: {sem['confidence']}")
+        lines.append('  header_row_indices:')
+        lines.append('  - 0')
+        lines.append('  month_blocks: []')
+        lines.append('  data_rows:')
+        for idx, row in enumerate(rows):
+            lines.append(f'  - sheet_row: {idx + 1}')
+            lines.append('    cells:')
+            for cell in row:
+                lines.append(_cell_to_yaml_item(cell))
+    return '\n'.join(lines)
+
+
 def _direct_extract_build_structured_md(ai_text: str) -> str:
     """AI が返した生テキストをパイプライン互換の構造化 MD に変換する。"""
     import re as _re
+    import html as _html
 
     # AI が markdown コードブロックで包んだ場合は中身だけ取り出す
     matches = _re.findall(r'```(?:markdown|md)?\s*\n?(.*?)```', ai_text, _re.DOTALL)
@@ -1326,7 +1400,6 @@ def _direct_extract_build_structured_md(ai_text: str) -> str:
     has_table_section = bool(_re.search(r'^## 表', ai_text, _re.MULTILINE))
 
     if has_prose_section or has_table_section:
-        # 正しいフォーマットで出力されている → そのまま使う
         structured = ai_text
     else:
         # フォーマット違反: テキストと表を手動で分離して再構成
@@ -1364,43 +1437,72 @@ def _direct_extract_build_structured_md(ai_text: str) -> str:
             parts.append('\n'.join(table_section_lines))
         structured = '\n\n'.join(parts) if parts else ai_text
 
-    # ## 表（ui_data.tables）配下の表から ## 表（埋め込み） HTML を生成
-    import html as _html
-    embed_lines: list[str] = []
+    # ## T\d+ → ## B_T\d+ にリネーム（表ヘッダー行のみ対象）
+    structured = _re.sub(r'^(## )T(\d+)\s*$', r'\1B_T\2', structured, flags=_re.MULTILINE)
+
+    # ## 表（ui_data.tables）配下の表から YAML + HTML（colspan対応）を生成
+    tables_data: list[dict] = []
+    html_lines: list[str] = []
+
+    def _parse_cells(line: str) -> List[str]:
+        return [c.strip() for c in line.strip().strip('|').split('|')]
+
     table_section_match = _re.search(
-        r'^## 表（ui_data\.tables）\s*\n(.*?)(?=^## (?!T\d)|$)',
+        r'^## 表（ui_data\.tables）\s*\n(.*?)(?=^## (?!B_T\d)|$)',
         structured, _re.MULTILINE | _re.DOTALL
     )
     if table_section_match:
         table_section_text = table_section_match.group(1)
-        table_blocks_in_section = _re.split(r'^## (T\d+)\s*$', table_section_text, flags=_re.MULTILINE)
-        # table_blocks_in_section: [pre, id1, block1, id2, block2, ...]
-        tbl_idx = 1
+        table_blocks_in_section = _re.split(r'^## (B_T\d+)\s*$', table_section_text, flags=_re.MULTILINE)
+        # [pre, id1, block1, id2, block2, ...]
         i = 1
         while i + 1 < len(table_blocks_in_section):
             tbl_id = table_blocks_in_section[i].strip()
             tbl_md = table_blocks_in_section[i + 1].strip()
-            # マークダウン表をHTMLに変換
-            tbl_lines = [l for l in tbl_md.split('\n') if l.strip().startswith('|')]
+            tbl_lines = [ln for ln in tbl_md.split('\n') if ln.strip().startswith('|')]
             if len(tbl_lines) >= 2:
-                parse_cells = lambda l: [c.strip() for c in l.strip().strip('|').split('|')]
-                headers = parse_cells(tbl_lines[0])
-                rows = [parse_cells(l) for l in tbl_lines[2:]]  # [1] はセパレーター行
+                headers = _parse_cells(tbl_lines[0])
+                data_rows = [_parse_cells(ln) for ln in tbl_lines[2:]]  # skip separator
+
+                # ## T1 直後の > blockquote を表の説明として抽出
+                desc_m = _re.search(r'^> (.+)$', tbl_md, _re.MULTILINE)
+                description = desc_m.group(1).strip() if desc_m else ''
+
+                tables_data.append({
+                    'table_id': tbl_id,
+                    'headers': headers,
+                    'data_rows': data_rows,
+                    'description': description,
+                })
+
+                # HTML 生成（末尾2列が同一非空値なら colspan=2）
                 th_html = ''.join(f'<th>{_html.escape(h)}</th>' for h in headers)
-                rows_html = ''.join(
-                    '<tr>' + ''.join(f'<td>{_html.escape(c)}</td>' for c in r) + '</tr>'
-                    for r in rows
-                )
-                embed_lines.append(f'<!-- table:{tbl_id} -->')
-                embed_lines.append(
+                rows_html_parts = []
+                for r in data_rows:
+                    if len(r) >= 4 and r[-1] and r[-2] == r[-1]:
+                        cells_html = (
+                            ''.join(f'<td>{_html.escape(c)}</td>' for c in r[:-2])
+                            + f'<td colspan="2">{_html.escape(r[-2])}</td>'
+                        )
+                    else:
+                        cells_html = ''.join(f'<td>{_html.escape(c)}</td>' for c in r)
+                    rows_html_parts.append(f'<tr>{cells_html}</tr>')
+                html_lines.append(f'<!-- table:{tbl_id} -->')
+                html_lines.append(
                     f'<table class="md-embed-table"><thead><tr>{th_html}</tr></thead>'
-                    f'<tbody>{rows_html}</tbody></table>'
+                    f'<tbody>{"".join(rows_html_parts)}</tbody></table>'
                 )
             i += 2
-            tbl_idx += 1
 
-    if embed_lines:
-        structured += '\n\n## 表（埋め込み）\n\n<!-- dms:tables-md-embed v1 -->\n' + '\n'.join(embed_lines)
+    if tables_data or html_lines:
+        embed_parts: list[str] = ['## 表（埋め込み）', '', '<!-- dms:tables-md-embed v1 -->']
+        if tables_data:
+            yaml_str = _generate_tables_yaml(tables_data)
+            embed_parts += ['### `tables`（YAML・検索・LLM 向け）', '', '```yaml', yaml_str, '```']
+        if html_lines:
+            embed_parts += ['', '### 表 HTML（MD に埋め込み可）', '']
+            embed_parts.extend(html_lines)
+        structured += '\n\n' + '\n'.join(embed_parts)
 
     return structured
 

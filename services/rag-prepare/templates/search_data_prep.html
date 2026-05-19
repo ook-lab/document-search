@@ -163,8 +163,11 @@
                     PDF ツールのベース URL は <code>RAG_PREPARE_PDF_TOOLBOX_BASE</code> 等（末尾スラッシュなし）。
                 </div>
             </div>
-            <div style="font-size: 14px; color: var(--success); font-weight: 600;">
-                {{ docs|length }} 件の待機中
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="font-size: 14px; color: var(--success); font-weight: 600;">
+                    {{ docs|length }} 件の待機中
+                </div>
+                <button type="button" class="btn btn-outline" style="font-size: 12px; color: #dc2626; border-color: #fca5a5;" onclick="resetAllIx(this)">全て未処理に戻す</button>
             </div>
         </header>
 
@@ -250,6 +253,29 @@
     </div>
 
     <script>
+        async function resetAllIx(btn) {
+            if (!confirm('全ての登録済みデータを未処理に戻しますか？\n（10_ix_search_index は再登録時に上書きされます）')) return;
+            const original = btn.innerText;
+            btn.innerText = '処理中...';
+            btn.disabled = true;
+            try {
+                const res = await fetch('/reset-ix-all', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    alert(`リセット完了（${data.reset_count ?? '?'} 件）。ページを再読み込みします。`);
+                    location.reload();
+                } else {
+                    alert('エラー: ' + data.error);
+                    btn.innerText = original;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信エラーが発生しました');
+                btn.innerText = original;
+                btn.disabled = false;
+            }
+        }
+
         async function runVectorRegister(id, rawTable, rawId, btn) {
             const originalText = btn.innerText;
             btn.innerText = '処理中...';

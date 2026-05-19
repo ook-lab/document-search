@@ -100,7 +100,7 @@ class RagPrepareSearchIndexer:
             c2 = ud_fresh.get("classification2")
             c3 = ud_fresh.get("classification3") or c3
 
-            chunks = self._plain_chunks(full_markdown, chunk_size=1200)
+            chunk_items = self._md_chunks_with_meta(full_markdown)
             gate = (
                 self.db.client.table("09_unified_documents")
                 .select("id")
@@ -115,7 +115,7 @@ class RagPrepareSearchIndexer:
             if self.embedder is None:
                 self.embedder = EmbeddingGen()
 
-            for i, chunk_text in enumerate(chunks):
+            for i, (chunk_text, chunk_type, chunk_weight) in enumerate(chunk_items):
                 chunk_text = (chunk_text or "").replace("\u0000", "").strip()
                 if not chunk_text:
                     continue
@@ -129,8 +129,8 @@ class RagPrepareSearchIndexer:
                         "classification3": c3,
                         "chunk_index": i,
                         "chunk_text": chunk_text,
-                        "chunk_type": "rag_prepare_plain",
-                        "chunk_weight": 1.0,
+                        "chunk_type": chunk_type,
+                        "chunk_weight": chunk_weight,
                         "embedding": vector,
                     }
                 ).execute()
@@ -199,6 +199,23 @@ class RagPrepareSearchIndexer:
         except Exception as e:
             logger.error("date_signals update failed: %s", e, exc_info=True)
             return False, str(e)
+
+    def reset_all_ix_vectorized_at(self, raw_tables: List[str]) -> Dict[str, Any]:
+        """ix_vectorized_at を NULL に戻し、全行を未処理状態に戻す。10_ix_search_index は触らない（再登録時に上書きされる）。"""
+        if not raw_tables:
+            return {"success": False, "error": "raw_tables が空です"}
+        try:
+            res = (
+                self.db.client.table(UD_META_TABLE)
+                .update({"ix_vectorized_at": None})
+                .in_("raw_table", raw_tables)
+                .execute()
+            )
+            count = len(res.data or [])
+            return {"success": True, "reset_count": count}
+        except Exception as e:
+            logger.error("reset_all_ix_vectorized_at failed: %s", e, exc_info=True)
+            return {"success": False, "error": str(e)}
 
     def backfill_date_signals(
         self,
@@ -525,3 +542,99 @@ class RagPrepareSearchIndexer:
         if not t:
             return []
         return [t[i : i + chunk_size] for i in range(0, len(t), chunk_size)]
+
+    @staticmethod
+    def _structured_md_chunks(md_text: str, prose_chunk_size: int = 800) -> List[Dict[str, Any]]:
+        """
+        構造化MD（## 非表（F 地の文）/ ## 表（埋め込み）形式）をチャンク化する。
+
+        - 地の文: 段落単位でマージし prose_chunk_size 以内に収める
+        - 表: YAML ブロック内の各テーブルエントリを1チャンク（絶対に分割しない）
+        - ## 表（ui_data.tables）MD表 と HTML: スキップ（YAML と重複）
+
+        Returns: list of {"text", "chunk_type", "chunk_weight"}
+        """
+        results: List[Dict[str, Any]] = []
+
+        # 地の文
+        prose_text = ""
+        prose_m = re.search(
+            r'^## 非表（F 地の文）\s*\n(.*?)(?=^## |\Z)',
+            md_text, re.MULTILINE | re.DOTALL,
+        )
+        if prose_m:
+            prose_text = prose_m.group(1).strip()
+            paragraphs = [p.strip() for p in re.split(r'\n{2,}', prose_text) if p.strip()]
+            current: List[str] = []
+            current_len = 0
+            for para in paragraphs:
+                if current_len + len(para) > prose_chunk_size and current:
+                    results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
+                    current = [para]
+                    current_len = len(para)
+                else:
+                    current.append(para)
+                    current_len += len(para)
+            if current:
+                results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
+
+        # YAML テーブル（## 表（埋め込み）内の ```yaml ブロック）
+        yaml_m = re.search(r'```yaml\s*\n(.*?)```', md_text, re.DOTALL)
+        if yaml_m:
+            yaml_text = yaml_m.group(1).strip()
+            for block in re.split(r'(?=^- table_id:)', yaml_text, flags=re.MULTILINE):
+                block = block.strip()
+                if not block or not block.startswith('- table_id:'):
+                    continue
+                # YAML の description フィールドを優先プレフィックスとして使う。
+                # 空なら地の文先頭300文字にフォールバック。
+                desc_m = re.search(r"^\s*description:\s*'(.*?)'", block, re.MULTILINE)
+                prefix = (desc_m.group(1).strip() if desc_m else '') or prose_text[:300].strip()
+                text = f"{prefix}\n\n{block}" if prefix else block
+                results.append({"text": text, "chunk_type": "table_yaml", "chunk_weight": 2.0})
+
+        return results
+
+    @staticmethod
+    def _md_chunks_with_meta(
+        full_markdown: str,
+        plain_chunk_size: int = 1200,
+        prose_chunk_size: int = 800,
+    ) -> List[tuple[str, str, float]]:
+        """
+        full_markdown をチャンク化し (text, chunk_type, chunk_weight) のリストで返す。
+
+        # PDF抽出Markdown セクションに構造化MD（## 非表 / ## 表（埋め込み））が含まれる場合は
+        意味単位で分割。それ以外は固定サイズ分割。
+        """
+        results: List[tuple[str, str, float]] = []
+
+        pdf_md_m = re.search(
+            r'^# PDF抽出Markdown\s*\n(.*?)(?=^# |\Z)',
+            full_markdown, re.MULTILINE | re.DOTALL,
+        )
+        if pdf_md_m:
+            pdf_md = pdf_md_m.group(1)
+            is_structured = bool(
+                re.search(r'^## 非表（F 地の文）', pdf_md, re.MULTILINE)
+                or re.search(r'^## 表（埋め込み）', pdf_md, re.MULTILINE)
+            )
+            if is_structured:
+                for item in RagPrepareSearchIndexer._structured_md_chunks(pdf_md, prose_chunk_size):
+                    results.append((item["text"], item["chunk_type"], item["chunk_weight"]))
+            else:
+                for c in RagPrepareSearchIndexer._plain_chunks(pdf_md, plain_chunk_size):
+                    results.append((c, "rag_prepare_plain", 1.0))
+
+            ext_m = re.search(
+                r'^# ファイル外テキスト\s*\n(.*?)(?=^# |\Z)',
+                full_markdown, re.MULTILINE | re.DOTALL,
+            )
+            if ext_m:
+                for c in RagPrepareSearchIndexer._plain_chunks(ext_m.group(1).strip(), plain_chunk_size):
+                    results.append((c, "rag_prepare_plain", 1.0))
+        else:
+            for c in RagPrepareSearchIndexer._plain_chunks(full_markdown, plain_chunk_size):
+                results.append((c, "rag_prepare_plain", 1.0))
+
+        return results

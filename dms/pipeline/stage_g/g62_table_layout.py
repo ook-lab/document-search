@@ -401,7 +401,11 @@ class G62TableLayoutProcessor:
                 'group_name': group_name or '',
                 'semantic_title': semantic_title,
                 'table_type': header_info.get('table_type', 'structured'),
-                'description': pre.get('description', ''),
+                'description': (
+                    str(pre.get('ai_whole_table_intent') or '')
+                    or str((pre.get('layout_split') or {}).get('whole_table_intent') or '')
+                    or pre.get('description', '')
+                ).strip(),
                 'data': resolved_data,
                 'metadata': sec_meta_out,
             })
