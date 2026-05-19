@@ -54,7 +54,7 @@
                         <span>抽出・修正テキスト</span>
                         <div style="display: flex; gap: 0.4rem; align-items: center;">
                             <span style="font-size: 0.7rem; color: #666;">AI再分析:</span>
-                            <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: #4338ca; color: white;" onclick="runOcr(currentPageNum, 'gemini-3.1-flash-lite-preview')">3.1 Flash-Lite</button>
+                            <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: #4338ca; color: white;" onclick="runOcr(currentPageNum, 'gemini-3.1-flash-lite')">3.1 Flash-Lite</button>
                             <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: var(--primary-color); color: white;" onclick="runOcr(currentPageNum, 'gemini-2.5-flash')">2.5 Flash</button>
                             <button class="btn" style="font-size: 0.65rem; padding: 2px 6px; background: #0891b2; color: white;" onclick="runOcr(currentPageNum, 'gemini-2.5-flash-lite')">2.5 Lite</button>
                         </div>
@@ -233,7 +233,7 @@
                     <div style="text-align:center">
                         <p style="margin-bottom:1.5rem">分析に使用するモデルを選択してください</p>
                         <div style="display:flex; flex-direction:column; gap:1rem; align-items:center;">
-                            <button class="btn indigo" onclick="runOcr(${idx}, 'gemini-3.1-flash-lite-preview')" style="width:280px">Gemini 3.1 Flash-Lite (Pre)</button>
+                            <button class="btn indigo" onclick="runOcr(${idx}, 'gemini-3.1-flash-lite')" style="width:280px">Gemini 3.1 Flash-Lite (Pre)</button>
                             <button class="btn primary" onclick="runOcr(${idx}, 'gemini-2.5-flash')" style="width:280px">Gemini 2.5 Flash</button>
                             <button class="btn cyan" onclick="runOcr(${idx}, 'gemini-2.5-flash-lite')" style="width:280px">Gemini 2.5 Flash-Lite</button>
                         </div>

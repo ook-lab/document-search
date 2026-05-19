@@ -86,7 +86,7 @@
                     <p style="color: var(--text-muted); margin-bottom: 1rem;">Extract text and tables using Gemini AI.</p>
                     <textarea id="customPrompt" rows="3" style="width: 80%; max-width: 400px; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;" placeholder="（任意）例: 特定の項目だけ抽出"></textarea>
                     <div style="display:flex; flex-direction:column; gap:0.75rem; align-items:center; width: 100%;">
-                        <button class="btn-primary" style="width: 280px; background: #4338ca;" onclick="runAiExtraction('gemini-3.1-flash-lite-preview')">Gemini 3.1 Flash-Lite (Pre)</button>
+                        <button class="btn-primary" style="width: 280px; background: #4338ca;" onclick="runAiExtraction('gemini-3.1-flash-lite')">Gemini 3.1 Flash-Lite (Pre)</button>
                         <button class="btn-primary" style="width: 280px;" onclick="runAiExtraction('gemini-2.5-flash')">Gemini 2.5 Flash</button>
                         <button class="btn-primary" style="width: 280px; background: #0891b2;" onclick="runAiExtraction('gemini-2.5-flash-lite')">Gemini 2.5 Flash-Lite</button>
                     </div>
@@ -99,7 +99,7 @@
                         </div>
                         <div style="display: flex; gap: 0.5rem; align-items: center;">
                             <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">AI再抽出:</span>
-                            <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: #4338ca;" onclick="runAiExtraction('gemini-3.1-flash-lite-preview')">3.1 Flash-Lite</button>
+                            <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: #4338ca;" onclick="runAiExtraction('gemini-3.1-flash-lite')">3.1 Flash-Lite</button>
                             <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem;" onclick="runAiExtraction('gemini-2.5-flash')">2.5 Flash</button>
                             <button class="btn-primary" style="font-size: 0.7rem; padding: 0.25rem 0.5rem; background: #0891b2;" onclick="runAiExtraction('gemini-2.5-flash-lite')">2.5 Lite</button>
                             <div style="width: 1px; height: 20px; background: var(--border); margin: 0 0.5rem;"></div>
