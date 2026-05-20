@@ -329,6 +329,14 @@
         .dme-text-section { margin-bottom: 1.5rem; }
         .dme-text-section textarea { width: 100%; min-height: 4rem; border: 1px solid #eee; border-radius: 4px; padding: 0.5rem; font-family: inherit; font-size: 0.95rem; line-height: 1.6; resize: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; }
         .dme-table-actions { display: flex; gap: 0.5rem; margin-top: -1.5rem; margin-bottom: 1.5rem; justify-content: flex-end; }
+        .dme-table th { position: relative; }
+        .dme-col-del-btn { position:absolute;top:2px;right:2px;width:1.3rem;height:1.3rem;font-size:0.6rem;background:#fee2e2;border:none;border-radius:3px;cursor:pointer;color:#dc2626;padding:0;line-height:1;opacity:0;transition:opacity 0.1s; }
+        .dme-table th:hover .dme-col-del-btn { opacity:1; }
+        .dme-row-del-td { width:1.8rem!important;min-width:1.8rem;max-width:1.8rem;text-align:center;padding:2px!important;border-color:var(--border)!important;background:#fafafa; }
+        .dme-row-del-btn { width:1.3rem;height:1.3rem;font-size:0.6rem;background:#fee2e2;border:none;border-radius:3px;cursor:pointer;color:#dc2626;padding:0;line-height:1;opacity:0;transition:opacity 0.1s; }
+        tr:hover .dme-row-del-btn { opacity:1; }
+        .dme-add-col-th { width:2rem!important;min-width:2rem;max-width:2rem;text-align:center;background:#f1f5f9!important;padding:2px!important; }
+        .dme-col-add-btn { font-size:0.6rem;background:#e0f2fe;border:1px solid #bae6fd;border-radius:3px;cursor:pointer;padding:2px 3px;color:#0369a1;white-space:nowrap; }
         /* 縦は親（.editor-pane）に任せ、表を切らない。横にだけはみ出す表は横スクロール */
         .reading-table-wrap {
             overflow-x: auto;
@@ -635,6 +643,7 @@
                             <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" id="downloadMdBtn">MDをダウンロード</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;display:none;" id="saveToDriveBtn">MD入りPDFで上書き</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" id="downloadResultBtn">MD入りPDFをダウンロード</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;display:none;background:#fef9c3;border-color:#fde047;color:#854d0e;" id="confirmEditBtn">変更を確定</button>
                             <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;display:none;" id="saveToSupabaseBtn">RAWに保存</button>
                         </div>
                     </div>
@@ -2060,6 +2069,7 @@
             paneLog.innerHTML = '';
             setLabTab('visual');
             btnFullJson.disabled = true;
+            _showConfirmBtn(true);
             return;
         }
 
@@ -2070,6 +2080,21 @@
             window.__lastF46Log = pr.f46_log || '';
             window.__lastF47Log = pr.f47_log || '';
             window.__lastStageDJson = JSON.stringify(pr.stage_d_detail != null ? pr.stage_d_detail : {}, null, 2);
+            // パイプライン結果を dme-table 編集モードに変換
+            const _synMd = buildSyntheticMarkdown(pr).trim();
+            if (_synMd && !_synMd.startsWith('（非表も表もまだ')) {
+                p.direct_md = _synMd;
+                labOverlay.style.display = 'none';
+                _dmeRenderVisualEditor(paneVisualEditor, _synMd);
+                paneRawMd.innerHTML = _makeRawMdTextarea(_synMd);
+                _wireRawMdSync(appState.currentPage);
+                paneLog.innerHTML = renderLogHtml(pr);
+                setLabTab('visual');
+                wireCopyButtons();
+                btnFullJson.disabled = false;
+                _showConfirmBtn(true);
+                return;
+            }
             labOverlay.style.display = 'none';
             paneVisualEditor.contentEditable = 'true';
             paneVisualEditor.innerHTML = renderReadingHtml(pr);
@@ -2570,41 +2595,101 @@
         table.dataset.index = sIdx;
         const thead = document.createElement('thead');
         const hRow = document.createElement('tr');
-        tableObj.headers.forEach(h => {
-            const th = document.createElement('th');
-            th.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)">' + _dmeEsc(h) + '</textarea>';
-            hRow.appendChild(th);
-        });
-        thead.appendChild(hRow);
-        table.appendChild(thead);
         const tbody = document.createElement('tbody');
-        tableObj.rows.forEach(r => {
+
+        // 列削除ボタン付きヘッダーセルを作る
+        function _makeHeader(text) {
+            const th = document.createElement('th');
+            th.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)">' + _dmeEsc(text) + '</textarea>';
+            const delBtn = document.createElement('button');
+            delBtn.className = 'dme-col-del-btn';
+            delBtn.textContent = '×';
+            delBtn.title = 'この列を削除';
+            delBtn.addEventListener('click', () => {
+                const idx = Array.from(hRow.children).indexOf(th);
+                if (idx < 0) return;
+                hRow.removeChild(th);
+                Array.from(tbody.rows).forEach(tr => {
+                    const dataCells = Array.from(tr.cells).filter(c => !c.classList.contains('dme-row-del-td'));
+                    if (dataCells[idx]) tr.removeChild(dataCells[idx]);
+                });
+            });
+            th.appendChild(delBtn);
+            return th;
+        }
+
+        // 行削除ボタン付き行を作る
+        function _makeRow(cells) {
             const tr = document.createElement('tr');
-            r.forEach(cell => {
+            const colCount = hRow.querySelectorAll('th textarea').length;
+            const padded = cells.slice(0, colCount);
+            while (padded.length < colCount) padded.push('');
+            padded.forEach(cell => {
                 const td = document.createElement('td');
                 td.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)">' + _dmeEsc(cell) + '</textarea>';
                 tr.appendChild(td);
             });
+            const delTd = document.createElement('td');
+            delTd.className = 'dme-row-del-td';
+            const rowDelBtn = document.createElement('button');
+            rowDelBtn.className = 'dme-row-del-btn';
+            rowDelBtn.textContent = '×';
+            rowDelBtn.title = 'この行を削除';
+            rowDelBtn.addEventListener('click', () => tbody.removeChild(tr));
+            delTd.appendChild(rowDelBtn);
+            tr.appendChild(delTd);
             tbody.appendChild(tr);
+            return tr;
+        }
+
+        // ヘッダー行構築
+        tableObj.headers.forEach(h => hRow.appendChild(_makeHeader(h)));
+
+        // 「+ 列」ヘッダーセル
+        const addColTh = document.createElement('th');
+        addColTh.className = 'dme-add-col-th';
+        const addColBtn = document.createElement('button');
+        addColBtn.className = 'dme-col-add-btn';
+        addColBtn.textContent = '+列';
+        addColBtn.title = '列を追加';
+        addColBtn.addEventListener('click', () => {
+            hRow.insertBefore(_makeHeader(''), addColTh);
+            Array.from(tbody.rows).forEach(tr => {
+                const delTd = tr.querySelector('.dme-row-del-td');
+                const td = document.createElement('td');
+                td.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)"></textarea>';
+                tr.insertBefore(td, delTd);
+            });
         });
+        addColTh.appendChild(addColBtn);
+        hRow.appendChild(addColTh);
+
+        // 行削除列ヘッダー（空）
+        const delColTh = document.createElement('th');
+        delColTh.className = 'dme-row-del-td';
+        delColTh.style.background = '#f8fafc';
+        hRow.appendChild(delColTh);
+
+        thead.appendChild(hRow);
+        table.appendChild(thead);
+
+        // ボディ行構築
+        tableObj.rows.forEach(r => _makeRow(r));
+
         table.appendChild(tbody);
         wrapper.appendChild(table);
+
         const actions = document.createElement('div');
         actions.className = 'dme-table-actions';
-        // sIdx を data 属性で持たせてクロージャ問題を回避
-        const addBtn = document.createElement('button');
-        addBtn.className = 'btn-outline';
-        addBtn.style.fontSize = '0.6rem';
-        addBtn.textContent = '+ 行追加';
-        addBtn.addEventListener('click', () => {
-            const cols = table.rows[0] ? table.rows[0].cells.length : 0;
-            const newRow = tbody.insertRow();
-            for (let i = 0; i < cols; i++) {
-                const cell = newRow.insertCell();
-                cell.innerHTML = '<textarea class="dme-grow" oninput="_dmeAutoResize(this)"></textarea>';
-            }
+        const addRowBtn = document.createElement('button');
+        addRowBtn.className = 'btn-outline';
+        addRowBtn.style.fontSize = '0.6rem';
+        addRowBtn.textContent = '+ 行追加';
+        addRowBtn.addEventListener('click', () => {
+            const cols = hRow.querySelectorAll('th textarea').length;
+            _makeRow(Array(cols).fill(''));
         });
-        actions.appendChild(addBtn);
+        actions.appendChild(addRowBtn);
         wrapper.appendChild(actions);
         return wrapper;
     }
@@ -2678,6 +2763,41 @@
     // -----------------------------------------------------------------------
     // 保存前フラッシュ（Visual Editor 編集中に保存ボタンを押した場合に同期）
     // -----------------------------------------------------------------------
+    const confirmEditBtn = document.getElementById('confirmEditBtn');
+    function _showConfirmBtn(show) {
+        if (confirmEditBtn) confirmEditBtn.style.display = show ? '' : 'none';
+    }
+    if (confirmEditBtn) {
+        confirmEditBtn.addEventListener('click', () => {
+            const pg = appState.currentPage;
+            const md = _dmeSyncVisualToMd(paneVisualEditor);
+            appState.pages[pg].direct_md = md;
+            // Raw MD テキストエリアを更新
+            const ta = document.getElementById('labRawMarkdownBody');
+            if (ta) ta.value = md;
+            // サーバー側セッションにも書き戻す
+            if (appState.sessionId) {
+                fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ markdown_text: md }),
+                }).catch(() => {});
+            }
+            // ボタンフィードバック
+            const orig = confirmEditBtn.textContent;
+            confirmEditBtn.textContent = '✓ 確定済';
+            confirmEditBtn.style.background = '#dcfce7';
+            confirmEditBtn.style.borderColor = '#86efac';
+            confirmEditBtn.style.color = '#166534';
+            setTimeout(() => {
+                confirmEditBtn.textContent = orig;
+                confirmEditBtn.style.background = '#fef9c3';
+                confirmEditBtn.style.borderColor = '#fde047';
+                confirmEditBtn.style.color = '#854d0e';
+            }, 1500);
+        });
+    }
+
     function _collectAllPagesMd() {
         const _PLACEHOLDER = '（非表も表もまだありません';
         const parts = [];
