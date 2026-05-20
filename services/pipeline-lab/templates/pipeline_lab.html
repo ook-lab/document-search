@@ -1103,7 +1103,7 @@
         if (typeof c === 'string' && c.trim().toLowerCase() === 'null') {
             return '';
         }
-        return String(c).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
+        return _cleanTextForDme(String(c)).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
     }
 
     function labNormalizeHeaderRowsForMd(meta, numRows) {
@@ -1254,6 +1254,13 @@
     }
 
     /** embedder の Raw MD に近い参照用: Visual と同じ visual_stream 配列順（結合なし）、または従来の非表一括 + 表 */
+    function _cleanTextForDme(s) {
+        return String(s || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
+    }
+
     function buildSyntheticMarkdown(data) {
         var lines = [];
         var r = data.reading || {};
@@ -1267,7 +1274,7 @@
                 if (!seg) return;
                 var k = seg.kind;
                 if (k === 'non_table_paragraph') {
-                    var t = String(seg.text || '').trim();
+                    var t = _cleanTextForDme(seg.text).trim();
                     if (!t) return;
                     if (!proseHdr) {
                         lines.push('## 非表（F 地の文）');
@@ -1279,7 +1286,7 @@
                     lines.push(t);
                 } else if (k === 'g21_article') {
                     if (streamHasF1ProseSegments(vs)) return;
-                    var gb = String(seg.body || '').trim();
+                    var gb = _cleanTextForDme(seg.body).trim();
                     if (!gb) return;
                     if (!proseHdr) {
                         lines.push('## 非表（F 地の文）');
@@ -1327,7 +1334,7 @@
                 lines.push('## 非表（F 地の文）');
                 lines.push('');
                 f1Blocks.forEach(function (b, bi) {
-                    var t = String((b && b.text) || '').trim();
+                    var t = _cleanTextForDme(b && b.text).trim();
                     if (!t) return;
                     if (bi > 0) lines.push('');
                     lines.push(t);
