@@ -916,11 +916,74 @@
     }
 
     // embed（## 表（埋め込み）以降）を取得・除去するヘルパー
+    function _yamlStr(s) {
+        // シンプルなYAML文字列エスケープ
+        var v = String(s || '');
+        if (!v) return "''";
+        if (/[:'"\\\n\r#&*!|>{}\[\],]/.test(v) || v.startsWith(' ') || v.endsWith(' ')) {
+            return "'" + v.replace(/'/g, "''") + "'";
+        }
+        return v;
+    }
+
     function _getPageEmbed(pg) {
         const p = appState.pages[pg];
         if (!p || !p.pipeline_result || !p.pipeline_result.ui_data_json) return '';
-        const embed = String(p.pipeline_result.ui_data_json.tables_md_embed || '').trim();
-        return embed ? '\n\n## 表（埋め込み）\n\n' + embed : '';
+        const ud = p.pipeline_result.ui_data_json;
+        const origTables = Array.isArray(ud.tables) ? ud.tables : [];
+        if (!origTables.length) {
+            const embed = String(ud.tables_md_embed || '').trim();
+            return embed ? '\n\n## 表（埋め込み）\n\n' + embed : '';
+        }
+
+        // Visual Editor の現在の表データを取得して YAML/HTML を再生成
+        const domTables = Array.from(paneVisualEditor.querySelectorAll('.dme-table'));
+        let yaml = 'tables:\n';
+        let htmlParts = '';
+
+        domTables.forEach((table, idx) => {
+            const orig = origTables[idx] || origTables[0] || {};
+            const meta = orig.metadata || {};
+            const sem = meta.table_semantics || {};
+            const tableId = orig.table_id || ('T' + (idx + 1));
+
+            const headers = Array.from(table.querySelectorAll('thead th textarea')).map(t => t.value);
+            const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
+                Array.from(tr.querySelectorAll('td textarea')).map(t => t.value)
+            );
+
+            yaml += `- table_id: ${tableId}\n`;
+            yaml += `  description: ${_yamlStr(orig.description || '')}\n`;
+            yaml += `  table_semantics:\n`;
+            yaml += `    type: ${sem.type || 'other'}\n`;
+            yaml += `    type_ja: ${sem.type_ja || ''}\n`;
+            yaml += `    target: ${sem.target || ''}\n`;
+            yaml += `    scope: ${sem.scope || ''}\n`;
+            yaml += `    date_range: ${sem.date_range || 'null'}\n`;
+            yaml += `    confidence: ${sem.confidence || 0.9}\n`;
+            yaml += `  header_row_indices:\n  - 0\n`;
+            yaml += `  month_blocks: []\n`;
+            yaml += `  data_rows:\n`;
+            rows.forEach((row, ri) => {
+                yaml += `  - sheet_row: ${ri + 1}\n    cells:\n`;
+                row.forEach(cell => { yaml += `    - ${_yamlStr(cell)}\n`; });
+            });
+
+            // HTML
+            htmlParts += `<!-- table:${tableId} -->\n`;
+            htmlParts += `<table class="md-embed-table"><thead><tr>`;
+            headers.forEach(h => { htmlParts += `<th>${escapeHtml(h)}</th>`; });
+            htmlParts += `</tr></thead><tbody>`;
+            rows.forEach(row => {
+                htmlParts += '<tr>';
+                row.forEach(cell => { htmlParts += `<td>${escapeHtml(cell || '')}</td>`; });
+                htmlParts += '</tr>';
+            });
+            htmlParts += `</tbody></table>`;
+        });
+
+        const body = '<!-- dms:tables-md-embed v1 -->\n### `tables`（YAML・検索・LLM 向け）\n\n```yaml\n' + yaml + '```\n\n### 表 HTML（MD に埋め込み可）\n\n' + htmlParts;
+        return '\n\n## 表（埋め込み）\n\n' + body;
     }
     function _stripEmbed(md) {
         const idx = (md || '').indexOf('\n## 表（埋め込み）');
@@ -2897,11 +2960,13 @@
                 // プレースホルダーは実コンテンツなし扱い
                 if (text.startsWith(_PLACEHOLDER)) text = '';
             }
-            // RAG用: tables_md_embed（YAML+HTML）を末尾に追加（visual editor には表示しない）
-            const embed = (p.pipeline_result && p.pipeline_result.ui_data_json)
-                ? String(p.pipeline_result.ui_data_json.tables_md_embed || '').trim()
-                : '';
-            if (embed) text = text + '\n\n## 表（埋め込み）\n\n' + embed;
+            // RAG用: 現在ページは visual editor から再生成、他ページは元データ
+            const embedSection = (i === appState.currentPage)
+                ? _getPageEmbed(i)
+                : ((p.pipeline_result && p.pipeline_result.ui_data_json && p.pipeline_result.ui_data_json.tables_md_embed)
+                    ? '\n\n## 表（埋め込み）\n\n' + String(p.pipeline_result.ui_data_json.tables_md_embed).trim()
+                    : '');
+            if (embedSection) text = text + embedSection;
             if (text) parts.push('## Page ' + (i + 1) + '\n\n' + text);
         }
         return parts.join('\n\n');
