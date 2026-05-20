@@ -1251,6 +1251,7 @@ class G26SemanticEstimator:
                 structured_tables=list(structured_tables or []),
                 year_context=year_context,
                 chain_context=chain_context,
+                non_table_text=non_table_text,
             )
 
         structured_tables = (chain_context or {}).get("structured_tables")
@@ -1307,7 +1308,8 @@ class G26SemanticEstimator:
 以下の JSON テンプレートを**そのまま**コピーし、意味フィールドのみ上書きして返すこと。
 
 **変更してよいフィールド**:
-- `page_summary`, `table_semantics`, `whole_table_intent`, `block_summaries`
+- `page_summary`, `table_semantics`, `block_summaries`
+- `whole_table_intent`（表の目的を**必ず日本語で**1〜2文。文書テキストに記載の学校名・団体名・人名・行事名などの固有名詞を盛り込み、何のための表かを具体的に記述すること）
 - `layout_variant_id`（表の直後に列挙された候補から必ず1つを選ぶ。分割不要なら "v_none"）
 - `row_analysis` の `abstraction_level` / `common_type`
 - `col_analysis` の `abstraction_level` / `common_type`
@@ -1363,6 +1365,7 @@ class G26SemanticEstimator:
         structured_tables: List[Dict[str, Any]],
         year_context: Optional[int] = None,
         chain_context: Optional[Dict[str, Any]] = None,
+        non_table_text: str = "",
     ) -> Tuple[Dict[str, Any], int, Dict[str, int]]:
         """D 罫線 + 全表理解を 1 回の LLM で返す。"""
         if not digest.get("available"):
@@ -1402,10 +1405,14 @@ class G26SemanticEstimator:
         role_list = ", ".join(sorted(VALID_LINE_ROLES))
         type_list = ", ".join(sorted(_VALID_SEM_TYPES))
         prefilled = _sub_tables_prefilled_template(sub_specs, lines=lines)
+        doc_context = ""
+        if non_table_text and non_table_text.strip():
+            doc_context = f"\n## 文書テキスト（表の周囲）\n{non_table_text.strip()}\n"
 
         prompt_base = f"""あなたは PDF ページの表レイアウト解析器です。**罫線とセル内容を一体で読み**、各表ブロックの意味と切り方を決めてください。帳票種別名だけで決めないこと。
 
 {year_info}
+{doc_context}
 {req_lines}
 
 ## 罫線（正規化座標 0–1・表理解の根拠。罫線だけで分割を決めない）
@@ -1435,7 +1442,7 @@ class G26SemanticEstimator:
 - `page_summary`（ページ全体の要約）
 - `lines`（罫線の role）
 - `table_semantics`（type / type_ja / target / scope / date_range / confidence）
-- `whole_table_intent`（表の目的の1文）
+- `whole_table_intent`（表の目的を**必ず日本語で**1〜2文。文書テキストに記載の学校名・団体名・人名・行事名などの固有名詞を盛り込み、何のための表かを具体的に記述すること）
 - `block_summaries`（分割時のブロック説明）
 - `layout_variant_id`（表の直後に列挙された候補から必ず1つを選ぶ。分割不要なら "v_none"）
 - `row_analysis` の `abstraction_level` / `common_type`

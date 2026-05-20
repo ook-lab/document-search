@@ -2572,15 +2572,19 @@
         const wrapper = document.createElement('div');
         // タイトル入力欄
         const titleDiv = document.createElement('div');
-        titleDiv.style.cssText = 'margin-bottom:0.4rem;';
+        titleDiv.style.cssText = 'margin-bottom:0.5rem;';
+        const titleLabel = document.createElement('div');
+        titleLabel.textContent = '▼ 表の要約（編集可）';
+        titleLabel.style.cssText = 'font-size:0.7rem;color:#94a3b8;margin-bottom:2px;';
         const titleInput = document.createElement('input');
         titleInput.className = 'dme-table-title';
         titleInput.type = 'text';
-        titleInput.placeholder = '表のタイトル（任意）';
+        titleInput.placeholder = '（AIが要約を生成、または手入力）';
         titleInput.value = titleText || '';
-        titleInput.style.cssText = 'width:100%;box-sizing:border-box;border:1px dashed #cbd5e1;border-radius:4px;padding:4px 8px;font-size:0.85rem;font-weight:600;background:#fafafa;outline:none;';
-        titleInput.addEventListener('focus', () => titleInput.style.borderColor = '#6366f1');
-        titleInput.addEventListener('blur', () => titleInput.style.borderColor = '#cbd5e1');
+        titleInput.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:4px;padding:5px 10px;font-size:0.85rem;font-weight:600;background:#f8fafc;outline:none;';
+        titleInput.addEventListener('focus', () => { titleInput.style.borderColor = '#6366f1'; titleInput.style.background = '#fff'; });
+        titleInput.addEventListener('blur', () => { titleInput.style.borderColor = '#e2e8f0'; titleInput.style.background = '#f8fafc'; });
+        titleDiv.appendChild(titleLabel);
         titleDiv.appendChild(titleInput);
         wrapper.appendChild(titleDiv);
         const table = document.createElement('table');
