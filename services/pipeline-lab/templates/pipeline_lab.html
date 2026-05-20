@@ -2826,6 +2826,11 @@
                 // プレースホルダーは実コンテンツなし扱い
                 if (text.startsWith(_PLACEHOLDER)) text = '';
             }
+            // RAG用: tables_md_embed（YAML+HTML）を末尾に追加（visual editor には表示しない）
+            const embed = (p.pipeline_result && p.pipeline_result.ui_data_json)
+                ? String(p.pipeline_result.ui_data_json.tables_md_embed || '').trim()
+                : '';
+            if (embed) text = text + '\n\n## 表（埋め込み）\n\n' + embed;
             if (text) parts.push('## Page ' + (i + 1) + '\n\n' + text);
         }
         return parts.join('\n\n');
