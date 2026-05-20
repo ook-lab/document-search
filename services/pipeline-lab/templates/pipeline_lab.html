@@ -330,11 +330,11 @@
         .dme-text-section textarea { width: 100%; min-height: 4rem; border: 1px solid #eee; border-radius: 4px; padding: 0.5rem; font-family: inherit; font-size: 0.95rem; line-height: 1.6; resize: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; }
         .dme-table-actions { display: flex; gap: 0.5rem; margin-top: -1.5rem; margin-bottom: 1.5rem; justify-content: flex-end; }
         .dme-table th { position: relative; }
-        .dme-col-del-btn { position:absolute;top:2px;right:2px;width:1.3rem;height:1.3rem;font-size:0.6rem;background:#fee2e2;border:none;border-radius:3px;cursor:pointer;color:#dc2626;padding:0;line-height:1;opacity:0;transition:opacity 0.1s; }
-        .dme-table th:hover .dme-col-del-btn { opacity:1; }
+        .dme-col-del-btn { position:absolute;top:2px;right:2px;width:1.3rem;height:1.3rem;font-size:0.6rem;background:#fecaca;border:1px solid #fca5a5;border-radius:3px;cursor:pointer;color:#dc2626;padding:0;line-height:1;opacity:0.45;transition:opacity 0.15s;pointer-events:auto; }
+        .dme-col-del-btn:hover { opacity:1;background:#fee2e2; }
         .dme-row-del-td { width:1.8rem!important;min-width:1.8rem;max-width:1.8rem;text-align:center;padding:2px!important;border-color:var(--border)!important;background:#fafafa; }
-        .dme-row-del-btn { width:1.3rem;height:1.3rem;font-size:0.6rem;background:#fee2e2;border:none;border-radius:3px;cursor:pointer;color:#dc2626;padding:0;line-height:1;opacity:0;transition:opacity 0.1s; }
-        tr:hover .dme-row-del-btn { opacity:1; }
+        .dme-row-del-btn { width:1.3rem;height:1.3rem;font-size:0.6rem;background:#fecaca;border:1px solid #fca5a5;border-radius:3px;cursor:pointer;color:#dc2626;padding:0;line-height:1;opacity:0.45;transition:opacity 0.15s;pointer-events:auto; }
+        .dme-row-del-btn:hover { opacity:1;background:#fee2e2; }
         .dme-add-col-th { width:2rem!important;min-width:2rem;max-width:2rem;text-align:center;background:#f1f5f9!important;padding:2px!important; }
         .dme-col-add-btn { font-size:0.6rem;background:#e0f2fe;border:1px solid #bae6fd;border-radius:3px;cursor:pointer;padding:2px 3px;color:#0369a1;white-space:nowrap; }
         /* 縦は親（.editor-pane）に任せ、表を切らない。横にだけはみ出す表は横スクロール */
