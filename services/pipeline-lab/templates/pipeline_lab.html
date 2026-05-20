@@ -1220,12 +1220,13 @@
         return Array.from({ length: maxC }, function (_, c) { return '列' + (c + 1); });
     }
 
-    function appendMarkdownForTable(lines, tbl, ti) {
-        // description / semantics summary をタイトルマーカーとして埋め込む
+    function appendMarkdownForTable(lines, tbl, ti, autoTitle) {
         var meta = tbl.metadata || {};
-        var sem = meta.table_semantics || tbl.table_semantics || {};
-        var titleVal = String(meta.whole_table_intent || '').trim();
-        if (titleVal) lines.push('::title:: ' + titleVal);
+        // タイトル欄（非表テキストから自動抽出、またはユーザー手入力）
+        lines.push('::title:: ' + (autoTitle || ''));
+        // 要約欄（AI生成 whole_table_intent）
+        var summaryVal = String(meta.whole_table_intent || '').trim();
+        lines.push('::summary:: ' + summaryVal);
         lines.push('');
         var rows = tbl.rows || [];
         var maxR = Math.min(rows.length, 400);
@@ -1272,6 +1273,19 @@
     }
 
     /** embedder の Raw MD に近い参照用: Visual と同じ visual_stream 配列順（結合なし）、または従来の非表一括 + 表 */
+    function _extractTableTitle(lastLineText) {
+        // 表の直前の最終行のみを判断する
+        var line = (lastLineText || '').trim();
+        if (!line) return '';
+        // 括弧類で囲まれた見出し: ＜...＞ 【...】 《...》 など
+        if (/^[＜〈《【「『（(].+[＞〉》】」』）)]$/.test(line)) return line;
+        // 見出し記号で始まる短い行
+        if (/^[■●▶◆★◎○＊※]/.test(line) && line.length <= 40) return line;
+        // 3〜30文字で、文末が句点・読点でなく、文中っぽくない行
+        if (line.length >= 3 && line.length <= 30 && !/[。、，．！？!?]$/.test(line)) return line;
+        return '';
+    }
+
     function _cleanTextForDme(s) {
         return String(s || '')
             .replace(/<br\s*\/?>/gi, '\n')
@@ -1288,6 +1302,7 @@
         if (vs.length) {
             var proseHdr = false;
             var tableHdr = false;
+            var lastProseLastLine = '';  // 直前テキストセグメントの最終行
             vs.forEach(function (seg) {
                 if (!seg) return;
                 var k = seg.kind;
@@ -1297,6 +1312,9 @@
                     if (proseHdr) lines.push('');
                     proseHdr = true;
                     lines.push(t);
+                    // 最終行を記録（複数行なら最後の行）
+                    var tLines = t.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+                    lastProseLastLine = tLines.length ? tLines[tLines.length - 1] : '';
                 } else if (k === 'g21_article') {
                     if (streamHasF1ProseSegments(vs)) return;
                     var gb = _cleanTextForDme(seg.body).trim();
@@ -1304,22 +1322,27 @@
                     if (proseHdr) lines.push('');
                     proseHdr = true;
                     lines.push(gb);
+                    var gbLines = gb.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
+                    lastProseLastLine = gbLines.length ? gbLines[gbLines.length - 1] : '';
                 } else if (k === 'g_table') {
                     var ti = typeof seg.table_index === 'number' ? seg.table_index : 0;
                     var tbl = tabs[ti];
                     if (!tbl) return;
-                    appendMarkdownForTable(lines, tbl, ti);
+                    appendMarkdownForTable(lines, tbl, ti, _extractTableTitle(lastProseLastLine));
+                    lastProseLastLine = '';
                 } else if (k === 'g_table_group') {
                     var idxs = Array.isArray(seg.table_indices) ? seg.table_indices : [];
                     idxs.forEach(function (ti) {
                         var tbl = tabs[ti];
                         if (!tbl) return;
-                        appendMarkdownForTable(lines, tbl, ti);
+                        appendMarkdownForTable(lines, tbl, ti, _extractTableTitle(lastProseLastLine));
+                        lastProseLastLine = '';
                     });
                 }
             });
         } else {
             var f1Blocks = Array.isArray(r.non_table_text_blocks) ? r.non_table_text_blocks.slice() : [];
+            var fbLastLine = '';
             if (f1Blocks.length) {
                 f1Blocks.sort(function (a, b) {
                     var ya = Number(a && a.y0) || 0;
@@ -1332,15 +1355,20 @@
                     if (!t) return;
                     if (bi > 0) lines.push('');
                     lines.push(t);
+                    var tl = t.split('\n').filter(function(l){return l.trim();});
+                    if (tl.length) fbLastLine = tl[tl.length - 1].trim();
                 });
             } else {
                 var st = readingStageEPlainState(r);
                 if (st.kind === 'ok' && st.text.trim()) {
                     lines.push(st.text.trim());
+                    var stl = st.text.trim().split('\n').filter(function(l){return l.trim();});
+                    if (stl.length) fbLastLine = stl[stl.length - 1].trim();
                 }
             }
             tabs.forEach(function (tbl, ti) {
-                appendMarkdownForTable(lines, tbl, ti);
+                appendMarkdownForTable(lines, tbl, ti, _extractTableTitle(fbLastLine));
+                fbLastLine = '';
             });
         }
         // tables_md_embed は PDF OCR 埋め込み用の内部フォーマット（YAML + HTML）のため visual editor には出さない
@@ -2561,14 +2589,19 @@
         const sections = [];
         let buf = [], inTable = false;
         lines.forEach(line => {
-            // ::title:: またはテーブル直前の ## heading をタイトルとして認識（## 表（埋め込み）は除外）
-            if (!inTable && (line.startsWith('::title::') || (/^## \S/.test(line) && !line.startsWith('## 表（埋め込み）')))) {
+            // ::title:: / ::summary:: またはテーブル直前の ## heading をタイトルとして認識
+            if (!inTable && (line.startsWith('::title::') || line.startsWith('::summary::') ||
+                (/^## \S/.test(line) && !line.startsWith('## 表（埋め込み）')))) {
                 if (buf.length) sections.push({type:'text', content:buf.join('\n')});
                 buf = [];
-                const content = line.startsWith('::title::')
-                    ? line.slice('::title::'.length).trim()
-                    : line.slice(3).trim();
-                sections.push({type:'title', content});
+                if (line.startsWith('::summary::')) {
+                    sections.push({type:'summary', content:line.slice('::summary::'.length).trim()});
+                } else {
+                    const content = line.startsWith('::title::')
+                        ? line.slice('::title::'.length).trim()
+                        : line.slice(3).trim();
+                    sections.push({type:'title', content});
+                }
                 return;
             }
             const isTable = line.trim().startsWith('|') && line.trim().endsWith('|');
@@ -2589,25 +2622,33 @@
         const parseLine = l => l.split('|').map(s => s.trim()).filter((s,i,a) => i > 0 && i < a.length - 1);
         return {headers: parseLine(lines[0]), rows: lines.slice(2).map(parseLine)};
     }
-    function _dmeCreateTable(tableObj, sIdx, titleText) {
+    function _dmeField(labelText, inputVal, placeholder, className) {
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-bottom:0.4rem;';
+        const lbl = document.createElement('div');
+        lbl.textContent = labelText;
+        lbl.style.cssText = 'font-size:0.7rem;color:#64748b;font-weight:600;margin-bottom:2px;';
+        const inp = document.createElement('input');
+        inp.className = className;
+        inp.type = 'text';
+        inp.placeholder = placeholder;
+        inp.value = inputVal || '';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;border:1.5px solid #cbd5e1;border-radius:4px;padding:5px 10px;font-size:0.85rem;background:#fff;outline:none;color:#1e293b;';
+        inp.addEventListener('focus', () => { inp.style.borderColor = '#6366f1'; inp.style.boxShadow = '0 0 0 2px #e0e7ff'; });
+        inp.addEventListener('blur', () => { inp.style.borderColor = '#cbd5e1'; inp.style.boxShadow = 'none'; });
+        div.appendChild(lbl);
+        div.appendChild(inp);
+        return div;
+    }
+
+    function _dmeCreateTable(tableObj, sIdx, titleText, summaryText) {
         const wrapper = document.createElement('div');
-        // タイトル入力欄
-        const titleDiv = document.createElement('div');
-        titleDiv.style.cssText = 'margin-bottom:0.5rem;';
-        const titleLabel = document.createElement('div');
-        titleLabel.textContent = '▼ 表の要約（編集可）';
-        titleLabel.style.cssText = 'font-size:0.7rem;color:#94a3b8;margin-bottom:2px;';
-        const titleInput = document.createElement('input');
-        titleInput.className = 'dme-table-title';
-        titleInput.type = 'text';
-        titleInput.placeholder = '（AIが要約を生成、または手入力）';
-        titleInput.value = titleText || '';
-        titleInput.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #e2e8f0;border-radius:4px;padding:5px 10px;font-size:0.85rem;font-weight:600;background:#f8fafc;outline:none;';
-        titleInput.addEventListener('focus', () => { titleInput.style.borderColor = '#6366f1'; titleInput.style.background = '#fff'; });
-        titleInput.addEventListener('blur', () => { titleInput.style.borderColor = '#e2e8f0'; titleInput.style.background = '#f8fafc'; });
-        titleDiv.appendChild(titleLabel);
-        titleDiv.appendChild(titleInput);
+        // 表のタイトル欄（ユーザー手入力）
+        const titleDiv = _dmeField('表のタイトル（編集可）', titleText, '（手入力）', 'dme-table-title');
         wrapper.appendChild(titleDiv);
+        // 表の要約欄（AI生成）
+        const summaryDiv = _dmeField('表の要約（編集可）', summaryText, '（AIが生成、または手入力）', 'dme-table-summary');
+        wrapper.appendChild(summaryDiv);
         const table = document.createElement('table');
         table.className = 'dme-table';
         table.dataset.index = sIdx;
@@ -2717,14 +2758,20 @@
         const sections = _dmeSplitMd(md);
         for (let i = 0; i < sections.length; i++) {
             const sec = sections[i];
-            if (sec.type === 'title') continue; // 次の table セクションで消費
+            if (sec.type === 'title' || sec.type === 'summary') continue;
             if (sec.type === 'table') {
-                let titleSec = null;
+                let titleSec = null, summarySec = null;
                 for (let j = i - 1; j >= 0; j--) {
-                    if (sections[j].type === 'title') { titleSec = sections[j]; break; }
-                    if (sections[j].type !== 'text' || sections[j].content.trim()) break;
+                    if (sections[j].type === 'title' && !titleSec) titleSec = sections[j];
+                    else if (sections[j].type === 'summary' && !summarySec) summarySec = sections[j];
+                    else if (sections[j].type === 'text' && !sections[j].content.trim()) continue;
+                    else break;
                 }
-                container.appendChild(_dmeCreateTable(_dmeParseMdTable(sec.content), i, titleSec ? titleSec.content : ''));
+                container.appendChild(_dmeCreateTable(
+                    _dmeParseMdTable(sec.content), i,
+                    titleSec ? titleSec.content : '',
+                    summarySec ? summarySec.content : ''
+                ));
             } else if (sec.content.trim()) {
                 const div = document.createElement('div');
                 div.className = 'dme-text-section';
@@ -2745,8 +2792,11 @@
             const table = child.querySelector('.dme-table');
             if (table) {
                 const titleInput = child.querySelector('.dme-table-title');
+                const summaryInput = child.querySelector('.dme-table-summary');
                 const title = titleInput ? titleInput.value.trim() : '';
+                const summary = summaryInput ? summaryInput.value.trim() : '';
                 if (title) parts.push('## ' + title);
+                if (summary) parts.push('::summary:: ' + summary);
                 const headers = Array.from(table.querySelectorAll('thead th textarea')).map(t => t.value);
                 const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>
                     Array.from(tr.querySelectorAll('td textarea')).map(t => t.value)
