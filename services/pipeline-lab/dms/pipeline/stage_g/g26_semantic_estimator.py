@@ -1212,6 +1212,7 @@ class G26SemanticEstimator:
         e14_reconstructed: List[Dict[str, Any]],
         year_context: Optional[int] = None,
         chain_context: Optional[Dict[str, Any]] = None,
+        non_table_text: str = "",
     ) -> Tuple[Dict[str, Any], int, Dict[str, int]]:
         """
         Returns:
@@ -1257,6 +1258,7 @@ class G26SemanticEstimator:
             e14_reconstructed,
             structured_tables=list(structured_tables or []),
             year_context=year_context,
+            non_table_text=non_table_text,
         )
 
     def _infer_tables_batch(
@@ -1265,6 +1267,7 @@ class G26SemanticEstimator:
         *,
         structured_tables: List[Dict[str, Any]],
         year_context: Optional[int] = None,
+        non_table_text: str = "",
     ) -> Tuple[Dict[str, Any], int, Dict[str, int]]:
         """罫線 digest なし: 全表を 1 回の LLM で理解（列・行・layout_split のみ）。"""
         sub_specs = self._collect_sub_table_specs(e14_reconstructed)
@@ -1278,12 +1281,16 @@ class G26SemanticEstimator:
             st_preview = (
                 f"\n## 構造化表\n{_structured_tables_preview(structured_tables)}\n"
             )
+        doc_context = ""
+        if non_table_text and non_table_text.strip():
+            doc_context = f"\n## 文書テキスト（表の周囲）\n{non_table_text.strip()}\n"
 
         prefilled = _sub_tables_prefilled_template(sub_specs)
 
         prompt = f"""あなたは表構造のアナリストです。**全セルを根拠に**各ブロックの列・行の意味と切り方を一括で決めてください。
 
 {year_info}
+{doc_context}
 {st_preview}
 ## 表データ（サブブロック単位）
 {tables_block}

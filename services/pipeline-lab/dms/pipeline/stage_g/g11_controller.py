@@ -151,6 +151,7 @@ class G11Controller:
             self._structured_to_e14_reconstructed(structured),
             year_ctx,
             chain_context=g24_bundle,
+            non_table_text=str(bundle.get("raw_text") or ""),
         )
         g24_bundle["semantic_inference"] = semantic
         lsa = semantic.get("line_semantics_ai")

@@ -2694,7 +2694,11 @@
             const sec = sections[i];
             if (sec.type === 'title') continue; // 次の table セクションで消費
             if (sec.type === 'table') {
-                const titleSec = (i > 0 && sections[i - 1].type === 'title') ? sections[i - 1] : null;
+                let titleSec = null;
+                for (let j = i - 1; j >= 0; j--) {
+                    if (sections[j].type === 'title') { titleSec = sections[j]; break; }
+                    if (sections[j].type !== 'text' || sections[j].content.trim()) break;
+                }
                 container.appendChild(_dmeCreateTable(_dmeParseMdTable(sec.content), i, titleSec ? titleSec.content : ''));
             } else if (sec.content.trim()) {
                 const div = document.createElement('div');
