@@ -761,7 +761,7 @@ def _sub_tables_prefilled_template(
                     "date_range": None,
                     "confidence": 0.9,
                 },
-                "whole_table_intent": "（この表の目的を1文で記述）",
+                "whole_table_intent": "（文書テキストの固有名詞を使い、この表の目的を日本語1〜2文で記述）",
                 "block_summaries": ["（v_none 以外の variant を選んだ場合、各ブロックの説明を1つずつ入れる）"],
                 "row_analysis": _analysis_skeleton_rows(spec["nrows"]),
                 "col_analysis": _analysis_skeleton_cols(spec["ncols"]),

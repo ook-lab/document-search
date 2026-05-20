@@ -915,6 +915,18 @@
         return 32;
     }
 
+    // embed（## 表（埋め込み）以降）を取得・除去するヘルパー
+    function _getPageEmbed(pg) {
+        const p = appState.pages[pg];
+        if (!p || !p.pipeline_result || !p.pipeline_result.ui_data_json) return '';
+        const embed = String(p.pipeline_result.ui_data_json.tables_md_embed || '').trim();
+        return embed ? '\n\n## 表（埋め込み）\n\n' + embed : '';
+    }
+    function _stripEmbed(md) {
+        const idx = (md || '').indexOf('\n## 表（埋め込み）');
+        return idx >= 0 ? md.slice(0, idx).trim() : (md || '').trim();
+    }
+
     function setLabTab(which) {
         const pg = appState.currentPage;
         const isDirectMode = appState.pages[pg] && appState.pages[pg].direct_md != null;
@@ -923,15 +935,16 @@
             const prevVisual = paneVisualEditor.classList.contains('active');
             const prevRaw = paneRawMd.classList.contains('active');
             if (prevVisual && which === 'rawmd') {
-                // Visual → Raw MD: Visual Editor の内容を Raw MD テキストエリアに反映
+                // Visual → Raw MD: Visual Editor の内容 + 構造化 embed を Raw MD に反映
                 const md = _dmeSyncVisualToMd(paneVisualEditor);
                 appState.pages[pg].direct_md = md;
-                paneRawMd.innerHTML = _makeRawMdTextarea(md);
+                paneRawMd.innerHTML = _makeRawMdTextarea(md + _getPageEmbed(pg));
                 _wireRawMdSync(pg);
             } else if (prevRaw && which === 'visual') {
-                // Raw MD → Visual: テキストエリアの内容を Visual Editor に反映
+                // Raw MD → Visual: embed を除いた内容のみ Visual Editor に反映
                 const ta = document.getElementById('labRawMarkdownBody');
-                const md = ta ? ta.value : (appState.pages[pg].direct_md || '');
+                const raw = ta ? ta.value : (appState.pages[pg].direct_md || '');
+                const md = _stripEmbed(raw);
                 appState.pages[pg].direct_md = md;
                 _dmeRenderVisualEditor(paneVisualEditor, md);
             }
@@ -948,6 +961,8 @@
         paneVisualEditor.classList.toggle('active', v);
         paneRawMd.classList.toggle('active', r);
         paneLog.classList.toggle('active', l);
+        // Visual ペインが表示されたタイミングで scrollHeight が確定するので全テキストエリアをリサイズ
+        if (v) requestAnimationFrame(() => _dmeAutoResizeAll(paneVisualEditor));
     }
     tabVisualEditor.addEventListener('click', function () { setLabTab('visual'); });
     tabRawMd.addEventListener('click', function () { setLabTab('rawmd'); });
@@ -2059,7 +2074,10 @@
                 p.direct_md = _synMd;
                 labOverlay.style.display = 'none';
                 _dmeRenderVisualEditor(paneVisualEditor, _synMd);
-                paneRawMd.innerHTML = _makeRawMdTextarea(_synMd);
+                const _embed = (pr.ui_data_json && pr.ui_data_json.tables_md_embed)
+                    ? '\n\n## 表（埋め込み）\n\n' + String(pr.ui_data_json.tables_md_embed).trim()
+                    : '';
+                paneRawMd.innerHTML = _makeRawMdTextarea(_synMd + _embed);
                 _wireRawMdSync(appState.currentPage);
                 paneLog.innerHTML = renderLogHtml(pr);
                 setLabTab('visual');
@@ -2543,11 +2561,14 @@
         const sections = [];
         let buf = [], inTable = false;
         lines.forEach(line => {
-            if (line.startsWith('::title::')) {
-                if (inTable) { sections.push({type:'table', content:buf.join('\n')}); buf = []; inTable = false; }
+            // ::title:: またはテーブル直前の ## heading をタイトルとして認識（## 表（埋め込み）は除外）
+            if (!inTable && (line.startsWith('::title::') || (/^## \S/.test(line) && !line.startsWith('## 表（埋め込み）')))) {
                 if (buf.length) sections.push({type:'text', content:buf.join('\n')});
                 buf = [];
-                sections.push({type:'title', content:line.slice('::title::'.length).trim()});
+                const content = line.startsWith('::title::')
+                    ? line.slice('::title::'.length).trim()
+                    : line.slice(3).trim();
+                sections.push({type:'title', content});
                 return;
             }
             const isTable = line.trim().startsWith('|') && line.trim().endsWith('|');
@@ -2779,9 +2800,9 @@
             const pg = appState.currentPage;
             const md = _dmeSyncVisualToMd(paneVisualEditor);
             appState.pages[pg].direct_md = md;
-            // Raw MD テキストエリアを更新
+            // Raw MD テキストエリアを更新（構造化 embed は維持）
             const ta = document.getElementById('labRawMarkdownBody');
-            if (ta) ta.value = md;
+            if (ta) ta.value = md + _getPageEmbed(pg);
             // サーバー側セッションにも書き戻す
             if (appState.sessionId) {
                 fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
