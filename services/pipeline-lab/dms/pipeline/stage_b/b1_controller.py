@@ -241,7 +241,7 @@ class B1Controller:
         # ── MIXED / 複数コンテンツ型: B90 経由マルチプロセッサ処理 ──
         content_groups = {t: p for t, p in type_groups.items()
                           if t not in _NON_CONTENT_TYPES}
-        if len(content_groups) > 1:
+        if len(content_groups) > 1 or (origin_app == 'MIXED' and len(content_groups) >= 1):
             return self._process_multi_type(
                 file_path,
                 content_groups,
