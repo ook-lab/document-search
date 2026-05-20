@@ -1357,12 +1357,7 @@
                 });
             }
         }
-        if (String(ud.tables_md_embed || '').trim()) {
-            lines.push('## 表（埋め込み）');
-            lines.push('');
-            lines.push(String(ud.tables_md_embed).trim());
-            lines.push('');
-        }
+        // tables_md_embed は PDF OCR 埋め込み用の内部フォーマット（YAML + HTML）のため visual editor には出さない
         if (lines.length <= 1) {
             return '（非表も表もまだありません。パイプライン実行後に再度開いてください。）';
         }
