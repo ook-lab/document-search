@@ -1207,10 +1207,9 @@
 
     function appendMarkdownForTable(lines, tbl, ti) {
         // description / semantics summary をタイトルマーカーとして埋め込む
-        var sem = tbl.table_semantics || {};
-        var semStr = [sem.type_ja, sem.target].filter(Boolean).join(' / ');
-        var desc = String(tbl.description || '').trim();
-        var titleVal = desc || semStr || '';
+        var meta = tbl.metadata || {};
+        var sem = meta.table_semantics || tbl.table_semantics || {};
+        var titleVal = String(meta.whole_table_intent || '').trim();
         if (titleVal) lines.push('::title:: ' + titleVal);
         lines.push('');
         var rows = tbl.rows || [];

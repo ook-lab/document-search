@@ -364,6 +364,7 @@ class G62TableLayoutProcessor:
                     'split_axis': split_axis,
                     'primary_header_candidate': group_name,
                     'table_semantics': table_semantics,
+                    'whole_table_intent': str(pre.get('whole_table_intent') or '').strip(),
                     'col_analysis': ca_f46[:ncols] if ncols else ca_f46,
                     **{
                         k: v
