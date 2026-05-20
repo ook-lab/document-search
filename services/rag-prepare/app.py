@@ -65,7 +65,9 @@ def index():
     try:
         db = DbClass()
         raw_tables = list(RAG_PREPARE_VECTORIZE_RAW_TABLES)
-        pending_docs, list_error = fetch_pending_search_data_prep_docs(db.client, raw_tables)
+        pending_docs, list_error = fetch_pending_search_data_prep_docs(
+            db.client, raw_tables, include_vectorized=True
+        )
         if list_error:
             logger.error("検索データ準備 一覧: %s", list_error)
     except Exception as e:

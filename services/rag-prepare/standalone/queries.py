@@ -157,22 +157,24 @@ def fetch_pending_search_data_prep_docs(
     raw_tables: Sequence[str],
     *,
     meta_limit: int = 500,
+    include_vectorized: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """ix_vectorized_at が未設定の meta 行（raw 基準）を一覧表示する。"""
+    """meta 行を一覧表示する。include_vectorized=True で登録済みも含む。"""
     tables = list(raw_tables)
     if not tables:
         return [], None
 
     try:
-        meta_res = (
+        q = (
             db_client.table(UD_META_TABLE)
             .select("raw_table, raw_id, doc_id, ix_vectorized_at, updated_at")
             .in_("raw_table", tables)
-            .is_("ix_vectorized_at", "null")
             .order("updated_at", desc=True)
             .limit(meta_limit)
-            .execute()
         )
+        if not include_vectorized:
+            q = q.is_("ix_vectorized_at", "null")
+        meta_res = q.execute()
     except Exception as e:
         return [], f"{UD_META_TABLE} の取得に失敗しました: {e}"
 
@@ -337,6 +339,12 @@ def fetch_pending_search_data_prep_docs(
         unified_doc_id = ud.get("id")
         row_id = str(unified_doc_id) if unified_doc_id else f"{rt_s}:{rid_s}"
 
+        ix_vectorized_at = m.get("ix_vectorized_at")
+        # 分類階層（最小分類まで）
+        c1 = str(ud.get("classification1") or extras.get("source") or "").strip()
+        c2 = str(ud.get("classification2") or extras.get("course_name") or "").strip()
+        c3 = str(ud.get("classification3") or extras.get("category") or "").strip()
+
         enriched = {
             "id": row_id,
             "row_id": row_id,
@@ -352,6 +360,10 @@ def fetch_pending_search_data_prep_docs(
             "resolved_drive_id": drive_id,
             "has_09_structured": has_structured_09,
             "has_09_doc": bool(unified_doc_id),
+            "is_vectorized": bool(ix_vectorized_at),
+            "classification1": c1,
+            "classification2": c2,
+            "classification3": c3,
         }
         out.append(enriched)
 

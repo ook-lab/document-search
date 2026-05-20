@@ -577,7 +577,7 @@ class RagPrepareSearchIndexer:
         """
         results: List[Dict[str, Any]] = []
 
-        # 地の文
+        # 地の文: 旧フォーマット（## 非表）または新フォーマット（## 表（埋め込み）より前のテキスト）
         prose_text = ""
         prose_m = re.search(
             r'^## 非表（F 地の文）\s*\n(.*?)(?=^## |\Z)',
@@ -585,6 +585,24 @@ class RagPrepareSearchIndexer:
         )
         if prose_m:
             prose_text = prose_m.group(1).strip()
+        else:
+            embed_idx = md_text.find('\n## 表（埋め込み）')
+            if embed_idx >= 0:
+                candidate = md_text[:embed_idx]
+                # ::title:: / ::summary:: / ## heading を除去してプレーンテキスト化
+                candidate = re.sub(r'^::title::.*$', '', candidate, flags=re.MULTILINE)
+                candidate = re.sub(r'^::summary::.*$', '', candidate, flags=re.MULTILINE)
+                candidate = re.sub(r'^## .+$', '', candidate, flags=re.MULTILINE)
+                prose_text = re.sub(r'\n{3,}', '\n\n', candidate).strip()
+
+        # 表タイトル・サマリーを抽出（チャンクのプレフィックスに付加）
+        title_m = re.search(r'^## (.+?)$', md_text, re.MULTILINE)
+        table_title = title_m.group(1).strip() if title_m else ''
+        summary_m = re.search(r'^::summary::\s*(.+)$', md_text, re.MULTILINE)
+        table_summary = summary_m.group(1).strip() if summary_m else ''
+
+        # 地の文チャンク化
+        if prose_text:
             paragraphs = [p.strip() for p in re.split(r'\n{2,}', prose_text) if p.strip()]
             current: List[str] = []
             current_len = 0
@@ -603,14 +621,18 @@ class RagPrepareSearchIndexer:
         yaml_m = re.search(r'```yaml\s*\n(.*?)```', md_text, re.DOTALL)
         if yaml_m:
             yaml_text = yaml_m.group(1).strip()
+            # タイトル・サマリーをコンテキストプレフィックスとして構成
+            ctx_parts = [p for p in [table_title, table_summary] if p]
+            if not ctx_parts and prose_text:
+                ctx_parts = [prose_text[:300].strip()]
+            context_prefix = '\n'.join(ctx_parts)
             for block in re.split(r'(?=^- table_id:)', yaml_text, flags=re.MULTILINE):
                 block = block.strip()
                 if not block or not block.startswith('- table_id:'):
                     continue
-                # YAML の description フィールドを優先プレフィックスとして使う。
-                # 空なら地の文先頭300文字にフォールバック。
                 desc_m = re.search(r"^\s*description:\s*'(.*?)'", block, re.MULTILINE)
-                prefix = (desc_m.group(1).strip() if desc_m else '') or prose_text[:300].strip()
+                desc = (desc_m.group(1).strip() if desc_m else '')
+                prefix = context_prefix or desc or prose_text[:300].strip()
                 text = f"{prefix}\n\n{block}" if prefix else block
                 results.append({"text": text, "chunk_type": "table_yaml", "chunk_weight": 2.0})
 

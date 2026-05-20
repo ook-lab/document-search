@@ -160,6 +160,24 @@
             color: var(--text-muted);
             margin-top: 4px;
         }
+        .filter-bar {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .filter-bar label { font-size: 12px; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+        .filter-bar select {
+            font-size: 12px; border: 1px solid var(--border); border-radius: 6px;
+            padding: 4px 8px; background: #fff; color: var(--text-main); cursor: pointer;
+        }
+        .filter-bar .filter-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+        tr.hidden-row { display: none; }
     </style>
 </head>
 <body>
@@ -189,6 +207,22 @@
         </div>
         {% endif %}
 
+        <div class="filter-bar" id="filterBar">
+            <label>ステータス</label>
+            <select id="fStatus">
+                <option value="all">すべて</option>
+                <option value="pending" selected>未処理のみ</option>
+                <option value="vectorized">登録済みのみ</option>
+            </select>
+            <label>分類1</label>
+            <select id="fC1"><option value="">すべて</option></select>
+            <label>分類2</label>
+            <select id="fC2"><option value="">すべて</option></select>
+            <label>分類3</label>
+            <select id="fC3"><option value="">すべて</option></select>
+            <span class="filter-count" id="filterCount"></span>
+        </div>
+
         <div class="card">
             {% if docs %}
             <table>
@@ -202,7 +236,11 @@
                 </thead>
                 <tbody>
                     {% for doc in docs %}
-                    <tr id="row-{{ doc.row_id }}">
+                    <tr id="row-{{ doc.row_id }}"
+                        data-status="{{ 'vectorized' if doc.is_vectorized else 'pending' }}"
+                        data-c1="{{ doc.classification1 | default('') }}"
+                        data-c2="{{ doc.classification2 | default('') }}"
+                        data-c3="{{ doc.classification3 | default('') }}">
                         <td>{{ (doc.display_post_at or '')[:10] }}</td>
                         <td style="font-size: 13px;">
                             {% if doc.display_segment == 'structured' %}
@@ -290,6 +328,55 @@
                 btn.disabled = false;
             }
         }
+
+        // フィルタリング
+        (function initFilters() {
+            const rows = Array.from(document.querySelectorAll('tbody tr[data-status]'));
+            const selC1 = document.getElementById('fC1');
+            const selC2 = document.getElementById('fC2');
+            const selC3 = document.getElementById('fC3');
+            const selSt = document.getElementById('fStatus');
+            const countEl = document.getElementById('filterCount');
+
+            // 分類の選択肢を構築
+            function populate(sel, values) {
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">すべて</option>';
+                [...new Set(values)].filter(v => v).sort().forEach(v => {
+                    const o = document.createElement('option');
+                    o.value = v; o.textContent = v;
+                    sel.appendChild(o);
+                });
+                if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+            }
+
+            function applyFilters() {
+                const st = selSt.value;
+                const c1 = selC1.value;
+                const c2 = selC2.value;
+                const c3 = selC3.value;
+                let visible = 0;
+                rows.forEach(tr => {
+                    const match =
+                        (st === 'all' || tr.dataset.status === st) &&
+                        (!c1 || tr.dataset.c1 === c1) &&
+                        (!c2 || tr.dataset.c2 === c2) &&
+                        (!c3 || tr.dataset.c3 === c3);
+                    tr.classList.toggle('hidden-row', !match);
+                    if (match) visible++;
+                });
+                countEl.textContent = visible + ' 件表示';
+                // 選択肢を現在フィルタに合わせて更新
+                const vis = rows.filter(tr => !tr.classList.contains('hidden-row'));
+                populate(selC1, rows.filter(tr => (st === 'all' || tr.dataset.status === st) && (!c2 || tr.dataset.c2 === c2) && (!c3 || tr.dataset.c3 === c3)).map(tr => tr.dataset.c1));
+                populate(selC2, rows.filter(tr => (st === 'all' || tr.dataset.status === st) && (!c1 || tr.dataset.c1 === c1) && (!c3 || tr.dataset.c3 === c3)).map(tr => tr.dataset.c2));
+                populate(selC3, rows.filter(tr => (st === 'all' || tr.dataset.status === st) && (!c1 || tr.dataset.c1 === c1) && (!c2 || tr.dataset.c2 === c2)).map(tr => tr.dataset.c3));
+                selC1.value = c1; selC2.value = c2; selC3.value = c3;
+            }
+
+            [selSt, selC1, selC2, selC3].forEach(s => s.addEventListener('change', applyFilters));
+            applyFilters();
+        })();
 
         async function resetAllIx(btn) {
             if (!confirm('全ての登録済みデータを未処理に戻しますか？\n（10_ix_search_index は再登録時に上書きされます）')) return;
