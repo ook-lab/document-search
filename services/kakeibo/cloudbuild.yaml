@@ -34,8 +34,8 @@ steps:
       - '--timeout=3600'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
-      - '--remove-env-vars=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_KEY,SUPABASE_ADMIN_USER_ID'
-      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_ADMIN_USER_ID=SUPABASE_ADMIN_USER_ID:latest'
+      - '--remove-env-vars=SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY,SUPABASE_KEY,SUPABASE_ADMIN_USER_ID,GOOGLE_AI_API_KEY'
+      - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_ADMIN_USER_ID=SUPABASE_ADMIN_USER_ID:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest'
 
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/kakeibo-ui:latest'
