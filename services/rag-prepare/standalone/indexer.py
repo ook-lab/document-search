@@ -231,7 +231,7 @@ class RagPrepareSearchIndexer:
                         c2 = ud.get("classification2")
                         c3 = ud.get("classification3") or raw_table
                         for i, (chunk_text, chunk_type, chunk_weight) in enumerate(chunk_items):
-                            chunk_text = (chunk_text or "").replace(" ", "").strip()
+                            chunk_text = (chunk_text or "").replace("", "").strip()
                             if not chunk_text:
                                 continue
                             vector = self.embedder.generate_embedding(chunk_text)
