@@ -1,14 +1,29 @@
 FROM python:3.12-slim
 
-# WeasyPrint の依存システムライブラリをインストール
-# (Pango, Cairo, GDK-Pixbuf, libffi, shared-mime-info が必要)
+# Playwright / Chromium の依存ライブラリ
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
     libpango-1.0-0 \
-    libpangocairo-1.0-0 \
     libcairo2 \
-    libgdk-pixbuf-2.0-0 \
-    libffi-dev \
-    shared-mime-info \
+    libatspi2.0-0 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxext6 \
     fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
@@ -16,13 +31,11 @@ WORKDIR /app
 
 COPY services/html-to-a4/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN playwright install chromium
 
-# `html-to-a4` のファイルをコピー
 COPY services/html-to-a4/app.py .
 COPY services/html-to-a4/templates/ ./templates/
 
-# ポート設定
 ENV PORT=5051
 
-# Gunicornでアプリを起動
-CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app:app
+CMD exec gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 app:app

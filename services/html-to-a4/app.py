@@ -3,35 +3,11 @@ import os
 import logging
 
 from flask import Flask, render_template, request, send_file, jsonify
-from weasyprint import HTML, CSS
-from weasyprint.text.fonts import FontConfiguration
+from playwright.sync_api import sync_playwright
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-# WeasyPrint が外部フォント（Google Fonts等）を取得できるようにするための設定
-font_config = FontConfiguration()
-
-# WeasyPrint 用の補完CSS:
-# ユーザーHTMLの @page / print メディアクエリをそのままにしつつ、
-# 何も書いていない場合だけ適切なデフォルトを提供する。
-WEASYPRINT_BASE_CSS = """
-@page {
-    size: A4 portrait;
-    margin: 15mm 20mm;
-}
-body {
-    margin: 0;
-    padding: 0;
-    font-family: 'Noto Sans JP', 'Helvetica Neue', Arial, sans-serif;
-}
-/* 印刷時に非表示にするべき要素 */
-.no-print, .toolbar, button, .a4-floating-print-btn {
-    display: none !important;
-}
-"""
 
 
 @app.route("/")
@@ -42,8 +18,9 @@ def index():
 @app.route("/convert", methods=["POST"])
 def convert():
     """
-    POSTで受け取ったHTMLをWeasyPrintでPDFに変換してダウンロードさせる。
+    POSTで受け取ったHTMLをPlaywrightでPDFに変換してダウンロードさせる。
     JSON形式: { "html": "...", "filename": "output" (optional) }
+    KaTeX等のJavaScriptも正しくレンダリングされる。
     """
     try:
         data = request.get_json(force=True)
@@ -53,29 +30,16 @@ def convert():
         if not html_content:
             return jsonify({"error": "HTMLが空です"}), 400
 
-        # HTMLの前処理: <head>がなければ包む
-        if "<html" not in html_content.lower():
-            html_content = f"""<!DOCTYPE html>
-<html lang="ja">
-<head><meta charset="UTF-8"></head>
-<body>{html_content}</body>
-</html>"""
-
-        # WeasyPrint でPDF生成
-        # base_url を設定することで、相対パスや外部リソース（Google Fonts等）が取得できる
-        pdf_bytes = HTML(
-            string=html_content,
-            base_url="https://fonts.googleapis.com",  # フォント解決のベースURL
-        ).write_pdf(
-            stylesheets=[CSS(string=WEASYPRINT_BASE_CSS, font_config=font_config)],
-            font_config=font_config,
-            # ユーザーの @page / @media print をそのまま優先させる
-            # (WEASYPRINT_BASE_CSS は最低限のデフォルトのみ提供)
-            presentational_hints=True,
-        )
-
-        pdf_io = io.BytesIO(pdf_bytes)
-        pdf_io.seek(0)
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            # JavaScript（KaTeX等）の実行を待つ
+            page.set_content(html_content, wait_until="networkidle")
+            pdf_bytes = page.pdf(
+                format="A4",
+                print_background=True,
+            )
+            browser.close()
 
         safe_filename = "".join(
             c for c in filename if c.isalnum() or c in ("-", "_", ".")
@@ -86,7 +50,7 @@ def convert():
         logger.info(f"PDF generated: {safe_filename} ({len(pdf_bytes):,} bytes)")
 
         return send_file(
-            pdf_io,
+            io.BytesIO(pdf_bytes),
             mimetype="application/pdf",
             as_attachment=True,
             download_name=safe_filename,
