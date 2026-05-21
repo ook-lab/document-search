@@ -418,6 +418,7 @@
                     <td class="action-cell">
                         <button class="btn-save" onclick="saveRow(this)">保存</button>
                         <button class="btn-rule" style="background:#0d6efd;" onclick="applyRule(this)" title="ルールから上書き">↺</button>
+                        <button class="btn-rule" style="background:#6366f1;" onclick="aiCategorizeRow(this)" title="AIで大分類・中分類・小分類を自動入力">AI</button>
                         <button class="btn-rule" onclick="openRuleModal(this)" title="分類ルール登録">R</button>
                         <button class="btn-rule" style="background:#6f42c1;" onclick="openExRuleModal(this)" title="現金ルール登録（ルール履歴へ）">現R</button>
                         <hr style="margin:2px 0; border:0; border-top:1px solid #ccc;">
@@ -718,6 +719,45 @@
             } catch (e) {
                 btn.textContent = '↺';
                 alert('通信エラー');
+            }
+            btn.disabled = false;
+        }
+
+        // AI カテゴリ自動入力
+        async function aiCategorizeRow(btn) {
+            const tr = btn.closest('tr');
+            const id = tr.dataset.id;
+            const content = tr.dataset.content || '';
+            const institution = tr.dataset.inst || '';
+            const amount = parseInt(tr.dataset.amount) || 0;
+
+            btn.disabled = true;
+            btn.textContent = '…';
+            try {
+                // AI で分類を取得
+                const res = await fetch('/api/ai_categorize', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id, content, institution, amount })
+                });
+                const data = await res.json();
+                if (data.status !== 'ok') { alert('AI エラー: ' + (data.message || '失敗')); return; }
+
+                // 入力欄に反映
+                tr.querySelector('.edit-cat-major').value = data.cat_major || '';
+                tr.querySelector('.edit-cat-mid').value   = data.cat_mid   || '';
+                tr.querySelector('.edit-cat-small').value = data.cat_small || '';
+
+                // 自動保存
+                const saveBtn = tr.querySelector('.btn-save');
+                await saveRow(saveBtn || btn);
+
+                btn.textContent = '✓';
+                btn.style.background = '#10b981';
+                setTimeout(() => { btn.textContent = 'AI'; btn.style.background = '#6366f1'; }, 2000);
+            } catch(e) {
+                alert('通信エラー: ' + e.message);
+                btn.textContent = 'AI';
             }
             btn.disabled = false;
         }
