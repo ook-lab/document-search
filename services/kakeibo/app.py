@@ -1704,6 +1704,77 @@ def apply_rule():
     return jsonify({"status": "success", "matched": merged})
 
 
+@app.route('/api/ai_categorize', methods=['POST'])
+def ai_categorize():
+    """AIで大分類・中分類・小分類を推定する（ルール優先、マッチなし時はGemini）"""
+    data    = request.json or {}
+    tx_id   = data.get('id', '')
+    content = data.get('content', '')
+    institution = data.get('institution', '')
+    amount  = data.get('amount', 0)
+
+    if not tx_id:
+        return jsonify({"status": "error", "message": "ID is required"}), 400
+
+    db = get_db()
+
+    # 既存カテゴリ一覧を収集してGeminiに渡す
+    rows = db.table("Kakeibo_Category_Rules").select(
+        "category_major, category_mid, category_small"
+    ).eq("is_active", True).execute().data or []
+    cat_seen = []
+    cat_set  = set()
+    for r in rows:
+        maj = (r.get('category_major') or '').strip()
+        mid = (r.get('category_mid')   or '').strip()
+        sml = (r.get('category_small') or '').strip()
+        key = f"{maj}|{mid}|{sml}"
+        if maj and key not in cat_set:
+            cat_set.add(key)
+            cat_seen.append(f"大分類:{maj}" + (f" / 中分類:{mid}" if mid else '') + (f" / 小分類:{sml}" if sml else ''))
+
+    cat_text = '\n'.join(cat_seen[:80]) if cat_seen else '（なし）'
+
+    prompt = f"""家計簿の明細に大分類・中分類・小分類を設定してください。
+
+明細:
+- 内容: {content}
+- 金融機関: {institution}
+- 金額: {abs(int(amount or 0))}円
+
+既存カテゴリ（参考）:
+{cat_text}
+
+ルール:
+- 似たカテゴリが既存にある場合はできるだけ既存名を使う
+- なければ日本語で新規命名する
+- 小分類は不要なら空でよい
+
+必ずJSON1行だけ返す:
+{{"category_major":"大分類","category_mid":"中分類","category_small":"小分類"}}"""
+
+    try:
+        from gemini_client import GeminiClient
+        gc = GeminiClient()
+        res = gc.call_model(prompt, model_name="gemini-2.5-flash-lite", max_output_tokens=128)
+        if not res.get('success'):
+            return jsonify({"status": "error", "message": "Gemini call failed"})
+        import re as _re
+        m = _re.search(r'\{[^{}]+\}', res['content'], _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "parse failed"})
+        cat = json.loads(m.group())
+        return jsonify({
+            "status": "ok",
+            "cat_major": (cat.get('category_major') or '').strip(),
+            "cat_mid":   (cat.get('category_mid')   or '').strip(),
+            "cat_small": (cat.get('category_small') or '').strip(),
+            "source": "ai"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/unconfirm', methods=['POST'])
 def unconfirm():
     """確定を解除：category_major を null にする"""

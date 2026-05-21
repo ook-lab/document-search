@@ -1349,6 +1349,19 @@
         return '';
     }
 
+    function _splitByBlockStarts(text, blockStarts) {
+        if (!blockStarts || !blockStarts.size) return text;
+        var lines = text.split('\n');
+        var result = [], first = true;
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            if (!first && blockStarts.has(line)) result.push('', '---', '');
+            result.push(lines[i]);
+            if (line) first = false;
+        }
+        return result.join('\n');
+    }
+
     function _cleanTextForDme(s) {
         return String(s || '')
             .replace(/<br\s*\/?>/gi, '\n')
@@ -1374,7 +1387,8 @@
                     if (!t) return;
                     if (proseHdr) lines.push('');
                     proseHdr = true;
-                    lines.push(t);
+                    var _bs = new Set(data.block_starts || []);
+                    lines.push(_splitByBlockStarts(t, _bs));
                     // 最終行を記録（複数行なら最後の行）
                     var tLines = t.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
                     lastProseLastLine = tLines.length ? tLines[tLines.length - 1] : '';
@@ -1384,7 +1398,8 @@
                     if (!gb) return;
                     if (proseHdr) lines.push('');
                     proseHdr = true;
-                    lines.push(gb);
+                    var _bs2 = new Set(data.block_starts || []);
+                    lines.push(_splitByBlockStarts(gb, _bs2));
                     var gbLines = gb.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
                     lastProseLastLine = gbLines.length ? gbLines[gbLines.length - 1] : '';
                 } else if (k === 'g_table') {
@@ -2652,6 +2667,12 @@
         const sections = [];
         let buf = [], inTable = false;
         lines.forEach(line => {
+            // --- はテキストセクションの区切り
+            if (!inTable && line.trim() === '---') {
+                if (buf.length) sections.push({type:'text', content:buf.join('\n')});
+                buf = [];
+                return;
+            }
             // ::title:: / ::summary:: またはテーブル直前の ## heading をタイトルとして認識
             if (!inTable && (line.startsWith('::title::') || line.startsWith('::summary::') ||
                 (/^## \S/.test(line) && !line.startsWith('## 表（埋め込み）')))) {
@@ -2665,6 +2686,12 @@
                         : line.slice(3).trim();
                     sections.push({type:'title', content});
                 }
+                return;
+            }
+            // --- はテキストブロックの区切り
+            if (!inTable && line.trim() === '---') {
+                if (buf.length) sections.push({type:'text', content:buf.join('\n')});
+                buf = [];
                 return;
             }
             const isTable = line.trim().startsWith('|') && line.trim().endsWith('|');

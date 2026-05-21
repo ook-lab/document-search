@@ -1057,7 +1057,38 @@ def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, pa
         },
         'ui_data_json': ui_data,
         'final_metadata_json': final_meta,
+        'block_starts': _detect_block_starts(non_table_plain),
     }
+
+
+def _detect_block_starts(non_table_plain: str) -> List[str]:
+    """Gemini 2.5 Flash-lite で非表テキストの内容ブロック境界（各ブロック先頭行）を検出する。"""
+    if not non_table_plain.strip():
+        return []
+    try:
+        import google.generativeai as genai
+        from dms.common.config.settings import settings
+        if not settings.GOOGLE_AI_API_KEY:
+            return []
+        genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
+        model = genai.GenerativeModel("gemini-2.5-flash-lite")
+        prompt = (
+            "以下のテキストを、内容のかたまり（トピック）ごとに分割してください。\n"
+            "各かたまりの先頭行（最初の1行）のみを1行ずつ出力してください。\n"
+            "かたまりが1つだけの場合は「なし」とだけ出力してください。\n\n"
+            f"テキスト:\n{non_table_plain[:3000]}"
+        )
+        resp = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(max_output_tokens=300, temperature=0.0),
+        )
+        text = resp.text.strip()
+        if not text or text == "なし":
+            return []
+        return [line.strip() for line in text.split("\n") if line.strip() and line.strip() != "なし"]
+    except Exception as e:
+        loguru_logger.warning(f"[pipeline-lab] block detection failed: {e}")
+        return []
 
 
 def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num: int, g26_model_name: Optional[str] = None) -> Dict[str, Any]:

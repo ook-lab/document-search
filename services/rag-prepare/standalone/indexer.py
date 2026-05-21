@@ -597,6 +597,35 @@ class RagPrepareSearchIndexer:
         return "\n".join(lines)
 
     @staticmethod
+    def _detect_block_starts_ai(prose_text: str) -> set:
+        """Gemini 2.5 Flash-lite でセクション見出し行を検出する。"""
+        try:
+            import google.generativeai as genai
+            import os
+            api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
+            if not api_key or not prose_text.strip():
+                return set()
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+            prompt = (
+                "以下のテキストを、内容のかたまり（トピック）ごとに分割してください。\n"
+                "各かたまりの先頭行（最初の1行）のみを1行ずつ出力してください。\n"
+                "かたまりが1つだけの場合は「なし」とだけ出力してください。\n\n"
+                f"テキスト:\n{prose_text[:3000]}"
+            )
+            resp = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(max_output_tokens=300, temperature=0.0),
+            )
+            text = resp.text.strip()
+            if not text or text == "なし":
+                return set()
+            return {line.strip() for line in text.split("\n") if line.strip() and line.strip() != "なし"}
+        except Exception as e:
+            logger.warning("[RAG] section heading AI detection failed: %s", e)
+            return set()
+
+    @staticmethod
     def _plain_chunks(text: str, chunk_size: int = 1200) -> List[str]:
         t = text.strip()
         if not t:
@@ -640,21 +669,33 @@ class RagPrepareSearchIndexer:
         summary_m = re.search(r'^::summary::\s*(.+)$', md_text, re.MULTILINE)
         table_summary = summary_m.group(1).strip() if summary_m else ''
 
-        # 地の文チャンク化
+        # 地の文チャンク化（見出し検出でトピック単位に分割）
         if prose_text:
             paragraphs = [p.strip() for p in re.split(r'\n{2,}', prose_text) if p.strip()]
-            current: List[str] = []
-            current_len = 0
-            for para in paragraphs:
-                if current_len + len(para) > prose_chunk_size and current:
+            # --- で明示的に分割（パイプライン側で埋め込み済み）
+            if '---' in prose_text:
+                raw_blocks = [b.strip() for b in prose_text.split('\n---\n') if b.strip()]
+            else:
+                raw_blocks = [prose_text]
+            sections: List[List[str]] = []
+            for block in raw_blocks:
+                block_paras = [p.strip() for p in re.split(r'\n{2,}', block) if p.strip()]
+                if block_paras:
+                    sections.append(block_paras)
+            # セクションごとにチャンク化
+            for sec_paras in sections:
+                current: List[str] = []
+                current_len = 0
+                for para in sec_paras:
+                    if current_len + len(para) > prose_chunk_size and current:
+                        results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
+                        current = [para]
+                        current_len = len(para)
+                    else:
+                        current.append(para)
+                        current_len += len(para)
+                if current:
                     results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
-                    current = [para]
-                    current_len = len(para)
-                else:
-                    current.append(para)
-                    current_len += len(para)
-            if current:
-                results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
 
         # YAML テーブル（## 表（埋め込み）内の ```yaml ブロック）
         yaml_m = re.search(r'```yaml\s*\n(.*?)```', md_text, re.DOTALL)
@@ -713,8 +754,32 @@ class RagPrepareSearchIndexer:
                 full_markdown, re.MULTILINE | re.DOTALL,
             )
             if ext_m:
-                for c in RagPrepareSearchIndexer._plain_chunks(ext_m.group(1).strip(), plain_chunk_size):
-                    results.append((c, "rag_prepare_plain", 1.0))
+                ext_text = ext_m.group(1).strip()
+                # 500文字超の場合のみ Gemini でブロック分割
+                if len(ext_text) > 500:
+                    block_starts = RagPrepareSearchIndexer._detect_block_starts_ai(ext_text)
+                    if block_starts:
+                        # block_starts の先頭行でテキストを分割
+                        lines = ext_text.split('\n')
+                        blocks: List[str] = []
+                        cur: List[str] = []
+                        for line in lines:
+                            if line.strip() in block_starts and cur:
+                                blocks.append('\n'.join(cur).strip())
+                                cur = [line]
+                            else:
+                                cur.append(line)
+                        if cur:
+                            blocks.append('\n'.join(cur).strip())
+                        for block in blocks:
+                            for c in RagPrepareSearchIndexer._plain_chunks(block, plain_chunk_size):
+                                results.append((c, "rag_prepare_plain", 1.0))
+                    else:
+                        for c in RagPrepareSearchIndexer._plain_chunks(ext_text, plain_chunk_size):
+                            results.append((c, "rag_prepare_plain", 1.0))
+                else:
+                    for c in RagPrepareSearchIndexer._plain_chunks(ext_text, plain_chunk_size):
+                        results.append((c, "rag_prepare_plain", 1.0))
         else:
             for c in RagPrepareSearchIndexer._plain_chunks(full_markdown, plain_chunk_size):
                 results.append((c, "rag_prepare_plain", 1.0))
