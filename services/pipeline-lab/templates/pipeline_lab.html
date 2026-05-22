@@ -1442,6 +1442,18 @@
                     lines.push(st.text.trim());
                     var stl = st.text.trim().split('\n').filter(function(l){return l.trim();});
                     if (stl.length) fbLastLine = stl[stl.length - 1].trim();
+                } else {
+                    // visual_stream も f1Blocks も stage_e も無い場合は g21_articles を直接使う
+                    var g21arts = Array.isArray(ud.g21_articles) ? ud.g21_articles : [];
+                    g21arts.forEach(function(art, ai) {
+                        var gb = _cleanTextForDme(art && art.body).trim();
+                        if (!gb) return;
+                        if (ai > 0) lines.push('');
+                        var _bsG = new Set(data.block_starts || []);
+                        lines.push(_splitByBlockStarts(gb, _bsG));
+                        var gl = gb.split('\n').filter(function(l){return l.trim();});
+                        if (gl.length) fbLastLine = gl[gl.length - 1].trim();
+                    });
                 }
             }
             tabs.forEach(function (tbl, ti) {
