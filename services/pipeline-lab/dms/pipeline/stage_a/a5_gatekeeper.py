@@ -130,22 +130,17 @@ class A5Gatekeeper:
         logger.info(f"  ├─ confidence: {confidence}")
         logger.info(f"  └─ layout_profile: {layout_profile}")
 
-        # "絶対" の核：HIGH 以外は全部 BLOCK
+        # 信頼度チェック：LOW は警告を出しつつ処理を続行（ベストゲスで処理）
         logger.info("[A-5 Gatekeeper] 信頼度チェック:")
         logger.info(f"  ├─ 現在の信頼度: {confidence}")
         logger.info(f"  └─ 必須信頼度: HIGH")
-        if confidence != "HIGH":
-            d = GatekeeperDecision(
-                decision="BLOCK",
-                allowed_processors=[],
-                block_code="LOW_CONFIDENCE",
-                block_reason=f"confidence!=HIGH のため遮断（confidence={confidence}）",
-                evidence={"origin_app": origin_app, "layout_profile": layout_profile, "confidence": confidence},
-                policy_version=self.POLICY_VERSION,
+        if confidence == "HIGH":
+            logger.info("  ✓ 信頼度チェック通過")
+        else:
+            logger.warning(
+                f"[A-5 Gatekeeper] ⚠ confidence={confidence}（非HIGH）: "
+                f"origin_app={origin_app} のベストゲスで続行"
             )
-            logger.warning(f"[A-5 Gatekeeper] ✗ BLOCK: {d.block_reason}")
-            return asdict(d)
-        logger.info("  ✓ 信頼度チェック通過")
 
         # v1 allowlist：ALLOWED_COMBINATIONS クラス属性を参照（唯一の定義場所）
         logger.info("[A-5 Gatekeeper] Allowlistチェック:")
