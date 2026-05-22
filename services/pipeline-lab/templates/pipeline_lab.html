@@ -1393,12 +1393,9 @@
                     var tLines = t.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
                     lastProseLastLine = tLines.length ? tLines[tLines.length - 1] : '';
                 } else if (k === 'g21_article') {
-                    // non_table_paragraph が実質的なテキストを持つ場合のみスキップ
-                    if (streamHasF1ProseSegments(vs) && lines.length > 1) return;
+                    if (streamHasF1ProseSegments(vs)) return;
                     var gb = _cleanTextForDme(seg.body).trim();
                     if (!gb) return;
-                    // 既に同じ内容が lines にある場合は追加しない
-                    if (lines.some(function(l){ return l.trim() === gb.trim(); })) return;
                     if (proseHdr) lines.push('');
                     proseHdr = true;
                     var _bs2 = new Set(data.block_starts || []);
@@ -1465,10 +1462,11 @@
             });
         }
         // tables_md_embed は PDF OCR 埋め込み用の内部フォーマット（YAML + HTML）のため visual editor には出さない
-        if (lines.length <= 1) {
+        var _joined = lines.join('\n').trim();
+        if (!_joined) {
             return '（非表も表もまだありません。パイプライン実行後に再度開いてください。）';
         }
-        return lines.join('\n');
+        return _joined;
     }
 
     function renderRawMdPane(data) {
