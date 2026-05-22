@@ -1393,9 +1393,12 @@
                     var tLines = t.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
                     lastProseLastLine = tLines.length ? tLines[tLines.length - 1] : '';
                 } else if (k === 'g21_article') {
-                    if (streamHasF1ProseSegments(vs)) return;
+                    // non_table_paragraph が実質的なテキストを持つ場合のみスキップ
+                    if (streamHasF1ProseSegments(vs) && lines.length > 1) return;
                     var gb = _cleanTextForDme(seg.body).trim();
                     if (!gb) return;
+                    // 既に同じ内容が lines にある場合は追加しない
+                    if (lines.some(function(l){ return l.trim() === gb.trim(); })) return;
                     if (proseHdr) lines.push('');
                     proseHdr = true;
                     var _bs2 = new Set(data.block_starts || []);
@@ -1459,16 +1462,6 @@
             tabs.forEach(function (tbl, ti) {
                 appendMarkdownForTable(lines, tbl, ti, _extractTableTitle(fbLastLine));
                 fbLastLine = '';
-            });
-        }
-        // どのパスを通ってもテキストが取れなかった場合は g21_articles を参照
-        if (lines.length <= 1) {
-            var g21arts = Array.isArray(ud.g21_articles) ? ud.g21_articles : [];
-            g21arts.forEach(function(art, ai) {
-                var gb = _cleanTextForDme(art && art.body).trim();
-                if (!gb) return;
-                if (ai > 0) lines.push('');
-                lines.push(_splitByBlockStarts(gb, new Set(data.block_starts || [])));
             });
         }
         // tables_md_embed は PDF OCR 埋め込み用の内部フォーマット（YAML + HTML）のため visual editor には出さない
