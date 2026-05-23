@@ -283,7 +283,7 @@ class B3PDFWordProcessor:
         if table_bboxes is None:
             table_bboxes = []
 
-        # char単位で全取得（空白文字除外）
+        # char単位で全取得（空白文字除外・MD_SANDWICH除外）
         chars = [ch for ch in (cropped.chars or []) if ch.get("text", "").strip()]
 
         # 表領域内のcharを除外
@@ -587,6 +587,39 @@ class B3PDFWordProcessor:
         except Exception as e:
             logger.error(f"[B-3] purge エラー: {e}", exc_info=True)
             return file_path
+    def _remove_sandwich_layer(self, file_path: Path) -> Path:
+        """MD_SANDWICH不可視テキスト層を除去した一時PDFを返す。層がなければfile_pathをそのまま返す。"""
+        MARKER_START = '<<<MD_SANDWICH_START>>>'
+        MARKER_END = '<<<MD_SANDWICH_END>>>'
+        try:
+            import fitz
+            doc = fitz.open(str(file_path))
+            modified = False
+            for page in doc:
+                text = page.get_text()
+                if MARKER_START not in text or MARKER_END not in text:
+                    continue
+                rects_start = page.search_for(MARKER_START)
+                rects_end = page.search_for(MARKER_END)
+                if not rects_start or not rects_end:
+                    continue
+                y0 = rects_start[0].y0
+                y1 = rects_end[0].y1
+                rect = fitz.Rect(0, y0, page.rect.width, y1)
+                page.add_redact_annot(rect)
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
+                logger.info(f"[B-3] MD_SANDWICH層除去: y={y0:.1f}〜{y1:.1f}")
+                modified = True
+            if modified:
+                temp_path = file_path.parent / f"_nosandwich_{file_path.name}"
+                doc.save(str(temp_path))
+                doc.close()
+                return temp_path
+            doc.close()
+        except Exception as e:
+            logger.warning(f"[B-3] MD_SANDWICH除去失敗: {e}")
+        return file_path
+
     def _error_result(self, error_message: str) -> Dict[str, Any]:
         """エラー結果を返す"""
         return {

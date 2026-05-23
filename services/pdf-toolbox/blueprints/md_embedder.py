@@ -344,16 +344,28 @@ def save_pdf():
 
         doc = fitz.open(input_filepath)
 
+        # 既存のMD_SANDWICH層を除去してから書き加える（二重埋め込み防止）
+        for page in doc:
+            if MARKER_START in page.get_text():
+                for block in page.get_text('dict')['blocks']:
+                    if block.get('type') != 0:
+                        continue
+                    for line in block['lines']:
+                        for span in line['spans']:
+                            if abs(span.get('size', 0) - 6.0) < 0.5:
+                                page.add_redact_annot(fitz.Rect(span['bbox']))
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
+
         for str_idx, page_data in pages_data.items():
             page_idx = int(str_idx)
             if page_idx < len(doc):
                 page = doc[page_idx]
-                
+
                 md_content = page_data.get('markdown', '')
                 payload = f"{MARKER_START}\n{md_content}\n{MARKER_END}"
-                
+
                 rect = fitz.Rect(0, 0, page.rect.width, page.rect.height)
-                
+
                 page.insert_textbox(rect, payload, fontsize=6, fontname="japan", render_mode=3)
 
         doc.save(output_filepath)

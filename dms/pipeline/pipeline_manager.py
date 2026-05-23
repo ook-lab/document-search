@@ -123,6 +123,40 @@ class PipelineManager:
     # ------------------------------------------------------------------
 
     @staticmethod
+    @staticmethod
+    def _strip_sandwich_layer(pdf_path: Path, work_dir: Path) -> Path:
+        """MD_SANDWICH不可視テキスト層がある場合は除去したPDFを返す。なければそのまま返す。"""
+        MARKER_START = '<<<MD_SANDWICH_START>>>'
+        MARKER_END = '<<<MD_SANDWICH_END>>>'
+        try:
+            import fitz
+            doc = fitz.open(str(pdf_path))
+            modified = False
+            for page in doc:
+                text = page.get_text()
+                if MARKER_START not in text or MARKER_END not in text:
+                    continue
+                # fontsize=6 のスパン（サンドイッチ専用フォント）だけ redact
+                for block in page.get_text('dict')['blocks']:
+                    if block.get('type') != 0:
+                        continue
+                    for line in block['lines']:
+                        for span in line['spans']:
+                            if abs(span.get('size', 0) - 6.0) < 0.5:
+                                page.add_redact_annot(fitz.Rect(span['bbox']))
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
+                modified = True
+                logger.info(f"[PM] MD_SANDWICH層を除去しました: {pdf_path.name}")
+            if modified:
+                clean_path = work_dir / f'_clean_{pdf_path.name}'
+                doc.save(str(clean_path))
+                doc.close()
+                return clean_path
+            doc.close()
+        except Exception as e:
+            logger.warning(f"[PM] MD_SANDWICH除去失敗（スキップ）: {e}")
+        return pdf_path
+
     def _metadata_process_pdf_page_index(pipeline_meta: Optional[Dict[str, Any]]) -> Optional[int]:
         """
         pipeline_meta.metadata.process_pdf_page_index（0始まり）があればそのページだけを処理する。
@@ -433,7 +467,7 @@ class PipelineManager:
         try:
             _b_log_dir = doc_temp_dir
 
-            working_pdf_path = local_path
+            working_pdf_path = self._strip_sandwich_layer(local_path, doc_temp_dir)
             selected_source_page_0 = self._metadata_process_pdf_page_index(pipeline_meta)
 
             if file_extension == '.pdf':
