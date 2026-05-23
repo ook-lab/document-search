@@ -285,7 +285,12 @@
                                 <a class="btn btn-outline" href="{{ pdf_toolbox_base }}/ocr/" target="_blank" rel="noopener">検索できるPDFメーカー</a>
                                 {% endif %}
                                 <button type="button" class="btn btn-skip" onclick="skipIx('{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">検索対象にしない</button>
-                                <button type="button" class="btn btn-vector" {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %} onclick="runVectorRegister('{{ doc.unified_doc_id or '' }}', '{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">ベクトル化登録</button>
+                                <button type="button" class="btn btn-vector"
+                                    {% if doc.display_segment == 'pending_md' %}disabled title="未処理の間はベクトル化できません"{% endif %}
+                                    style="{% if doc.is_vectorized %}background:#0891b2;{% endif %}"
+                                    onclick="runVectorRegister('{{ doc.unified_doc_id or '' }}', '{{ doc.raw_table }}', '{{ doc.raw_id }}', this)">
+                                    {{ '再ベクトル化' if doc.is_vectorized else 'ベクトル化登録' }}
+                                </button>
                             </div>
                         </td>
                     </tr>
