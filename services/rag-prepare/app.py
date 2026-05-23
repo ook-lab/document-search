@@ -174,14 +174,18 @@ def skip_ix():
     raw_id = (data.get("raw_id") or "").strip()
     if not raw_table or not raw_id:
         return jsonify({"success": False, "error": "Missing raw_table or raw_id"}), 400
-    IndexerClass, _ = get_indexer_tools()
-    if not IndexerClass:
-        return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
-    indexer = IndexerClass()
-    success, err_msg = indexer.skip_document(raw_table=raw_table, raw_id=raw_id)
-    if success:
+    try:
+        from standalone.ud_meta import UD_META_TABLE
+        from datetime import datetime, timezone
+        db = RagServiceDB()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        db.client.table(UD_META_TABLE).update(
+            {"ix_skip_pdf": True, "updated_at": now_iso}
+        ).eq("raw_table", raw_table).eq("raw_id", raw_id).execute()
         return jsonify({'success': True})
-    return jsonify({'success': False, 'error': err_msg or 'Failed'})
+    except Exception as e:
+        logger.error("skip_ix failed: %s", e, exc_info=True)
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/reset-ix-all', methods=['POST'])
