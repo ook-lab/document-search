@@ -324,6 +324,36 @@ class DebugPipeline:
             return [target]
         raise ValueError(f"Unknown target: {target}")
 
+    def _strip_sandwich_layer(self, pdf_path: str) -> str:
+        MARKER_START = '<<<MD_SANDWICH_START>>>'
+        try:
+            import fitz
+            doc = fitz.open(pdf_path)
+            modified = False
+            for page in doc:
+                if MARKER_START not in page.get_text():
+                    continue
+                for block in page.get_text('dict')['blocks']:
+                    if block.get('type') != 0:
+                        continue
+                    for line in block['lines']:
+                        for span in line['spans']:
+                            if abs(span.get('size', 0) - 6.0) < 0.5:
+                                page.add_redact_annot(fitz.Rect(span['bbox']))
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
+                modified = True
+            if modified:
+                import tempfile, pathlib
+                tmp = pathlib.Path(tempfile.mktemp(suffix='.pdf'))
+                doc.save(str(tmp))
+                doc.close()
+                logger.info(f"[Debug] MD_SANDWICH層を除去しました: {pathlib.Path(pdf_path).name}")
+                return str(tmp)
+            doc.close()
+        except Exception as e:
+            logger.warning(f"[Debug] MD_SANDWICH除去失敗（スキップ）: {e}")
+        return pdf_path
+
     def _determine_active_substages(
         self,
         start: Optional[str] = None,
@@ -384,6 +414,10 @@ class DebugPipeline:
         ctx: Dict[str, Any] = {}
         results = {}
         errors = []
+
+        # MD_SANDWICH層（fontsize=6のスパン）をパイプライン実行前に除去
+        if pdf_path:
+            pdf_path = self._strip_sandwich_layer(pdf_path)
 
         try:
             self._exec_stage_a(ctx, active_set, force, pdf_path)

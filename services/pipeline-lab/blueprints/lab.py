@@ -1818,6 +1818,60 @@ def api_load_from_drive():
 
 
 # ---------------------------------------------------------------------------
+# MD_SANDWICH 検出・除去
+# ---------------------------------------------------------------------------
+
+@lab_bp.route('/api/has_sandwich/<session_id>', methods=['GET'])
+def api_has_sandwich(session_id: str):
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'error': 'not found'}), 404
+    pdf_path = base / 'input.pdf'
+    if not pdf_path.exists():
+        return jsonify({'has_sandwich': False})
+    try:
+        import fitz
+        doc = fitz.open(str(pdf_path))
+        found = any('<<<MD_SANDWICH_START>>>' in page.get_text() for page in doc)
+        doc.close()
+        return jsonify({'has_sandwich': found})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@lab_bp.route('/api/strip_sandwich/<session_id>', methods=['POST'])
+def api_strip_sandwich(session_id: str):
+    base = _safe_session_dir(session_id)
+    if not base:
+        return jsonify({'success': False, 'error': 'not found'}), 404
+    pdf_path = base / 'input.pdf'
+    if not pdf_path.exists():
+        return jsonify({'success': False, 'error': 'input.pdf がありません'}), 404
+    try:
+        import fitz
+        doc = fitz.open(str(pdf_path))
+        modified = False
+        for page in doc:
+            if '<<<MD_SANDWICH_START>>>' not in page.get_text():
+                continue
+            for block in page.get_text('dict')['blocks']:
+                if block.get('type') != 0:
+                    continue
+                for line in block['lines']:
+                    for span in line['spans']:
+                        if abs(span.get('size', 0) - 6.0) < 0.5:
+                            page.add_redact_annot(fitz.Rect(span['bbox']))
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
+            modified = True
+        if modified:
+            doc.save(str(pdf_path), incremental=False, encryption=fitz.PDF_ENCRYPT_NONE)
+        doc.close()
+        return jsonify({'success': True, 'modified': modified})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
 # 結果 PDF 生成・ダウンロード・Drive 上書き
 # ---------------------------------------------------------------------------
 
