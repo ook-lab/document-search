@@ -181,7 +181,7 @@ def skip_ix():
         now_iso = datetime.now(timezone.utc).isoformat()
         db.client.table(UD_META_TABLE).update(
             {"ix_skip_pdf": True, "updated_at": now_iso}
-        ).eq("raw_table", raw_table).eq("raw_id", raw_id).execute()
+        ).eq("raw_table", raw_table).eq("raw_id", raw_id).select("raw_id").execute()
         return jsonify({'success': True})
     except Exception as e:
         logger.error("skip_ix failed: %s", e, exc_info=True)
@@ -208,4 +208,4 @@ def health_check():
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), threaded=True)
