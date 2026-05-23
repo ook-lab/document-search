@@ -310,10 +310,21 @@ class B3PDFWordProcessor:
         # 行クラスタリングでテキスト復元
         text = self._chars_to_text_lines(body_chars)
 
+        # スライス bbox は y0=0 固定なので実テキストの座標を使う（F11 の座標ソート用）
+        if body_chars:
+            text_bbox = (
+                min(ch['x0'] for ch in body_chars),
+                min(ch['top'] for ch in body_chars),
+                max(ch['x1'] for ch in body_chars),
+                max(ch['bottom'] for ch in body_chars),
+            )
+        else:
+            text_bbox = bbox
+
         return {
             'page': page_num,
             'slice': slice_idx,
-            'bbox': bbox,
+            'bbox': text_bbox,
             'text': text,
             'has_red': has_red,
             'has_bold': has_bold,
