@@ -1864,8 +1864,12 @@ def api_strip_sandwich(session_id: str):
             page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
             modified = True
         if modified:
-            doc.save(str(pdf_path), incremental=False, encryption=fitz.PDF_ENCRYPT_NONE)
-        doc.close()
+            tmp_path = pdf_path.with_suffix('.tmp.pdf')
+            doc.save(str(tmp_path), incremental=False, encryption=fitz.PDF_ENCRYPT_NONE)
+            doc.close()
+            tmp_path.replace(pdf_path)
+        else:
+            doc.close()
         if not modified:
             return jsonify({'success': True, 'modified': False})
 
