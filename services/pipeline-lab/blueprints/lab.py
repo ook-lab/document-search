@@ -1871,19 +1871,23 @@ def api_strip_sandwich(session_id: str):
 
         # Drive ファイルも上書きする
         drive_file_id_path = base / 'drive_file_id.txt'
+        drive_error = None
         drive_overwritten = False
         if drive_file_id_path.exists():
-            drive_file_id = drive_file_id_path.read_text(encoding='utf-8').strip()
-            if drive_file_id:
+            drive_file_id_val = drive_file_id_path.read_text(encoding='utf-8').strip()
+            if drive_file_id_val:
                 try:
                     from dms.common.connectors.google_drive import GoogleDriveConnector
                     drive = GoogleDriveConnector()
-                    drive.update_file_content(drive_file_id, str(pdf_path))
-                    drive_overwritten = True
+                    ok = drive.update_file_content(drive_file_id_val, str(pdf_path))
+                    if ok:
+                        drive_overwritten = True
+                    else:
+                        drive_error = 'Drive上書きに失敗しました（権限を確認してください）'
                 except Exception as e:
-                    pass  # Drive 上書き失敗は無視（session copy は除去済み）
+                    drive_error = str(e)
 
-        return jsonify({'success': True, 'modified': modified, 'drive_overwritten': drive_overwritten})
+        return jsonify({'success': True, 'modified': modified, 'drive_overwritten': drive_overwritten, 'drive_error': drive_error})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

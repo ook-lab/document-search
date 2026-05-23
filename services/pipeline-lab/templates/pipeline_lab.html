@@ -815,8 +815,17 @@
             if (!json.has_sandwich) return;
             if (!confirm('MD_SANDWICHが見つかりました。削除しますか？')) return;
             showLoader('MD_SANDWICH を削除中…');
-            await fetch(API_PREFIX + '/api/strip_sandwich/' + sessionId, { method: 'POST' });
-        } catch (_) {
+            const stripRes = await fetch(API_PREFIX + '/api/strip_sandwich/' + sessionId, { method: 'POST' });
+            const stripJson = await stripRes.json();
+            if (!stripJson.success) {
+                alert('除去失敗: ' + (stripJson.error || '不明なエラー'));
+                return;
+            }
+            if (stripJson.drive_error) {
+                alert('セッションからは除去しましたが、Driveファイルの上書きに失敗しました:\n' + stripJson.drive_error);
+            }
+        } catch (e) {
+            alert('MD_SANDWICH除去エラー: ' + e.message);
         } finally {
             hideLoader();
         }
