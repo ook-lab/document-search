@@ -1866,7 +1866,24 @@ def api_strip_sandwich(session_id: str):
         if modified:
             doc.save(str(pdf_path), incremental=False, encryption=fitz.PDF_ENCRYPT_NONE)
         doc.close()
-        return jsonify({'success': True, 'modified': modified})
+        if not modified:
+            return jsonify({'success': True, 'modified': False})
+
+        # Drive ファイルも上書きする
+        drive_file_id_path = base / 'drive_file_id.txt'
+        drive_overwritten = False
+        if drive_file_id_path.exists():
+            drive_file_id = drive_file_id_path.read_text(encoding='utf-8').strip()
+            if drive_file_id:
+                try:
+                    from dms.common.connectors.google_drive import GoogleDriveConnector
+                    drive = GoogleDriveConnector()
+                    drive.update_file_content(drive_file_id, str(pdf_path))
+                    drive_overwritten = True
+                except Exception as e:
+                    pass  # Drive 上書き失敗は無視（session copy は除去済み）
+
+        return jsonify({'success': True, 'modified': modified, 'drive_overwritten': drive_overwritten})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
