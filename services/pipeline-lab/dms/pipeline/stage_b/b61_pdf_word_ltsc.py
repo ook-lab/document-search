@@ -337,7 +337,9 @@ class B61PDFWordLTSCProcessor:
 
         logger.info(f"[B-61] ページ{page_num+1} slice{slice_idx}: 本文採用数={len(body_chars)} / ルビ除外数={len(ruby_chars)}")
 
-        has_bold = any("bold" in ch.get("fontname", "").lower() for ch in body_chars)
+        text_lines = self._chars_to_rich_lines(body_chars)
+        has_bold = any(ln.get("bold") for ln in text_lines)
+        has_red = any(ln.get("red") for ln in text_lines)
         text = self._chars_to_text_lines(body_chars)
         logger.info(f"[B-61] ページ{page_num+1} slice{slice_idx}: 本文テキスト=\n{text if text else '（空）'}")
 
@@ -346,7 +348,8 @@ class B61PDFWordLTSCProcessor:
             "slice": slice_idx,
             "bbox": bbox,
             "text": text,
-            "has_red": False,
+            "text_lines": text_lines,
+            "has_red": has_red,
             "has_bold": has_bold,
             "word_count": len(text.split()) if text else 0,
         }
@@ -435,8 +438,9 @@ class B61PDFWordLTSCProcessor:
                 continue
             body_chars.append(ch)
 
-        has_bold = any('bold' in ch.get('fontname', '').lower() for ch in body_chars)
-        has_red = False
+        text_lines = self._chars_to_rich_lines(body_chars)
+        has_bold = any(ln.get('bold') for ln in text_lines)
+        has_red = any(ln.get('red') for ln in text_lines)
 
         text = self._chars_to_text_lines(body_chars)
 
@@ -445,10 +449,53 @@ class B61PDFWordLTSCProcessor:
             'slice': slice_idx,
             'bbox': bbox,
             'text': text,
+            'text_lines': text_lines,
             'has_red': has_red,
             'has_bold': has_bold,
             'word_count': len(text.split()) if text else 0
         }
+
+    @staticmethod
+    def _is_red_color(color) -> bool:
+        if color is None:
+            return False
+        if isinstance(color, (list, tuple)):
+            if len(color) == 3:
+                r, g, b = color
+                return r > 0.7 and g < 0.3 and b < 0.3
+            if len(color) == 4:
+                c, m, y, k = color
+                return m > 0.7 and y > 0.5 and c < 0.3 and k < 0.5
+        return False
+
+    def _chars_to_rich_lines(self, chars: List[Dict]) -> List[Dict[str, Any]]:
+        if not chars:
+            return []
+        sorted_chars = sorted(chars, key=lambda c: (c["top"], c["x0"]))
+        tol = 2.0
+        line_groups: List[List[Dict]] = []
+        current_line = [sorted_chars[0]]
+        current_top = sorted_chars[0]["top"]
+        for ch in sorted_chars[1:]:
+            if abs(ch["top"] - current_top) <= tol:
+                current_line.append(ch)
+            else:
+                line_groups.append(current_line)
+                current_line = [ch]
+                current_top = ch["top"]
+        line_groups.append(current_line)
+        result = []
+        for line_chars in line_groups:
+            sorted_line = sorted(line_chars, key=lambda c: c["x0"])
+            text = "".join(ch["text"] for ch in sorted_line)
+            if not text.strip():
+                continue
+            sizes = [float(ch.get("size") or 0) for ch in sorted_line if ch.get("size")]
+            avg_size = round(sum(sizes) / len(sizes), 1) if sizes else 0.0
+            bold = any("bold" in ch.get("fontname", "").lower() for ch in sorted_line)
+            red = any(self._is_red_color(ch.get("non_stroking_color")) for ch in sorted_line)
+            result.append({"text": text, "bold": bold, "size": avg_size, "red": red})
+        return result
 
     def _chars_to_text_lines(self, chars: List[Dict]) -> str:
         if not chars:

@@ -238,7 +238,10 @@ class G11Controller:
         if structured:
             ui_data["g11_structured_tables"] = structured
 
-        g21_output = self._g21_articles(stage_f_result.get("non_table_text") or "")
+        g21_output = self._g21_articles(
+            stage_f_result.get("non_table_text") or "",
+            non_table_text_blocks=stage_f_result.get("non_table_text_blocks") or [],
+        )
         if g21_output:
             ui_data["g21_articles"] = g21_output
             self._dedupe_prose_sections(ui_data)
@@ -344,11 +347,174 @@ class G11Controller:
         return blocks
 
     @staticmethod
-    def _g21_articles(non_table_text: str) -> List[Dict[str, str]]:
-        nt = (non_table_text or "").strip()
-        if not nt:
+    def _text_lines_to_markdown(text_lines: List[Dict[str, Any]]) -> str:
+        """
+        pdfplumber 書式付き行リストをMarkdownに変換する。元の文字は一切変えない。
+        フォントサイズで見出し判定、bold・redで装飾マーク付与。
+        """
+        if not text_lines:
+            return ""
+        import re as _re
+        from collections import Counter
+        sizes = [ln["size"] for ln in text_lines if ln.get("size", 0) > 0]
+        body_size = Counter(sizes).most_common(1)[0][0] if sizes else 12.0
+
+        md_lines = []
+        for ln in text_lines:
+            text = ln["text"]
+            size = ln.get("size") or body_size
+            bold = ln.get("bold", False)
+            red = ln.get("red", False)
+            if size >= body_size * 1.3:
+                md_lines.append(f"# {text}")
+            elif size >= body_size * 1.15:
+                md_lines.append(f"## {text}")
+            elif red and bold:
+                md_lines.append(f"**[RED]{text}[/RED]**")
+            elif red:
+                md_lines.append(f"[RED]{text}[/RED]")
+            elif bold:
+                md_lines.append(f"**{text}**")
+            else:
+                md_lines.append(text)
+        return "\n".join(md_lines)
+
+    @staticmethod
+    def _markup_block_with_gemini(text: str, text_lines: List[Dict[str, Any]] = None) -> str:
+        """
+        Gemini Flash-lite でテキストにMarkdownマークアップを付加する。
+        元の文字は一切変えない。pdfplumber書式情報があれば参考情報として提供する。
+        """
+        if not text.strip():
+            return text
+        try:
+            import google.generativeai as genai
+            from dms.common.config.settings import settings
+            if not settings.GOOGLE_AI_API_KEY:
+                return text
+            genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+
+            context = ""
+            if text_lines:
+                from collections import Counter as _Counter
+                sizes = [ln["size"] for ln in text_lines if ln.get("size", 0) > 0]
+                body_size = _Counter(sizes).most_common(1)[0][0] if sizes else 12.0
+                hints = []
+                for ln in text_lines[:40]:
+                    tags = []
+                    if ln.get("bold"):
+                        tags.append("太字")
+                    size = ln.get("size") or body_size
+                    if size >= body_size * 1.3:
+                        tags.append("大見出し相当")
+                    elif size >= body_size * 1.15:
+                        tags.append("中見出し相当")
+                    if tags:
+                        hints.append(f'"{ln["text"][:30]}": {", ".join(tags)}')
+                if hints:
+                    context = "【書式情報（参考）】\n" + "\n".join(hints) + "\n\n"
+
+            prompt = (
+                f"{context}"
+                "以下のテキストに、元の文字を一切変えずにMarkdownマークアップのみを付加してください。\n\n"
+                "付加できるマークアップ:\n"
+                "- 見出し: # ## ###\n"
+                "- 番号なしリスト: -\n"
+                "- 番号付きリスト: 1. 2.\n"
+                "- 強調: **太字** *斜体*\n"
+                "- 注意・引用: >\n"
+                "- 区切り: ---\n"
+                "- セマンティックタグ（値を囲む）:\n"
+                "    [SENDER]...[/SENDER]  ← 送信者・作成者・差出人\n"
+                "    [RECIPIENT]...[/RECIPIENT]  ← 受信者・対象者・宛先\n"
+                "    [DATE]...[/DATE]  ← 日付・期限・締め切り\n"
+                "    [CATEGORY]...[/CATEGORY]  ← カテゴリ・種別・分類\n\n"
+                "絶対ルール: テキストの文字は変えない。マークアップ記号のみ追加。\n\n"
+                f"テキスト:\n{text[:4000]}"
+            )
+            resp = model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(max_output_tokens=2000, temperature=0.0),
+            )
+            result = resp.text.strip()
+            return result if result else text
+        except Exception as e:
+            logger.warning(f"[G21] Geminiマークアップ失敗: {e}")
+            return text
+
+    @staticmethod
+    def _split_md_to_articles(full_md: str) -> List[Dict[str, str]]:
+        """Markdownを # / ## 見出しでarticleに分割する。"""
+        import re as _re
+        parts = _re.split(r'\n(?=#{1,2} )', "\n" + full_md)
+        articles = []
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            lines = part.split("\n")
+            if lines[0].startswith("## "):
+                title = lines[0][3:].strip()
+                body = "\n".join(lines[1:]).strip()
+            elif lines[0].startswith("# "):
+                title = lines[0][2:].strip()
+                body = "\n".join(lines[1:]).strip()
+            else:
+                title = ""
+                body = part
+            if body or title:
+                articles.append({"title": title, "body": body})
+        return articles
+
+    @staticmethod
+    def _g21_articles(
+        non_table_text: str,
+        non_table_text_blocks: List[Dict[str, Any]] = None,
+    ) -> List[Dict[str, str]]:
+        """
+        非表テキストブロックにMarkdownマークアップを付加してarticleリストを返す。
+        pdfplumber書式情報（text_lines）があればそれを優先し、Geminiに渡して精度を上げる。
+        """
+        blocks = non_table_text_blocks or []
+        if not blocks and not (non_table_text or "").strip():
             return []
-        return [{"title": "", "body": non_table_text or ""}]
+
+        md_parts = []
+        if blocks:
+            for block in blocks:
+                text = (block.get("text") or "").strip()
+                if not text:
+                    continue
+                text_lines = block.get("text_lines") or []
+                # pdfplumber書式情報が十分あればtypography-firstでMarkdownを生成し、
+                # Geminiに書式ヒントとして渡す
+                md = G11Controller._markup_block_with_gemini(text, text_lines or None)
+                # text_linesがある場合はredマーカーをGeminiが見落とすため後処理で補完
+                if text_lines:
+                    red_texts = {ln["text"] for ln in text_lines if ln.get("red")}
+                    if red_texts:
+                        result_lines = []
+                        for ln in md.split("\n"):
+                            bare = ln.lstrip("#- *>[").strip().rstrip("*]")
+                            if any(r and r in bare for r in red_texts) and "[RED]" not in ln:
+                                result_lines.append(f"[RED]{ln}[/RED]")
+                            else:
+                                result_lines.append(ln)
+                        md = "\n".join(result_lines)
+                if md.strip():
+                    md_parts.append(md)
+        else:
+            nt = (non_table_text or "").strip()
+            if nt:
+                md_parts.append(G11Controller._markup_block_with_gemini(nt))
+
+        if not md_parts:
+            return []
+
+        full_md = "\n\n".join(md_parts)
+        articles = G11Controller._split_md_to_articles(full_md)
+        return articles if articles else [{"title": "", "body": full_md}]
 
     @staticmethod
     def _dedupe_prose_sections(ui_data: Dict[str, Any]) -> None:

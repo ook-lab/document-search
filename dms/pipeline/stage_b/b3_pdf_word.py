@@ -303,9 +303,12 @@ class B3PDFWordProcessor:
                 continue
             body_chars.append(ch)
 
+        # 書式付き行リストを生成（Markdown構造化用）
+        text_lines = self._chars_to_rich_lines(body_chars)
+
         # 装飾検出
-        has_bold = any('bold' in ch.get('fontname', '').lower() for ch in body_chars)
-        has_red = False  # TODO: color情報で赤字検出
+        has_bold = any(ln.get('bold') for ln in text_lines)
+        has_red = any(ln.get('red') for ln in text_lines)
 
         # 行クラスタリングでテキスト復元
         text = self._chars_to_text_lines(body_chars)
@@ -326,10 +329,61 @@ class B3PDFWordProcessor:
             'slice': slice_idx,
             'bbox': text_bbox,
             'text': text,
+            'text_lines': text_lines,
             'has_red': has_red,
             'has_bold': has_bold,
             'word_count': len(text.split()) if text else 0
         }
+
+    @staticmethod
+    def _is_red_color(color) -> bool:
+        """pdfplumber の non_stroking_color が赤系かどうかを判定する。"""
+        if color is None:
+            return False
+        if isinstance(color, (list, tuple)):
+            if len(color) == 3:  # RGB (0-1)
+                r, g, b = color
+                return r > 0.7 and g < 0.3 and b < 0.3
+            if len(color) == 4:  # CMYK (0-1)
+                c, m, y, k = color
+                return m > 0.7 and y > 0.5 and c < 0.3 and k < 0.5
+        return False
+
+    def _chars_to_rich_lines(self, chars: List[Dict]) -> List[Dict[str, Any]]:
+        """
+        char列をtop座標でクラスタリングし、行単位の書式付きリストを返す。
+
+        Returns:
+            [{"text": str, "bold": bool, "size": float, "red": bool}, ...]
+        """
+        if not chars:
+            return []
+        sorted_chars = sorted(chars, key=lambda c: (c["top"], c["x0"]))
+        tol = 2.0
+        line_groups: List[List[Dict]] = []
+        current_line = [sorted_chars[0]]
+        current_top = sorted_chars[0]["top"]
+        for ch in sorted_chars[1:]:
+            if abs(ch["top"] - current_top) <= tol:
+                current_line.append(ch)
+            else:
+                line_groups.append(current_line)
+                current_line = [ch]
+                current_top = ch["top"]
+        line_groups.append(current_line)
+
+        result = []
+        for line_chars in line_groups:
+            sorted_line = sorted(line_chars, key=lambda c: c["x0"])
+            text = self._line_chars_to_text(sorted_line)
+            if not text.strip():
+                continue
+            sizes = [float(ch.get("size") or 0) for ch in sorted_line if ch.get("size")]
+            avg_size = round(sum(sizes) / len(sizes), 1) if sizes else 0.0
+            bold = any("bold" in ch.get("fontname", "").lower() for ch in sorted_line)
+            red = any(self._is_red_color(ch.get("non_stroking_color")) for ch in sorted_line)
+            result.append({"text": text, "bold": bold, "size": avg_size, "red": red})
+        return result
 
     def _chars_to_text_lines(self, chars: List[Dict]) -> str:
         """
@@ -441,6 +495,7 @@ class B3PDFWordProcessor:
             }, ...]
         """
         tables = []
+        page_chars = page.chars or []
         for idx, table in enumerate(page.find_tables()):
             data = table.extract()
             logger.info(f"[B-3] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
@@ -448,11 +503,39 @@ class B3PDFWordProcessor:
                 for row_idx, row in enumerate(data):
                     logger.info(f"[B-3] Table {idx} 行{row_idx}: {row}")
 
+            # セル単位で書式情報を抽出
+            cell_formats: Dict[str, Dict] = {}
+            for row_idx, trow in enumerate(table.rows):
+                for col_idx, cell_bbox in enumerate(trow.cells):
+                    if cell_bbox is None:
+                        continue
+                    bx0, btop, bx1, bbottom = cell_bbox
+                    cell_chars = [
+                        ch for ch in page_chars
+                        if (ch.get("x0", 0) >= bx0 and ch.get("x1", 0) <= bx1
+                            and ch.get("top", 0) >= btop and ch.get("bottom", 0) <= bbottom
+                            and ch.get("text", "").strip())
+                    ]
+                    if not cell_chars:
+                        continue
+                    bold = any("bold" in ch.get("fontname", "").lower() for ch in cell_chars)
+                    red = any(self._is_red_color(ch.get("non_stroking_color")) for ch in cell_chars)
+                    sizes = [float(ch.get("size") or 0) for ch in cell_chars if ch.get("size")]
+                    avg_size = round(sum(sizes) / len(sizes), 1) if sizes else 0.0
+                    if bold or red or avg_size:
+                        fmt = {"bold": bold, "red": red, "size": avg_size}
+                        cell_formats[f"{row_idx}_{col_idx}"] = fmt
+                        # テキストキーも追加（F/G変換後も参照できるよう）
+                        cell_text = (data[row_idx][col_idx] if data and row_idx < len(data) and col_idx < len(data[row_idx]) else None) or ""
+                        if cell_text.strip():
+                            cell_formats[f"text:{cell_text.strip()[:40]}"] = fmt
+
             tables.append({
                 'page': page_num,
                 'index': idx,
                 'bbox': table.bbox,
                 'data': data,
+                'metadata': {'cell_formats': cell_formats} if cell_formats else {},
                 'rows': len(data) if data else 0,
                 'cols': len(data[0]) if data and len(data) > 0 else 0,
                 'source': 'stage_b'

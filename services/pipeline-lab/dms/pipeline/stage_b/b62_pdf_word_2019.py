@@ -249,19 +249,60 @@ class B62PDFWord2019Processor:
                 return True
         return False
 
+    @staticmethod
+    def _is_red_color(color) -> bool:
+        if color is None:
+            return False
+        if isinstance(color, (list, tuple)):
+            if len(color) == 3:
+                r, g, b = color
+                return r > 0.7 and g < 0.3 and b < 0.3
+            if len(color) == 4:
+                c, m, y, k = color
+                return m > 0.7 and y > 0.5 and c < 0.3 and k < 0.5
+        return False
+
     def _extract_tables(self, page, page_num: int) -> List[Dict[str, Any]]:
         tables = []
+        page_chars = page.chars or []
         for idx, table in enumerate(page.find_tables()):
             data = table.extract()
             logger.info(f"[B-62] Table {idx} (Page {page_num}): {len(data) if data else 0}行×{len(data[0]) if data and len(data) > 0 else 0}列")
             if data:
                 for row_idx, row in enumerate(data):
                     logger.info(f"[B-62] Table {idx} 行{row_idx}: {row}")
+
+            cell_formats: Dict[str, Dict] = {}
+            for row_idx, trow in enumerate(table.rows):
+                for col_idx, cell_bbox in enumerate(trow.cells):
+                    if cell_bbox is None:
+                        continue
+                    bx0, btop, bx1, bbottom = cell_bbox
+                    cell_chars = [
+                        ch for ch in page_chars
+                        if (ch.get("x0", 0) >= bx0 and ch.get("x1", 0) <= bx1
+                            and ch.get("top", 0) >= btop and ch.get("bottom", 0) <= bbottom
+                            and ch.get("text", "").strip())
+                    ]
+                    if not cell_chars:
+                        continue
+                    bold = any("bold" in ch.get("fontname", "").lower() for ch in cell_chars)
+                    red = any(self._is_red_color(ch.get("non_stroking_color")) for ch in cell_chars)
+                    sizes = [float(ch.get("size") or 0) for ch in cell_chars if ch.get("size")]
+                    avg_size = round(sum(sizes) / len(sizes), 1) if sizes else 0.0
+                    if bold or red or avg_size:
+                        fmt = {"bold": bold, "red": red, "size": avg_size}
+                        cell_formats[f"{row_idx}_{col_idx}"] = fmt
+                        cell_text = (data[row_idx][col_idx] if data and row_idx < len(data) and col_idx < len(data[row_idx]) else None) or ""
+                        if cell_text.strip():
+                            cell_formats[f"text:{cell_text.strip()[:40]}"] = fmt
+
             tables.append({
                 'page': page_num,
                 'index': idx,
                 'bbox': table.bbox,
                 'data': data,
+                'metadata': {'cell_formats': cell_formats} if cell_formats else {},
                 'rows': len(data) if data else 0,
                 'cols': len(data[0]) if data and len(data) > 0 else 0,
                 'source': 'stage_b'

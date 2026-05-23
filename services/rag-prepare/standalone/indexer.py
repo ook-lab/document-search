@@ -562,33 +562,56 @@ class RagPrepareSearchIndexer:
         return "\n".join(lines)
 
     @staticmethod
-    def _detect_block_starts_ai(prose_text: str) -> set:
-        """Gemini 2.5 Flash-lite でセクション見出し行を検出する。"""
+    def _markup_plain_text(text: str) -> str:
+        """
+        Gemini Flash-lite でプレーンテキストに元の文字を変えずMarkdownマークアップのみを付加する。
+        ファイル外テキスト（書体情報なし）に使用する。
+        """
+        if not text.strip():
+            return text
         try:
             import google.generativeai as genai
             import os
             api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
-            if not api_key or not prose_text.strip():
-                return set()
+            if not api_key:
+                return text
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash-lite")
             prompt = (
-                "以下のテキストを、内容のかたまり（トピック）ごとに分割してください。\n"
-                "各かたまりの先頭行（最初の1行）のみを1行ずつ出力してください。\n"
-                "かたまりが1つだけの場合は「なし」とだけ出力してください。\n\n"
-                f"テキスト:\n{prose_text[:3000]}"
+                "以下はメール・投稿・課題などのメタデータを含む文書です。\n"
+                "元の文字を一切変えずにMarkdownマークアップのみを付加してください。\n\n"
+                "付加できるマークアップ:\n"
+                "- 見出し: # ## ###\n"
+                "- 番号なしリスト: -\n"
+                "- 番号付きリスト: 1. 2.\n"
+                "- 強調: **太字** *斜体*\n"
+                "- 注意・引用: >\n"
+                "- 区切り: ---\n"
+                "- セマンティックタグ（値を囲む）:\n"
+                "    [SENDER]...[/SENDER]  ← 送信者・作成者・差出人\n"
+                "    [RECIPIENT]...[/RECIPIENT]  ← 受信者・対象者・宛先\n"
+                "    [DATE]...[/DATE]  ← 日付・期限・締め切り\n"
+                "    [CATEGORY]...[/CATEGORY]  ← カテゴリ・種別・分類\n\n"
+                "ガイドライン:\n"
+                "- 「タイトル:」「件名:」フィールドの値は # 見出しに昇格する\n"
+                "- 「作成者:」「送信者:」の値は [SENDER]...[/SENDER] で囲む\n"
+                "- 「対象者:」「宛先:」の値は [RECIPIENT]...[/RECIPIENT] で囲む\n"
+                "- 「期限:」「日付:」の値は [DATE]...[/DATE] で囲む\n"
+                "- 「カテゴリ:」「種別:」の値は [CATEGORY]...[/CATEGORY] で囲む\n"
+                "- 「説明:」「本文:」フィールドの値は ## 見出し配下に配置する\n"
+                "- 技術的なURL・パス・MIMEタイプはそのまま残す\n\n"
+                "絶対ルール: テキストの文字は変えない。マークアップ記号のみ追加。\n\n"
+                f"テキスト:\n{text[:4000]}"
             )
             resp = model.generate_content(
                 prompt,
-                generation_config=genai.types.GenerationConfig(max_output_tokens=300, temperature=0.0),
+                generation_config=genai.types.GenerationConfig(max_output_tokens=2000, temperature=0.0),
             )
-            text = resp.text.strip()
-            if not text or text == "なし":
-                return set()
-            return {line.strip() for line in text.split("\n") if line.strip() and line.strip() != "なし"}
+            result = resp.text.strip()
+            return result if result else text
         except Exception as e:
-            logger.warning("[RAG] section heading AI detection failed: %s", e)
-            return set()
+            logger.warning("[RAG] ファイル外テキストマークアップ失敗: %s", e)
+            return text
 
     @staticmethod
     def _plain_chunks(text: str, chunk_size: int = 1200) -> List[str]:
@@ -647,20 +670,31 @@ class RagPrepareSearchIndexer:
                 block_paras = [p.strip() for p in re.split(r'\n{2,}', block) if p.strip()]
                 if block_paras:
                     sections.append(block_paras)
-            # セクションごとにチャンク化
+            # セクションごとにチャンク化（セクションタイトルを後続チャンクにもプレフィックスとして付加）
             for sec_paras in sections:
+                sec_title = (
+                    sec_paras[0]
+                    if sec_paras and len(sec_paras[0]) <= 50 and '\n' not in sec_paras[0]
+                    else ''
+                )
                 current: List[str] = []
                 current_len = 0
                 for para in sec_paras:
                     if current_len + len(para) > prose_chunk_size and current:
-                        results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
+                        text = "\n\n".join(current)
+                        if sec_title and not text.startswith(sec_title):
+                            text = sec_title + "\n\n" + text
+                        results.append({"text": text, "chunk_type": "prose", "chunk_weight": 1.0})
                         current = [para]
                         current_len = len(para)
                     else:
                         current.append(para)
                         current_len += len(para)
                 if current:
-                    results.append({"text": "\n\n".join(current), "chunk_type": "prose", "chunk_weight": 1.0})
+                    text = "\n\n".join(current)
+                    if sec_title and not text.startswith(sec_title):
+                        text = sec_title + "\n\n" + text
+                    results.append({"text": text, "chunk_type": "prose", "chunk_weight": 1.0})
 
         # YAML テーブル（## 表（埋め込み）内の ```yaml ブロック）
         yaml_m = re.search(r'```yaml\s*\n(.*?)```', md_text, re.DOTALL)
@@ -720,31 +754,12 @@ class RagPrepareSearchIndexer:
             )
             if ext_m:
                 ext_text = ext_m.group(1).strip()
-                # 500文字超の場合のみ Gemini でブロック分割
-                if len(ext_text) > 500:
-                    block_starts = RagPrepareSearchIndexer._detect_block_starts_ai(ext_text)
-                    if block_starts:
-                        # block_starts の先頭行でテキストを分割
-                        lines = ext_text.split('\n')
-                        blocks: List[str] = []
-                        cur: List[str] = []
-                        for line in lines:
-                            if line.strip() in block_starts and cur:
-                                blocks.append('\n'.join(cur).strip())
-                                cur = [line]
-                            else:
-                                cur.append(line)
-                        if cur:
-                            blocks.append('\n'.join(cur).strip())
-                        for block in blocks:
-                            for c in RagPrepareSearchIndexer._plain_chunks(block, plain_chunk_size):
-                                results.append((c, "rag_prepare_plain", 1.0))
-                    else:
-                        for c in RagPrepareSearchIndexer._plain_chunks(ext_text, plain_chunk_size):
-                            results.append((c, "rag_prepare_plain", 1.0))
-                else:
-                    for c in RagPrepareSearchIndexer._plain_chunks(ext_text, plain_chunk_size):
-                        results.append((c, "rag_prepare_plain", 1.0))
+                if ext_text:
+                    # Gemini でマークアップ付加（文字は変えない）→ prose チャンキング
+                    marked_ext = RagPrepareSearchIndexer._markup_plain_text(ext_text)
+                    wrapped = "## 非表（F 地の文）\n\n" + marked_ext
+                    for item in RagPrepareSearchIndexer._structured_md_chunks(wrapped, prose_chunk_size):
+                        results.append((item["text"], item["chunk_type"], item["chunk_weight"]))
         else:
             for c in RagPrepareSearchIndexer._plain_chunks(full_markdown, plain_chunk_size):
                 results.append((c, "rag_prepare_plain", 1.0))

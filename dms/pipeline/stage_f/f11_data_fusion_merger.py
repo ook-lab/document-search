@@ -383,7 +383,7 @@ class F11DataFusionMerger:
                     y1 = bbox[3] if len(bbox) >= 4 else y0
                     x1 = bbox[2] if len(bbox) >= 4 else x0
 
-                    blocks.append({
+                    b_block: Dict[str, Any] = {
                         'page': page,
                         'y0': y0,
                         'x0': x0,
@@ -391,7 +391,10 @@ class F11DataFusionMerger:
                         'x1': x1,
                         'text': text,
                         'source': 'stage_b'
-                    })
+                    }
+                    if block.get('text_lines'):
+                        b_block['text_lines'] = block['text_lines']
+                    blocks.append(b_block)
                     b_texts.append(text)
                     stage_b_count += 1
 
