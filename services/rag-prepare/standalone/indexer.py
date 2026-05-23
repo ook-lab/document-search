@@ -201,60 +201,13 @@ class RagPrepareSearchIndexer:
             return False, str(e)
 
     def skip_document(self, *, raw_table: str, raw_id: str) -> tuple[bool, Optional[str]]:
-        """ファイル外テキストのみをインデックス化（PDF コンテンツは対象外）。テキストのみ扱いと同等。"""
+        """ix_skip_pdf=True をセットするだけ。PDF コンテンツを text_only 扱いにする。"""
         try:
-            raw_row = self._load_raw_row(raw_table, raw_id)
-            external = self._raw_external_markdown(raw_row)
-
-            if external:
-                # ファイル外テキストのみで unified document を解決・インデックス化
-                ud = self._resolve_or_create_unified_document(
-                    unified_doc_id=None, raw_table=raw_table, raw_id=raw_id
-                )
-                if ud:
-                    unified_doc_id = str(ud["id"])
-                    full_markdown = "# ファイル外テキスト\n\n" + external
-                    chunk_items = self._md_chunks_with_meta(full_markdown)
-                    gate = (
-                        self.db.client.table("09_unified_documents")
-                        .select("id")
-                        .eq("id", unified_doc_id)
-                        .limit(1)
-                        .execute()
-                    )
-                    if gate.data:
-                        self.db.client.table("10_ix_search_index").delete().eq("doc_id", unified_doc_id).execute()
-                        if self.embedder is None:
-                            self.embedder = EmbeddingGen()
-                        person = ud.get("person")
-                        c1 = ud.get("classification1")
-                        c2 = ud.get("classification2")
-                        c3 = ud.get("classification3") or raw_table
-                        for i, (chunk_text, chunk_type, chunk_weight) in enumerate(chunk_items):
-                            chunk_text = (chunk_text or "").replace("", "").strip()
-                            if not chunk_text:
-                                continue
-                            vector = self.embedder.generate_embedding(chunk_text)
-                            self.db.client.table("10_ix_search_index").insert({
-                                "doc_id": unified_doc_id,
-                                "person": person,
-                                "classification1": c1,
-                                "classification2": c2,
-                                "classification3": c3,
-                                "chunk_index": i,
-                                "chunk_text": chunk_text,
-                                "chunk_type": chunk_type,
-                                "chunk_weight": chunk_weight,
-                                "embedding": vector,
-                            }).execute()
-                        logger.info("skip_document: external text indexed for %s/%s", raw_table, raw_id)
-
             now_iso = datetime.now(timezone.utc).isoformat()
-            self._write_meta_vectorized(
-                raw_table=raw_table, raw_id=raw_id,
-                doc_id=str(ud["id"]) if external and ud else raw_id,
-                now_iso=now_iso,
-            )
+            self.db.client.table(UD_META_TABLE).update(
+                {"ix_skip_pdf": True, "updated_at": now_iso}
+            ).eq("raw_table", raw_table).eq("raw_id", raw_id).execute()
+            logger.info("skip_document: ix_skip_pdf set for %s/%s", raw_table, raw_id)
             return True, None
         except Exception as e:
             logger.error("skip_document failed: %s", e, exc_info=True)

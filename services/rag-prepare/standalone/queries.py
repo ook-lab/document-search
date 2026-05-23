@@ -167,7 +167,7 @@ def fetch_pending_search_data_prep_docs(
     try:
         q = (
             db_client.table(UD_META_TABLE)
-            .select("raw_table, raw_id, doc_id, ix_vectorized_at, updated_at")
+            .select("raw_table, raw_id, doc_id, ix_vectorized_at, ix_skip_pdf, updated_at")
             .in_("raw_table", tables)
             .order("updated_at", desc=True)
             .limit(meta_limit)
@@ -297,7 +297,8 @@ def fetch_pending_search_data_prep_docs(
             ud = ud_by_pair.get((rt_s, rid_s), {})
 
         has_pdf_md = pdf_md_in_raw(extras.get("pdf_md_content"))
-        has_physical_file = raw_row_has_file_backing(fu) or bool(drive_id_from_file_url(fu))
+        ix_skip_pdf = bool(m.get("ix_skip_pdf"))
+        has_physical_file = (not ix_skip_pdf) and (raw_row_has_file_backing(fu) or bool(drive_id_from_file_url(fu)))
 
         src_ud = (ud.get("classification1") or "").strip()
         src_raw = (extras.get("source") or "").strip()
