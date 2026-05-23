@@ -1362,8 +1362,23 @@
         return result.join('\n');
     }
 
+    function _extractSandwichText(s) {
+        // <<<MD_SANDWICH_START>>>...<<<MD_SANDWICH_END>>> が含まれる場合は中身だけを使う
+        // （B3/B61/B62 プロセッサが正しい読み順テキストをマーカーで囲んで埋め込む）
+        var S = '<<<MD_SANDWICH_START>>>';
+        var E = '<<<MD_SANDWICH_END>>>';
+        var si = s.indexOf(S);
+        var ei = s.indexOf(E);
+        if (si >= 0 && ei > si) {
+            return s.slice(si + S.length, ei).trim();
+        }
+        // マーカーがない場合はそのまま（ただし残留マーカー文字列は除去）
+        return s.replace(/<<<[^>]*>>>/g, '').trim();
+    }
+
     function _cleanTextForDme(s) {
-        return String(s || '')
+        var text = _extractSandwichText(String(s || ''));
+        return text
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<[^>]+>/g, '')
             .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
