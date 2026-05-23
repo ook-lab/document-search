@@ -21,6 +21,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--timeout=600'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--update-env-vars'
       - 'GOOGLE_CLOUD_PROJECT=$PROJECT_ID,RAG_PREPARE_PDF_TOOLBOX_BASE=${_RAG_PREPARE_PDF_TOOLBOX_BASE}'

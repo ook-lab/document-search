@@ -27,6 +27,21 @@ def _infer_header_depth(data: List[List]) -> int:
             continue
         c0 = "" if row[0] is None else str(row[0]).strip()
         if _DAY_ROW_RE.match(c0):
+            if i >= 2:
+                # 直前行 (row[i-1]) の cols 1+ が日付行 (row[i]) と50%以上一致 → データ行のため除外
+                prev = data[i - 1]
+                prev_vals = {
+                    str(v).strip()
+                    for v in (prev[1:] if len(prev) > 1 else [])
+                    if v is not None and str(v).strip()
+                }
+                curr_nonempty = [
+                    str(v).strip()
+                    for v in (row[1:] if len(row) > 1 else [])
+                    if v is not None and str(v).strip()
+                ]
+                if curr_nonempty and sum(1 for v in curr_nonempty if v in prev_vals) / len(curr_nonempty) >= 0.5:
+                    return max(1, i - 1)
             return max(1, i)
     return min(2, len(data)) if len(data) >= 2 else 1
 

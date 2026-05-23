@@ -58,10 +58,21 @@ class RagPrepareSearchIndexer:
                 return False, "raw_id がありません"
             ud_raw_id = str(ud_raw).strip()
 
+            meta_res = (
+                self.db.client.table(UD_META_TABLE)
+                .select("ix_skip_pdf")
+                .eq("raw_table", rt)
+                .eq("raw_id", ud_raw_id)
+                .maybe_single()
+                .execute()
+            )
+            ix_skip_pdf = bool((meta_res.data or {}).get("ix_skip_pdf"))
+
             ctx = {
                 "raw_id": ud_raw_id,
                 "raw_table": rt,
                 "file_url": ud.get("file_url"),
+                "skip_pdf": ix_skip_pdf,
             }
             full_markdown, md_err = self._resolve_markdown(ctx)
             if not full_markdown:
@@ -76,7 +87,7 @@ class RagPrepareSearchIndexer:
 
             raw_row = self._load_raw_row(rt, ud_raw_id)
             sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_markdown)
-            self.db.client.table("09_unified_documents").update(sync_updates).eq("id", unified_doc_id).execute()
+            self.db.client.table("09_unified_documents").update(sync_updates).eq("id", unified_doc_id).select("id").execute()
 
             ud_fresh = (
                 self.db.client.table("09_unified_documents")
@@ -93,7 +104,7 @@ class RagPrepareSearchIndexer:
             ix_dates = build_ix_search_date_list(ud_fresh, date_signals)
             self.db.client.table("09_unified_documents").update(
                 {"ix_date_signals": date_signals, "ix_search_dates": ix_dates}
-            ).eq("id", unified_doc_id).execute()
+            ).eq("id", unified_doc_id).select("id").execute()
 
             person = ud_fresh.get("person") or person
             c1 = ud_fresh.get("classification1") or c1
@@ -178,7 +189,7 @@ class RagPrepareSearchIndexer:
                 return False, md_err or "本文がありません（raw / 09.body）"
 
             sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_md)
-            self.db.client.table("09_unified_documents").update(sync_updates).eq("id", ud["id"]).execute()
+            self.db.client.table("09_unified_documents").update(sync_updates).eq("id", ud["id"]).select("id").execute()
 
             ud_fresh = (
                 self.db.client.table("09_unified_documents")
@@ -194,7 +205,7 @@ class RagPrepareSearchIndexer:
             ix_dates = build_ix_search_date_list(ud_fresh, ds)
             self.db.client.table("09_unified_documents").update(
                 {"ix_date_signals": ds, "ix_search_dates": ix_dates}
-            ).eq("id", ud["id"]).execute()
+            ).eq("id", ud["id"]).select("id").execute()
             return True, None
         except Exception as e:
             logger.error("date_signals update failed: %s", e, exc_info=True)
@@ -206,7 +217,7 @@ class RagPrepareSearchIndexer:
             now_iso = datetime.now(timezone.utc).isoformat()
             self.db.client.table(UD_META_TABLE).update(
                 {"ix_skip_pdf": True, "updated_at": now_iso}
-            ).eq("raw_table", raw_table).eq("raw_id", raw_id).execute()
+            ).eq("raw_table", raw_table).eq("raw_id", raw_id).select("raw_id").execute()
             logger.info("skip_document: ix_skip_pdf set for %s/%s", raw_table, raw_id)
             return True, None
         except Exception as e:
@@ -222,6 +233,7 @@ class RagPrepareSearchIndexer:
                 self.db.client.table(UD_META_TABLE)
                 .update({"ix_vectorized_at": None})
                 .in_("raw_table", raw_tables)
+                .select("raw_id")
                 .execute()
             )
             count = len(res.data or [])
@@ -294,7 +306,7 @@ class RagPrepareSearchIndexer:
                     ix_dates = build_ix_search_date_list(row_for, ds)
                     self.db.client.table("09_unified_documents").update(
                         {"ix_date_signals": ds, "ix_search_dates": ix_dates}
-                    ).eq("id", row["id"]).execute()
+                    ).eq("id", row["id"]).select("id").execute()
                     updated += 1
                 except Exception as e:
                     errors.append(f"id={row.get('id')}: {e}")
@@ -378,7 +390,7 @@ class RagPrepareSearchIndexer:
                 "ix_vectorized_at": now_iso,
                 "updated_at": now_iso,
             }
-        ).execute()
+        ).select("raw_id").execute()
 
     def _resolve_or_create_unified_document(
         self,
@@ -503,7 +515,7 @@ class RagPrepareSearchIndexer:
                 sections.append("# ファイル外テキスト\n\n" + external)
 
             pdf_md = (raw_row.get("pdf_md_content") or "").strip()
-            if pdf_md:
+            if pdf_md and not ctx.get("skip_pdf"):
                 sections.append("# PDF抽出Markdown\n\n" + pdf_md)
 
             if sections:
