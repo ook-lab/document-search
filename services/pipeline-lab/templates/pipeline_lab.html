@@ -1092,9 +1092,14 @@
         s = escapeHtml(s);
         s = s.replace(/\[RED\]([\s\S]*?)\[\/RED\]/g, '<span class="tag-red">$1</span>');
         s = s.replace(/\*\*([\s\S]*?)\*\*/g, '<strong>$1</strong>');
-        s = s.replace(/\[([A-Z][A-Z0-9_]*)\]([\s\S]*?)\[\/\1\]/g, function(_, type, content) {
-            return '<span class="tag-span" style="' + _getTagStyle(type) + '" data-type="' + type + '">' + content + '</span>';
-        });
+        // 入れ子タグを複数パスで処理（外→内の順に最大3回）
+        for (var _p = 0; _p < 3; _p++) {
+            var _prev = s;
+            s = s.replace(/\[([A-Z][A-Z0-9_]*)\]([\s\S]*?)\[\/\1\]/g, function(_, type, content) {
+                return '<span class="tag-span" style="' + _getTagStyle(type) + '" data-type="' + type + '">' + content + '</span>';
+            });
+            if (s === _prev) break;
+        }
         return s;
     }
 
@@ -1125,21 +1130,36 @@
                     .map(function(l){return l.trim().replace(/^>\s*/, '');}).join('');
                 html += '<blockquote class="rc-blockquote">' + renderInline(text) + '</blockquote>';
             } else if (lines.some(function(l){ return /^- /.test(l.trim()); })) {
-                html += '<ul class="rc-list">';
+                var _preBullet = [];
+                var _inList = false;
                 var cur = null;
                 lines.forEach(function(l) {
                     var t = l.trim();
                     if (/^- /.test(t)) {
+                        if (!_inList) {
+                            _inList = true;
+                            var _pre = _preBullet.filter(Boolean).join('');
+                            if (_pre) html += '<p class="rc-prose">' + renderInline(_pre) + '</p>';
+                            html += '<ul class="rc-list">';
+                        }
                         if (cur !== null) html += '<li>' + renderInline(cur) + '</li>';
                         cur = t.slice(2);
-                    } else if (t && cur !== null) {
-                        cur += t;
+                    } else if (t) {
+                        if (!_inList) { _preBullet.push(t); }
+                        else if (cur !== null) { cur += t; }
                     }
                 });
                 if (cur !== null) html += '<li>' + renderInline(cur) + '</li>';
-                html += '</ul>';
+                if (_inList) { html += '</ul>'; }
+                else {
+                    var _allPre = _preBullet.filter(Boolean).join('');
+                    if (_allPre) html += '<p class="rc-prose">' + renderInline(_allPre) + '</p>';
+                }
             } else {
-                var text = lines.map(function(l){return l.trim();}).filter(Boolean).join('');
+                var text = lines.map(function(l){
+                    var t = l.trim();
+                    return /^>\s/.test(t) ? t.replace(/^>\s*/, '') : t;
+                }).filter(Boolean).join('');
                 html += '<p class="rc-prose">' + renderInline(text) + '</p>';
             }
         });

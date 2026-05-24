@@ -476,7 +476,13 @@ class G11Controller:
                 "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
                 "annotation_types: このドキュメントに合ったスパン型を 5〜8 個定義する。\n"
                 "  型名は英小文字スネークケース（date, place, item, person, deadline 等）\n"
-                "  説明は日本語（例: place: 集合場所・解散場所・目的地の固有名詞）\n\n"
+                "  説明は日本語（例: place: 集合場所・解散場所・目的地の固有名詞）\n"
+                "  【禁止①】文体・修辞・文学的技法を説明する型は定義しない"
+                "（literary_device, metaphor, rhetorical_question 等）。\n"
+                "  【禁止②】語自体がすでに自分のカテゴリを説明している抽象名詞をタグ対象にしない。"
+                "「気持ち」に[EMOTION]、「歌い方」に[METHOD]を付けるのは翻訳であり意味がない。\n"
+                "  タグは読者が『スキャンして探したい』具体的な固有情報"
+                "（日時・場所・人名・物品名・金額・締切など）にのみ付ける。\n\n"
                 f"行レベル（line キー）の固定型: {line_types}\n"
                 "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
                 "section_break の制約: 文書全体で最大 5 箇所まで。"
@@ -615,7 +621,7 @@ class G11Controller:
             if merged and not title and len(body) < min_body_chars:
                 prev = merged[-1]
                 prev_body = (prev.get("body") or "").strip()
-                prev["body"] = (prev_body + "\n\n" + body).strip() if prev_body else body
+                prev["body"] = (prev_body + "\n" + body).strip() if prev_body else body
             else:
                 merged.append(dict(art))
 
@@ -625,7 +631,7 @@ class G11Controller:
             prev = merged[-1]
             last_body = (last.get("body") or "").strip()
             prev_body = (prev.get("body") or "").strip()
-            prev["body"] = (prev_body + "\n\n" + last_body).strip() if prev_body else last_body
+            prev["body"] = (prev_body + "\n" + last_body).strip() if prev_body else last_body
 
         return merged
 
