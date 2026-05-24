@@ -466,7 +466,7 @@ class G11Controller:
                 line_types = (
                     "heading_1（文書タイトル等の最重要見出し）, "
                     "heading_2（セクション見出し）, "
-                    "section_break（話題の切れ目・新しいセクションの開始行）, "
+                    "section_break（内容のテーマが切り替わる境界行）, "
                     "bullet_item（並列する箇条書き項目）, "
                     "blockquote（注記・引用・お知らせ補足）"
                 )
@@ -486,8 +486,9 @@ class G11Controller:
                 "（日時・場所・人名・物品名・金額・締切など）にのみ付ける。\n\n"
                 f"行レベル（line キー）の固定型: {line_types}\n"
                 "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
-                "section_break の制約: 文書全体で最大 5 箇所まで。"
-                "段落ごとに区切らず、読み手が「ここから別の話題だ」と感じる大きな転換点のみに付ける。\n\n"
+                "section_break の使い方: 内容のテーマが明確に切り替わる行に付ける。"
+                "「遠足の案内」→「学芸会の内容」のように、読者が別トピックだと判断できる境界。"
+                "段落の区切りや修飾語句の変化には付けない。見出し行の有無は関係ない。\n\n"
                 "出力形式（例）:\n"
                 '{"annotation_types": {"date": "日付・時刻・期限", "place": "集合・解散場所"}, '
                 '"annotations": [{"line": 0, "type": "heading_1"}, '
