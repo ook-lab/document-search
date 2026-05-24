@@ -1418,10 +1418,30 @@
             var proseHdr = false;
             var tableHdr = false;
             var lastProseLastLine = '';  // 直前テキストセグメントの最終行
+            var g21Arts = Array.isArray(ud.g21_articles) ? ud.g21_articles : [];
+            var hasG21Body = g21Arts.some(function(a) { return a && String(a.body || '').trim(); });
+            var g21Inserted = false;
             vs.forEach(function (seg) {
                 if (!seg) return;
                 var k = seg.kind;
                 if (k === 'non_table_paragraph') {
+                    if (hasG21Body) {
+                        if (!g21Inserted) {
+                            g21Inserted = true;
+                            g21Arts.forEach(function(art, ai) {
+                                var gb = _cleanTextForDme(art && art.body).trim();
+                                var gt = (art && art.title || '').trim();
+                                if (!gb && !gt) return;
+                                if (proseHdr) { lines.push(''); lines.push('---'); lines.push(''); }
+                                proseHdr = true;
+                                if (gt) lines.push(gt);
+                                if (gb) lines.push(gb);
+                                var gbLines = (gt + '\n' + gb).split('\n').filter(function(l){return l.trim();});
+                                lastProseLastLine = gbLines.length ? gbLines[gbLines.length - 1].trim() : '';
+                            });
+                        }
+                        return;
+                    }
                     var t = _cleanTextForDme(seg.text).trim();
                     if (!t) return;
                     if (proseHdr) lines.push('');
@@ -1691,11 +1711,29 @@
         var ud = pr.ui_data_json || {};
         var tables = ud.tables || [];
         var stream = readingVisualStream(pr);
+        var g21Arts = Array.isArray(ud.g21_articles) ? ud.g21_articles : [];
+        var hasG21Body = g21Arts.some(function(a) { return a && String(a.body || '').trim(); });
+        var g21Inserted = false;
         var html = '<div class="reading-section">';
         stream.forEach(function (seg) {
             if (!seg) return;
             var k = seg.kind;
             if (k === 'non_table_paragraph') {
+                if (hasG21Body) {
+                    if (!g21Inserted) {
+                        g21Inserted = true;
+                        g21Arts.forEach(function(art) {
+                            var gb = String(art && art.body || '').trim();
+                            var gt = String(art && art.title || '').trim();
+                            if (!gb && !gt) return;
+                            html += '<div class="reading-card" style="margin-bottom:0.65rem;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">';
+                            if (gt) html += '<div class="rc-title">' + escapeHtml(gt) + '</div>';
+                            if (gb) html += '<div class="reading-prose" style="border:none;padding:0.25rem 0 0;background:transparent;">' + escapeHtml(gb) + '</div>';
+                            html += '</div>';
+                        });
+                    }
+                    return;
+                }
                 html += '<div class="reading-card reading-stream-para"><div class="reading-prose" style="border:1px solid var(--border);padding:0.5rem 0.65rem;border-radius:8px;background:#fff;font-size:0.88rem;line-height:1.55;">' +
                     escapeHtml(seg.text || '') + '</div></div>';
             } else if (k === 'g_table_group') {
