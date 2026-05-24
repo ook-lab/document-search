@@ -29,6 +29,25 @@ _UD_SELECT = (
 
 
 class RagPrepareSearchIndexer:
+
+    # アノテーション型 → 行頭プレフィックス（section_break は別処理）
+    _LINE_PREFIX: Dict[str, str] = {
+        "heading_1": "# ",
+        "heading_2": "## ",
+        "bullet_item": "- ",
+        "blockquote": "> ",
+    }
+
+    # アノテーション型 → スパンタグ (開, 閉)
+    _SPAN_WRAP: Dict[str, tuple] = {
+        "date": ("[DATE]", "[/DATE]"),
+        "emphasis": ("**", "**"),
+        "warning": ("[WARNING]", "[/WARNING]"),
+    }
+
+    # 内部分割マーカー
+    _SPLIT_MARKER = "\x00SPLIT\x00"
+
     def __init__(self) -> None:
         self.db = RagServiceDB()
         self.embedder: Optional[EmbeddingGen] = None
@@ -562,56 +581,111 @@ class RagPrepareSearchIndexer:
         return "\n".join(lines)
 
     @staticmethod
-    def _markup_plain_text(text: str) -> str:
+    def _get_ai_annotations(text: str) -> List[Dict[str, Any]]:
         """
-        Gemini Flash-lite でプレーンテキストに元の文字を変えずMarkdownマークアップのみを付加する。
-        ファイル外テキスト（書体情報なし）に使用する。
+        Gemini にテキスト構造のアノテーション指示を JSON で返させる。
+        AI はテキストを生成・変更しない。行番号とスパン文字列のみ返す。
         """
         if not text.strip():
-            return text
+            return []
         try:
-            import google.generativeai as genai
+            import json as _json
             import os
+            import google.generativeai as genai
             api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
             if not api_key:
-                return text
+                return []
+
+            lines = text.split("\n")
+            numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
+
+            prompt = (
+                "次のテキストの構造を解析し、アノテーション指示を JSON のみで返してください。\n"
+                "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
+                "行レベル（line キー）のアノテーション型: "
+                "heading_1（最重要見出し）, heading_2（セクション見出し）, "
+                "section_break（話題の切れ目・新しいセクションの開始行）, "
+                "bullet_item（並列する箇条書き項目）, blockquote（注記・引用）\n"
+                "スパンレベル（span キー）のアノテーション型: "
+                "date（日付・時刻・期限）, emphasis（重要語句）, warning（注意・警告語句）\n\n"
+                "section_break は話題が切り替わる行に付ける。"
+                "heading_1/heading_2 を付けた行には section_break を重ねて付けなくてよい。\n\n"
+                "出力形式（例）:\n"
+                '{"annotations": [{"line": 0, "type": "heading_1"}, '
+                '{"line": 5, "type": "section_break"}, '
+                '{"span": "来週金曜日", "type": "date"}]}\n\n'
+                "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
+                f"テキスト:\n{numbered[:4000]}"
+            )
+
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash-lite")
-            prompt = (
-                "以下はメール・投稿・課題などのメタデータを含む文書です。\n"
-                "元の文字を一切変えずにMarkdownマークアップのみを付加してください。\n\n"
-                "付加できるマークアップ:\n"
-                "- 見出し: # ## ###\n"
-                "- 番号なしリスト: -\n"
-                "- 番号付きリスト: 1. 2.\n"
-                "- 強調: **太字** *斜体*\n"
-                "- 注意・引用: >\n"
-                "- 区切り: ---\n"
-                "- セマンティックタグ（値を囲む）:\n"
-                "    [SENDER]...[/SENDER]  ← 送信者・作成者・差出人\n"
-                "    [RECIPIENT]...[/RECIPIENT]  ← 受信者・対象者・宛先\n"
-                "    [DATE]...[/DATE]  ← 日付・期限・締め切り\n"
-                "    [CATEGORY]...[/CATEGORY]  ← カテゴリ・種別・分類\n\n"
-                "ガイドライン:\n"
-                "- 「タイトル:」「件名:」フィールドの値は # 見出しに昇格する\n"
-                "- 「作成者:」「送信者:」の値は [SENDER]...[/SENDER] で囲む\n"
-                "- 「対象者:」「宛先:」の値は [RECIPIENT]...[/RECIPIENT] で囲む\n"
-                "- 「期限:」「日付:」の値は [DATE]...[/DATE] で囲む\n"
-                "- 「カテゴリ:」「種別:」の値は [CATEGORY]...[/CATEGORY] で囲む\n"
-                "- 「説明:」「本文:」フィールドの値は ## 見出し配下に配置する\n"
-                "- 技術的なURL・パス・MIMEタイプはそのまま残す\n\n"
-                "絶対ルール: テキストの文字は変えない。マークアップ記号のみ追加。\n\n"
-                f"テキスト:\n{text[:4000]}"
-            )
             resp = model.generate_content(
                 prompt,
-                generation_config=genai.types.GenerationConfig(max_output_tokens=2000, temperature=0.0),
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=1000,
+                    temperature=0.0,
+                    response_mime_type="application/json",
+                ),
             )
-            result = resp.text.strip()
-            return result if result else text
+            data = _json.loads(resp.text.strip())
+            return data.get("annotations") or []
         except Exception as e:
-            logger.warning("[RAG] ファイル外テキストマークアップ失敗: %s", e)
-            return text
+            logger.warning("[RAG] AI アノテーション取得失敗: %s", e)
+            return []
+
+    @staticmethod
+    def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
+        """
+        AI アノテーション指示を md テキストに機械的に適用する。
+        元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
+        section_break は _SPLIT_MARKER を挿入（呼び出し元が --- に変換）。
+        """
+        if not annotations:
+            return md
+
+        lines = md.split("\n")
+        marker = RagPrepareSearchIndexer._SPLIT_MARKER
+
+        for ann in annotations:
+            if "line" in ann:
+                idx = ann.get("line")
+                ann_type = ann.get("type", "")
+                if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
+                    continue
+                if ann_type == "section_break":
+                    if not lines[idx].startswith(marker) and \
+                       not lines[idx].startswith("# ") and \
+                       not lines[idx].startswith("## "):
+                        lines[idx] = marker + lines[idx]
+                    continue
+                prefix = RagPrepareSearchIndexer._LINE_PREFIX.get(ann_type)
+                if prefix is None:
+                    continue
+                line = lines[idx]
+                if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
+                    continue
+                if line.startswith("## ") and ann_type == "heading_2":
+                    continue
+                if line.startswith(prefix):
+                    continue
+                lines[idx] = prefix + line
+
+        result = "\n".join(lines)
+
+        for ann in annotations:
+            if "span" in ann:
+                span_text = ann.get("span", "")
+                ann_type = ann.get("type", "")
+                wrap = RagPrepareSearchIndexer._SPAN_WRAP.get(ann_type)
+                if not wrap or not span_text or span_text not in result:
+                    continue
+                open_tag, close_tag = wrap
+                if f"{open_tag}{span_text}{close_tag}" in result:
+                    continue
+                result = result.replace(span_text, f"{open_tag}{span_text}{close_tag}", 1)
+
+        return result
 
     @staticmethod
     def _plain_chunks(text: str, chunk_size: int = 1200) -> List[str]:
@@ -755,9 +829,13 @@ class RagPrepareSearchIndexer:
             if ext_m:
                 ext_text = ext_m.group(1).strip()
                 if ext_text:
-                    # Gemini でマークアップ付加（文字は変えない）→ prose チャンキング
-                    marked_ext = RagPrepareSearchIndexer._markup_plain_text(ext_text)
-                    wrapped = "## 非表（F 地の文）\n\n" + marked_ext
+                    annotations = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
+                    annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, annotations)
+                    # section_break マーカーを _structured_md_chunks が認識する --- に変換
+                    annotated = annotated.replace(
+                        RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"
+                    ).strip()
+                    wrapped = "## 非表（F 地の文）\n\n" + annotated
                     for item in RagPrepareSearchIndexer._structured_md_chunks(wrapped, prose_chunk_size):
                         results.append((item["text"], item["chunk_type"], item["chunk_weight"]))
         else:

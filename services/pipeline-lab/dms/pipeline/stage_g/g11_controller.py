@@ -53,6 +53,24 @@ from dms.pipeline.stage_g.table_md_emitters import (
 class G11Controller:
     """Stage G: F17 出口を入力に UI データを組み立てる。"""
 
+    # アノテーション型 → 行頭プレフィックス（section_break は別処理）
+    _LINE_PREFIX: Dict[str, str] = {
+        "heading_1": "# ",
+        "heading_2": "## ",
+        "bullet_item": "- ",
+        "blockquote": "> ",
+    }
+
+    # 分割マーカー（_split_md_to_articles で分割境界として使う）
+    _SPLIT_MARKER = "\x00SPLIT\x00"
+
+    # アノテーション型 → スパンタグ (開, 閉)
+    _SPAN_WRAP: Dict[str, tuple] = {
+        "date": ("[DATE]", "[/DATE]"),
+        "emphasis": ("**", "**"),
+        "warning": ("[WARNING]", "[/WARNING]"),
+    }
+
     def __init__(self, document_id: Optional[str] = None, g26_model_name: Optional[str] = None) -> None:
         g62 = G62TableLayoutProcessor(document_id=document_id)
         self._g61 = G61LayoutBridgeProcessor(document_id=document_id, next_stage=g62)
@@ -380,77 +398,186 @@ class G11Controller:
         return "\n".join(md_lines)
 
     @staticmethod
-    def _markup_block_with_gemini(text: str, text_lines: List[Dict[str, Any]] = None) -> str:
+    def _apply_typography_markup(text: str, text_lines: List[Dict[str, Any]]) -> str:
         """
-        Gemini Flash-lite でテキストにMarkdownマークアップを付加する。
-        元の文字は一切変えない。pdfplumber書式情報があれば参考情報として提供する。
+        block.text の各行に text_lines のフォント情報を適用して Markdown を生成する。
+        元テキストの空行・段落区切り・改行順序を完全保持。
+        text_lines に対応エントリがない行は素のまま出力（新テキスト追加ゼロ）。
+        """
+        from collections import Counter as _Counter
+        sizes = [ln.get("size", 0) for ln in text_lines if ln.get("size", 0) > 0]
+        body_size = _Counter(sizes).most_common(1)[0][0] if sizes else 12.0
+
+        line_map: Dict[str, Dict[str, Any]] = {}
+        for ln in text_lines:
+            key = ln.get("text", "").strip()
+            if key and key not in line_map:
+                line_map[key] = ln
+
+        result: List[str] = []
+        for raw_line in text.split("\n"):
+            stripped = raw_line.strip()
+            if not stripped:
+                result.append("")
+                continue
+            info = line_map.get(stripped)
+            if info is None:
+                result.append(raw_line)
+                continue
+            size = info.get("size") or body_size
+            bold = info.get("bold", False)
+            red = info.get("red", False)
+            if size >= body_size * 1.3:
+                result.append(f"# {stripped}")
+            elif size >= body_size * 1.15:
+                result.append(f"## {stripped}")
+            elif red and bold:
+                result.append(f"**[RED]{stripped}[/RED]**")
+            elif red:
+                result.append(f"[RED]{stripped}[/RED]")
+            elif bold:
+                result.append(f"**{stripped}**")
+            else:
+                result.append(raw_line)
+        return "\n".join(result)
+
+    @staticmethod
+    def _get_ai_annotations(text: str, has_typography: bool = False) -> List[Dict[str, Any]]:
+        """
+        Gemini にテキスト構造のアノテーション指示を JSON で返させる。
+        AI はテキストを生成・変更しない。行番号とスパン文字列のみ返す。
+
+        has_typography=True のとき、フォント由来の見出しは既に付与済みなので
+        行レベルは bullet_item / blockquote のみ依頼する。
         """
         if not text.strip():
-            return text
+            return []
         try:
+            import json as _json
             import google.generativeai as genai
             from dms.common.config.settings import settings
             if not settings.GOOGLE_AI_API_KEY:
-                return text
-            genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
-            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+                return []
 
-            context = ""
-            if text_lines:
-                from collections import Counter as _Counter
-                sizes = [ln["size"] for ln in text_lines if ln.get("size", 0) > 0]
-                body_size = _Counter(sizes).most_common(1)[0][0] if sizes else 12.0
-                hints = []
-                for ln in text_lines[:40]:
-                    tags = []
-                    if ln.get("bold"):
-                        tags.append("太字")
-                    size = ln.get("size") or body_size
-                    if size >= body_size * 1.3:
-                        tags.append("大見出し相当")
-                    elif size >= body_size * 1.15:
-                        tags.append("中見出し相当")
-                    if tags:
-                        hints.append(f'"{ln["text"][:30]}": {", ".join(tags)}')
-                if hints:
-                    context = "【書式情報（参考）】\n" + "\n".join(hints) + "\n\n"
+            lines = text.split("\n")
+            numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
+
+            if has_typography:
+                line_types = (
+                    "section_break（話題の切れ目・新しいセクションの開始行）, "
+                    "bullet_item（並列する箇条書き項目）, "
+                    "blockquote（注記・引用・お知らせ補足）"
+                )
+            else:
+                line_types = (
+                    "heading_1（文書タイトル等の最重要見出し）, "
+                    "heading_2（セクション見出し）, "
+                    "section_break（話題の切れ目・新しいセクションの開始行）, "
+                    "bullet_item（並列する箇条書き項目）, "
+                    "blockquote（注記・引用・お知らせ補足）"
+                )
 
             prompt = (
-                f"{context}"
-                "以下のテキストに、元の文字を一切変えずにMarkdownマークアップのみを付加してください。\n\n"
-                "付加できるマークアップ:\n"
-                "- 見出し: # ## ###\n"
-                "- 番号なしリスト: -\n"
-                "- 番号付きリスト: 1. 2.\n"
-                "- 強調: **太字** *斜体*\n"
-                "- 注意・引用: >\n"
-                "- 区切り: ---\n"
-                "- セマンティックタグ（値を囲む）:\n"
-                "    [SENDER]...[/SENDER]  ← 送信者・作成者・差出人\n"
-                "    [RECIPIENT]...[/RECIPIENT]  ← 受信者・対象者・宛先\n"
-                "    [DATE]...[/DATE]  ← 日付・期限・締め切り\n"
-                "    [CATEGORY]...[/CATEGORY]  ← カテゴリ・種別・分類\n\n"
-                "絶対ルール: テキストの文字は変えない。マークアップ記号のみ追加。\n\n"
-                f"テキスト:\n{text[:4000]}"
+                "次のテキストの構造を解析し、アノテーション指示を JSON のみで返してください。\n"
+                "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
+                f"行レベル（line キー）のアノテーション型: {line_types}\n"
+                "スパンレベル（span キー）のアノテーション型: "
+                "date（日付・時刻・期限）, emphasis（重要語句）, warning（注意・警告語句）\n\n"
+                "section_break は話題が切り替わる行に付ける。"
+                "heading_1/heading_2 を付けた行には section_break を重ねて付けなくてよい。\n\n"
+                "出力形式（例）:\n"
+                '{"annotations": [{"line": 0, "type": "heading_1"}, '
+                '{"line": 5, "type": "section_break"}, '
+                '{"span": "来週金曜日", "type": "date"}]}\n\n'
+                "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
+                f"テキスト:\n{numbered[:4000]}"
             )
+
+            genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
+            model = genai.GenerativeModel("gemini-2.5-flash-lite")
             resp = model.generate_content(
                 prompt,
-                generation_config=genai.types.GenerationConfig(max_output_tokens=2000, temperature=0.0),
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=1000,
+                    temperature=0.0,
+                    response_mime_type="application/json",
+                ),
             )
-            result = resp.text.strip()
-            return result if result else text
+            data = _json.loads(resp.text.strip())
+            return data.get("annotations") or []
         except Exception as e:
-            logger.warning(f"[G21] Geminiマークアップ失敗: {e}")
-            return text
+            logger.warning(f"[G21] AI アノテーション取得失敗: {e}")
+            return []
+
+    @staticmethod
+    def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
+        """
+        AI アノテーション指示を md テキストに機械的に適用する。
+        元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
+        """
+        if not annotations:
+            return md
+
+        lines = md.split("\n")
+
+        for ann in annotations:
+            if "line" in ann:
+                idx = ann.get("line")
+                ann_type = ann.get("type", "")
+                if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
+                    continue
+                if ann_type == "section_break":
+                    # 既に分割マーカーまたは見出しプレフィックスがある行はスキップ
+                    if not lines[idx].startswith(G11Controller._SPLIT_MARKER) and \
+                       not lines[idx].startswith("# ") and \
+                       not lines[idx].startswith("## "):
+                        lines[idx] = G11Controller._SPLIT_MARKER + lines[idx]
+                    continue
+                prefix = G11Controller._LINE_PREFIX.get(ann_type)
+                if prefix is None:
+                    continue
+                line = lines[idx]
+                # 既により強い（または同じ）プレフィックスがあればスキップ
+                if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
+                    continue
+                if line.startswith("## ") and ann_type == "heading_2":
+                    continue
+                if line.startswith(prefix):
+                    continue
+                lines[idx] = prefix + line
+
+        result = "\n".join(lines)
+
+        for ann in annotations:
+            if "span" in ann:
+                span_text = ann.get("span", "")
+                ann_type = ann.get("type", "")
+                wrap = G11Controller._SPAN_WRAP.get(ann_type)
+                if not wrap or not span_text or span_text not in result:
+                    continue
+                open_tag, close_tag = wrap
+                # 既に同タグで囲まれていればスキップ
+                if f"{open_tag}{span_text}{close_tag}" in result:
+                    continue
+                result = result.replace(span_text, f"{open_tag}{span_text}{close_tag}", 1)
+
+        return result
 
     @staticmethod
     def _split_md_to_articles(full_md: str) -> List[Dict[str, str]]:
-        """Markdownを # / ## 見出しでarticleに分割する。"""
+        """Markdown を # / ## 見出し と section_break マーカーで article に分割する。"""
         import re as _re
-        parts = _re.split(r'\n(?=#{1,2} )', "\n" + full_md)
+        marker = G11Controller._SPLIT_MARKER
+        # section_break マーカーを改行付き分割境界に統一してから分割
+        normalized = full_md.replace(marker, "\n" + marker)
+        parts = _re.split(r'\n(?=#{1,2} |\x00SPLIT\x00)', "\n" + normalized)
         articles = []
         for part in parts:
             part = part.strip()
+            if not part:
+                continue
+            # section_break マーカーを除去してから処理
+            part = part.replace(marker, "").strip()
             if not part:
                 continue
             lines = part.split("\n")
@@ -473,8 +600,13 @@ class G11Controller:
         non_table_text_blocks: List[Dict[str, Any]] = None,
     ) -> List[Dict[str, str]]:
         """
-        非表テキストブロックにMarkdownマークアップを付加してarticleリストを返す。
-        pdfplumber書式情報（text_lines）があればそれを優先し、Geminiに渡して精度を上げる。
+        非表テキストブロックに構造アノテーションを付加して article リストを返す。
+
+        フロー:
+          1. text_lines があれば _apply_typography_markup でフォント由来の見出し・装飾を付与
+          2. _get_ai_annotations で Gemini に JSON アノテーション指示を返させる
+             （AI はテキストを生成しない。行番号とスパン文字列のみ返す）
+          3. _apply_annotations でプログラムが指示を機械的に適用
         """
         blocks = non_table_text_blocks or []
         if not blocks and not (non_table_text or "").strip():
@@ -487,27 +619,22 @@ class G11Controller:
                 if not text:
                     continue
                 text_lines = block.get("text_lines") or []
-                # pdfplumber書式情報が十分あればtypography-firstでMarkdownを生成し、
-                # Geminiに書式ヒントとして渡す
-                md = G11Controller._markup_block_with_gemini(text, text_lines or None)
-                # text_linesがある場合はredマーカーをGeminiが見落とすため後処理で補完
                 if text_lines:
-                    red_texts = {ln["text"] for ln in text_lines if ln.get("red")}
-                    if red_texts:
-                        result_lines = []
-                        for ln in md.split("\n"):
-                            bare = ln.lstrip("#- *>[").strip().rstrip("*]")
-                            if any(r and r in bare for r in red_texts) and "[RED]" not in ln:
-                                result_lines.append(f"[RED]{ln}[/RED]")
-                            else:
-                                result_lines.append(ln)
-                        md = "\n".join(result_lines)
+                    md = G11Controller._apply_typography_markup(text, text_lines)
+                    annotations = G11Controller._get_ai_annotations(text, has_typography=True)
+                else:
+                    md = text
+                    annotations = G11Controller._get_ai_annotations(text, has_typography=False)
+                if annotations:
+                    md = G11Controller._apply_annotations(md, annotations)
                 if md.strip():
                     md_parts.append(md)
         else:
             nt = (non_table_text or "").strip()
             if nt:
-                md_parts.append(G11Controller._markup_block_with_gemini(nt))
+                annotations = G11Controller._get_ai_annotations(nt, has_typography=False)
+                md = G11Controller._apply_annotations(nt, annotations) if annotations else nt
+                md_parts.append(md)
 
         if not md_parts:
             return []
