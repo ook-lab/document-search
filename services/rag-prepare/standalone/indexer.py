@@ -575,28 +575,27 @@ class RagPrepareSearchIndexer:
 
     @staticmethod
     def _merge_pdf_lines(text: str) -> str:
-        """PDF物理行の折り返しを段落単位に結合する。"""
+        """PDF物理行の折り返しを段落単位に結合する。
+        - 連続行（\\n 区切り）: ENDERS で終わらない行 → 直結（改行なし結合）
+        - 空行（\\n\\n）: 常に保持（改行あり結合 = 段落区切り）
+        - 構造行（# ## - > ---）は前後と結合しない
+        """
         ENDERS = frozenset('。！？」』）】…')
-        CONT = frozenset('のてでにがはをもとやずし')
+        STRUCT = ('# ', '## ', '- ', '> ', '---')
         lines = text.split('\n')
         result: List[str] = []
-        skip_blanks = False
+
         for line in lines:
             if not line:
-                if result and result[-1] and result[-1][-1] in CONT:
-                    skip_blanks = True
-                else:
-                    skip_blanks = False
+                result.append(line)  # 空行は常に保持
+            elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
+                if any(result[-1].startswith(p) for p in STRUCT):
                     result.append(line)
+                else:
+                    result[-1] += line
             else:
-                if skip_blanks and result and result[-1]:
-                    result[-1] += line
-                    skip_blanks = False
-                elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
-                    result[-1] += line
-                else:
-                    result.append(line)
-                    skip_blanks = False
+                result.append(line)
+
         return '\n'.join(result)
 
     @staticmethod

@@ -436,34 +436,32 @@ class G11Controller:
         return "\n".join(result)
 
     _PDF_SENTENCE_ENDERS = frozenset('。！？」』）】…')
-    # これらで終わる行は文の途中（次行と結合する）。空行を挟んでも同様。
-    _PDF_CONTINUATION_ENDINGS = frozenset('のてでにがはをもとやずし')
+    # 構造行プレフィックス（これで始まる行は前後の行と結合しない）
+    _STRUCTURAL_PREFIXES = ('# ', '## ', '- ', '> ', '---')
 
     @staticmethod
     def _merge_pdf_lines(text: str) -> str:
         """PDF物理行の折り返しを段落単位に結合する。
-        \\n 区切りも \\n\\n 区切りも、継続行なら結合する。"""
+        - 連続行（\\n 区切り）: ENDERS で終わらない行 → 直結（改行なし結合）
+        - 空行（\\n\\n）: 常に保持（改行あり結合 = 段落区切り）
+        - 構造行（# ## - > ---）は前後と結合しない
+        """
         ENDERS = G11Controller._PDF_SENTENCE_ENDERS
-        CONT = G11Controller._PDF_CONTINUATION_ENDINGS
+        STRUCT = G11Controller._STRUCTURAL_PREFIXES
         lines = text.split('\n')
         result: List[str] = []
-        skip_blanks = False
+
         for line in lines:
             if not line:
-                if result and result[-1] and result[-1][-1] in CONT:
-                    skip_blanks = True  # 継続助詞で終わった → 空行を飛ばして次行と結合
-                else:
-                    skip_blanks = False
+                result.append(line)  # 空行は常に保持
+            elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
+                if any(result[-1].startswith(p) for p in STRUCT):
                     result.append(line)
+                else:
+                    result[-1] += line
             else:
-                if skip_blanks and result and result[-1]:
-                    result[-1] += line
-                    skip_blanks = False
-                elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
-                    result[-1] += line
-                else:
-                    result.append(line)
-                    skip_blanks = False
+                result.append(line)
+
         return '\n'.join(result)
 
     @staticmethod
@@ -513,6 +511,8 @@ class G11Controller:
                 "（literary_device, metaphor, rhetorical_question 等）。\n"
                 "  【禁止②】語自体がすでに自分のカテゴリを説明している抽象名詞をタグ対象にしない。"
                 "「気持ち」に[EMOTION]、「歌い方」に[METHOD]を付けるのは翻訳であり意味がない。\n"
+                "  【禁止③】歌詞・詩句・文の断片をスパンタグで囲まない。"
+                "song_title 型を定義した場合は楽曲の正式タイトル（固有名詞）にのみ使用し、歌詞の一節は対象外。\n"
                 "  タグは読者が『スキャンして探したい』具体的な固有情報"
                 "（日時・場所・人名・物品名・金額・締切など）にのみ付ける。\n\n"
                 f"行レベル（line キー）の固定型: {line_types}\n"
@@ -608,6 +608,7 @@ class G11Controller:
     def _split_md_to_articles(full_md: str) -> List[Dict[str, str]]:
         """Markdown を # / ## 見出し と section_break マーカーで article に分割する。"""
         import re as _re
+        _strip_spans = lambda s: _re.sub(r'\[/?[A-Z][A-Z0-9_]*\]', '', s).strip()
         marker = G11Controller._SPLIT_MARKER
         # section_break マーカーを改行付き分割境界に統一してから分割
         normalized = full_md.replace(marker, "\n" + marker)
@@ -623,10 +624,10 @@ class G11Controller:
                 continue
             lines = part.split("\n")
             if lines[0].startswith("## "):
-                title = lines[0][3:].strip()
+                title = _strip_spans(lines[0][3:])
                 body = "\n".join(lines[1:]).strip()
             elif lines[0].startswith("# "):
-                title = lines[0][2:].strip()
+                title = _strip_spans(lines[0][2:])
                 body = "\n".join(lines[1:]).strip()
             else:
                 title = ""
@@ -754,7 +755,7 @@ class G11Controller:
                         md_parts.append(text)
                 if not md_parts:
                     continue
-                full_text = G11Controller._merge_pdf_lines("\n\n".join(md_parts))
+                full_text = G11Controller._merge_pdf_lines("\n".join(md_parts))
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 all_annotation_types.update(result.get("annotation_types") or {})
                 annotations = result.get("annotations") or []
