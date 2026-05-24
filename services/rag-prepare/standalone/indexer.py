@@ -38,13 +38,6 @@ class RagPrepareSearchIndexer:
         "blockquote": "> ",
     }
 
-    # アノテーション型 → スパンタグ (開, 閉)
-    _SPAN_WRAP: Dict[str, tuple] = {
-        "date": ("[DATE]", "[/DATE]"),
-        "emphasis": ("**", "**"),
-        "warning": ("[WARNING]", "[/WARNING]"),
-    }
-
     # 内部分割マーカー
     _SPLIT_MARKER = "\x00SPLIT\x00"
 
@@ -581,39 +574,45 @@ class RagPrepareSearchIndexer:
         return "\n".join(lines)
 
     @staticmethod
-    def _get_ai_annotations(text: str) -> List[Dict[str, Any]]:
+    def _get_ai_annotations(text: str) -> Dict[str, Any]:
         """
         Gemini にテキスト構造のアノテーション指示を JSON で返させる。
         AI はテキストを生成・変更しない。行番号とスパン文字列のみ返す。
+
+        戻り値: {"annotation_types": {型名: 説明, ...}, "annotations": [...]}
+        annotation_types は AI がこの文書に合わせて 5〜8 種類自由に定義する。
         """
         if not text.strip():
-            return []
+            return {"annotation_types": {}, "annotations": []}
         try:
             import json as _json
             import os
             import google.generativeai as genai
             api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
             if not api_key:
-                return []
+                return {"annotation_types": {}, "annotations": []}
 
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
 
             prompt = (
-                "次のテキストの構造を解析し、アノテーション指示を JSON のみで返してください。\n"
+                "次のテキストを読んで、読者にとって重要な情報の種類を自分で決め、"
+                "アノテーション指示を JSON のみで返してください。\n"
                 "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
-                "行レベル（line キー）のアノテーション型: "
+                "annotation_types: このドキュメントに合ったスパン型を 5〜8 個定義する。\n"
+                "  型名は英小文字スネークケース（date, place, item, person, deadline 等）\n"
+                "  説明は日本語（例: place: 集合場所・解散場所・目的地の固有名詞）\n\n"
+                "行レベル（line キー）の固定型: "
                 "heading_1（最重要見出し）, heading_2（セクション見出し）, "
-                "section_break（話題の切れ目・新しいセクションの開始行）, "
-                "bullet_item（並列する箇条書き項目）, blockquote（注記・引用）\n"
-                "スパンレベル（span キー）のアノテーション型: "
-                "date（日付・時刻・期限）, emphasis（重要語句）, warning（注意・警告語句）\n\n"
-                "section_break は話題が切り替わる行に付ける。"
-                "heading_1/heading_2 を付けた行には section_break を重ねて付けなくてよい。\n\n"
+                "section_break（話題の切れ目）, bullet_item（箇条書き項目）, blockquote（注記・引用）\n"
+                "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
+                "section_break の制約: 文書全体で最大 5 箇所まで。"
+                "段落ごとに区切らず、読み手が「ここから別の話題だ」と感じる大きな転換点のみに付ける。\n\n"
                 "出力形式（例）:\n"
-                '{"annotations": [{"line": 0, "type": "heading_1"}, '
-                '{"line": 5, "type": "section_break"}, '
-                '{"span": "来週金曜日", "type": "date"}]}\n\n'
+                '{"annotation_types": {"date": "日付・時刻・期限", "place": "集合・解散場所"}, '
+                '"annotations": [{"line": 0, "type": "heading_1"}, '
+                '{"span": "来週金曜日", "type": "date"}, '
+                '{"span": "こどもの国", "type": "place"}]}\n\n'
                 "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
                 f"テキスト:\n{numbered[:4000]}"
             )
@@ -623,22 +622,26 @@ class RagPrepareSearchIndexer:
             resp = model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=1000,
+                    max_output_tokens=1500,
                     temperature=0.0,
                     response_mime_type="application/json",
                 ),
             )
             data = _json.loads(resp.text.strip())
-            return data.get("annotations") or []
+            return {
+                "annotation_types": data.get("annotation_types") or {},
+                "annotations": data.get("annotations") or [],
+            }
         except Exception as e:
             logger.warning("[RAG] AI アノテーション取得失敗: %s", e)
-            return []
+            return {"annotation_types": {}, "annotations": []}
 
     @staticmethod
     def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
         """
         AI アノテーション指示を md テキストに機械的に適用する。
         元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
+        スパン型は [TYPE_NAME]...[/TYPE_NAME] に統一（型名は大文字化）。
         section_break は _SPLIT_MARKER を挿入（呼び出し元が --- に変換）。
         """
         if not annotations:
@@ -676,11 +679,11 @@ class RagPrepareSearchIndexer:
         for ann in annotations:
             if "span" in ann:
                 span_text = ann.get("span", "")
-                ann_type = ann.get("type", "")
-                wrap = RagPrepareSearchIndexer._SPAN_WRAP.get(ann_type)
-                if not wrap or not span_text or span_text not in result:
+                ann_type = ann.get("type", "").upper()
+                if not ann_type or not span_text or span_text not in result:
                     continue
-                open_tag, close_tag = wrap
+                open_tag = f"[{ann_type}]"
+                close_tag = f"[/{ann_type}]"
                 if f"{open_tag}{span_text}{close_tag}" in result:
                     continue
                 result = result.replace(span_text, f"{open_tag}{span_text}{close_tag}", 1)

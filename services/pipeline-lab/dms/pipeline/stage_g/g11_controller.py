@@ -64,13 +64,6 @@ class G11Controller:
     # 分割マーカー（_split_md_to_articles で分割境界として使う）
     _SPLIT_MARKER = "\x00SPLIT\x00"
 
-    # アノテーション型 → スパンタグ (開, 閉)
-    _SPAN_WRAP: Dict[str, tuple] = {
-        "date": ("[DATE]", "[/DATE]"),
-        "emphasis": ("**", "**"),
-        "warning": ("[WARNING]", "[/WARNING]"),
-    }
-
     def __init__(self, document_id: Optional[str] = None, g26_model_name: Optional[str] = None) -> None:
         g62 = G62TableLayoutProcessor(document_id=document_id)
         self._g61 = G61LayoutBridgeProcessor(document_id=document_id, next_stage=g62)
@@ -442,22 +435,22 @@ class G11Controller:
         return "\n".join(result)
 
     @staticmethod
-    def _get_ai_annotations(text: str, has_typography: bool = False) -> List[Dict[str, Any]]:
+    def _get_ai_annotations(text: str, has_typography: bool = False) -> Dict[str, Any]:
         """
         Gemini にテキスト構造のアノテーション指示を JSON で返させる。
         AI はテキストを生成・変更しない。行番号とスパン文字列のみ返す。
 
-        has_typography=True のとき、フォント由来の見出しは既に付与済みなので
-        行レベルは bullet_item / blockquote のみ依頼する。
+        戻り値: {"annotation_types": {型名: 説明, ...}, "annotations": [...]}
+        annotation_types は AI がこの文書に合わせて 5〜8 種類自由に定義する。
         """
         if not text.strip():
-            return []
+            return {"annotation_types": {}, "annotations": []}
         try:
             import json as _json
             import google.generativeai as genai
             from dms.common.config.settings import settings
             if not settings.GOOGLE_AI_API_KEY:
-                return []
+                return {"annotation_types": {}, "annotations": []}
 
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
@@ -478,17 +471,22 @@ class G11Controller:
                 )
 
             prompt = (
-                "次のテキストの構造を解析し、アノテーション指示を JSON のみで返してください。\n"
+                "次のテキストを読んで、読者にとって重要な情報の種類を自分で決め、"
+                "アノテーション指示を JSON のみで返してください。\n"
                 "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
-                f"行レベル（line キー）のアノテーション型: {line_types}\n"
-                "スパンレベル（span キー）のアノテーション型: "
-                "date（日付・時刻・期限）, emphasis（重要語句）, warning（注意・警告語句）\n\n"
-                "section_break は話題が切り替わる行に付ける。"
-                "heading_1/heading_2 を付けた行には section_break を重ねて付けなくてよい。\n\n"
+                "annotation_types: このドキュメントに合ったスパン型を 5〜8 個定義する。\n"
+                "  型名は英小文字スネークケース（date, place, item, person, deadline 等）\n"
+                "  説明は日本語（例: place: 集合場所・解散場所・目的地の固有名詞）\n\n"
+                f"行レベル（line キー）の固定型: {line_types}\n"
+                "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
+                "section_break の制約: 文書全体で最大 5 箇所まで。"
+                "段落ごとに区切らず、読み手が「ここから別の話題だ」と感じる大きな転換点のみに付ける。\n\n"
                 "出力形式（例）:\n"
-                '{"annotations": [{"line": 0, "type": "heading_1"}, '
+                '{"annotation_types": {"date": "日付・時刻・期限", "place": "集合・解散場所"}, '
+                '"annotations": [{"line": 0, "type": "heading_1"}, '
                 '{"line": 5, "type": "section_break"}, '
-                '{"span": "来週金曜日", "type": "date"}]}\n\n'
+                '{"span": "来週金曜日", "type": "date"}, '
+                '{"span": "こどもの国", "type": "place"}]}\n\n'
                 "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
                 f"テキスト:\n{numbered[:4000]}"
             )
@@ -498,22 +496,26 @@ class G11Controller:
             resp = model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=1000,
+                    max_output_tokens=1500,
                     temperature=0.0,
                     response_mime_type="application/json",
                 ),
             )
             data = _json.loads(resp.text.strip())
-            return data.get("annotations") or []
+            return {
+                "annotation_types": data.get("annotation_types") or {},
+                "annotations": data.get("annotations") or [],
+            }
         except Exception as e:
             logger.warning(f"[G21] AI アノテーション取得失敗: {e}")
-            return []
+            return {"annotation_types": {}, "annotations": []}
 
     @staticmethod
     def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
         """
         AI アノテーション指示を md テキストに機械的に適用する。
         元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
+        スパン型は [TYPE_NAME]...[/TYPE_NAME] に統一（型名は大文字化）。
         """
         if not annotations:
             return md
@@ -527,7 +529,6 @@ class G11Controller:
                 if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
                     continue
                 if ann_type == "section_break":
-                    # 既に分割マーカーまたは見出しプレフィックスがある行はスキップ
                     if not lines[idx].startswith(G11Controller._SPLIT_MARKER) and \
                        not lines[idx].startswith("# ") and \
                        not lines[idx].startswith("## "):
@@ -537,7 +538,6 @@ class G11Controller:
                 if prefix is None:
                     continue
                 line = lines[idx]
-                # 既により強い（または同じ）プレフィックスがあればスキップ
                 if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
                     continue
                 if line.startswith("## ") and ann_type == "heading_2":
@@ -551,12 +551,11 @@ class G11Controller:
         for ann in annotations:
             if "span" in ann:
                 span_text = ann.get("span", "")
-                ann_type = ann.get("type", "")
-                wrap = G11Controller._SPAN_WRAP.get(ann_type)
-                if not wrap or not span_text or span_text not in result:
+                ann_type = ann.get("type", "").upper()
+                if not ann_type or not span_text or span_text not in result:
                     continue
-                open_tag, close_tag = wrap
-                # 既に同タグで囲まれていればスキップ
+                open_tag = f"[{ann_type}]"
+                close_tag = f"[/{ann_type}]"
                 if f"{open_tag}{span_text}{close_tag}" in result:
                     continue
                 result = result.replace(span_text, f"{open_tag}{span_text}{close_tag}", 1)
@@ -595,6 +594,42 @@ class G11Controller:
         return articles
 
     @staticmethod
+    def _merge_small_articles(
+        articles: List[Dict[str, Any]],
+        min_body_chars: int = 80,
+        max_articles: int = 8,
+    ) -> List[Dict[str, Any]]:
+        """
+        細かく分割しすぎた article を統合する。
+
+        - 本文が min_body_chars 未満の article は前の article に結合する
+        - それでも max_articles を超える場合は末尾から順に結合して上限に収める
+        """
+        if len(articles) <= 1:
+            return articles
+
+        merged: List[Dict[str, Any]] = []
+        for art in articles:
+            body = (art.get("body") or "").strip()
+            title = (art.get("title") or "").strip()
+            if merged and not title and len(body) < min_body_chars:
+                prev = merged[-1]
+                prev_body = (prev.get("body") or "").strip()
+                prev["body"] = (prev_body + "\n\n" + body).strip() if prev_body else body
+            else:
+                merged.append(dict(art))
+
+        while len(merged) > max_articles:
+            # 末尾2つを結合
+            last = merged.pop()
+            prev = merged[-1]
+            last_body = (last.get("body") or "").strip()
+            prev_body = (prev.get("body") or "").strip()
+            prev["body"] = (prev_body + "\n\n" + last_body).strip() if prev_body else last_body
+
+        return merged
+
+    @staticmethod
     def _g21_articles(
         non_table_text: str,
         non_table_text_blocks: List[Dict[str, Any]] = None,
@@ -612,7 +647,9 @@ class G11Controller:
         if not blocks and not (non_table_text or "").strip():
             return []
 
-        md_parts = []
+        md_parts: List[str] = []
+        all_annotation_types: Dict[str, str] = {}
+
         if blocks:
             for block in blocks:
                 text = (block.get("text") or "").strip()
@@ -621,10 +658,12 @@ class G11Controller:
                 text_lines = block.get("text_lines") or []
                 if text_lines:
                     md = G11Controller._apply_typography_markup(text, text_lines)
-                    annotations = G11Controller._get_ai_annotations(text, has_typography=True)
+                    result = G11Controller._get_ai_annotations(text, has_typography=True)
                 else:
                     md = text
-                    annotations = G11Controller._get_ai_annotations(text, has_typography=False)
+                    result = G11Controller._get_ai_annotations(text, has_typography=False)
+                all_annotation_types.update(result.get("annotation_types") or {})
+                annotations = result.get("annotations") or []
                 if annotations:
                     md = G11Controller._apply_annotations(md, annotations)
                 if md.strip():
@@ -632,7 +671,9 @@ class G11Controller:
         else:
             nt = (non_table_text or "").strip()
             if nt:
-                annotations = G11Controller._get_ai_annotations(nt, has_typography=False)
+                result = G11Controller._get_ai_annotations(nt, has_typography=False)
+                all_annotation_types.update(result.get("annotation_types") or {})
+                annotations = result.get("annotations") or []
                 md = G11Controller._apply_annotations(nt, annotations) if annotations else nt
                 md_parts.append(md)
 
@@ -641,7 +682,12 @@ class G11Controller:
 
         full_md = "\n\n".join(md_parts)
         articles = G11Controller._split_md_to_articles(full_md)
-        return articles if articles else [{"title": "", "body": full_md}]
+        if not articles:
+            articles = [{"title": "", "body": full_md}]
+        articles = G11Controller._merge_small_articles(articles)
+        if all_annotation_types:
+            articles[0]["annotation_types"] = all_annotation_types
+        return articles
 
     @staticmethod
     def _dedupe_prose_sections(ui_data: Dict[str, Any]) -> None:

@@ -292,6 +292,16 @@
         }
         .reading-card .rc-title { font-weight: 700; margin-bottom: 0.35rem; color: var(--text-main); }
         .reading-card .rc-meta { font-size: 0.74rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+        /* article body: structured HTML rendering (no pre-wrap) */
+        .rc-article-body { font-size: 0.9rem; line-height: 1.65; margin: 0.15rem 0 0; }
+        .rc-article-body p.rc-prose { margin: 0 0 0.35rem; }
+        .rc-article-body h3.rc-h1 { font-size: 1.0rem; font-weight: 700; margin: 0.4rem 0 0.2rem; }
+        .rc-article-body h4.rc-h2 { font-size: 0.93rem; font-weight: 700; margin: 0.35rem 0 0.15rem; }
+        .rc-article-body ul.rc-list { margin: 0.1rem 0 0.35rem 1.1rem; padding: 0; }
+        .rc-article-body li { margin-bottom: 0.1rem; line-height: 1.6; }
+        .rc-article-body blockquote.rc-blockquote { border-left: 3px solid var(--border); padding: 0.2rem 0.55rem; margin: 0.2rem 0 0.35rem; color: var(--text-muted); font-size: 0.87rem; }
+        .tag-span { border-radius: 3px; padding: 0 0.25em; font-size: 0.88em; font-weight: 500; }
+        .tag-red { color: #dc2626; font-weight: 600; }
         table.reading-table {
             width: max-content;
             max-width: 100%;
@@ -1052,6 +1062,88 @@
 
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    // 型名ごとのカラーパレット（動的型に順番に割り当て）
+    var _TAG_PALETTE = [
+        {bg:'#dbeafe',color:'#1d4ed8'}, // blue   (date 等)
+        {bg:'#dcfce7',color:'#166534'}, // green  (place 等)
+        {bg:'#fef9c3',color:'#713f12'}, // yellow (item 等)
+        {bg:'#fce7f3',color:'#9d174d'}, // pink   (person 等)
+        {bg:'#fee2e2',color:'#991b1b'}, // red    (warning 等)
+        {bg:'#ede9fe',color:'#5b21b6'}, // purple
+        {bg:'#ffedd5',color:'#9a3412'}, // orange
+        {bg:'#e0f2fe',color:'#0369a1'}, // sky
+    ];
+    var _tagColorCache = {};
+    function _getTagStyle(type) {
+        var key = String(type).toUpperCase();
+        if (!_tagColorCache[key]) {
+            var idx = Object.keys(_tagColorCache).length % _TAG_PALETTE.length;
+            _tagColorCache[key] = _TAG_PALETTE[idx];
+        }
+        var c = _tagColorCache[key];
+        return 'background:' + c.bg + ';color:' + c.color;
+    }
+
+    // インライン記法を HTML に変換
+    // [TYPE_NAME]...[/TYPE_NAME] を動的にバッジ化（型名は何でも対応）
+    function renderInline(s) {
+        s = escapeHtml(s);
+        s = s.replace(/\[RED\]([\s\S]*?)\[\/RED\]/g, '<span class="tag-red">$1</span>');
+        s = s.replace(/\*\*([\s\S]*?)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/\[([A-Z][A-Z0-9_]*)\]([\s\S]*?)\[\/\1\]/g, function(_, type, content) {
+            return '<span class="tag-span" style="' + _getTagStyle(type) + '" data-type="' + type + '">' + content + '</span>';
+        });
+        return s;
+    }
+
+    // g21 article body を構造化 HTML に変換する
+    // ・二重改行 → 段落区切り
+    // ・単一改行 → 連結（PDF 行折り返し）
+    // ・# / ## → 見出し、- → リスト、> → blockquote
+    // ・[DATE] ** [WARNING] [RED] → インラインバッジ
+    function renderArticleBody(body) {
+        if (!body) return '';
+        var blocks = String(body).split(/\n{2,}/);
+        var html = '';
+        blocks.forEach(function(block) {
+            block = block.trim();
+            if (!block) return;
+            var lines = block.split('\n');
+            var first = lines[0] || '';
+            if (/^# /.test(first)) {
+                html += '<h3 class="rc-h1">' + renderInline(first.slice(2).trim()) + '</h3>';
+                var rest = lines.slice(1).map(function(l){return l.trim();}).filter(Boolean).join('');
+                if (rest) html += '<p class="rc-prose">' + renderInline(rest) + '</p>';
+            } else if (/^## /.test(first)) {
+                html += '<h4 class="rc-h2">' + renderInline(first.slice(3).trim()) + '</h4>';
+                var rest = lines.slice(1).map(function(l){return l.trim();}).filter(Boolean).join('');
+                if (rest) html += '<p class="rc-prose">' + renderInline(rest) + '</p>';
+            } else if (lines.every(function(l){ return /^>\s/.test(l.trim()) || !l.trim(); })) {
+                var text = lines.filter(function(l){return l.trim();})
+                    .map(function(l){return l.trim().replace(/^>\s*/, '');}).join('');
+                html += '<blockquote class="rc-blockquote">' + renderInline(text) + '</blockquote>';
+            } else if (lines.some(function(l){ return /^- /.test(l.trim()); })) {
+                html += '<ul class="rc-list">';
+                var cur = null;
+                lines.forEach(function(l) {
+                    var t = l.trim();
+                    if (/^- /.test(t)) {
+                        if (cur !== null) html += '<li>' + renderInline(cur) + '</li>';
+                        cur = t.slice(2);
+                    } else if (t && cur !== null) {
+                        cur += t;
+                    }
+                });
+                if (cur !== null) html += '<li>' + renderInline(cur) + '</li>';
+                html += '</ul>';
+            } else {
+                var text = lines.map(function(l){return l.trim();}).filter(Boolean).join('');
+                html += '<p class="rc-prose">' + renderInline(text) + '</p>';
+            }
+        });
+        return html;
     }
 
     /** 読み取り用：先頭行から列数を推定（ヘッダーが広い表で null 列だらけになるのを防ぐ） */
@@ -1854,7 +1946,7 @@
                             if (!gb && !gt) return;
                             html += '<div class="reading-card" style="margin-bottom:0.65rem;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">';
                             if (gt) html += '<div class="rc-title">' + escapeHtml(gt) + '</div>';
-                            if (gb) html += '<div class="reading-prose" style="border:none;padding:0.25rem 0 0;background:transparent;">' + escapeHtml(gb) + '</div>';
+                            if (gb) html += '<div class="rc-article-body">' + renderArticleBody(gb) + '</div>';
                             html += '</div>';
                         });
                     }
@@ -1909,7 +2001,7 @@
                 if (!title && !body) return;
                 html += '<div class="reading-card" style="margin-bottom:0.65rem;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">';
                 if (title) html += '<div class="rc-title">' + escapeHtml(title) + '</div>';
-                if (body) html += '<div class="reading-prose" style="border:none;padding:0.25rem 0 0;background:transparent;">' + escapeHtml(body) + '</div>';
+                if (body) html += '<div class="rc-article-body">' + renderArticleBody(body) + '</div>';
                 html += '</div>';
             } else if (k === 'timeline_tail') {
                 var timeline = ud.timeline || [];
@@ -1977,9 +2069,7 @@
                 var body = (a.body || '').trim();
                 html += '<div class="reading-card" style="margin-bottom:0.65rem;">';
                 if (title) html += '<div class="rc-title">' + escapeHtml(title) + '</div>';
-                if (body) {
-                    html += '<div class="reading-prose" style="border:none;padding:0.25rem 0 0;background:transparent;">' + escapeHtml(body) + '</div>';
-                }
+                if (body) html += '<div class="rc-article-body">' + renderArticleBody(body) + '</div>';
                 html += '</div>';
             });
             html += '</div></details></div>';
