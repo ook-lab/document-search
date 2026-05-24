@@ -201,9 +201,6 @@ class B62PDFWord2019Processor:
             'word_count': len(text.split()) if text else 0
         }
 
-    # 行末がこれらで終わる場合は文の区切り → 次行は新しい文
-    _SENTENCE_ENDERS = frozenset('。！？」』）】…')
-
     def _chars_to_text_lines(self, chars: List[Dict]) -> str:
         if not chars:
             return ""
@@ -224,26 +221,7 @@ class B62PDFWord2019Processor:
         for line_chars in lines:
             line_chars_sorted = sorted(line_chars, key=lambda c: c["x0"])
             result_lines.append(self._line_chars_to_text(line_chars_sorted))
-        return "\n".join(self._merge_paragraph_lines(result_lines))
-
-    def _merge_paragraph_lines(self, lines: List[str]) -> List[str]:
-        """PDF物理行を段落単位に結合する。
-        日本語の継続条件: 前行が文末記号で終わらず、次行が字下げなし。"""
-        if not lines:
-            return lines
-        merged: List[str] = [lines[0]]
-        for line in lines[1:]:
-            if not line:
-                merged.append(line)
-                continue
-            prev = merged[-1]
-            prev_ends_sentence = bool(prev) and prev[-1] in self._SENTENCE_ENDERS
-            next_is_indent = line.startswith('　')
-            if prev and not prev_ends_sentence and not next_is_indent:
-                merged[-1] = prev + line
-            else:
-                merged.append(line)
-        return merged
+        return "\n".join(result_lines)
 
     def _line_chars_to_text(self, line_chars: List[Dict]) -> str:
         if not line_chars:

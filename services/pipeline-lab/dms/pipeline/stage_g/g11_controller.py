@@ -435,6 +435,27 @@ class G11Controller:
                 result.append(raw_line)
         return "\n".join(result)
 
+    _PDF_SENTENCE_ENDERS = frozenset('。！？」』）】…')
+
+    @staticmethod
+    def _merge_pdf_lines(text: str) -> str:
+        """PDF物理行の折り返しを段落単位に結合する。"""
+        lines = text.split("\n")
+        merged: List[str] = []
+        for line in lines:
+            if not line:
+                merged.append(line)
+                continue
+            if merged:
+                prev = merged[-1]
+                if (prev
+                        and prev[-1] not in G11Controller._PDF_SENTENCE_ENDERS
+                        and not line.startswith('　')):
+                    merged[-1] = prev + line
+                    continue
+            merged.append(line)
+        return "\n".join(merged)
+
     @staticmethod
     def _get_ai_annotations(text: str, has_typography: bool = False) -> Dict[str, Any]:
         """
@@ -496,7 +517,7 @@ class G11Controller:
                 '{"span": "来週金曜日", "type": "date"}, '
                 '{"span": "こどもの国", "type": "place"}]}\n\n'
                 "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
-                f"テキスト:\n{numbered[:4000]}"
+                f"テキスト:\n{numbered}"
             )
 
             genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
@@ -504,7 +525,6 @@ class G11Controller:
             resp = model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=1500,
                     temperature=0.0,
                     response_mime_type="application/json",
                 ),
@@ -720,7 +740,7 @@ class G11Controller:
                         md_parts.append(text)
                 if not md_parts:
                     continue
-                full_text = "\n\n".join(md_parts)
+                full_text = G11Controller._merge_pdf_lines("\n\n".join(md_parts))
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 all_annotation_types.update(result.get("annotation_types") or {})
                 annotations = result.get("annotations") or []
@@ -730,7 +750,7 @@ class G11Controller:
                     articles = [{"title": "", "body": full_md}]
                 all_articles.extend(articles)
         else:
-            nt = (non_table_text or "").strip()
+            nt = G11Controller._merge_pdf_lines((non_table_text or "").strip())
             if not nt:
                 return []
             result = G11Controller._get_ai_annotations(nt, has_typography=False)

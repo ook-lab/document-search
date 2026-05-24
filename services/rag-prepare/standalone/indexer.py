@@ -620,7 +620,7 @@ class RagPrepareSearchIndexer:
                 '{"span": "来週金曜日", "type": "date"}, '
                 '{"span": "こどもの国", "type": "place"}]}\n\n'
                 "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
-                f"テキスト:\n{numbered[:4000]}"
+                f"テキスト:\n{numbered}"
             )
 
             genai.configure(api_key=api_key)
@@ -628,7 +628,6 @@ class RagPrepareSearchIndexer:
             resp = model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=1500,
                     temperature=0.0,
                     response_mime_type="application/json",
                 ),
