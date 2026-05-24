@@ -3177,12 +3177,27 @@
             } else if (sec.content.trim()) {
                 const div = document.createElement('div');
                 div.className = 'dme-text-section';
-                const ta = document.createElement('textarea');
-                ta.className = 'dme-grow';
-                ta.dataset.index = i;
-                ta.addEventListener('input', () => _dmeAutoResize(ta));
-                ta.value = sec.content;
-                div.appendChild(ta);
+                if (/\[[A-Z][A-Z0-9_]*\]/.test(sec.content)) {
+                    // アノテーションタグをバッジとして描画
+                    const rendered = document.createElement('div');
+                    rendered.className = 'rc-article-body';
+                    rendered.style.cssText = 'padding:0.35rem 0.1rem;min-height:1.5rem;';
+                    rendered.innerHTML = renderArticleBody(sec.content);
+                    div.appendChild(rendered);
+                    // _dmeSyncVisualToMd 用に textarea を非表示で保持
+                    const ta = document.createElement('textarea');
+                    ta.style.display = 'none';
+                    ta.dataset.index = i;
+                    ta.value = sec.content;
+                    div.appendChild(ta);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.className = 'dme-grow';
+                    ta.dataset.index = i;
+                    ta.addEventListener('input', () => _dmeAutoResize(ta));
+                    ta.value = sec.content;
+                    div.appendChild(ta);
+                }
                 container.appendChild(div);
             }
         }
