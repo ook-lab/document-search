@@ -487,12 +487,14 @@ class G11Controller:
 
             if has_typography:
                 line_types = (
+                    "paragraph_break（前行と結合しない・新しい項目・段落の開始行）, "
                     "section_break（話題の切れ目・新しいセクションの開始行）, "
                     "bullet_item（並列する箇条書き項目）, "
                     "blockquote（注記・引用・お知らせ補足）"
                 )
             else:
                 line_types = (
+                    "paragraph_break（前行と結合しない・新しい項目・段落の開始行）, "
                     "heading_1（文書タイトル等の最重要見出し）, "
                     "heading_2（セクション見出し）, "
                     "section_break（内容のテーマが切り替わる境界行）, "
@@ -517,6 +519,10 @@ class G11Controller:
                 "（日時・場所・人名・物品名・金額・締切など）にのみ付ける。\n\n"
                 f"行レベル（line キー）の固定型: {line_types}\n"
                 "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
+                "paragraph_break の使い方: このテキストの行は PDF の物理的な折り返しを含む。"
+                "散文（説明文・物語）で前の行から文が継続する場合は付けない（折り返しは結合する）。"
+                "「服装：体操着」「集合時刻と集合場所：」「☔雨天時は」「いざ学芸会本番」のように、"
+                "前の行と意味的に独立した新しい項目・段落・見出しには付ける。\n\n"
                 "section_break の使い方: 内容のテーマが明確に切り替わる行に付ける。"
                 "「遠足の案内」→「学芸会の内容」のように、読者が別トピックだと判断できる境界。"
                 "段落の区切りや修飾語句の変化には付けない。見出し行の有無は関係ない。\n\n"
@@ -524,6 +530,7 @@ class G11Controller:
                 '{"annotation_types": {"date": "日付・時刻・期限", "place": "集合・解散場所"}, '
                 '"annotations": [{"line": 0, "type": "heading_1"}, '
                 '{"line": 5, "type": "section_break"}, '
+                '{"line": 7, "type": "paragraph_break"}, '
                 '{"span": "来週金曜日", "type": "date"}, '
                 '{"span": "こどもの国", "type": "place"}]}\n\n'
                 "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
@@ -554,23 +561,32 @@ class G11Controller:
         AI アノテーション指示を md テキストに機械的に適用する。
         元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
         スパン型は [TYPE_NAME]...[/TYPE_NAME] に統一（型名は大文字化）。
-        """
-        if not annotations:
-            return md
 
+        行結合: AI が paragraph_break を付けなかった連続行（散文の折り返し）を結合する。
+        空行（\\n\\n）は常に保持する。
+        """
         lines = md.split("\n")
 
+        # 行結合を抑止するインデックス: 構造系アノテーションはすべて暗黙の paragraph_break
+        no_merge: set = set()
+
+        _LINE_TYPES = frozenset({"paragraph_break", "section_break", "heading_1", "heading_2", "bullet_item", "blockquote"})
         for ann in annotations:
             if "line" in ann:
                 idx = ann.get("line")
                 ann_type = ann.get("type", "")
                 if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
                     continue
+                if ann_type not in _LINE_TYPES:
+                    continue  # スパン型が誤って line キーで来た場合は無視
+                no_merge.add(idx)
                 if ann_type == "section_break":
                     if not lines[idx].startswith(G11Controller._SPLIT_MARKER) and \
                        not lines[idx].startswith("# ") and \
                        not lines[idx].startswith("## "):
                         lines[idx] = G11Controller._SPLIT_MARKER + lines[idx]
+                    continue
+                if ann_type == "paragraph_break":
                     continue
                 prefix = G11Controller._LINE_PREFIX.get(ann_type)
                 if prefix is None:
@@ -584,7 +600,18 @@ class G11Controller:
                     continue
                 lines[idx] = prefix + line
 
-        result = "\n".join(lines)
+        _HEAD_PREFIXES = ("# ", "## ", G11Controller._SPLIT_MARKER)
+
+        # 散文折り返し結合: no_merge に含まれない連続行を直結する
+        merged: List[str] = []
+        for i, line in enumerate(lines):
+            if not line:
+                merged.append(line)  # 空行は保持
+            elif merged and merged[-1] and i not in no_merge and not merged[-1].startswith(_HEAD_PREFIXES):
+                merged[-1] += line
+            else:
+                merged.append(line)
+        result = "\n".join(merged)
 
         for ann in annotations:
             if "span" in ann:
@@ -596,7 +623,6 @@ class G11Controller:
                 close_tag = f"[/{ann_type}]"
                 if f"{open_tag}{span_text}{close_tag}" in result:
                     continue
-                # スパンテキストが既存タグの内側にある場合はネストを作らずスキップ
                 import re as _re
                 if _re.search(r'\[[A-Z][A-Z0-9_]*\][^\[]*?' + _re.escape(span_text), result):
                     continue
@@ -755,23 +781,23 @@ class G11Controller:
                         md_parts.append(text)
                 if not md_parts:
                     continue
-                full_text = G11Controller._merge_pdf_lines("\n".join(md_parts))
+                full_text = "\n".join(md_parts)
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 all_annotation_types.update(result.get("annotation_types") or {})
                 annotations = result.get("annotations") or []
-                full_md = G11Controller._apply_annotations(full_text, annotations) if annotations else full_text
+                full_md = G11Controller._apply_annotations(full_text, annotations)
                 articles = G11Controller._split_md_to_articles(full_md)
                 if not articles:
                     articles = [{"title": "", "body": full_md}]
                 all_articles.extend(articles)
         else:
-            nt = G11Controller._merge_pdf_lines((non_table_text or "").strip())
+            nt = (non_table_text or "").strip()
             if not nt:
                 return []
             result = G11Controller._get_ai_annotations(nt, has_typography=False)
             all_annotation_types.update(result.get("annotation_types") or {})
             annotations = result.get("annotations") or []
-            full_md = G11Controller._apply_annotations(nt, annotations) if annotations else nt
+            full_md = G11Controller._apply_annotations(nt, annotations)
             articles = G11Controller._split_md_to_articles(full_md)
             if not articles:
                 articles = [{"title": "", "body": full_md}]

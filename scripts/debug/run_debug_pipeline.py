@@ -33,18 +33,19 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Set
 
-# プロジェクトルートをパスに追加
+# pipeline-lab サービスをパスに追加（ルートの dms/ は使わない）
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+PIPELINE_LAB_ROOT = PROJECT_ROOT / 'services' / 'pipeline-lab'
+sys.path.insert(0, str(PIPELINE_LAB_ROOT))
 
 # dms.pipeline.__init__.py の壊れたインポート（旧pipeline.py）を回避
 # 個別サブパッケージ（stage_a, stage_b, ...）は正常にインポート可能
 import types
 _pipeline_pkg = types.ModuleType('dms.pipeline')
-_pipeline_pkg.__path__ = [str(PROJECT_ROOT / 'dms' / 'pipeline')]
+_pipeline_pkg.__path__ = [str(PIPELINE_LAB_ROOT / 'dms' / 'pipeline')]
 _pipeline_pkg.__package__ = 'dms.pipeline'
 sys.modules.setdefault('dms', types.ModuleType('dms'))
-sys.modules['dms'].__path__ = [str(PROJECT_ROOT / 'dms')]
+sys.modules['dms'].__path__ = [str(PIPELINE_LAB_ROOT / 'dms')]
 sys.modules['dms.pipeline'] = _pipeline_pkg
 
 from dms.pipeline.substage_order import (
@@ -750,7 +751,6 @@ class DebugPipeline:
             stage_d_result=stage_d,
             stage_b_result=stage_b or None,
             output_dir=self.output_dir,
-            gemini_api_key=os.environ.get('GOOGLE_AI_API_KEY'),
         )
         self.save_stage("E", stage_e)
         ctx["E"] = stage_e

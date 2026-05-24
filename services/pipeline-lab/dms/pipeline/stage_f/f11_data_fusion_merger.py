@@ -495,7 +495,7 @@ class F11DataFusionMerger:
 
         # B+E 由来の本文テキストのみを返す（display_* は display_fields として別経路で渡す）
         text_parts = [b['text'] for b in blocks]
-        merged = '\n'.join(text_parts)
+        merged = '\n\n'.join(text_parts)
         ordered_blocks = []
         for b in blocks:
             ob: Dict[str, Any] = {

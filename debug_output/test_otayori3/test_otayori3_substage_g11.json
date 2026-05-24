@@ -1,0 +1,81 @@
+{
+  "success": true,
+  "ui_data": {
+    "document_info": {
+      "document_type": "GOOGLE_DOCS",
+      "year_context": null
+    },
+    "sections": [],
+    "tables": [],
+    "timeline": [],
+    "actions": [],
+    "notices": [],
+    "metadata": {
+      "section_count": 0,
+      "table_count": 0,
+      "event_count": 0,
+      "task_count": 0,
+      "notice_count": 0
+    },
+    "tables_review_html": "",
+    "tables_md_embed": "",
+    "g21_articles": [
+      {
+        "title": "たてわり遠足",
+        "body": "[DATE]来週金曜日[/DATE]はたてわり遠足です。担当する班のメンバーが全員楽しく過ごせるとよいです。[PERSON]６年生[/PERSON]は下級生のペースを考えて、計画を立てたり、歩くスピードに配慮できるとよいです。\n服装：[ITEM]体操着[/ITEM]（長そで・長ズボン併用可）、[ITEM]白靴下[/ITEM]、はきなれた[ITEM]運動靴[/ITEM]（必ず記名する）\n集合時刻と集合場所：[DATE]9時30分[/DATE]　[PLACE]こどもの国[/PLACE]　[PLACE]正面入り口広場[/PLACE]\n解散時刻と解散場所：[DATE]14時[/DATE]　[PLACE]長津田駅[/PLACE]\n☔雨天時は学校での活動になります。平常登校、下校[DATE]14時20分頃[/DATE]\n服装：[ITEM]制服[/ITEM]　　持ち物：[ITEM]お弁当[/ITEM]、[ITEM]水筒[/ITEM]、[ITEM]筆記用具[/ITEM]、[ITEM]iPad[/ITEM]、体操着",
+        "annotation_types": {
+          "date": "日付・時刻・期限",
+          "place": "集合・解散場所・目的地の固有名詞",
+          "item": "持ち物・服装・物品名",
+          "person": "人名・役職名",
+          "song_title": "楽曲の正式タイトル",
+          "event": "行事名"
+        }
+      },
+      {
+        "title": "いざ学芸会本番",
+        "body": "６年生は、学芸会で[SONG_TITLE]Back number[/SONG_TITLE]の「[SONG_TITLE]どうしてもどうしても[/SONG_TITLE]」を合唱します。\n今週の授業「[EVENT]Lラボ[/EVENT]」では、歌詞を読み解く活動を行いました。自分の心に残ったフレーズを一つ選び、その言葉にどんな意味や思いがこめられているのかを考えました。また、「どうしてもどうしても」というタイトルにも注目しました。なぜ同じ言葉を繰り返しているのか。そこには、どんな強い気持ちがあるのか。[PERSON]一人一人[/PERSON]が想像を広げていきました。さらに、「[SONG_TITLE]失くしたり　見つけたり[/SONG_TITLE]」「[SONG_TITLE]出会いよ　別れよ[/SONG_TITLE]」といった対照的な言葉にも目を向けました。人は出会いと別れを繰り返しながら成長していくこと、うれしいことだけでなく、迷いや葛藤もあることなど、６年生という今の自分たちに重ねながら考えました。最後には、「今の自分にとっての『どうしてもどうしても』とは何だろう」と、自分自身を振り返りました。友達との関わり、挑戦してきたこと、卒業に向かう今の気持ち。[PERSON]一人ひと[/PERSON]りが、自分の経験や思いと歌詞を結び付けながら、どんな歌い方をしたら気持ちが伝わるのかを考えました。歌詞を深く読み取ったことで、歌にこめる思いが大きく変わった子もいたようです。本番では、６年生それぞれの「どうしてもどうしても」が、在校生や保護者の皆様の心にも届くことを願っています。"
+      }
+    ]
+  },
+  "final_metadata": {
+    "g11_output": [],
+    "g14_output": [],
+    "g17_output": [],
+    "g21_output": [
+      {
+        "title": "たてわり遠足",
+        "body": "[DATE]来週金曜日[/DATE]はたてわり遠足です。担当する班のメンバーが全員楽しく過ごせるとよいです。[PERSON]６年生[/PERSON]は下級生のペースを考えて、計画を立てたり、歩くスピードに配慮できるとよいです。\n服装：[ITEM]体操着[/ITEM]（長そで・長ズボン併用可）、[ITEM]白靴下[/ITEM]、はきなれた[ITEM]運動靴[/ITEM]（必ず記名する）\n集合時刻と集合場所：[DATE]9時30分[/DATE]　[PLACE]こどもの国[/PLACE]　[PLACE]正面入り口広場[/PLACE]\n解散時刻と解散場所：[DATE]14時[/DATE]　[PLACE]長津田駅[/PLACE]\n☔雨天時は学校での活動になります。平常登校、下校[DATE]14時20分頃[/DATE]\n服装：[ITEM]制服[/ITEM]　　持ち物：[ITEM]お弁当[/ITEM]、[ITEM]水筒[/ITEM]、[ITEM]筆記用具[/ITEM]、[ITEM]iPad[/ITEM]、体操着",
+        "annotation_types": {
+          "date": "日付・時刻・期限",
+          "place": "集合・解散場所・目的地の固有名詞",
+          "item": "持ち物・服装・物品名",
+          "person": "人名・役職名",
+          "song_title": "楽曲の正式タイトル",
+          "event": "行事名"
+        }
+      },
+      {
+        "title": "いざ学芸会本番",
+        "body": "６年生は、学芸会で[SONG_TITLE]Back number[/SONG_TITLE]の「[SONG_TITLE]どうしてもどうしても[/SONG_TITLE]」を合唱します。\n今週の授業「[EVENT]Lラボ[/EVENT]」では、歌詞を読み解く活動を行いました。自分の心に残ったフレーズを一つ選び、その言葉にどんな意味や思いがこめられているのかを考えました。また、「どうしてもどうしても」というタイトルにも注目しました。なぜ同じ言葉を繰り返しているのか。そこには、どんな強い気持ちがあるのか。[PERSON]一人一人[/PERSON]が想像を広げていきました。さらに、「[SONG_TITLE]失くしたり　見つけたり[/SONG_TITLE]」「[SONG_TITLE]出会いよ　別れよ[/SONG_TITLE]」といった対照的な言葉にも目を向けました。人は出会いと別れを繰り返しながら成長していくこと、うれしいことだけでなく、迷いや葛藤もあることなど、６年生という今の自分たちに重ねながら考えました。最後には、「今の自分にとっての『どうしてもどうしても』とは何だろう」と、自分自身を振り返りました。友達との関わり、挑戦してきたこと、卒業に向かう今の気持ち。[PERSON]一人ひと[/PERSON]りが、自分の経験や思いと歌詞を結び付けながら、どんな歌い方をしたら気持ちが伝わるのかを考えました。歌詞を深く読み取ったことで、歌にこめる思いが大きく変わった子もいたようです。本番では、６年生それぞれの「どうしてもどうしても」が、在校生や保護者の皆様の心にも届くことを願っています。"
+      }
+    ],
+    "g22_output": {
+      "calendar_events": [],
+      "tasks": [],
+      "notices": [],
+      "people": [],
+      "topic_sections": []
+    },
+    "tables_ssot": {
+      "structured_tables": [],
+      "detections": [],
+      "e14_reconstructed": []
+    }
+  },
+  "metadata": {
+    "stage": "G",
+    "ui_substage": "G11",
+    "conversion_count": 0
+  }
+}
