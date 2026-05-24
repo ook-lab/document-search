@@ -252,6 +252,7 @@ class G11Controller:
         g21_output = self._g21_articles(
             stage_f_result.get("non_table_text") or "",
             non_table_text_blocks=stage_f_result.get("non_table_text_blocks") or [],
+            tables=stage_f_result.get("tables") or [],
         )
         if g21_output:
             ui_data["g21_articles"] = g21_output
@@ -636,64 +637,116 @@ class G11Controller:
         return merged
 
     @staticmethod
+    def _has_table_between(
+        block_a: Dict[str, Any],
+        block_b: Dict[str, Any],
+        tables: List[Dict[str, Any]],
+    ) -> bool:
+        """2つの連続するブロック間に表が存在するか判定。"""
+        page_a = block_a.get('page', 0)
+        page_b = block_b.get('page', 0)
+        y_end_a = block_a.get('y1', block_a.get('y0', 0))
+        y_start_b = block_b.get('y0', 0)
+        for table in tables:
+            t_page = table.get('page', 0)
+            bbox = table.get('bbox')
+            if not bbox:
+                continue
+            _, ty0, _, ty1 = bbox
+            if page_a == page_b == t_page:
+                if ty0 >= y_end_a and ty1 <= y_start_b + 5:
+                    return True
+            elif t_page == page_a and page_a != page_b:
+                if ty0 >= y_end_a:
+                    return True
+            elif t_page == page_b and page_a != page_b:
+                if ty1 <= y_start_b + 5:
+                    return True
+        return False
+
+    @staticmethod
+    def _group_blocks_by_tables(
+        blocks: List[Dict[str, Any]],
+        tables: List[Dict[str, Any]],
+    ) -> List[List[Dict[str, Any]]]:
+        """表で区切られるブロックを別グループに分割する。"""
+        if not blocks:
+            return []
+        groups: List[List[Dict[str, Any]]] = [[blocks[0]]]
+        for i in range(1, len(blocks)):
+            if G11Controller._has_table_between(blocks[i - 1], blocks[i], tables):
+                groups.append([blocks[i]])
+            else:
+                groups[-1].append(blocks[i])
+        return groups
+
+    @staticmethod
     def _g21_articles(
         non_table_text: str,
         non_table_text_blocks: List[Dict[str, Any]] = None,
+        tables: List[Dict[str, Any]] = None,
     ) -> List[Dict[str, str]]:
         """
         非表テキストブロックに構造アノテーションを付加して article リストを返す。
 
         フロー:
-          1. text_lines があれば _apply_typography_markup でフォント由来の見出し・装飾を付与
-          2. _get_ai_annotations で Gemini に JSON アノテーション指示を返させる
-             （AI はテキストを生成しない。行番号とスパン文字列のみ返す）
-          3. _apply_annotations でプログラムが指示を機械的に適用
+          1. 全ブロックを表の位置でグループ分け（表で区切られたブロックは別グループ）
+          2. グループ内ブロックに typography_markup を適用して \n\n 結合
+          3. グループごとに _get_ai_annotations を1回呼ぶ（全文を文脈として渡す）
+          4. _apply_annotations でプログラムが指示を機械的に適用
         """
         blocks = non_table_text_blocks or []
         if not blocks and not (non_table_text or "").strip():
             return []
 
-        md_parts: List[str] = []
+        all_articles: List[Dict[str, str]] = []
         all_annotation_types: Dict[str, str] = {}
 
         if blocks:
-            for block in blocks:
-                text = (block.get("text") or "").strip()
-                if not text:
+            groups = G11Controller._group_blocks_by_tables(blocks, tables or [])
+            for group in groups:
+                md_parts: List[str] = []
+                has_any_typography = False
+                for block in group:
+                    text = (block.get("text") or "").strip()
+                    if not text:
+                        continue
+                    text_lines = block.get("text_lines") or []
+                    if text_lines:
+                        md_parts.append(G11Controller._apply_typography_markup(text, text_lines))
+                        has_any_typography = True
+                    else:
+                        md_parts.append(text)
+                if not md_parts:
                     continue
-                text_lines = block.get("text_lines") or []
-                if text_lines:
-                    md = G11Controller._apply_typography_markup(text, text_lines)
-                    result = G11Controller._get_ai_annotations(text, has_typography=True)
-                else:
-                    md = text
-                    result = G11Controller._get_ai_annotations(text, has_typography=False)
+                full_text = "\n\n".join(md_parts)
+                result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 all_annotation_types.update(result.get("annotation_types") or {})
                 annotations = result.get("annotations") or []
-                if annotations:
-                    md = G11Controller._apply_annotations(md, annotations)
-                if md.strip():
-                    md_parts.append(md)
+                full_md = G11Controller._apply_annotations(full_text, annotations) if annotations else full_text
+                articles = G11Controller._split_md_to_articles(full_md)
+                if not articles:
+                    articles = [{"title": "", "body": full_md}]
+                all_articles.extend(articles)
         else:
             nt = (non_table_text or "").strip()
-            if nt:
-                result = G11Controller._get_ai_annotations(nt, has_typography=False)
-                all_annotation_types.update(result.get("annotation_types") or {})
-                annotations = result.get("annotations") or []
-                md = G11Controller._apply_annotations(nt, annotations) if annotations else nt
-                md_parts.append(md)
+            if not nt:
+                return []
+            result = G11Controller._get_ai_annotations(nt, has_typography=False)
+            all_annotation_types.update(result.get("annotation_types") or {})
+            annotations = result.get("annotations") or []
+            full_md = G11Controller._apply_annotations(nt, annotations) if annotations else nt
+            articles = G11Controller._split_md_to_articles(full_md)
+            if not articles:
+                articles = [{"title": "", "body": full_md}]
+            all_articles.extend(articles)
 
-        if not md_parts:
+        if not all_articles:
             return []
-
-        full_md = "\n\n".join(md_parts)
-        articles = G11Controller._split_md_to_articles(full_md)
-        if not articles:
-            articles = [{"title": "", "body": full_md}]
-        articles = G11Controller._merge_small_articles(articles)
+        all_articles = G11Controller._merge_small_articles(all_articles)
         if all_annotation_types:
-            articles[0]["annotation_types"] = all_annotation_types
-        return articles
+            all_articles[0]["annotation_types"] = all_annotation_types
+        return all_articles
 
     @staticmethod
     def _dedupe_prose_sections(ui_data: Dict[str, Any]) -> None:
