@@ -1663,32 +1663,22 @@
                 if (!seg) return;
                 var k = seg.kind;
                 if (k === 'non_table_paragraph') {
-                    if (hasG21Body) {
-                        if (!g21Inserted) {
-                            g21Inserted = true;
-                            g21Arts.forEach(function(art, ai) {
-                                var gb = _cleanTextForDme(art && art.body).trim();
-                                var gt = (art && art.title || '').trim();
-                                if (!gb && !gt) return;
-                                if (proseHdr) { lines.push(''); lines.push('---'); lines.push(''); }
-                                proseHdr = true;
-                                if (gt) lines.push(gt);
-                                if (gb) lines.push(gb);
-                                var gbLines = (gt + '\n' + gb).split('\n').filter(function(l){return l.trim();});
-                                lastProseLastLine = gbLines.length ? gbLines[gbLines.length - 1].trim() : '';
-                            });
-                        }
-                        return;
+                    if (!hasG21Body) return;  // g21_articles なし → 地の文は空を明示
+                    if (!g21Inserted) {
+                        g21Inserted = true;
+                        g21Arts.forEach(function(art, ai) {
+                            var gb = _cleanTextForDme(art && art.body).trim();
+                            var gt = (art && art.title || '').trim();
+                            if (!gb && !gt) return;
+                            if (proseHdr) { lines.push(''); lines.push('---'); lines.push(''); }
+                            proseHdr = true;
+                            if (gt) lines.push(gt);
+                            if (gb) lines.push(gb);
+                            var gbLines = (gt + '\n' + gb).split('\n').filter(function(l){return l.trim();});
+                            lastProseLastLine = gbLines.length ? gbLines[gbLines.length - 1].trim() : '';
+                        });
                     }
-                    var t = _cleanTextForDme(seg.text).trim();
-                    if (!t) return;
-                    if (proseHdr) lines.push('');
-                    proseHdr = true;
-                    var _bs = new Set(data.block_starts || []);
-                    lines.push(_splitByBlockStarts(t, _bs));
-                    // 最終行を記録（複数行なら最後の行）
-                    var tLines = t.split('\n').map(function(l){return l.trim();}).filter(function(l){return l;});
-                    lastProseLastLine = tLines.length ? tLines[tLines.length - 1] : '';
+                    return;
                 } else if (k === 'g21_article') {
                     if (streamHasF1ProseSegments(vs)) return;
                     var gb = _cleanTextForDme(seg.body).trim();
@@ -1718,46 +1708,17 @@
             });
         } else {
             var fbLastLine = '';
-            // stage_e_non_table_plain を優先（論理読み順・正しい順序）
-            // f1Blocks（座標順）は順序が崩れる文書があるため後回し
-            var st = readingStageEPlainState(r);
-            if (st.kind === 'ok' && st.text.trim()) {
-                var _bs3 = new Set(data.block_starts || []);
-                lines.push(_splitByBlockStarts(st.text.trim(), _bs3));
-                var stl = st.text.trim().split('\n').filter(function(l){return l.trim();});
-                if (stl.length) fbLastLine = stl[stl.length - 1].trim();
-            } else {
-                var f1Blocks = Array.isArray(r.non_table_text_blocks) ? r.non_table_text_blocks.slice() : [];
-                if (f1Blocks.length) {
-                    f1Blocks.sort(function (a, b) {
-                        var ya = Number(a && a.y0) || 0;
-                        var yb = Number(b && b.y0) || 0;
-                        if (ya !== yb) return ya - yb;
-                        return (Number(a && a.x0) || 0) - (Number(b && b.x0) || 0);
-                    });
-                    f1Blocks.forEach(function (b, bi) {
-                        var t = _cleanTextForDme(b && b.text).trim();
-                        if (!t) return;
-                        if (bi > 0) lines.push('');
-                        lines.push(t);
-                        var tl = t.split('\n').filter(function(l){return l.trim();});
-                        if (tl.length) fbLastLine = tl[tl.length - 1].trim();
-                    });
-                } else {
-                    // g21_articles を使う
-                    var g21arts = Array.isArray(ud.g21_articles) ? ud.g21_articles : [];
-                    g21arts.forEach(function(art, ai) {
-                        var gb = _cleanTextForDme(art && art.body).trim();
-                        var gt = (art && art.title || '').trim();
-                        if (!gb && !gt) return;
-                        if (ai > 0) { lines.push(''); lines.push('---'); lines.push(''); }
-                        if (gt) lines.push(gt);
-                        if (gb) lines.push(gb);
-                        var gl = (gt + '\n' + gb).split('\n').filter(function(l){return l.trim();});
-                        if (gl.length) fbLastLine = gl[gl.length - 1].trim();
-                    });
-                }
-            }
+            var g21arts = Array.isArray(ud.g21_articles) ? ud.g21_articles : [];
+            g21arts.forEach(function(art, ai) {
+                var gb = _cleanTextForDme(art && art.body).trim();
+                var gt = (art && art.title || '').trim();
+                if (!gb && !gt) return;
+                if (ai > 0) { lines.push(''); lines.push('---'); lines.push(''); }
+                if (gt) lines.push(gt);
+                if (gb) lines.push(gb);
+                var gl = (gt + '\n' + gb).split('\n').filter(function(l){return l.trim();});
+                if (gl.length) fbLastLine = gl[gl.length - 1].trim();
+            });
             tabs.forEach(function (tbl, ti) {
                 appendMarkdownForTable(lines, tbl, ti, _extractTableTitle(fbLastLine));
                 fbLastLine = '';
@@ -1957,23 +1918,20 @@
             if (!seg) return;
             var k = seg.kind;
             if (k === 'non_table_paragraph') {
-                if (hasG21Body) {
-                    if (!g21Inserted) {
-                        g21Inserted = true;
-                        g21Arts.forEach(function(art) {
-                            var gb = String(art && art.body || '').trim();
-                            var gt = String(art && art.title || '').trim();
-                            if (!gb && !gt) return;
-                            html += '<div class="reading-card" style="margin-bottom:0.65rem;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">';
-                            if (gt) html += '<div class="rc-title">' + escapeHtml(gt) + '</div>';
-                            if (gb) html += '<div class="rc-article-body">' + renderArticleBody(gb) + '</div>';
-                            html += '</div>';
-                        });
-                    }
-                    return;
+                if (!hasG21Body) return;  // g21_articles なし → 地の文は空を明示
+                if (!g21Inserted) {
+                    g21Inserted = true;
+                    g21Arts.forEach(function(art) {
+                        var gb = String(art && art.body || '').trim();
+                        var gt = String(art && art.title || '').trim();
+                        if (!gb && !gt) return;
+                        html += '<div class="reading-card" style="margin-bottom:0.65rem;border:1px solid var(--border);border-radius:8px;padding:0.6rem 0.75rem;">';
+                        if (gt) html += '<div class="rc-title">' + escapeHtml(gt) + '</div>';
+                        if (gb) html += '<div class="rc-article-body">' + renderArticleBody(gb) + '</div>';
+                        html += '</div>';
+                    });
                 }
-                html += '<div class="reading-card reading-stream-para"><div class="reading-prose" style="border:1px solid var(--border);padding:0.5rem 0.65rem;border-radius:8px;background:#fff;font-size:0.88rem;line-height:1.55;">' +
-                    escapeHtml(seg.text || '') + '</div></div>';
+                return;
             } else if (k === 'g_table_group') {
                 var idxs = Array.isArray(seg.table_indices) ? seg.table_indices : [];
                 if (!idxs.length) return;

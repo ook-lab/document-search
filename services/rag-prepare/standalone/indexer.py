@@ -574,6 +574,32 @@ class RagPrepareSearchIndexer:
         return "\n".join(lines)
 
     @staticmethod
+    def _merge_pdf_lines(text: str) -> str:
+        """PDF物理行の折り返しを段落単位に結合する。"""
+        ENDERS = frozenset('。！？」』）】…')
+        CONT = frozenset('のてでにがはをもとやずし')
+        lines = text.split('\n')
+        result: List[str] = []
+        skip_blanks = False
+        for line in lines:
+            if not line:
+                if result and result[-1] and result[-1][-1] in CONT:
+                    skip_blanks = True
+                else:
+                    skip_blanks = False
+                    result.append(line)
+            else:
+                if skip_blanks and result and result[-1]:
+                    result[-1] += line
+                    skip_blanks = False
+                elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
+                    result[-1] += line
+                else:
+                    result.append(line)
+                    skip_blanks = False
+        return '\n'.join(result)
+
+    @staticmethod
     def _get_ai_annotations(text: str) -> Dict[str, Any]:
         """
         Gemini にテキスト構造のアノテーション指示を JSON で返させる。
@@ -835,7 +861,7 @@ class RagPrepareSearchIndexer:
                 full_markdown, re.MULTILINE | re.DOTALL,
             )
             if ext_m:
-                ext_text = ext_m.group(1).strip()
+                ext_text = RagPrepareSearchIndexer._merge_pdf_lines(ext_m.group(1).strip())
                 if ext_text:
                     annotations = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
                     annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, annotations)

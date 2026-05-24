@@ -436,25 +436,35 @@ class G11Controller:
         return "\n".join(result)
 
     _PDF_SENTENCE_ENDERS = frozenset('。！？」』）】…')
+    # これらで終わる行は文の途中（次行と結合する）。空行を挟んでも同様。
+    _PDF_CONTINUATION_ENDINGS = frozenset('のてでにがはをもとやずし')
 
     @staticmethod
     def _merge_pdf_lines(text: str) -> str:
-        """PDF物理行の折り返しを段落単位に結合する。"""
-        lines = text.split("\n")
-        merged: List[str] = []
+        """PDF物理行の折り返しを段落単位に結合する。
+        \\n 区切りも \\n\\n 区切りも、継続行なら結合する。"""
+        ENDERS = G11Controller._PDF_SENTENCE_ENDERS
+        CONT = G11Controller._PDF_CONTINUATION_ENDINGS
+        lines = text.split('\n')
+        result: List[str] = []
+        skip_blanks = False
         for line in lines:
             if not line:
-                merged.append(line)
-                continue
-            if merged:
-                prev = merged[-1]
-                if (prev
-                        and prev[-1] not in G11Controller._PDF_SENTENCE_ENDERS
-                        and not line.startswith('　')):
-                    merged[-1] = prev + line
-                    continue
-            merged.append(line)
-        return "\n".join(merged)
+                if result and result[-1] and result[-1][-1] in CONT:
+                    skip_blanks = True  # 継続助詞で終わった → 空行を飛ばして次行と結合
+                else:
+                    skip_blanks = False
+                    result.append(line)
+            else:
+                if skip_blanks and result and result[-1]:
+                    result[-1] += line
+                    skip_blanks = False
+                elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
+                    result[-1] += line
+                else:
+                    result.append(line)
+                    skip_blanks = False
+        return '\n'.join(result)
 
     @staticmethod
     def _get_ai_annotations(text: str, has_typography: bool = False) -> Dict[str, Any]:
@@ -585,6 +595,10 @@ class G11Controller:
                 open_tag = f"[{ann_type}]"
                 close_tag = f"[/{ann_type}]"
                 if f"{open_tag}{span_text}{close_tag}" in result:
+                    continue
+                # スパンテキストが既存タグの内側にある場合はネストを作らずスキップ
+                import re as _re
+                if _re.search(r'\[[A-Z][A-Z0-9_]*\][^\[]*?' + _re.escape(span_text), result):
                     continue
                 result = result.replace(span_text, f"{open_tag}{span_text}{close_tag}", 1)
 
