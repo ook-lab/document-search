@@ -659,15 +659,9 @@ def _sanitize_layout_split(
     if n_blocks >= 2:
         clean = [str(s).strip() for s in summaries if isinstance(s, str) and str(s).strip()]
         if len(clean) != n_blocks:
-            logger.warning(
+            raise ValueError(
                 f"[G26] layout_split: block_summaries の件数 {len(clean)} != ブロック数 {n_blocks}"
-                f" → 件数を合わせて続行"
             )
-            if len(clean) > n_blocks:
-                clean = clean[:n_blocks]
-            else:
-                # 不足分は空文字で補完（後段は使わない）
-                clean = clean + [""] * (n_blocks - len(clean))
         ls["block_summaries"] = clean
     else:
         ls["block_summaries"] = []

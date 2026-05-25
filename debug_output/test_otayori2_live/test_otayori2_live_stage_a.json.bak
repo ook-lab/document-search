@@ -1,0 +1,319 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "GOOGLE_DOCS",
+    "confidence": "HIGH",
+    "reason": "Producer一致: google docs renderer",
+    "raw_metadata": {
+      "CreationDate": "D:20260525222506+09'00'",
+      "ModDate": "D:20260525222543+09'00'",
+      "Producer": "Skia/PDF m150 Google Docs Renderer",
+      "Title": "学年通信"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 1,
+    "dimensions": {
+      "width": 612.0,
+      "height": 792.0,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 215.89999999999998,
+      "height": 279.4,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 5.0,
+      "avg_words_per_page": 97.0,
+      "avg_x_std": 138.6270558885428,
+      "avg_words_per_line": 1.4264705882352942,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 5,
+          "words": 97,
+          "chars": 430,
+          "has_selectable_text": true,
+          "x_std": 138.6270558885428,
+          "lines": 68,
+          "words_per_line": 1.4264705882352942,
+          "vector_count": 47,
+          "fonts": [
+            {
+              "name": "GAAAAA+Arial-BoldMT",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "AAAAAA+ArialMT",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BAAAAA+MingLiU",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "CAAAAA+FugazOne-Regular",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "DAAAAA+Roboto-Regular",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "EAAAAA+Roboto-Bold",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "FAAAAA+MS-PGothic",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": [
+            {
+              "width": 1536,
+              "height": 1024,
+              "bpc": 8,
+              "colorspace": "ICCBased",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 104,
+              "height": 32,
+              "bpc": 8,
+              "colorspace": "ICCBased",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 104,
+              "height": 63,
+              "bpc": 8,
+              "colorspace": "ICCBased",
+              "filter": "FlateDecode"
+            },
+            {
+              "width": 1411,
+              "height": 117,
+              "bpc": 8,
+              "colorspace": "ICCBased",
+              "filter": "DCTDecode"
+            },
+            {
+              "width": 104,
+              "height": 26,
+              "bpc": 8,
+              "colorspace": "ICCBased",
+              "filter": "FlateDecode"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "origin_app": "GOOGLE_DOCS",
+  "document_type": "GOOGLE_DOCS",
+  "confidence": "HIGH",
+  "reason": "Producer一致: google docs renderer",
+  "raw_metadata": {
+    "CreationDate": "D:20260525222506+09'00'",
+    "ModDate": "D:20260525222543+09'00'",
+    "Producer": "Skia/PDF m150 Google Docs Renderer",
+    "Title": "学年通信"
+  },
+  "page_type_map": {
+    "0": "GOOGLE_DOCS"
+  },
+  "type_groups": {
+    "GOOGLE_DOCS": [
+      0
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH"
+  },
+  "page_count": 1,
+  "dimensions": {
+    "width": 612.0,
+    "height": 792.0,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 215.89999999999998,
+    "height": 279.4,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 5.0,
+    "avg_words_per_page": 97.0,
+    "avg_x_std": 138.6270558885428,
+    "avg_words_per_line": 1.4264705882352942,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 5,
+        "words": 97,
+        "chars": 430,
+        "has_selectable_text": true,
+        "x_std": 138.6270558885428,
+        "lines": 68,
+        "words_per_line": 1.4264705882352942,
+        "vector_count": 47,
+        "fonts": [
+          {
+            "name": "GAAAAA+Arial-BoldMT",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "AAAAAA+ArialMT",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BAAAAA+MingLiU",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "CAAAAA+FugazOne-Regular",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "DAAAAA+Roboto-Regular",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "EAAAAA+Roboto-Bold",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "FAAAAA+MS-PGothic",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": [
+          {
+            "width": 1536,
+            "height": 1024,
+            "bpc": 8,
+            "colorspace": "ICCBased",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 104,
+            "height": 32,
+            "bpc": 8,
+            "colorspace": "ICCBased",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 104,
+            "height": 63,
+            "bpc": 8,
+            "colorspace": "ICCBased",
+            "filter": "FlateDecode"
+          },
+          {
+            "width": 1411,
+            "height": 117,
+            "bpc": 8,
+            "colorspace": "ICCBased",
+            "filter": "DCTDecode"
+          },
+          {
+            "width": 104,
+            "height": 26,
+            "bpc": 8,
+            "colorspace": "ICCBased",
+            "filter": "FlateDecode"
+          }
+        ]
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 5.0,
+      "avg_words_per_page": 97.0,
+      "avg_x_std": 138.6270558885428,
+      "probe_ok": true,
+      "avg_chars_per_page": 430.0,
+      "avg_vectors_per_page": 47.0
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B11_GOOGLE_DOCS"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（GOOGLE_DOCS+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "GOOGLE_DOCS",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 5.0,
+      "avg_words_per_page": 97.0,
+      "avg_x_std": 138.6270558885428,
+      "probe_ok": true,
+      "avg_chars_per_page": 430.0,
+      "avg_vectors_per_page": 47.0
+    },
+    "policy_version": "A5.v2"
+  }
+}

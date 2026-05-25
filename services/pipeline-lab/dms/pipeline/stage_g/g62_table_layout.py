@@ -442,19 +442,39 @@ class G62TableLayoutProcessor:
             header_rows = list(meta.get("header_rows") or [])
         else:
             header_rows = [0]
+
+        # 2段ヘッダー自動検出: meta に header_rows があっても [0] のみなら Row 1 を確認する。
+        # Row 0 がグループラベル行（値が少なく大半 None）、Row 1 が列ラベル行（値が多い）
+        detected_two_row = False
+        if header_rows == [0] and len(section_data) >= 3:
+            row0 = section_data[0]
+            row1 = section_data[1]
+            row0_nonempty = sum(1 for c in row0 if _cell_text(c))
+            row1_nonempty = sum(1 for c in row1 if _cell_text(c))
+            ncols_total = max(len(row0), len(row1), 1)
+            if row0_nonempty <= max(2, ncols_total // 4) and row1_nonempty >= row0_nonempty + 2:
+                header_rows = [0, 1]
+                detected_two_row = True
+                logger.info(f"[G62] 2段ヘッダー検出: row0={row0_nonempty}値, row1={row1_nonempty}値 → header_rows=[0,1]")
+
         dsr_raw = meta.get("data_start_row")
-        if isinstance(dsr_raw, int):
+        if detected_two_row:
+            # upstream の data_start_row は 1段構造前提なので 2段検出時は上書き
+            data_start_row = max(header_rows) + 1
+        elif isinstance(dsr_raw, int):
             data_start_row = dsr_raw
         elif header_rows:
             data_start_row = max(header_rows) + 1
         else:
             data_start_row = 0
         row_label_col = meta.get("row_label_col")
-        col_headers = [_cell_text(c) for c in (meta.get("column_headers") or [])]
+        # detected_two_row のとき meta の column_headers は row 0 ベース（グループ行）なので使わない
+        col_headers = [] if detected_two_row else [_cell_text(c) for c in (meta.get("column_headers") or [])]
         if not col_headers and header_rows and section_data:
-            h0 = header_rows[0]
-            if 0 <= h0 < len(section_data):
-                col_headers = [_cell_text(c) for c in section_data[h0]]
+            # 2段ヘッダーのとき最後のヘッダー行（より詳細な列ラベル行）を使う
+            h_last = header_rows[-1]
+            if 0 <= h_last < len(section_data):
+                col_headers = [_cell_text(c) for c in section_data[h_last]]
         while len(col_headers) < grid_max_cols:
             col_headers.append("")
         col_headers = col_headers[:grid_max_cols]
@@ -546,6 +566,20 @@ class G62TableLayoutProcessor:
         elif section_data:
             data_start_row = 0
 
+        # G32 がヘッダー行を検出できなかった場合、2段ヘッダーの自動検出を試みる
+        # （G36 リバート後など lr_rebuilt=False の時間割型テーブルに対応）
+        if not header_rows and len(section_data) >= 3:
+            row0 = section_data[0]
+            row1 = section_data[1]
+            row0_nonempty = sum(1 for c in row0 if _cell_text(c))
+            row1_nonempty = sum(1 for c in row1 if _cell_text(c))
+            ncols_total = max(len(row0), len(row1), 1)
+            if row0_nonempty <= max(2, ncols_total // 4) and row1_nonempty >= row0_nonempty + 2:
+                header_rows = [0, 1]
+                data_start_row = 2
+                header_meanings = {"0": "group_header", "1": "col_header"}
+                logger.info(f"[G62] 2段ヘッダー検出（G32 なし）: row0={row0_nonempty}値, row1={row1_nonempty}値 → header_rows=[0,1]")
+
         # ヘッダー行がない場合（暗黙的ヘッダー）
         implicit_headers = []
         if not header_rows:
@@ -602,9 +636,10 @@ class G62TableLayoutProcessor:
 
         col_headers = [""] * grid_max_cols
         if header_rows:
-            h0 = header_rows[0]
-            if 0 <= h0 < len(section_data):
-                col_headers = [_cell_text(c) for c in section_data[h0]]
+            # 2段ヘッダーのとき最後の行（より詳細な列ラベル行）を使う
+            h_last = header_rows[-1]
+            if 0 <= h_last < len(section_data):
+                col_headers = [_cell_text(c) for c in section_data[h_last]]
         elif implicit_headers:
             for ih in implicit_headers:
                 ci = int(ih["col_index"])

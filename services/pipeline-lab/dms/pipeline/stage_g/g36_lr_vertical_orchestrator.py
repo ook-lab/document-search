@@ -210,11 +210,17 @@ def _apply_g36_ai(
     source_data_rows = len(preview) - effective_header
     actual_logical = len(ai.get("logical_rows") or [])
     if source_data_rows > actual_logical:
-        explained_loss = sum(
-            max(0, len(vm.get("source_extract_rows") or []) - 1)
-            for vm in (ai.get("vertical_merges") or [])
-            if isinstance(vm.get("source_extract_rows"), list)
-        )
+        # full_resolution モードでは全 source 行が個別の logical_row として出力されるべきで
+        # 列単位マージが source 行を吸収（丸ごと消去）することはない → explained_loss = 0。
+        # 他モードではマージが行を吸収する場合があるため従来式を使用。
+        if layout_kind == "full_resolution":
+            explained_loss = 0
+        else:
+            explained_loss = sum(
+                max(0, len(vm.get("source_extract_rows") or []) - 1)
+                for vm in (ai.get("vertical_merges") or [])
+                if isinstance(vm.get("source_extract_rows"), list)
+            )
         unexplained = (source_data_rows - actual_logical) - explained_loss
         if unexplained > 0:
             logger.warning(

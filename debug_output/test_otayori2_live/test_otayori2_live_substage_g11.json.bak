@@ -1,0 +1,2165 @@
+{
+  "success": true,
+  "ui_data": {
+    "document_info": {
+      "document_type": "GOOGLE_DOCS",
+      "year_context": null
+    },
+    "sections": [],
+    "tables": [
+      {
+        "table_id": "P0_B1",
+        "table_type": "structured",
+        "description": "",
+        "headers": [
+          "列1",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6B",
+          "6B",
+          "6B",
+          "6B",
+          "6B",
+          "6B",
+          "6B"
+        ],
+        "rows": [
+          [
+            "",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B"
+          ],
+          [
+            "",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          [
+            "25\n（月）",
+            "朝会",
+            "国語",
+            "国語",
+            "社会",
+            "算数",
+            "Lラボ",
+            "理科",
+            "朝会",
+            "Lラボ",
+            "算数",
+            "国語",
+            "国語",
+            "理科",
+            "社会"
+          ],
+          [
+            "26\n（火）",
+            "朝算数",
+            "算数",
+            "道徳",
+            "音楽",
+            "国語",
+            "たて\nわり",
+            "社会",
+            "朝算数",
+            "社会",
+            "算数",
+            "道徳",
+            "音楽",
+            "たて\nわり",
+            "国語"
+          ],
+          [
+            "27\n（水）",
+            "朝読書",
+            "家庭",
+            "家庭",
+            "算数",
+            "英語",
+            "体育",
+            "国語",
+            "朝読書",
+            "算数",
+            "国語",
+            "家庭",
+            "家庭",
+            "英語",
+            "体育"
+          ],
+          [
+            "28\n（木）",
+            "朝算数",
+            "体育",
+            "理科",
+            "算数",
+            "英語",
+            "社会",
+            "特活",
+            "朝算数",
+            "理科",
+            "体育",
+            "英語",
+            "社会",
+            "算数",
+            "特活"
+          ],
+          [
+            "29\n（金）",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足"
+          ]
+        ],
+        "sections": [
+          {
+            "title": "P0_B1",
+            "group_name": "",
+            "semantic_title": "Senzo Gakuen Elementary School 6th Grade 時間割",
+            "table_type": "structured",
+            "description": "",
+            "data": [
+              [
+                "",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6B",
+                "6B",
+                "6B",
+                "6B",
+                "6B",
+                "6B",
+                "6B"
+              ],
+              [
+                "",
+                "朝",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "朝",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              [
+                "25\n（月）",
+                "朝会",
+                "国語",
+                "国語",
+                "社会",
+                "算数",
+                "Lラボ",
+                "理科",
+                "朝会",
+                "Lラボ",
+                "算数",
+                "国語",
+                "国語",
+                "理科",
+                "社会"
+              ],
+              [
+                "26\n（火）",
+                "朝算数",
+                "算数",
+                "道徳",
+                "音楽",
+                "国語",
+                "たて\nわり",
+                "社会",
+                "朝算数",
+                "社会",
+                "算数",
+                "道徳",
+                "音楽",
+                "たて\nわり",
+                "国語"
+              ],
+              [
+                "27\n（水）",
+                "朝読書",
+                "家庭",
+                "家庭",
+                "算数",
+                "英語",
+                "体育",
+                "国語",
+                "朝読書",
+                "算数",
+                "国語",
+                "家庭",
+                "家庭",
+                "英語",
+                "体育"
+              ],
+              [
+                "28\n（木）",
+                "朝算数",
+                "体育",
+                "理科",
+                "算数",
+                "英語",
+                "社会",
+                "特活",
+                "朝算数",
+                "理科",
+                "体育",
+                "英語",
+                "社会",
+                "算数",
+                "特活"
+              ],
+              [
+                "29\n（金）",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足"
+              ]
+            ],
+            "metadata": {
+              "header_rows": [],
+              "row_label_col": null,
+              "data_start_row": 0,
+              "col_map": {},
+              "header_meanings": {},
+              "row_range": [
+                0,
+                6
+              ],
+              "horizontal_merges": [
+                {
+                  "row_index": 0,
+                  "spans": [
+                    {
+                      "start": 1,
+                      "colspan": 7
+                    },
+                    {
+                      "start": 8,
+                      "colspan": 7
+                    }
+                  ]
+                },
+                {
+                  "row_index": 6,
+                  "spans": [
+                    {
+                      "start": 1,
+                      "colspan": 14
+                    }
+                  ]
+                }
+              ],
+              "implicit_headers": [],
+              "split_from": "",
+              "split_axis": "none",
+              "primary_header_candidate": "",
+              "table_semantics": {
+                "type": "timetable",
+                "type_ja": "時間割",
+                "target": "Senzo Gakuen Elementary School 6th Grade",
+                "scope": "Weekly Schedule",
+                "date_range": "2026-05-25 to 2026-05-29",
+                "confidence": 0.9
+              },
+              "whole_table_intent": "これは洗足学園小学校6年生の2026年5月25日から5月29日までの週間の時間割表です。各日の授業内容と特別な活動が記載されています。",
+              "col_analysis": [
+                {
+                  "col_index": 0,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 1,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 2,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 3,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 4,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 5,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 6,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 7,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 8,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 9,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 10,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 11,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 12,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 13,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 14,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                }
+              ],
+              "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+              "vertical_merge_confidence": 0.9,
+              "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+              "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+              "vertical_merges_ai": [
+                {
+                  "description": "列0の日付が縦に結合",
+                  "anchor_row": null,
+                  "anchor_col": 0,
+                  "rowspan": 5,
+                  "source_extract_rows": [
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ]
+                }
+              ],
+              "vertical_merge_mode": "no_merge",
+              "lr_rebuilt": false,
+              "f56_split_axis": "none",
+              "display_column_labels": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "column_headers": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ]
+            }
+          }
+        ],
+        "metadata": {
+          "header_rows": [
+            0
+          ],
+          "row_label_col": null,
+          "data_start_row": 1,
+          "col_map": {},
+          "header_meanings": {},
+          "row_range": [
+            0,
+            6
+          ],
+          "horizontal_merges": [
+            {
+              "row_index": 0,
+              "spans": [
+                {
+                  "start": 1,
+                  "colspan": 7
+                },
+                {
+                  "start": 8,
+                  "colspan": 7
+                }
+              ]
+            },
+            {
+              "row_index": 6,
+              "spans": [
+                {
+                  "start": 1,
+                  "colspan": 14
+                }
+              ]
+            }
+          ],
+          "implicit_headers": [],
+          "split_from": "",
+          "split_axis": "none",
+          "primary_header_candidate": "",
+          "table_semantics": {
+            "type": "timetable",
+            "type_ja": "時間割",
+            "target": "Senzo Gakuen Elementary School 6th Grade",
+            "scope": "Weekly Schedule",
+            "date_range": "2026-05-25 to 2026-05-29",
+            "confidence": 0.9
+          },
+          "whole_table_intent": "これは洗足学園小学校6年生の2026年5月25日から5月29日までの週間の時間割表です。各日の授業内容と特別な活動が記載されています。",
+          "col_analysis": [
+            {
+              "col_index": 0,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 1,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 2,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 3,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 4,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 5,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 6,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 7,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 8,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 9,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 10,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 11,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 12,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 13,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 14,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            }
+          ],
+          "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+          "vertical_merge_confidence": 0.9,
+          "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+          "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+          "vertical_merges_ai": [
+            {
+              "description": "列0の日付が縦に結合",
+              "anchor_row": null,
+              "anchor_col": 0,
+              "rowspan": 5,
+              "source_extract_rows": [
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "vertical_merge_mode": "no_merge",
+          "lr_rebuilt": false,
+          "f56_split_axis": "none",
+          "display_column_labels": [
+            "列1",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B"
+          ],
+          "column_headers": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "bbox": [
+            72.5000000175,
+            340.5000235975,
+            555.687504375,
+            570.500035
+          ]
+        }
+      }
+    ],
+    "timeline": [],
+    "actions": [],
+    "notices": [],
+    "metadata": {
+      "section_count": 0,
+      "table_count": 1,
+      "event_count": 0,
+      "task_count": 0,
+      "notice_count": 0
+    },
+    "tables_review_html": "<section class=\"review-table\"><h3 class=\"review-table-id\">P0_B1</h3>\n<table class=\"review-table-grid\"><thead><tr><th></th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th></tr></thead><tbody><tr><td></td><td>朝</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>朝</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr><tr><td>25 （月）</td><td>朝会</td><td>国語</td><td>国語</td><td>社会</td><td>算数</td><td>Lラボ</td><td>理科</td><td>朝会</td><td>Lラボ</td><td>算数</td><td>国語</td><td>国語</td><td>理科</td><td>社会</td></tr><tr><td>26 （火）</td><td>朝算数</td><td>算数</td><td>道徳</td><td>音楽</td><td>国語</td><td>たて わり</td><td>社会</td><td>朝算数</td><td>社会</td><td>算数</td><td>道徳</td><td>音楽</td><td>たて わり</td><td>国語</td></tr><tr><td>27 （水）</td><td>朝読書</td><td>家庭</td><td>家庭</td><td>算数</td><td>英語</td><td>体育</td><td>国語</td><td>朝読書</td><td>算数</td><td>国語</td><td>家庭</td><td>家庭</td><td>英語</td><td>体育</td></tr><tr><td>28 （木）</td><td>朝算数</td><td>体育</td><td>理科</td><td>算数</td><td>英語</td><td>社会</td><td>特活</td><td>朝算数</td><td>理科</td><td>体育</td><td>英語</td><td>社会</td><td>算数</td><td>特活</td></tr><tr><td>29 （金）</td><td colspan=\"14\">たてわり遠足</td></tr></tbody></table>\n</section>",
+    "tables_md_embed": "<!-- dms:tables-md-embed v1 -->\n### `tables`（YAML・検索・LLM 向け）\n\n```yaml\ntables:\n- table_id: P0_B1\n  description: ''\n  table_semantics:\n    type: timetable\n    type_ja: 時間割\n    target: Senzo Gakuen Elementary School 6th Grade\n    scope: Weekly Schedule\n    date_range: 2026-05-25 to 2026-05-29\n    confidence: 0.9\n  header_row_indices:\n  - 0\n  month_blocks: []\n  data_rows:\n  - sheet_row: 1\n    cells:\n    - ''\n    - 朝\n    - '1'\n    - '2'\n    - '3'\n    - '4'\n    - '5'\n    - '6'\n    - 朝\n    - '1'\n    - '2'\n    - '3'\n    - '4'\n    - '5'\n    - '6'\n  - sheet_row: 2\n    cells:\n    - 25 （月）\n    - 朝会\n    - 国語\n    - 国語\n    - 社会\n    - 算数\n    - Lラボ\n    - 理科\n    - 朝会\n    - Lラボ\n    - 算数\n    - 国語\n    - 国語\n    - 理科\n    - 社会\n  - sheet_row: 3\n    cells:\n    - 26 （火）\n    - 朝算数\n    - 算数\n    - 道徳\n    - 音楽\n    - 国語\n    - たて わり\n    - 社会\n    - 朝算数\n    - 社会\n    - 算数\n    - 道徳\n    - 音楽\n    - たて わり\n    - 国語\n  - sheet_row: 4\n    cells:\n    - 27 （水）\n    - 朝読書\n    - 家庭\n    - 家庭\n    - 算数\n    - 英語\n    - 体育\n    - 国語\n    - 朝読書\n    - 算数\n    - 国語\n    - 家庭\n    - 家庭\n    - 英語\n    - 体育\n  - sheet_row: 5\n    cells:\n    - 28 （木）\n    - 朝算数\n    - 体育\n    - 理科\n    - 算数\n    - 英語\n    - 社会\n    - 特活\n    - 朝算数\n    - 理科\n    - 体育\n    - 英語\n    - 社会\n    - 算数\n    - 特活\n  - sheet_row: 6\n    cells:\n    - 29 （金）\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n    - たてわり遠足\n```\n\n### 表 HTML（MD に埋め込み可）\n\n<!-- table:P0_B1 -->\n<table class=\"md-embed-table\"><thead><tr><th></th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6A</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th><th>6B</th></tr></thead><tbody><tr><td></td><td>朝</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td><td>朝</td><td>1</td><td>2</td><td>3</td><td>4</td><td>5</td><td>6</td></tr><tr><td>25 （月）</td><td>朝会</td><td>国語</td><td>国語</td><td>社会</td><td>算数</td><td>Lラボ</td><td>理科</td><td>朝会</td><td>Lラボ</td><td>算数</td><td>国語</td><td>国語</td><td>理科</td><td>社会</td></tr><tr><td>26 （火）</td><td>朝算数</td><td>算数</td><td>道徳</td><td>音楽</td><td>国語</td><td>たて わり</td><td>社会</td><td>朝算数</td><td>社会</td><td>算数</td><td>道徳</td><td>音楽</td><td>たて わり</td><td>国語</td></tr><tr><td>27 （水）</td><td>朝読書</td><td>家庭</td><td>家庭</td><td>算数</td><td>英語</td><td>体育</td><td>国語</td><td>朝読書</td><td>算数</td><td>国語</td><td>家庭</td><td>家庭</td><td>英語</td><td>体育</td></tr><tr><td>28 （木）</td><td>朝算数</td><td>体育</td><td>理科</td><td>算数</td><td>英語</td><td>社会</td><td>特活</td><td>朝算数</td><td>理科</td><td>体育</td><td>英語</td><td>社会</td><td>算数</td><td>特活</td></tr><tr><td>29 （金）</td><td colspan=\"14\">たてわり遠足</td></tr></tbody></table>",
+    "g11_structured_tables": [
+      {
+        "headers": [],
+        "rows": [
+          [
+            "",
+            "6A",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "6B",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          [
+            "25\n（月）",
+            "朝会",
+            "国語",
+            "国語",
+            "社会",
+            "算数",
+            "Lラボ",
+            "理科",
+            "朝会",
+            "Lラボ",
+            "算数",
+            "国語",
+            "国語",
+            "理科",
+            "社会"
+          ],
+          [
+            "26\n（火）",
+            "朝算数",
+            "算数",
+            "道徳",
+            "音楽",
+            "国語",
+            "たて\nわり",
+            "社会",
+            "朝算数",
+            "社会",
+            "算数",
+            "道徳",
+            "音楽",
+            "たて\nわり",
+            "国語"
+          ],
+          [
+            "27\n（水）",
+            "朝読書",
+            "家庭",
+            "家庭",
+            "算数",
+            "英語",
+            "体育",
+            "国語",
+            "朝読書",
+            "算数",
+            "国語",
+            "家庭",
+            "家庭",
+            "英語",
+            "体育"
+          ],
+          [
+            "28\n（木）",
+            "朝算数",
+            "体育",
+            "理科",
+            "算数",
+            "英語",
+            "社会",
+            "特活",
+            "朝算数",
+            "理科",
+            "体育",
+            "英語",
+            "社会",
+            "算数",
+            "特活"
+          ],
+          [
+            "29\n（金）",
+            "たてわり遠足",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "table_id": "P0_B1",
+        "source_page": null,
+        "metadata": {
+          "page": 0,
+          "b_plumber_index": 0,
+          "bbox": [
+            72.5000000175,
+            340.5000235975,
+            555.687504375,
+            570.500035
+          ],
+          "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+          "vertical_merge_confidence": 0.9,
+          "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+          "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+          "vertical_merges_ai": [
+            {
+              "description": "列0の日付が縦に結合",
+              "anchor_row": null,
+              "anchor_col": 0,
+              "rowspan": 5,
+              "source_extract_rows": [
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "vertical_merge_mode": "no_merge",
+          "lr_rebuilt": false,
+          "g36_ai_row_loss_reverted": true
+        }
+      }
+    ],
+    "g21_articles": [
+      {
+        "title": "",
+        "body": "# 洗足学園小学校６年生 HERO\n2026年505/22 発行\n5/25 - 5/29 の予定\n- 25日（月）朝会\n- 26日（火）朝算数、たてわりランチ（レジャーシート持参）\n- たてわり活動（5時間目、しおり持参）\n- 27日（水）家庭科調理実習（エプロン、マスク、三角巾、タオル）\n- 28日（木）朝算数\n- 29日（金）たてわり遠足"
+      }
+    ]
+  },
+  "final_metadata": {
+    "g11_output": [
+      {
+        "headers": [],
+        "rows": [
+          [
+            "",
+            "6A",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "6B",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          [
+            "25\n（月）",
+            "朝会",
+            "国語",
+            "国語",
+            "社会",
+            "算数",
+            "Lラボ",
+            "理科",
+            "朝会",
+            "Lラボ",
+            "算数",
+            "国語",
+            "国語",
+            "理科",
+            "社会"
+          ],
+          [
+            "26\n（火）",
+            "朝算数",
+            "算数",
+            "道徳",
+            "音楽",
+            "国語",
+            "たて\nわり",
+            "社会",
+            "朝算数",
+            "社会",
+            "算数",
+            "道徳",
+            "音楽",
+            "たて\nわり",
+            "国語"
+          ],
+          [
+            "27\n（水）",
+            "朝読書",
+            "家庭",
+            "家庭",
+            "算数",
+            "英語",
+            "体育",
+            "国語",
+            "朝読書",
+            "算数",
+            "国語",
+            "家庭",
+            "家庭",
+            "英語",
+            "体育"
+          ],
+          [
+            "28\n（木）",
+            "朝算数",
+            "体育",
+            "理科",
+            "算数",
+            "英語",
+            "社会",
+            "特活",
+            "朝算数",
+            "理科",
+            "体育",
+            "英語",
+            "社会",
+            "算数",
+            "特活"
+          ],
+          [
+            "29\n（金）",
+            "たてわり遠足",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "table_id": "P0_B1",
+        "source_page": null,
+        "metadata": {
+          "page": 0,
+          "b_plumber_index": 0,
+          "bbox": [
+            72.5000000175,
+            340.5000235975,
+            555.687504375,
+            570.500035
+          ],
+          "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+          "vertical_merge_confidence": 0.9,
+          "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+          "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+          "vertical_merges_ai": [
+            {
+              "description": "列0の日付が縦に結合",
+              "anchor_row": null,
+              "anchor_col": 0,
+              "rowspan": 5,
+              "source_extract_rows": [
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "vertical_merge_mode": "no_merge",
+          "lr_rebuilt": false,
+          "g36_ai_row_loss_reverted": true
+        }
+      }
+    ],
+    "g14_output": [
+      {
+        "table_id": "P0_B1",
+        "sub_tables": [
+          {
+            "data": [
+              [
+                "",
+                "6A",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "6B",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ],
+              [
+                "",
+                "朝",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "朝",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              [
+                "25\n（月）",
+                "朝会",
+                "国語",
+                "国語",
+                "社会",
+                "算数",
+                "Lラボ",
+                "理科",
+                "朝会",
+                "Lラボ",
+                "算数",
+                "国語",
+                "国語",
+                "理科",
+                "社会"
+              ],
+              [
+                "26\n（火）",
+                "朝算数",
+                "算数",
+                "道徳",
+                "音楽",
+                "国語",
+                "たて\nわり",
+                "社会",
+                "朝算数",
+                "社会",
+                "算数",
+                "道徳",
+                "音楽",
+                "たて\nわり",
+                "国語"
+              ],
+              [
+                "27\n（水）",
+                "朝読書",
+                "家庭",
+                "家庭",
+                "算数",
+                "英語",
+                "体育",
+                "国語",
+                "朝読書",
+                "算数",
+                "国語",
+                "家庭",
+                "家庭",
+                "英語",
+                "体育"
+              ],
+              [
+                "28\n（木）",
+                "朝算数",
+                "体育",
+                "理科",
+                "算数",
+                "英語",
+                "社会",
+                "特活",
+                "朝算数",
+                "理科",
+                "体育",
+                "英語",
+                "社会",
+                "算数",
+                "特活"
+              ],
+              [
+                "29\n（金）",
+                "たてわり遠足",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+              ]
+            ],
+            "group_name": "",
+            "split_axis": "none",
+            "sub_table_id": "P0_B1_S1",
+            "metadata": {
+              "page": 0,
+              "b_plumber_index": 0,
+              "bbox": [
+                72.5000000175,
+                340.5000235975,
+                555.687504375,
+                570.500035
+              ],
+              "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+              "vertical_merge_confidence": 0.9,
+              "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+              "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+              "vertical_merges_ai": [
+                {
+                  "description": "列0の日付が縦に結合",
+                  "anchor_row": null,
+                  "anchor_col": 0,
+                  "rowspan": 5,
+                  "source_extract_rows": [
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ]
+                }
+              ],
+              "vertical_merge_mode": "no_merge",
+              "lr_rebuilt": false,
+              "g36_ai_row_loss_reverted": true,
+              "f56_split_axis": "none"
+            }
+          }
+        ]
+      }
+    ],
+    "g17_output": [
+      {
+        "table_id": "P0_B1",
+        "table_type": "structured",
+        "description": "",
+        "headers": [
+          "列1",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6A",
+          "6B",
+          "6B",
+          "6B",
+          "6B",
+          "6B",
+          "6B",
+          "6B"
+        ],
+        "rows": [
+          [
+            "",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B"
+          ],
+          [
+            "",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "朝",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6"
+          ],
+          [
+            "25\n（月）",
+            "朝会",
+            "国語",
+            "国語",
+            "社会",
+            "算数",
+            "Lラボ",
+            "理科",
+            "朝会",
+            "Lラボ",
+            "算数",
+            "国語",
+            "国語",
+            "理科",
+            "社会"
+          ],
+          [
+            "26\n（火）",
+            "朝算数",
+            "算数",
+            "道徳",
+            "音楽",
+            "国語",
+            "たて\nわり",
+            "社会",
+            "朝算数",
+            "社会",
+            "算数",
+            "道徳",
+            "音楽",
+            "たて\nわり",
+            "国語"
+          ],
+          [
+            "27\n（水）",
+            "朝読書",
+            "家庭",
+            "家庭",
+            "算数",
+            "英語",
+            "体育",
+            "国語",
+            "朝読書",
+            "算数",
+            "国語",
+            "家庭",
+            "家庭",
+            "英語",
+            "体育"
+          ],
+          [
+            "28\n（木）",
+            "朝算数",
+            "体育",
+            "理科",
+            "算数",
+            "英語",
+            "社会",
+            "特活",
+            "朝算数",
+            "理科",
+            "体育",
+            "英語",
+            "社会",
+            "算数",
+            "特活"
+          ],
+          [
+            "29\n（金）",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足",
+            "たてわり遠足"
+          ]
+        ],
+        "sections": [
+          {
+            "title": "P0_B1",
+            "group_name": "",
+            "semantic_title": "Senzo Gakuen Elementary School 6th Grade 時間割",
+            "table_type": "structured",
+            "description": "",
+            "data": [
+              [
+                "",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6A",
+                "6B",
+                "6B",
+                "6B",
+                "6B",
+                "6B",
+                "6B",
+                "6B"
+              ],
+              [
+                "",
+                "朝",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "朝",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6"
+              ],
+              [
+                "25\n（月）",
+                "朝会",
+                "国語",
+                "国語",
+                "社会",
+                "算数",
+                "Lラボ",
+                "理科",
+                "朝会",
+                "Lラボ",
+                "算数",
+                "国語",
+                "国語",
+                "理科",
+                "社会"
+              ],
+              [
+                "26\n（火）",
+                "朝算数",
+                "算数",
+                "道徳",
+                "音楽",
+                "国語",
+                "たて\nわり",
+                "社会",
+                "朝算数",
+                "社会",
+                "算数",
+                "道徳",
+                "音楽",
+                "たて\nわり",
+                "国語"
+              ],
+              [
+                "27\n（水）",
+                "朝読書",
+                "家庭",
+                "家庭",
+                "算数",
+                "英語",
+                "体育",
+                "国語",
+                "朝読書",
+                "算数",
+                "国語",
+                "家庭",
+                "家庭",
+                "英語",
+                "体育"
+              ],
+              [
+                "28\n（木）",
+                "朝算数",
+                "体育",
+                "理科",
+                "算数",
+                "英語",
+                "社会",
+                "特活",
+                "朝算数",
+                "理科",
+                "体育",
+                "英語",
+                "社会",
+                "算数",
+                "特活"
+              ],
+              [
+                "29\n（金）",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足",
+                "たてわり遠足"
+              ]
+            ],
+            "metadata": {
+              "header_rows": [],
+              "row_label_col": null,
+              "data_start_row": 0,
+              "col_map": {},
+              "header_meanings": {},
+              "row_range": [
+                0,
+                6
+              ],
+              "horizontal_merges": [
+                {
+                  "row_index": 0,
+                  "spans": [
+                    {
+                      "start": 1,
+                      "colspan": 7
+                    },
+                    {
+                      "start": 8,
+                      "colspan": 7
+                    }
+                  ]
+                },
+                {
+                  "row_index": 6,
+                  "spans": [
+                    {
+                      "start": 1,
+                      "colspan": 14
+                    }
+                  ]
+                }
+              ],
+              "implicit_headers": [],
+              "split_from": "",
+              "split_axis": "none",
+              "primary_header_candidate": "",
+              "table_semantics": {
+                "type": "timetable",
+                "type_ja": "時間割",
+                "target": "Senzo Gakuen Elementary School 6th Grade",
+                "scope": "Weekly Schedule",
+                "date_range": "2026-05-25 to 2026-05-29",
+                "confidence": 0.9
+              },
+              "whole_table_intent": "これは洗足学園小学校6年生の2026年5月25日から5月29日までの週間の時間割表です。各日の授業内容と特別な活動が記載されています。",
+              "col_analysis": [
+                {
+                  "col_index": 0,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 1,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 2,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 3,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 4,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 5,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 6,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 7,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 8,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 9,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 10,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 11,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 12,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 13,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                },
+                {
+                  "col_index": 14,
+                  "abstraction_level": "concrete_value",
+                  "common_type": "列"
+                }
+              ],
+              "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+              "vertical_merge_confidence": 0.9,
+              "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+              "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+              "vertical_merges_ai": [
+                {
+                  "description": "列0の日付が縦に結合",
+                  "anchor_row": null,
+                  "anchor_col": 0,
+                  "rowspan": 5,
+                  "source_extract_rows": [
+                    2,
+                    3,
+                    4,
+                    5,
+                    6
+                  ]
+                }
+              ],
+              "vertical_merge_mode": "no_merge",
+              "lr_rebuilt": false,
+              "f56_split_axis": "none",
+              "display_column_labels": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ],
+              "column_headers": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+              ]
+            }
+          }
+        ],
+        "metadata": {
+          "header_rows": [
+            0
+          ],
+          "row_label_col": null,
+          "data_start_row": 1,
+          "col_map": {},
+          "header_meanings": {},
+          "row_range": [
+            0,
+            6
+          ],
+          "horizontal_merges": [
+            {
+              "row_index": 0,
+              "spans": [
+                {
+                  "start": 1,
+                  "colspan": 7
+                },
+                {
+                  "start": 8,
+                  "colspan": 7
+                }
+              ]
+            },
+            {
+              "row_index": 6,
+              "spans": [
+                {
+                  "start": 1,
+                  "colspan": 14
+                }
+              ]
+            }
+          ],
+          "implicit_headers": [],
+          "split_from": "",
+          "split_axis": "none",
+          "primary_header_candidate": "",
+          "table_semantics": {
+            "type": "timetable",
+            "type_ja": "時間割",
+            "target": "Senzo Gakuen Elementary School 6th Grade",
+            "scope": "Weekly Schedule",
+            "date_range": "2026-05-25 to 2026-05-29",
+            "confidence": 0.9
+          },
+          "whole_table_intent": "これは洗足学園小学校6年生の2026年5月25日から5月29日までの週間の時間割表です。各日の授業内容と特別な活動が記載されています。",
+          "col_analysis": [
+            {
+              "col_index": 0,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 1,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 2,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 3,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 4,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 5,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 6,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 7,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 8,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 9,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 10,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 11,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 12,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 13,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            },
+            {
+              "col_index": 14,
+              "abstraction_level": "concrete_value",
+              "common_type": "列"
+            }
+          ],
+          "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+          "vertical_merge_confidence": 0.9,
+          "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+          "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+          "vertical_merges_ai": [
+            {
+              "description": "列0の日付が縦に結合",
+              "anchor_row": null,
+              "anchor_col": 0,
+              "rowspan": 5,
+              "source_extract_rows": [
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            }
+          ],
+          "vertical_merge_mode": "no_merge",
+          "lr_rebuilt": false,
+          "f56_split_axis": "none",
+          "display_column_labels": [
+            "列1",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6A",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B",
+            "6B"
+          ],
+          "column_headers": [
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "bbox": [
+            72.5000000175,
+            340.5000235975,
+            555.687504375,
+            570.500035
+          ]
+        }
+      }
+    ],
+    "g21_output": [
+      {
+        "title": "",
+        "body": "# 洗足学園小学校６年生 HERO\n2026年505/22 発行\n5/25 - 5/29 の予定\n- 25日（月）朝会\n- 26日（火）朝算数、たてわりランチ（レジャーシート持参）\n- たてわり活動（5時間目、しおり持参）\n- 27日（水）家庭科調理実習（エプロン、マスク、三角巾、タオル）\n- 28日（木）朝算数\n- 29日（金）たてわり遠足"
+      }
+    ],
+    "g22_output": {
+      "calendar_events": [],
+      "tasks": [],
+      "notices": [],
+      "people": [],
+      "topic_sections": []
+    },
+    "tables_ssot": {
+      "structured_tables": [
+        {
+          "headers": [],
+          "rows": [
+            [
+              "",
+              "6A",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              "6B",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ],
+            [
+              "",
+              "朝",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "朝",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6"
+            ],
+            [
+              "25\n（月）",
+              "朝会",
+              "国語",
+              "国語",
+              "社会",
+              "算数",
+              "Lラボ",
+              "理科",
+              "朝会",
+              "Lラボ",
+              "算数",
+              "国語",
+              "国語",
+              "理科",
+              "社会"
+            ],
+            [
+              "26\n（火）",
+              "朝算数",
+              "算数",
+              "道徳",
+              "音楽",
+              "国語",
+              "たて\nわり",
+              "社会",
+              "朝算数",
+              "社会",
+              "算数",
+              "道徳",
+              "音楽",
+              "たて\nわり",
+              "国語"
+            ],
+            [
+              "27\n（水）",
+              "朝読書",
+              "家庭",
+              "家庭",
+              "算数",
+              "英語",
+              "体育",
+              "国語",
+              "朝読書",
+              "算数",
+              "国語",
+              "家庭",
+              "家庭",
+              "英語",
+              "体育"
+            ],
+            [
+              "28\n（木）",
+              "朝算数",
+              "体育",
+              "理科",
+              "算数",
+              "英語",
+              "社会",
+              "特活",
+              "朝算数",
+              "理科",
+              "体育",
+              "英語",
+              "社会",
+              "算数",
+              "特活"
+            ],
+            [
+              "29\n（金）",
+              "たてわり遠足",
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          ],
+          "table_id": "P0_B1",
+          "source_page": null,
+          "metadata": {
+            "page": 0,
+            "b_plumber_index": 0,
+            "bbox": [
+              72.5000000175,
+              340.5000235975,
+              555.687504375,
+              570.500035
+            ],
+            "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+            "vertical_merge_confidence": 0.9,
+            "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+            "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+            "vertical_merges_ai": [
+              {
+                "description": "列0の日付が縦に結合",
+                "anchor_row": null,
+                "anchor_col": 0,
+                "rowspan": 5,
+                "source_extract_rows": [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6
+                ]
+              }
+            ],
+            "vertical_merge_mode": "no_merge",
+            "lr_rebuilt": false,
+            "g36_ai_row_loss_reverted": true
+          }
+        }
+      ],
+      "detections": [
+        {
+          "row_split": false,
+          "row_blocks": null,
+          "row_common_top": null,
+          "row_common_bottom": null,
+          "col_split": false,
+          "col_blocks": null,
+          "col_common_left": null,
+          "col_common_right": null,
+          "layout_ai_contract": "g41_layout_ai_v1"
+        }
+      ],
+      "e14_reconstructed": [
+        {
+          "table_id": "P0_B1",
+          "sub_tables": [
+            {
+              "data": [
+                [
+                  "",
+                  "6A",
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  "6B",
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ],
+                [
+                  "",
+                  "朝",
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6",
+                  "朝",
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5",
+                  "6"
+                ],
+                [
+                  "25\n（月）",
+                  "朝会",
+                  "国語",
+                  "国語",
+                  "社会",
+                  "算数",
+                  "Lラボ",
+                  "理科",
+                  "朝会",
+                  "Lラボ",
+                  "算数",
+                  "国語",
+                  "国語",
+                  "理科",
+                  "社会"
+                ],
+                [
+                  "26\n（火）",
+                  "朝算数",
+                  "算数",
+                  "道徳",
+                  "音楽",
+                  "国語",
+                  "たて\nわり",
+                  "社会",
+                  "朝算数",
+                  "社会",
+                  "算数",
+                  "道徳",
+                  "音楽",
+                  "たて\nわり",
+                  "国語"
+                ],
+                [
+                  "27\n（水）",
+                  "朝読書",
+                  "家庭",
+                  "家庭",
+                  "算数",
+                  "英語",
+                  "体育",
+                  "国語",
+                  "朝読書",
+                  "算数",
+                  "国語",
+                  "家庭",
+                  "家庭",
+                  "英語",
+                  "体育"
+                ],
+                [
+                  "28\n（木）",
+                  "朝算数",
+                  "体育",
+                  "理科",
+                  "算数",
+                  "英語",
+                  "社会",
+                  "特活",
+                  "朝算数",
+                  "理科",
+                  "体育",
+                  "英語",
+                  "社会",
+                  "算数",
+                  "特活"
+                ],
+                [
+                  "29\n（金）",
+                  "たてわり遠足",
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ]
+              ],
+              "group_name": "",
+              "split_axis": "none",
+              "sub_table_id": "P0_B1_S1",
+              "metadata": {
+                "page": 0,
+                "b_plumber_index": 0,
+                "bbox": [
+                  72.5000000175,
+                  340.5000235975,
+                  555.687504375,
+                  570.500035
+                ],
+                "vertical_merge_judge": "g36_merged_cell_correspondence_v3",
+                "vertical_merge_confidence": 0.9,
+                "vertical_merge_rationale": "ヘッダー行の「6A」「6B」は横結合と判断できる。列0の日付は複数行にわたっており、縦結合と判断できる。それ以外の列は、日付と授業科目が対応しており、横に並んでいる。これらの要素を考慮し、full_resolution が適切と判断した。",
+                "correspondence_summary": "ヘッダー行は、列0と列8の「6A」「6B」がそれぞれ横に結合している。列0の「25(月)」から「29(金)」は日付を表し、縦に結合している。それ以降の列は、各日付に対応する曜日の授業科目を横に並べている。",
+                "vertical_merges_ai": [
+                  {
+                    "description": "列0の日付が縦に結合",
+                    "anchor_row": null,
+                    "anchor_col": 0,
+                    "rowspan": 5,
+                    "source_extract_rows": [
+                      2,
+                      3,
+                      4,
+                      5,
+                      6
+                    ]
+                  }
+                ],
+                "vertical_merge_mode": "no_merge",
+                "lr_rebuilt": false,
+                "g36_ai_row_loss_reverted": true,
+                "f56_split_axis": "none"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "stage": "G",
+    "ui_substage": "G11",
+    "conversion_count": 1
+  }
+}
