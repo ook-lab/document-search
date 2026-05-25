@@ -1,0 +1,53 @@
+{
+  "success": true,
+  "page_index": 0,
+  "tables": [],
+  "non_table_image_path": "debug_output\\test_otayori_live\\page_0\\d10_background.png",
+  "metadata": {
+    "original_size": [
+      1275,
+      1650
+    ]
+  },
+  "debug": {
+    "vector_lines": {
+      "horizontal_lines": [],
+      "vertical_lines": [],
+      "all_lines": [],
+      "page_size": [
+        612,
+        792
+      ]
+    },
+    "raster_lines": {
+      "horizontal_lines": [],
+      "vertical_lines": [],
+      "all_lines": [],
+      "image_size": [
+        1275,
+        1650
+      ]
+    },
+    "grid_result": {
+      "page_index": 0,
+      "intersections": [],
+      "table_regions": [],
+      "unified_lines": {
+        "horizontal": [],
+        "vertical": []
+      }
+    },
+    "cell_result": {
+      "cells": [],
+      "grid_info": {
+        "rows": 0,
+        "cols": 0,
+        "x_coords": [],
+        "y_coords": []
+      }
+    }
+  },
+  "non_table_image_paths": [
+    "debug_output\\test_otayori_live\\page_0\\d10_background.png"
+  ]
+}
