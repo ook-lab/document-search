@@ -6,8 +6,11 @@ from pathlib import Path
 
 # パス設定
 _project_root = Path(__file__).resolve().parent.parent.parent
+_lab_dir = _project_root / 'services' / 'pipeline-lab'
+if str(_lab_dir) not in sys.path:
+    sys.path.insert(0, str(_lab_dir))
 if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
+    sys.path.append(str(_project_root))
 
 from dms.common.database.client import DatabaseClient
 

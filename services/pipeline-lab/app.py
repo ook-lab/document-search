@@ -23,10 +23,10 @@ _lab_dir = Path(__file__).resolve().parent
 _repo_root = _lab_dir.parent.parent
 _lab_str = str(_lab_dir)
 _repo_str = str(_repo_root)
+if _repo_str not in sys.path:
+    sys.path.append(_repo_str)
 if _lab_str not in sys.path:
     sys.path.insert(0, _lab_str)
-if _repo_str not in sys.path:
-    sys.path.insert(0, _repo_str)
 os.environ.setdefault('PROJECT_ROOT', _repo_str)
 
 from flask import Flask, redirect, url_for

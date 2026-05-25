@@ -52,8 +52,11 @@ from typing import Optional, List, Dict, Any
 
 # プロジェクトルートへのパスを追加
 _root_dir = Path(__file__).resolve().parent.parent
+_lab_dir = _root_dir / 'services' / 'pipeline-lab'
+if str(_lab_dir) not in sys.path:
+    sys.path.insert(0, str(_lab_dir))
 if str(_root_dir) not in sys.path:
-    sys.path.insert(0, str(_root_dir))
+    sys.path.append(str(_root_dir))
 
 from loguru import logger
 from dms.common.database.client import DatabaseClient

@@ -17,4 +17,4 @@ include = ["shared*", "scripts*", "services*", "frontend*", "database*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", "services/pipeline-lab"]

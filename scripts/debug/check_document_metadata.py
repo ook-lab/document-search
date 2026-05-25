@@ -8,6 +8,9 @@ from pathlib import Path
 # プロジェクトルートをPYTHONPATHに追加
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
+_lab_dir = Path(__file__).resolve().parent.parent.parent / "services" / "pipeline-lab"
+if str(_lab_dir) not in sys.path:
+    sys.path.insert(0, str(_lab_dir))
 
 from dms.common.database.client import DatabaseClient
 

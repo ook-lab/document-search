@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
+
+_root = Path(__file__).resolve().parent.parent.parent
+_lab_dir = _root / 'services' / 'pipeline-lab'
+if str(_lab_dir) not in sys.path:
+    sys.path.insert(0, str(_lab_dir))
+if str(_root) not in sys.path:
+    sys.path.append(str(_root))
 
 import matplotlib.pyplot as plt
 import pandas as pd

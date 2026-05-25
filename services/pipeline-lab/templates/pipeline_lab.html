@@ -1104,14 +1104,18 @@
     }
 
     // g21 article body を構造化 HTML に変換する
-    // ・二重改行 → 段落区切り
-    // ・単一改行 → 連結（PDF 行折り返し）
+    // ・二重改行 → 段落区切り（<p> 境界）
+    // ・単一改行 → 行区切り（<br>）
     // ・# / ## → 見出し、- → リスト、> → blockquote
     // ・[DATE] ** [WARNING] [RED] → インラインバッジ
     function renderArticleBody(body) {
         if (!body) return '';
         var blocks = String(body).split(/\n{2,}/);
         var html = '';
+        // 行配列を renderInline してから <br> で結合するヘルパー
+        function joinLines(arr) {
+            return arr.filter(Boolean).map(function(l){ return renderInline(l.trim()); }).join('<br>');
+        }
         blocks.forEach(function(block) {
             block = block.trim();
             if (!block) return;
@@ -1119,16 +1123,16 @@
             var first = lines[0] || '';
             if (/^# /.test(first)) {
                 html += '<h3 class="rc-h1">' + renderInline(first.slice(2).trim()) + '</h3>';
-                var rest = lines.slice(1).map(function(l){return l.trim();}).filter(Boolean).join('');
-                if (rest) html += '<p class="rc-prose">' + renderInline(rest) + '</p>';
+                var rest = joinLines(lines.slice(1));
+                if (rest) html += '<p class="rc-prose">' + rest + '</p>';
             } else if (/^## /.test(first)) {
                 html += '<h4 class="rc-h2">' + renderInline(first.slice(3).trim()) + '</h4>';
-                var rest = lines.slice(1).map(function(l){return l.trim();}).filter(Boolean).join('');
-                if (rest) html += '<p class="rc-prose">' + renderInline(rest) + '</p>';
+                var rest = joinLines(lines.slice(1));
+                if (rest) html += '<p class="rc-prose">' + rest + '</p>';
             } else if (lines.every(function(l){ return /^>\s/.test(l.trim()) || !l.trim(); })) {
-                var text = lines.filter(function(l){return l.trim();})
-                    .map(function(l){return l.trim().replace(/^>\s*/, '');}).join('');
-                html += '<blockquote class="rc-blockquote">' + renderInline(text) + '</blockquote>';
+                var bqLines = lines.filter(function(l){return l.trim();})
+                    .map(function(l){return renderInline(l.trim().replace(/^>\s*/, ''));});
+                html += '<blockquote class="rc-blockquote">' + bqLines.join('<br>') + '</blockquote>';
             } else if (lines.some(function(l){ return /^- /.test(l.trim()); })) {
                 var _preBullet = [];
                 var _inList = false;
@@ -1138,29 +1142,30 @@
                     if (/^- /.test(t)) {
                         if (!_inList) {
                             _inList = true;
-                            var _pre = _preBullet.filter(Boolean).join('');
-                            if (_pre) html += '<p class="rc-prose">' + renderInline(_pre) + '</p>';
+                            var _pre = joinLines(_preBullet);
+                            if (_pre) html += '<p class="rc-prose">' + _pre + '</p>';
                             html += '<ul class="rc-list">';
                         }
-                        if (cur !== null) html += '<li>' + renderInline(cur) + '</li>';
-                        cur = t.slice(2);
+                        if (cur !== null) html += '<li>' + cur + '</li>';
+                        cur = renderInline(t.slice(2));
                     } else if (t) {
                         if (!_inList) { _preBullet.push(t); }
-                        else if (cur !== null) { cur += t; }
+                        else if (cur !== null) { cur += '<br>' + renderInline(t); }
                     }
                 });
-                if (cur !== null) html += '<li>' + renderInline(cur) + '</li>';
+                if (cur !== null) html += '<li>' + cur + '</li>';
                 if (_inList) { html += '</ul>'; }
                 else {
-                    var _allPre = _preBullet.filter(Boolean).join('');
-                    if (_allPre) html += '<p class="rc-prose">' + renderInline(_allPre) + '</p>';
+                    var _allPre = joinLines(_preBullet);
+                    if (_allPre) html += '<p class="rc-prose">' + _allPre + '</p>';
                 }
             } else {
-                var text = lines.map(function(l){
+                var rendered = lines.map(function(l){
                     var t = l.trim();
-                    return /^>\s/.test(t) ? t.replace(/^>\s*/, '') : t;
-                }).filter(Boolean).join('');
-                html += '<p class="rc-prose">' + renderInline(text) + '</p>';
+                    if (!t) return null;
+                    return renderInline(/^>\s/.test(t) ? t.replace(/^>\s*/, '') : t);
+                }).filter(Boolean).join('<br>');
+                if (rendered) html += '<p class="rc-prose">' + rendered + '</p>';
             }
         });
         return html;

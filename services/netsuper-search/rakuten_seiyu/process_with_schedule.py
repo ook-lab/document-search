@@ -16,7 +16,11 @@ from typing import List, Dict, Any
 
 _repo = Path(__file__).resolve().parents[3]
 _netsuper = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_repo))
+_lab = _repo / 'services' / 'pipeline-lab'
+if str(_lab) not in sys.path:
+    sys.path.insert(0, str(_lab))
+if str(_repo) not in sys.path:
+    sys.path.append(str(_repo))
 sys.path.insert(0, str(_netsuper))
 
 from dotenv import load_dotenv
