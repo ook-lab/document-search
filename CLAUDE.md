@@ -23,18 +23,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 python services/pipeline-lab/app.py
 
 # ドキュメント処理（Worker）
-python scripts/processing/process_queued_documents.py
+python services/pipeline-lab/scripts/processing/process_queued_documents.py
 
 # 運用CLI
-python scripts/ops.py stats
-python scripts/ops.py stop
-python scripts/ops.py release-lease --workspace <id>
-python scripts/ops.py reset-status --workspace <id> --apply
+python services/pipeline-lab/scripts/ops.py stats
+python services/pipeline-lab/scripts/ops.py stop
+python services/pipeline-lab/scripts/ops.py release-lease --workspace <id>
+python services/pipeline-lab/scripts/ops.py reset-status --workspace <id> --apply
 
 # デバッグパイプライン（A→B→D→E→F）
-python scripts/debug/run_debug_pipeline.py <test_id> --pdf <path>
-python scripts/debug/run_debug_pipeline.py <test_id> --stage E --force
-python scripts/debug/run_debug_pipeline.py <test_id> --start D --end G --force
+python services/pipeline-lab/scripts/debug/run_debug_pipeline.py <test_id> --pdf <path>
+python services/pipeline-lab/scripts/debug/run_debug_pipeline.py <test_id> --stage E --force
+python services/pipeline-lab/scripts/debug/run_debug_pipeline.py <test_id> --start D --end G --force
 
 # テスト
 python -m pytest tests/ -v

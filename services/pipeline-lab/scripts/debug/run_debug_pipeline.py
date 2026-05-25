@@ -33,9 +33,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Set
 
-# pipeline-lab サービスをパスに追加（ルートの dms/ は使わない）
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-PIPELINE_LAB_ROOT = PROJECT_ROOT / 'services' / 'pipeline-lab'
+PIPELINE_LAB_ROOT = Path(__file__).resolve().parents[2]  # services/pipeline-lab/
 sys.path.insert(0, str(PIPELINE_LAB_ROOT))
 
 # dms.pipeline.__init__.py の壊れたインポート（旧pipeline.py）を回避

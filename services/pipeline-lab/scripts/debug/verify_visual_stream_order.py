@@ -9,9 +9,8 @@ from typing import List, Optional, Tuple
 
 import pdfplumber
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(PROJECT_ROOT / "services" / "pipeline-lab"))
+_lab_dir = Path(__file__).resolve().parents[2]  # services/pipeline-lab/
+sys.path.insert(0, str(_lab_dir))
 
 
 def _stream_index(vs: list, needle: str, *, kind: Optional[str] = None) -> Optional[int]:

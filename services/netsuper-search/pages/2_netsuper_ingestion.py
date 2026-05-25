@@ -12,19 +12,17 @@ from pathlib import Path
 import streamlit as st
 
 _svc = Path(__file__).resolve().parents[1]
-_repo = Path(__file__).resolve().parents[3]
-for p in (str(_repo), str(_svc)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+if str(_svc) not in sys.path:
+    sys.path.insert(0, str(_svc))
 
 import ingestion_runner as runner
 
 st.set_page_config(page_title="Netsuper ingest", page_icon="📥", layout="wide")
 
 SOURCES = {
-    "daiei": {"name": "ダイエー", "script": "scripts/processing/process_daiei.py"},
-    "rakuten": {"name": "楽天西友", "script": "scripts/processing/process_rakuten_seiyu.py"},
-    "tokyu": {"name": "東急ストア", "script": "scripts/processing/process_tokyu_store.py"},
+    "daiei": {"name": "ダイエー", "script": "scripts/process_daiei.py"},
+    "rakuten": {"name": "楽天西友", "script": "scripts/process_rakuten_seiyu.py"},
+    "tokyu": {"name": "東急ストア", "script": "scripts/process_tokyu_store.py"},
 }
 
 st.title("ネットスーパー店舗データ取込")
@@ -43,7 +41,7 @@ for key, meta in SOURCES.items():
             placeholder="例: --no-headless や --once",
         )
         if st.button(f"{meta['name']} を実行", key=f"run_{key}", type="primary"):
-            script_path = str(_repo / meta["script"])
+            script_path = str(_svc / meta["script"])
             raw = st.session_state.get(f"args_{key}", "").strip()
             if raw:
                 extra = raw.split()

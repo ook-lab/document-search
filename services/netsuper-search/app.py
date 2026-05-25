@@ -12,9 +12,6 @@ import sys
 from pathlib import Path
 
 _service_dir = Path(__file__).resolve().parent
-_lab_dir = _service_dir.parent.parent / 'services' / 'pipeline-lab'
-if str(_lab_dir) not in sys.path:
-    sys.path.insert(0, str(_lab_dir))
 if str(_service_dir) not in sys.path:
     sys.path.insert(0, str(_service_dir))
 

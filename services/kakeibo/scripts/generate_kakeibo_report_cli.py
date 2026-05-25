@@ -4,26 +4,22 @@ import argparse
 import sys
 from pathlib import Path
 
-_root = Path(__file__).resolve().parent.parent.parent
-_lab_dir = _root / 'services' / 'pipeline-lab'
-if str(_lab_dir) not in sys.path:
-    sys.path.insert(0, str(_lab_dir))
-if str(_root) not in sys.path:
-    sys.path.append(str(_root))
+_kakeibo = Path(__file__).resolve().parents[1]  # services/kakeibo/
+if str(_kakeibo) not in sys.path:
+    sys.path.insert(0, str(_kakeibo))
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import japanize_matplotlib  # 日本語フォント対応
 
-from dms.common.database.client import DatabaseClient
+from db_client import get_db
 
 
 OUTPUT_DIR = Path("reports")
 
 
 def fetch_agg(start_date: str, end_date: str, group_by: str) -> pd.DataFrame:
-    # バッチ処理なので service_role を使用
-    db = DatabaseClient(use_service_role=True).client
+    db = get_db()
 
     # DB側のRPC (fn_kakeibo_report_agg) を呼び出す
     resp = db.rpc(

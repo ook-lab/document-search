@@ -5,9 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "services" / "pipeline-lab"))
+_lab_dir = Path(__file__).resolve().parents[2]  # services/pipeline-lab/
+sys.path.insert(0, str(_lab_dir))
 
 import blueprints.lab as lab  # noqa: E402
 from dms.pipeline.stage_f.table_md_emitters import build_table_html_for_md  # noqa: E402

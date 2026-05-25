@@ -46,7 +46,7 @@ class ProductEmbeddingGenerator:
 
     def __init__(self):
         # Supabase接続（service roleキーを使用）
-        self.db = DatabaseClient(use_service_role=True)
+        self.db = SupabaseService(use_service_role=True)
 
         # OpenAI接続
         self.openai_api_key = os.getenv("OPENAI_API_KEY")

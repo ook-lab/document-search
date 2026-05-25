@@ -9,7 +9,7 @@ Streamlit Cloud対応のため、設定をSupabaseテーブルに保存します
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from loguru import logger
-from dms.common.database.client import DatabaseClient
+from supabase_service import SupabaseService
 
 
 class CategoryManagerDB:
@@ -17,7 +17,7 @@ class CategoryManagerDB:
 
     def __init__(self):
         """初期化"""
-        self.db = DatabaseClient(use_service_role=True)
+        self.db = SupabaseService(use_service_role=True)
         self.table_name = "99_lg_scraping_schedule"
 
     def load_config_from_db(self, store_name: str) -> List[Dict[str, Any]]:

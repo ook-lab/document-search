@@ -5,11 +5,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "services" / "pipeline-lab"))
+_lab_dir = Path(__file__).resolve().parents[2]  # services/pipeline-lab/
+sys.path.insert(0, str(_lab_dir))
 
-import scripts.debug.validate_two_pdfs as v  # noqa: E402
+import validate_two_pdfs as v  # noqa: E402
 
 res = v._run(v.PDFS["shushu"], "val_shushu_fix")
 print("success=", res.get("success"), "error=", res.get("error"))

@@ -10,13 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 
-_repo = Path(__file__).resolve().parents[2]
 _netsuper = Path(__file__).resolve().parent
-_lab = _repo / 'services' / 'pipeline-lab'
-if str(_lab) not in sys.path:
-    sys.path.insert(0, str(_lab))
-if str(_repo) not in sys.path:
-    sys.path.append(str(_repo))
 if str(_netsuper) not in sys.path:
     sys.path.insert(0, str(_netsuper))
 

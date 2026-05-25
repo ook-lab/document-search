@@ -24,10 +24,8 @@ from pathlib import Path
 from typing import Optional, List
 from dotenv import load_dotenv
 
-# プロジェクトルートをパスに追加
-root_dir = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(root_dir))
-sys.path.insert(0, str(root_dir / "services" / "netsuper-search"))
+_netsuper = Path(__file__).resolve().parents[1]  # services/netsuper-search/
+sys.path.insert(0, str(_netsuper))
 
 from rakuten_seiyu.auth_manager import RakutenSeiyuAuthManager
 from rakuten_seiyu.product_ingestion import RakutenSeiyuProductIngestionPipeline

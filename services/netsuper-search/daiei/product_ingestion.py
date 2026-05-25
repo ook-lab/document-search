@@ -16,15 +16,10 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any
 
-# リポジトリルート + netsuper-search（common / 店舗パッケージ）
 _repo = Path(__file__).resolve().parents[3]
 _netsuper = Path(__file__).resolve().parents[1]
-_lab = _repo / 'services' / 'pipeline-lab'
-if str(_lab) not in sys.path:
-    sys.path.insert(0, str(_lab))
-if str(_repo) not in sys.path:
-    sys.path.append(str(_repo))
-sys.path.insert(0, str(_netsuper))
+if str(_netsuper) not in sys.path:
+    sys.path.insert(0, str(_netsuper))
 
 from dotenv import load_dotenv
 

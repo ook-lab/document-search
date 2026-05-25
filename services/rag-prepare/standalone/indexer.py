@@ -601,50 +601,54 @@ class RagPrepareSearchIndexer:
     @staticmethod
     def _get_ai_annotations(text: str) -> Dict[str, Any]:
         """
-        Gemini にテキスト構造のアノテーション指示を JSON で返させる。
-        AI はテキストを生成・変更しない。行番号とスパン文字列のみ返す。
+        Gemini にテキストの行レベル構造型を JSON で返させる。
+        AI はテキストを生成・変更しない。行番号と型名のみ返す。
 
-        戻り値: {"annotation_types": {型名: 説明, ...}, "annotations": [...]}
-        annotation_types は AI がこの文書に合わせて 5〜8 種類自由に定義する。
+        戻り値: {"annotations": [{"line": N, "type": "..."}, ...]}
         """
         if not text.strip():
-            return {"annotation_types": {}, "annotations": []}
+            return {"annotations": []}
         try:
             import json as _json
             import os
             import google.generativeai as genai
             api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
             if not api_key:
-                return {"annotation_types": {}, "annotations": []}
+                return {"annotations": []}
 
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
+            line_types = "heading_1, heading_2, bullet_item, blockquote, paragraph_break, section_break"
 
             prompt = (
-                "次のテキストを読んで、読者にとって重要な情報の種類を自分で決め、"
-                "アノテーション指示を JSON のみで返してください。\n"
+                "次のテキストの各行を読んで、行レベルの構造型を JSON のみで返してください。\n"
                 "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
-                "annotation_types: このドキュメントに合ったスパン型を 5〜8 個定義する。\n"
-                "  型名は英小文字スネークケース（date, place, item, person, deadline 等）\n"
-                "  説明は日本語（例: place: 集合場所・解散場所・目的地の固有名詞）\n"
-                "  【禁止①】文体・修辞・文学的技法を説明する型は定義しない"
-                "（literary_device, metaphor, rhetorical_question 等）。\n"
-                "  【禁止②】語自体がすでに自分のカテゴリを説明している抽象名詞をタグ対象にしない。"
-                "「気持ち」に[EMOTION]、「歌い方」に[METHOD]を付けるのは翻訳であり意味がない。\n"
-                "  タグは読者が『スキャンして探したい』具体的な固有情報"
-                "（日時・場所・人名・物品名・金額・締切など）にのみ付ける。\n\n"
-                "行レベル（line キー）の固定型: "
-                "heading_1（最重要見出し）, heading_2（セクション見出し）, "
-                "section_break（話題の切れ目）, bullet_item（箇条書き項目）, blockquote（注記・引用）\n"
-                "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
-                "section_break の制約: 文書全体で最大 5 箇所まで。"
-                "段落ごとに区切らず、読み手が「ここから別の話題だ」と感じる大きな転換点のみに付ける。\n\n"
+                f"行レベルの型（line キー）: {line_types}\n\n"
+                "【bullet_item の使い方】\n"
+                "  同じレベルで並ぶ項目リストの行には bullet_item を付ける。\n"
+                "  例：「①〇〇」「②〇〇」、「・〇〇」、「項目名：値」が複数並ぶ行など。\n"
+                "  散文の途中で改行されただけの継続行には付けない（それは paragraph_break）。\n\n"
+                "【blockquote の使い方】\n"
+                "  本文と別扱いの注記・補足・条件付きお知らせには blockquote を付ける。\n"
+                "  例：「※〜」「＊注意〜」「〔補足〕〜」「なお〜」「ただし〜」など、\n"
+                "  条件・例外・注意書きとして添えられた行。\n\n"
+                "【heading_1 / heading_2 の使い方】\n"
+                "  短い見出し行（タイトル・セクション名）には heading_1 または heading_2 を付ける。\n"
+                "  heading_1/2 が付いた行は自動的にセクション分割の境界になるので、\n"
+                "  見出し行に section_break は不要（重複して付けない）。\n\n"
+                "【section_break の使い方】\n"
+                "  見出し行ではないが内容のテーマが切り替わる境界行に付ける。\n"
+                "  見出し行には heading_1/2 を使い、section_break は使わない。\n\n"
+                "【paragraph_break の使い方】\n"
+                "  このテキストは PDF の物理的な折り返しを含む。\n"
+                "  散文で前の行から文が継続する場合は付けない（折り返しは結合する）。\n"
+                "  前の行と意味的に独立した新しい段落・見出し行には付ける。\n\n"
                 "出力形式（例）:\n"
-                '{"annotation_types": {"date": "日付・時刻・期限", "place": "集合・解散場所"}, '
-                '"annotations": [{"line": 0, "type": "heading_1"}, '
-                '{"span": "来週金曜日", "type": "date"}, '
-                '{"span": "こどもの国", "type": "place"}]}\n\n'
-                "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
+                '{"annotations": [{"line": 0, "type": "heading_1"}, '
+                '{"line": 3, "type": "bullet_item"}, '
+                '{"line": 4, "type": "bullet_item"}, '
+                '{"line": 9, "type": "heading_2"}, '
+                '{"line": 14, "type": "paragraph_break"}]}\n\n'
                 f"テキスト:\n{numbered}"
             )
 
@@ -658,20 +662,16 @@ class RagPrepareSearchIndexer:
                 ),
             )
             data = _json.loads(resp.text.strip())
-            return {
-                "annotation_types": data.get("annotation_types") or {},
-                "annotations": data.get("annotations") or [],
-            }
+            return {"annotations": data.get("annotations") or []}
         except Exception as e:
             logger.warning("[RAG] AI アノテーション取得失敗: %s", e)
-            return {"annotation_types": {}, "annotations": []}
+            return {"annotations": []}
 
     @staticmethod
     def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
         """
         AI アノテーション指示を md テキストに機械的に適用する。
-        元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
-        スパン型は [TYPE_NAME]...[/TYPE_NAME] に統一（型名は大文字化）。
+        元テキストの文字は変えない。行頭プレフィックスのみ挿入。
         section_break は _SPLIT_MARKER を挿入（呼び出し元が --- に変換）。
         """
         if not annotations:
@@ -681,44 +681,31 @@ class RagPrepareSearchIndexer:
         marker = RagPrepareSearchIndexer._SPLIT_MARKER
 
         for ann in annotations:
-            if "line" in ann:
-                idx = ann.get("line")
-                ann_type = ann.get("type", "")
-                if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
-                    continue
-                if ann_type == "section_break":
-                    if not lines[idx].startswith(marker) and \
-                       not lines[idx].startswith("# ") and \
-                       not lines[idx].startswith("## "):
-                        lines[idx] = marker + lines[idx]
-                    continue
-                prefix = RagPrepareSearchIndexer._LINE_PREFIX.get(ann_type)
-                if prefix is None:
-                    continue
-                line = lines[idx]
-                if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
-                    continue
-                if line.startswith("## ") and ann_type == "heading_2":
-                    continue
-                if line.startswith(prefix):
-                    continue
-                lines[idx] = prefix + line
+            if "line" not in ann:
+                continue
+            idx = ann.get("line")
+            ann_type = ann.get("type", "")
+            if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
+                continue
+            if ann_type == "section_break":
+                if not lines[idx].startswith(marker) and \
+                   not lines[idx].startswith("# ") and \
+                   not lines[idx].startswith("## "):
+                    lines[idx] = marker + lines[idx]
+                continue
+            prefix = RagPrepareSearchIndexer._LINE_PREFIX.get(ann_type)
+            if prefix is None:
+                continue
+            line = lines[idx]
+            if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
+                continue
+            if line.startswith("## ") and ann_type == "heading_2":
+                continue
+            if line.startswith(prefix):
+                continue
+            lines[idx] = prefix + line
 
-        result = "\n".join(lines)
-
-        for ann in annotations:
-            if "span" in ann:
-                span_text = ann.get("span", "")
-                ann_type = ann.get("type", "").upper()
-                if not ann_type or not span_text or span_text not in result:
-                    continue
-                open_tag = f"[{ann_type}]"
-                close_tag = f"[/{ann_type}]"
-                if f"{open_tag}{span_text}{close_tag}" in result:
-                    continue
-                result = result.replace(span_text, f"{open_tag}{span_text}{close_tag}", 1)
-
-        return result
+        return "\n".join(lines)
 
     @staticmethod
     def _plain_chunks(text: str, chunk_size: int = 1200) -> List[str]:
@@ -862,8 +849,8 @@ class RagPrepareSearchIndexer:
             if ext_m:
                 ext_text = RagPrepareSearchIndexer._merge_pdf_lines(ext_m.group(1).strip())
                 if ext_text:
-                    annotations = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
-                    annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, annotations)
+                    ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
+                    annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, ann_result.get("annotations") or [])
                     # section_break マーカーを _structured_md_chunks が認識する --- に変換
                     annotated = annotated.replace(
                         RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"

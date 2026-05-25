@@ -30,15 +30,12 @@ def _pythonpath() -> str:
 def _get_db():
     global _db
     if _db is None:
-        for p in (str(SERVICE_ROOT), str(PROJECT_ROOT)):
-            if p not in sys.path:
-                sys.path.insert(0, p)
         from dotenv import load_dotenv
-
         load_dotenv(PROJECT_ROOT / ".env")
-        from dms.common.database.client import DatabaseClient
-
-        _db = DatabaseClient(use_service_role=True)
+        if str(SERVICE_ROOT) not in sys.path:
+            sys.path.insert(0, str(SERVICE_ROOT))
+        from supabase_service import SupabaseService
+        _db = SupabaseService(use_service_role=True)
     return _db
 
 

@@ -10,8 +10,7 @@ from uuid import UUID
 import uuid
 import os
 
-from dms.common.database.client import DatabaseClient
-from dms.ai.llm_client.llm_client import LLMClient
+from supabase_service import SupabaseService
 from loguru import logger
 from openai import OpenAI
 
@@ -29,8 +28,7 @@ class BaseProductIngestionPipeline(ABC):
         """
         self.organization_name = organization_name
         self.headless = headless
-        self.db = DatabaseClient(use_service_role=True)
-        self.llm_client = LLMClient()
+        self.db = SupabaseService(use_service_role=True)
         self.scraper = None
 
         # OpenAI clientの初期化（embedding生成用）

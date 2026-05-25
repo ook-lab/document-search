@@ -5,10 +5,7 @@ import sys
 import json
 from pathlib import Path
 
-# プロジェクトルートをPYTHONPATHに追加
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root))
-_lab_dir = Path(__file__).resolve().parent.parent.parent / "services" / "pipeline-lab"
+_lab_dir = Path(__file__).resolve().parents[2]  # services/pipeline-lab/
 if str(_lab_dir) not in sys.path:
     sys.path.insert(0, str(_lab_dir))
 

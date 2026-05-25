@@ -9,11 +9,9 @@ RUN apt-get update && \
     playwright install --with-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
-COPY services/pipeline-lab/dms/ /app/dms/
-COPY scripts/ /app/scripts/
 COPY services/netsuper-search/ /app/services/netsuper-search/
 
-ENV PYTHONPATH=/app:/app/services/netsuper-search
+ENV PYTHONPATH=/app/services/netsuper-search
 ENV PORT=8501
 
 WORKDIR /app/services/netsuper-search
