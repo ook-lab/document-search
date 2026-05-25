@@ -455,7 +455,7 @@ class G11Controller:
             if not line:
                 result.append(line)  # 空行は常に保持
             elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
-                if any(result[-1].startswith(p) for p in STRUCT):
+                if any(result[-1].startswith(p) for p in STRUCT) or any(line.startswith(p) for p in STRUCT):
                     result.append(line)
                 else:
                     result[-1] += line
@@ -773,7 +773,7 @@ class G11Controller:
                         md_parts.append(text)
                 if not md_parts:
                     continue
-                full_text = G11Controller._merge_pdf_lines("\n".join(md_parts))
+                full_text = "\n".join(G11Controller._merge_pdf_lines(part) for part in md_parts)
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 annotations = result.get("annotations") or []
                 full_md = G11Controller._apply_annotations(full_text, annotations)
