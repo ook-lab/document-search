@@ -578,8 +578,6 @@ def _visual_stream_from_f17_reading_stream(
         if kind == 'non_table_paragraph':
             row = dict(item)
             row['tie'] = seq
-            if row.get('text'):
-                row['text'] = _G11Controller._merge_pdf_lines(row['text'])
             stream.append(row)
             seq += 1
         elif kind == 'table_ref':
@@ -675,7 +673,7 @@ def _build_visual_stream(
     if use_f1_interleave:
         prose_rows: List[Dict[str, Any]] = []
         for i, ob in enumerate(nt_blocks):
-            t = _G11Controller._merge_pdf_lines((ob.get('text') or '').strip())
+            t = (ob.get('text') or '').strip()
             if not t:
                 continue
             sy = _normalize_f1_block_sort_y(
@@ -716,7 +714,7 @@ def _build_visual_stream(
             for blk in blocks:
                 if not isinstance(blk, dict):
                     continue
-                text = _G11Controller._merge_pdf_lines((blk.get('text') or '').strip())
+                text = (blk.get('text') or '').strip()
                 if not text:
                     continue
                 y = _bbox_top_norm(blk.get('bbox'))
@@ -980,7 +978,7 @@ def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, pa
 
     # Raw MD / 文字数は F1 統合の non_table_text（B+E）を正とする。E の blocks のみではヘッダ等が欠ける。
     # PDF物理行折り返しを段落単位に結合してから使う（生テキストのまま送ると行バラバラになる）。
-    non_table_plain = _G11Controller._merge_pdf_lines((stage_f_result.get('non_table_text') or '').strip())
+    non_table_plain = (stage_f_result.get('non_table_text') or '').strip()
     loguru_logger.info(
         f"[pipeline-lab] non_table_plain_len={len(non_table_plain)} "
         f"stage_e_blocks_plain_len={len(body_join)}"
