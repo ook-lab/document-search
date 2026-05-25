@@ -1,0 +1,193 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "WORD",
+    "confidence": "HIGH",
+    "reason": "Creator一致: microsoft.*word",
+    "raw_metadata": {
+      "Author": "秀典 宮内",
+      "Creator": "Microsoft® Word for Microsoft 365",
+      "CreationDate": "D:20260518214022+09'00'",
+      "ModDate": "D:20260518214022+09'00'",
+      "Producer": "Microsoft® Word for Microsoft 365"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 1,
+    "dimensions": {
+      "width": 595.32,
+      "height": 841.92,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 210.01566666666668,
+      "height": 297.0106666666666,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 13.0,
+      "avg_x_std": 124.70050271570663,
+      "avg_words_per_line": 0.3939393939393939,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 0,
+          "words": 13,
+          "chars": 361,
+          "has_selectable_text": true,
+          "x_std": 124.70050271570663,
+          "lines": 33,
+          "words_per_line": 0.3939393939393939,
+          "vector_count": 3,
+          "fonts": [
+            {
+              "name": "BCDEEE+BIZ-UDPGothic",
+              "type": "TrueType",
+              "encoding": "WinAnsiEncoding",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+BIZ-UDPGothic",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDGEE+BIZ-UDPGothic-Bold",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": []
+        }
+      ]
+    }
+  },
+  "origin_app": "WORD",
+  "document_type": "WORD",
+  "confidence": "HIGH",
+  "reason": "Creator一致: microsoft.*word",
+  "raw_metadata": {
+    "Author": "秀典 宮内",
+    "Creator": "Microsoft® Word for Microsoft 365",
+    "CreationDate": "D:20260518214022+09'00'",
+    "ModDate": "D:20260518214022+09'00'",
+    "Producer": "Microsoft® Word for Microsoft 365"
+  },
+  "page_type_map": {
+    "0": "WORD"
+  },
+  "type_groups": {
+    "WORD": [
+      0
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH"
+  },
+  "page_count": 1,
+  "dimensions": {
+    "width": 595.32,
+    "height": 841.92,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 210.01566666666668,
+    "height": 297.0106666666666,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 0.0,
+    "avg_words_per_page": 13.0,
+    "avg_x_std": 124.70050271570663,
+    "avg_words_per_line": 0.3939393939393939,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 0,
+        "words": 13,
+        "chars": 361,
+        "has_selectable_text": true,
+        "x_std": 124.70050271570663,
+        "lines": 33,
+        "words_per_line": 0.3939393939393939,
+        "vector_count": 3,
+        "fonts": [
+          {
+            "name": "BCDEEE+BIZ-UDPGothic",
+            "type": "TrueType",
+            "encoding": "WinAnsiEncoding",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+BIZ-UDPGothic",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDGEE+BIZ-UDPGothic-Bold",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": []
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 13.0,
+      "avg_x_std": 124.70050271570663,
+      "probe_ok": true,
+      "avg_chars_per_page": 361.0,
+      "avg_vectors_per_page": 3.0
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B3_PDF_WORD"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（WORD+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "WORD",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 13.0,
+      "avg_x_std": 124.70050271570663,
+      "probe_ok": true,
+      "avg_chars_per_page": 361.0,
+      "avg_vectors_per_page": 3.0
+    },
+    "policy_version": "A5.v2"
+  }
+}

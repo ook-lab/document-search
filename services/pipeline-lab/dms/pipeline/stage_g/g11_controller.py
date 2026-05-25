@@ -435,35 +435,6 @@ class G11Controller:
                 result.append(raw_line)
         return "\n".join(result)
 
-    _PDF_SENTENCE_ENDERS = frozenset('。！？」』）】…')
-    # 構造行プレフィックス（これで始まる行は前後の行と結合しない）
-    _STRUCTURAL_PREFIXES = ('# ', '## ', '- ', '> ', '---')
-
-    @staticmethod
-    def _merge_pdf_lines(text: str) -> str:
-        """PDF物理行の折り返しを段落単位に結合する。
-        - 連続行（\\n 区切り）: ENDERS で終わらない行 → 直結（改行なし結合）
-        - 空行（\\n\\n）: 常に保持（改行あり結合 = 段落区切り）
-        - 構造行（# ## - > ---）は前後と結合しない
-        """
-        ENDERS = G11Controller._PDF_SENTENCE_ENDERS
-        STRUCT = G11Controller._STRUCTURAL_PREFIXES
-        lines = text.split('\n')
-        result: List[str] = []
-
-        for line in lines:
-            if not line:
-                result.append(line)  # 空行は常に保持
-            elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
-                if any(result[-1].startswith(p) for p in STRUCT) or any(line.startswith(p) for p in STRUCT):
-                    result.append(line)
-                else:
-                    result[-1] += line
-            else:
-                result.append(line)
-
-        return '\n'.join(result)
-
     @staticmethod
     def _get_ai_annotations(text: str, has_typography: bool = False) -> Dict[str, Any]:
         """
@@ -773,7 +744,7 @@ class G11Controller:
                         md_parts.append(text)
                 if not md_parts:
                     continue
-                full_text = "\n".join(G11Controller._merge_pdf_lines(part) for part in md_parts)
+                full_text = "\n".join(md_parts)
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 annotations = result.get("annotations") or []
                 full_md = G11Controller._apply_annotations(full_text, annotations)
@@ -782,7 +753,7 @@ class G11Controller:
                     articles = [{"title": "", "body": full_md}]
                 all_articles.extend(articles)
         else:
-            nt = G11Controller._merge_pdf_lines((non_table_text or "").strip())
+            nt = (non_table_text or "").strip()
             if not nt:
                 return []
             result = G11Controller._get_ai_annotations(nt, has_typography=False)

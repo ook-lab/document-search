@@ -1,0 +1,147 @@
+{
+  "success": true,
+  "document_info": {
+    "document_type": "WORD",
+    "year_context": null,
+    "title": "",
+    "source_file": "",
+    "processor_name": "B3_PDF_WORD",
+    "data_type": "",
+    "purged_pdf_path": "H:\\共有ドライブ\\DataBase\\Classroom\\IKUYA-classroom\\purged\\b3_学年集合写真について.pdf [1Q0QMfscMn_iq89eTL0wtiaU1ZMsx9I1L]_purged.pdf",
+    "page_width_pt": 595.32,
+    "page_height_pt": 841.92
+  },
+  "raw_integrated_text": "2026年5月1９日\n保護者各位\n第73期洗足学園小学校6年アルバム係\n学年集合写真撮影のご案内\n５月２２日(金)学芸会第一部終了時に「たなかや」様による学年集合写真の撮影があります。\n撮影時間は20分程度の予定です。\n・服装は、夏服（半袖シャツにスカートまたはズボン、ベスト･セーターの着用不可）、\n白靴下、革靴です。\nワンピースしかお持ちでない場合は、担任の先生までご相談ください。\n服装が異なる児童がいる場合は撮影延期になる恐れがありますので、ご留意ください。\n・当日ご欠席の場合は、後日個人写真を撮影し合成していただきます。\n・男子のベルト着用は自由ですが、例年撮影の際には着用している方が多くいるようです。\n・雨天の場合は延期になります。日程は決まり次第ご連絡します。",
+  "non_table_text": "2026年5月1９日\n保護者各位\n第73期洗足学園小学校6年アルバム係\n学年集合写真撮影のご案内\n５月２２日(金)学芸会第一部終了時に「たなかや」様による学年集合写真の撮影があります。\n撮影時間は20分程度の予定です。\n・服装は、夏服（半袖シャツにスカートまたはズボン、ベスト･セーターの着用不可）、\n白靴下、革靴です。\nワンピースしかお持ちでない場合は、担任の先生までご相談ください。\n服装が異なる児童がいる場合は撮影延期になる恐れがありますので、ご留意ください。\n・当日ご欠席の場合は、後日個人写真を撮影し合成していただきます。\n・男子のベルト着用は自由ですが、例年撮影の際には着用している方が多くいるようです。\n・雨天の場合は延期になります。日程は決まり次第ご連絡します。",
+  "non_table_text_blocks": [
+    {
+      "page": 0,
+      "y0": 132.92719999999997,
+      "x0": 63.864,
+      "text": "2026年5月1９日\n保護者各位\n第73期洗足学園小学校6年アルバム係\n学年集合写真撮影のご案内\n５月２２日(金)学芸会第一部終了時に「たなかや」様による学年集合写真の撮影があります。\n撮影時間は20分程度の予定です。\n・服装は、夏服（半袖シャツにスカートまたはズボン、ベスト･セーターの着用不可）、\n白靴下、革靴です。\nワンピースしかお持ちでない場合は、担任の先生までご相談ください。\n服装が異なる児童がいる場合は撮影延期になる恐れがありますので、ご留意ください。\n・当日ご欠席の場合は、後日個人写真を撮影し合成していただきます。\n・男子のベルト着用は自由ですが、例年撮影の際には着用している方が多くいるようです。\n・雨天の場合は延期になります。日程は決まり次第ご連絡します。",
+      "source": "stage_b",
+      "y1": 509.5372,
+      "x1": 496.06
+    }
+  ],
+  "events": [],
+  "tasks": [],
+  "notices": [],
+  "tables": [],
+  "metadata": {
+    "stages_processed": [
+      "A",
+      "B",
+      "D",
+      "E"
+    ],
+    "total_tokens": 0,
+    "models_used": [],
+    "f1_text_merge": {
+      "stage_b_blocks": 1,
+      "stage_e_blocks": 0,
+      "stage_e_skipped_duplicate": 0,
+      "merged_blocks": 1,
+      "stage_b_branch": "logical_blocks",
+      "non_table_text_chars": 339,
+      "ordered_block_count": 1
+    },
+    "f11_scope": "prose_blocks_and_tables_coexist"
+  },
+  "display_sent_at": null,
+  "display_fields": null,
+  "stage_d_line_digest": {
+    "available": true,
+    "page_index": 0,
+    "page_size_pt": [
+      595.32,
+      841.92
+    ],
+    "tables": [],
+    "document_grid": {
+      "unified_horizontal": 3,
+      "unified_vertical": 0,
+      "intersections": 0,
+      "lines_in_digest": 3,
+      "truncated": false
+    },
+    "lines": [
+      {
+        "line_id": "h0",
+        "orientation": "horizontal",
+        "x0": 0.3093,
+        "y0": 0.2841,
+        "x1": 0.631,
+        "y1": 0.2841,
+        "length_norm": 0.3217,
+        "source": "unified"
+      },
+      {
+        "line_id": "h1",
+        "orientation": "horizontal",
+        "x0": 0.1913,
+        "y0": 0.413,
+        "x1": 0.7446,
+        "y1": 0.413,
+        "length_norm": 0.5532,
+        "source": "unified"
+      },
+      {
+        "line_id": "h2",
+        "orientation": "horizontal",
+        "x0": 0.128,
+        "y0": 0.4344,
+        "x1": 0.227,
+        "y1": 0.4344,
+        "length_norm": 0.099,
+        "source": "unified"
+      }
+    ],
+    "lines_truncated": false
+  },
+  "stage_d_cell_bundle": {
+    "available": true,
+    "page_index": 0,
+    "page_size_pt": [
+      595.32,
+      841.92
+    ],
+    "grid_info": {
+      "rows": 0,
+      "cols": 0,
+      "x_coords": [],
+      "y_coords": []
+    },
+    "cells": [],
+    "unified_lines": {
+      "horizontal": [
+        {
+          "x0": 0.3092958408922932,
+          "y0": 0.2840887175978715,
+          "x1": 0.6310387354699993,
+          "y1": 0.2840887175978715,
+          "length": 191.53998,
+          "type": "rect_edge"
+        },
+        {
+          "x0": 0.19132567358731437,
+          "y0": 0.41297272175503613,
+          "x1": 0.7445575488812739,
+          "y1": 0.41297272175503613,
+          "length": 329.35,
+          "type": "rect_edge"
+        },
+        {
+          "x0": 0.12803870187462205,
+          "y0": 0.43435242528981377,
+          "x1": 0.2270106833299738,
+          "y1": 0.43435242528981377,
+          "length": 58.92,
+          "type": "rect_edge"
+        }
+      ],
+      "vertical": []
+    },
+    "tables": []
+  }
+}

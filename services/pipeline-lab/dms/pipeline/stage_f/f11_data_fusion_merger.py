@@ -509,6 +509,8 @@ class F11DataFusionMerger:
                 ob['y1'] = float(b['y1'])
             if isinstance(b.get('x1'), (int, float)):
                 ob['x1'] = float(b['x1'])
+            if b.get('text_lines'):
+                ob['text_lines'] = b['text_lines']
             ordered_blocks.append(ob)
         stats: Dict[str, Any] = {
             'stage_b_blocks': stage_b_count,
