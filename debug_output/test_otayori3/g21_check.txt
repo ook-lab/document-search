@@ -1,0 +1,25 @@
+=== Article 0 : たてわり遠足 ===
+annotation_types: ['date', 'place', 'person', 'item', 'deadline', 'action', 'ref', 'condition', 'event', 'duration']
+body:
+# [EVENT]たてわり遠足[/EVENT]
+[DATE]来週金曜日[/DATE]はたてわり遠足です。担当する班のメンバーが全員[ACTION]楽しく過ごせるとよいです[/ACTION]。[PERSON]６年生[/PERSON]は[PERSON]下級生[/PERSON]
+のペースを考えて、[ACTION]計画を立てたり[/ACTION]、[ACTION]歩くスピードに配慮できるとよいです[/ACTION]。
+- 服装：[ITEM]体操着[/ITEM]（[ITEM]長そで・長ズボン[/ITEM]併用可）、[ITEM]白靴下[/ITEM]、はきなれた[ITEM]運動靴[/ITEM]（必ず[ACTION]記名する[/ACTION]）
+- 集合時刻と集合場所：[DATE]9時30分[/DATE]　[PLACE]こどもの国[/PLACE]　[PLACE]正面入り口広場[/PLACE]
+- 解散時刻と解散場所：[DATE]14時[/DATE]　[PLACE]長津田駅[/PLACE]
+- ☔[CONDITION]雨天時[/CONDITION]は[PLACE]学校[/PLACE]での活動になります。[ACTION]平常登校[/ACTION]、[DATE]下校14時20分頃[/DATE]
+- 服装：[ITEM]制服[/ITEM]　　持ち物：[ITEM]お弁当[/ITEM]、[ITEM]水筒[/ITEM]、[ITEM]筆記用具[/ITEM]、[ITEM]iPad[/ITEM]、体操着
+
+=== Article 1 :  ===
+annotation_types: []
+body:
+いざ[EVENT]学芸会[/EVENT]本番
+６年生は、学芸会で[PRODUCT]Back number[/PRODUCT]の「[REF]どうしてもどうしても[/REF]」を[ACTION]合唱します[/ACTION]。
+[DATE]今週[/DATE]の授業「[EVENT]Lラボ[/EVENT]」では、[ACTION]歌詞を読み解く活動[/ACTION]を行いました。[REF]自分の心に残ったフレーズ[/REF]を一つ選び、その
+言葉に[REF]どんな意味や思いがこめられているのか[/REF]を考えました。また、「どうしてもどうしても」という[REF]タイトル[/REF]に
+も[ACTION]注目しました[/ACTION]。なぜ[REF]同じ言葉を繰り返しているのか[/REF]。そこには、[REF]どんな強い気持ちがあるのか[/REF]。[PERSON]一人一人[/PERSON]が[ACTION]想像を広げていきました[/ACTION]。
+さらに、「[REF]失くしたり　見つけたり[/REF]」「[REF]出会いよ　別れよ[/REF]」といった[REF]対照的な言葉[/REF]にも[ACTION]目を向けました[/ACTION]。人は出会
+いと別れを繰り返しながら成長していくこと、[REF]うれしいこと[/REF]だけでなく、[REF]迷いや葛藤[/REF]もあることなど、６年生という[PERSON]今の自分たち[/PERSON]に[ACTION]重ねながら考えました[/ACTION]。
+最後には、「[REF]今の自分にとっての『どうしてもどうしても』[/REF]とは何だろう」と、[PERSON]自分自身[/PERSON]を[ACTION]振り返りました[/ACTION]。友達と
+の関わり、[REF]挑戦してきたこと[/REF]、[REF]卒業に向かう今の気持ち[/REF]
+

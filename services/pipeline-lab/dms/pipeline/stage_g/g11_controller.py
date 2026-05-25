@@ -503,37 +503,34 @@ class G11Controller:
                 )
 
             prompt = (
-                "次のテキストを読んで、読者にとって重要な情報の種類を自分で決め、"
-                "アノテーション指示を JSON のみで返してください。\n"
+                "次のテキストの各行を読んで、行レベルの構造型を JSON のみで返してください。\n"
                 "【絶対ルール】JSON 以外は一切出力しない。テキストを生成・変更しない。\n\n"
-                "annotation_types: このドキュメントに合ったスパン型を 5〜8 個定義する。\n"
-                "  型名は英小文字スネークケース（date, place, item, person, deadline 等）\n"
-                "  説明は日本語（例: place: 集合場所・解散場所・目的地の固有名詞）\n"
-                "  【禁止①】文体・修辞・文学的技法を説明する型は定義しない"
-                "（literary_device, metaphor, rhetorical_question 等）。\n"
-                "  【禁止②】語自体がすでに自分のカテゴリを説明している抽象名詞をタグ対象にしない。"
-                "「気持ち」に[EMOTION]、「歌い方」に[METHOD]を付けるのは翻訳であり意味がない。\n"
-                "  【禁止③】歌詞・詩句・文の断片をスパンタグで囲まない。"
-                "song_title 型を定義した場合は楽曲の正式タイトル（固有名詞）にのみ使用し、歌詞の一節は対象外。\n"
-                "  タグは読者が『スキャンして探したい』具体的な固有情報"
-                "（日時・場所・人名・物品名・金額・締切など）にのみ付ける。\n\n"
-                f"行レベル（line キー）の固定型: {line_types}\n"
-                "スパンレベル（span キー）: annotation_types で定義した型のみ使用\n\n"
-                "paragraph_break の使い方: このテキストの行は PDF の物理的な折り返しを含む。"
-                "散文（説明文・物語）で前の行から文が継続する場合は付けない（折り返しは結合する）。"
-                "「服装：体操着」「集合時刻と集合場所：」「☔雨天時は」「いざ学芸会本番」のように、"
-                "前の行と意味的に独立した新しい項目・段落・見出しには付ける。\n\n"
-                "section_break の使い方: 内容のテーマが明確に切り替わる行に付ける。"
-                "「遠足の案内」→「学芸会の内容」のように、読者が別トピックだと判断できる境界。"
-                "段落の区切りや修飾語句の変化には付けない。見出し行の有無は関係ない。\n\n"
+                f"行レベルの型（line キー）: {line_types}\n\n"
+                "【bullet_item の使い方】\n"
+                "  同じレベルで並ぶ項目リストの行には bullet_item を付ける。\n"
+                "  例：「①〇〇」「②〇〇」、「・〇〇」、「項目名：値」が複数並ぶ行など。\n"
+                "  散文の途中で改行されただけの継続行には付けない（それは paragraph_break）。\n\n"
+                "【paragraph_break の使い方】\n"
+                "  このテキストは PDF の物理的な折り返しを含む。\n"
+                "  散文で前の行から文が継続する場合は付けない（折り返しは結合する）。\n"
+                "  前の行と意味的に独立した新しい段落・見出し行には付ける。\n\n"
+                "【blockquote の使い方】\n"
+                "  本文と別扱いの注記・補足・条件付きお知らせには blockquote を付ける。\n"
+                "  例：「※〜」「＊注意〜」「〔補足〕〜」「なお〜」「ただし〜」など、\n"
+                "  条件・例外・注意書きとして添えられた行。\n\n"
+                "【heading_1 / heading_2 の使い方】\n"
+                "  短い見出し行（タイトル・セクション名）には heading_1 または heading_2 を付ける。\n"
+                "  heading_1/2 が付いた行は自動的にセクション分割の境界になるので、\n"
+                "  見出し行に section_break は不要（重複して付けない）。\n\n"
+                "【section_break の使い方】\n"
+                "  見出し行ではないが内容のテーマが切り替わる境界行に付ける。\n"
+                "  見出し行には heading_1/2 を使い、section_break は使わない。\n\n"
                 "出力形式（例）:\n"
-                '{"annotation_types": {"date": "日付・時刻・期限", "place": "集合・解散場所"}, '
-                '"annotations": [{"line": 0, "type": "heading_1"}, '
-                '{"line": 5, "type": "section_break"}, '
-                '{"line": 7, "type": "paragraph_break"}, '
-                '{"span": "来週金曜日", "type": "date"}, '
-                '{"span": "こどもの国", "type": "place"}]}\n\n'
-                "span の値は下記テキストに存在する文字列のみ。存在しない文字列は絶対に使わない。\n\n"
+                '{"annotations": [{"line": 0, "type": "heading_1"}, '
+                '{"line": 3, "type": "bullet_item"}, '
+                '{"line": 4, "type": "bullet_item"}, '
+                '{"line": 9, "type": "heading_2"}, '
+                '{"line": 14, "type": "paragraph_break"}]}\n\n'
                 f"テキスト:\n{numbered}"
             )
 
@@ -651,10 +648,10 @@ class G11Controller:
             lines = part.split("\n")
             if lines[0].startswith("## "):
                 title = _strip_spans(lines[0][3:])
-                body = "\n".join(lines[1:]).strip()
+                body = "\n".join(lines).strip()
             elif lines[0].startswith("# "):
                 title = _strip_spans(lines[0][2:])
-                body = "\n".join(lines[1:]).strip()
+                body = "\n".join(lines).strip()
             else:
                 title = ""
                 body = part
@@ -762,8 +759,6 @@ class G11Controller:
             return []
 
         all_articles: List[Dict[str, str]] = []
-        all_annotation_types: Dict[str, str] = {}
-
         if blocks:
             groups = G11Controller._group_blocks_by_tables(blocks, tables or [])
             for group in groups:
@@ -783,7 +778,6 @@ class G11Controller:
                     continue
                 full_text = "\n".join(md_parts)
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
-                all_annotation_types.update(result.get("annotation_types") or {})
                 annotations = result.get("annotations") or []
                 full_md = G11Controller._apply_annotations(full_text, annotations)
                 articles = G11Controller._split_md_to_articles(full_md)
@@ -795,7 +789,6 @@ class G11Controller:
             if not nt:
                 return []
             result = G11Controller._get_ai_annotations(nt, has_typography=False)
-            all_annotation_types.update(result.get("annotation_types") or {})
             annotations = result.get("annotations") or []
             full_md = G11Controller._apply_annotations(nt, annotations)
             articles = G11Controller._split_md_to_articles(full_md)
@@ -805,10 +798,7 @@ class G11Controller:
 
         if not all_articles:
             return []
-        all_articles = G11Controller._merge_small_articles(all_articles)
-        if all_annotation_types:
-            all_articles[0]["annotation_types"] = all_annotation_types
-        return all_articles
+        return G11Controller._merge_small_articles(all_articles)
 
     @staticmethod
     def _dedupe_prose_sections(ui_data: Dict[str, Any]) -> None:
