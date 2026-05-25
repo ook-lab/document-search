@@ -554,6 +554,8 @@ class RagPrepareSearchIndexer:
             ("title", "タイトル"),
             ("description", "説明"),
             ("post_type", "投稿種別"),
+            ("post_at", "送信日"),
+            ("from_name", "送信者"),
             ("due_date", "期限日"),
             ("due_time", "期限時刻"),
             ("creator_name", "作成者"),
@@ -563,12 +565,38 @@ class RagPrepareSearchIndexer:
             ("original_path", "元パス"),
             ("mime_type", "MIMEタイプ"),
         ]
+        def _fmt_datetime(value: Any) -> str:
+            import re as _re
+            s = str(value).strip()
+            m = _re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", s)
+            if m:
+                date = f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日"
+                time = f"{int(m.group(4))}時{int(m.group(5))}分"
+                return f"{date} {time}"
+            m = _re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
+            if m:
+                return f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日"
+            return s
+
+        def _fmt_time(value: Any) -> str:
+            import re as _re
+            s = str(value).strip()
+            m = _re.match(r"(\d{1,2}):(\d{2})", s)
+            if m:
+                return f"{int(m.group(1))}時{int(m.group(2))}分"
+            return s
+
         lines = []
         for key, label in fields:
             value = raw.get(key)
             if value is None:
                 continue
-            text = str(value).strip()
+            if key in ("post_at", "due_date"):
+                text = _fmt_datetime(value)
+            elif key == "due_time":
+                text = _fmt_time(value)
+            else:
+                text = str(value).strip()
             if text:
                 lines.append(f"- {label}: {text}")
         return "\n".join(lines)
