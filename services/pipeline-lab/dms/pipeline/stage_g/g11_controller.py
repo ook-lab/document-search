@@ -773,7 +773,7 @@ class G11Controller:
                         md_parts.append(text)
                 if not md_parts:
                     continue
-                full_text = "\n".join(md_parts)
+                full_text = G11Controller._merge_pdf_lines("\n".join(md_parts))
                 result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
                 annotations = result.get("annotations") or []
                 full_md = G11Controller._apply_annotations(full_text, annotations)
@@ -782,7 +782,7 @@ class G11Controller:
                     articles = [{"title": "", "body": full_md}]
                 all_articles.extend(articles)
         else:
-            nt = (non_table_text or "").strip()
+            nt = G11Controller._merge_pdf_lines((non_table_text or "").strip())
             if not nt:
                 return []
             result = G11Controller._get_ai_annotations(nt, has_typography=False)
