@@ -646,16 +646,13 @@ class G11Controller:
             if not part:
                 continue
             lines = part.split("\n")
-            if lines[0].startswith("## "):
-                title = _strip_spans(lines[0][3:])
-                body = "\n".join(lines).strip()
-            elif lines[0].startswith("# "):
-                title = _strip_spans(lines[0][2:])
+            if lines[0].startswith("## ") or lines[0].startswith("# "):
+                title = ""
                 body = "\n".join(lines).strip()
             else:
                 title = ""
                 body = part
-            if body or title:
+            if body:
                 articles.append({"title": title, "body": body})
         return articles
 
@@ -677,8 +674,8 @@ class G11Controller:
         merged: List[Dict[str, Any]] = []
         for art in articles:
             body = (art.get("body") or "").strip()
-            title = (art.get("title") or "").strip()
-            if merged and not title and len(body) < min_body_chars:
+            has_heading = body.startswith("# ") or body.startswith("## ")
+            if merged and not has_heading and len(body) < min_body_chars:
                 prev = merged[-1]
                 prev_body = (prev.get("body") or "").strip()
                 prev["body"] = (prev_body + "\n" + body).strip() if prev_body else body

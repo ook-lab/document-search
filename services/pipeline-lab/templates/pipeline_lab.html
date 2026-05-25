@@ -768,6 +768,7 @@
                             <button type="button" class="tab-btn active" id="tabVisualEditor" role="tab" aria-selected="true">Visual Editor</button>
                             <button type="button" class="tab-btn" id="tabRawMd" role="tab" aria-selected="false">Raw MD</button>
                             <button type="button" class="tab-btn" id="tabLog" role="tab" aria-selected="false">ログ</button>
+                            <button type="button" class="tab-btn" id="tabFormatLog" role="tab" aria-selected="false">書式検出</button>
                         </div>
                         <div style="display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;">
                             <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;" id="dataHeaderMeta">ページ 1 / 1</span>
@@ -788,6 +789,7 @@
                     <div id="paneVisualEditor" class="editor-pane active" aria-label="Visual Editor"></div>
                     <div id="paneRawMd" class="editor-pane raw-md-pane" aria-label="Raw MD"></div>
                     <div id="paneLog" class="editor-pane" aria-label="ログ"></div>
+                    <div id="paneFormatLog" class="editor-pane" aria-label="書式検出"></div>
                 </div>
             </div>
         </div>
@@ -884,9 +886,11 @@
     const paneVisualEditor = document.getElementById('paneVisualEditor');
     const paneRawMd = document.getElementById('paneRawMd');
     const paneLog = document.getElementById('paneLog');
+    const paneFormatLog = document.getElementById('paneFormatLog');
     const tabVisualEditor = document.getElementById('tabVisualEditor');
     const tabRawMd = document.getElementById('tabRawMd');
     const tabLog = document.getElementById('tabLog');
+    const tabFormatLog = document.getElementById('tabFormatLog');
     const dataHeaderMeta = document.getElementById('dataHeaderMeta');
 
     let appState = {
@@ -1282,21 +1286,26 @@
         var v = which === 'visual';
         var r = which === 'rawmd';
         var l = which === 'log';
+        var f = which === 'format';
         tabVisualEditor.classList.toggle('active', v);
         tabRawMd.classList.toggle('active', r);
         tabLog.classList.toggle('active', l);
+        tabFormatLog.classList.toggle('active', f);
         tabVisualEditor.setAttribute('aria-selected', v ? 'true' : 'false');
         tabRawMd.setAttribute('aria-selected', r ? 'true' : 'false');
         tabLog.setAttribute('aria-selected', l ? 'true' : 'false');
+        tabFormatLog.setAttribute('aria-selected', f ? 'true' : 'false');
         paneVisualEditor.classList.toggle('active', v);
         paneRawMd.classList.toggle('active', r);
         paneLog.classList.toggle('active', l);
+        paneFormatLog.classList.toggle('active', f);
         // Visual ペインが表示されたタイミングで scrollHeight が確定するので全テキストエリアをリサイズ
         if (v) requestAnimationFrame(() => _dmeAutoResizeAll(paneVisualEditor));
     }
     tabVisualEditor.addEventListener('click', function () { setLabTab('visual'); });
     tabRawMd.addEventListener('click', function () { setLabTab('rawmd'); });
     tabLog.addEventListener('click', function () { setLabTab('log'); });
+    tabFormatLog.addEventListener('click', function () { setLabTab('format'); });
 
     function pickStr(obj, keys) {
         if (!obj || typeof obj !== 'object') return '';
@@ -2302,6 +2311,60 @@
             '</div></div></details>';
     }
 
+    function renderFormatLogHtml(data) {
+        var sa = data.stage_a || {};
+        if (!Object.keys(sa).length) return '<p class="log-note">Stage A データがありません。パイプラインを実行してください。</p>';
+
+        var confColor = sa.confidence === 'HIGH' ? '#059669' : sa.confidence === 'MEDIUM' ? '#d97706' : '#dc2626';
+        var html = '<div style="padding:1rem;font-size:0.82rem;line-height:1.7;">';
+
+        // 判定結果サマリ
+        html += '<div style="background:#f1f5f9;border-radius:8px;padding:0.75rem 1rem;margin-bottom:1rem;">';
+        html += '<div style="font-size:1.1rem;font-weight:700;margin-bottom:0.3rem;">' + escapeHtml(sa.document_type || '—') + '</div>';
+        html += '<div><span style="display:inline-block;background:' + confColor + ';color:#fff;border-radius:4px;padding:1px 8px;font-size:0.75rem;font-weight:600;margin-right:0.5rem;">' + escapeHtml(sa.confidence || '—') + '</span>';
+        if (sa.origin_app) html += '<span style="color:var(--text-muted);">' + escapeHtml(sa.origin_app) + '</span>';
+        if (sa.layout_profile) html += '<span style="color:var(--text-muted);margin-left:0.5rem;">/ ' + escapeHtml(sa.layout_profile) + '</span>';
+        html += '</div>';
+        if (sa.reason) html += '<div style="margin-top:0.4rem;color:var(--text-muted);font-size:0.8rem;">' + escapeHtml(sa.reason) + '</div>';
+        html += '</div>';
+
+        // ページ種別マップ
+        var ptm = sa.page_type_map || {};
+        var pcm = sa.page_confidence_map || {};
+        var pages = Object.keys(ptm);
+        if (pages.length) {
+            html += '<h4 style="margin:0 0 0.4rem;font-size:0.83rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;">ページ種別</h4>';
+            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:1rem;">';
+            html += '<thead><tr style="background:#f8fafc;font-size:0.78rem;color:var(--text-muted);"><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);">Page</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);">種別</th><th style="padding:4px 8px;text-align:left;border-bottom:1px solid var(--border);">信頼度</th></tr></thead><tbody>';
+            pages.forEach(function(pg) {
+                var conf = pcm[pg] || '—';
+                var cc = conf === 'HIGH' ? '#059669' : conf === 'LOW' ? '#dc2626' : '#6b7280';
+                html += '<tr><td style="padding:4px 8px;border-bottom:1px solid var(--border);">' + escapeHtml(pg) + '</td>';
+                html += '<td style="padding:4px 8px;border-bottom:1px solid var(--border);font-weight:600;">' + escapeHtml(ptm[pg]) + '</td>';
+                html += '<td style="padding:4px 8px;border-bottom:1px solid var(--border);"><span style="color:' + cc + ';font-weight:600;">' + escapeHtml(conf) + '</span></td></tr>';
+            });
+            html += '</tbody></table>';
+        }
+
+        // フォント詳細
+        var pfd = sa.page_font_detail || {};
+        var pfdKeys = Object.keys(pfd);
+        if (pfdKeys.length) {
+            html += '<details style="margin-bottom:0.75rem;"><summary style="cursor:pointer;font-size:0.82rem;font-weight:600;color:var(--text-muted);">フォント詳細</summary>';
+            html += '<pre style="background:#f8fafc;border:1px solid var(--border);border-radius:6px;padding:0.6rem;font-size:0.75rem;max-height:200px;overflow:auto;margin-top:0.4rem;">' + escapeHtml(JSON.stringify(pfd, null, 2)) + '</pre></details>';
+        }
+
+        // メタデータ照合
+        var mmd = sa.meta_match_detail;
+        if (mmd) {
+            html += '<details style="margin-bottom:0.75rem;"><summary style="cursor:pointer;font-size:0.82rem;font-weight:600;color:var(--text-muted);">PDF メタデータ照合</summary>';
+            html += '<pre style="background:#f8fafc;border:1px solid var(--border);border-radius:6px;padding:0.6rem;font-size:0.75rem;max-height:200px;overflow:auto;margin-top:0.4rem;">' + escapeHtml(JSON.stringify(mmd, null, 2)) + '</pre></details>';
+        }
+
+        html += '</div>';
+        return html;
+    }
+
     function renderLogHtml(data) {
         const r = data.reading || {};
         const d = data.stage_d || {};
@@ -2480,6 +2543,7 @@
                 paneRawMd.innerHTML = _makeRawMdTextarea(_synMd + _embed);
                 _wireRawMdSync(appState.currentPage);
                 paneLog.innerHTML = renderLogHtml(pr);
+                paneFormatLog.innerHTML = renderFormatLogHtml(pr);
                 setLabTab('visual');
                 wireCopyButtons();
                 btnFullJson.disabled = false;
@@ -2492,6 +2556,7 @@
             paneRawMd.innerHTML = renderRawMdPane(pr);
             _wireRawMdSync(appState.currentPage);
             paneLog.innerHTML = renderLogHtml(pr);
+            paneFormatLog.innerHTML = renderFormatLogHtml(pr);
             setLabTab('visual');
             wireCopyButtons();
             btnFullJson.disabled = false;
@@ -2503,6 +2568,7 @@
             paneRawMd.innerHTML = renderRawMdPane(pr);
             _wireRawMdSync(appState.currentPage);
             paneLog.innerHTML = renderErrorDebugHtml(pr);
+            paneFormatLog.innerHTML = renderFormatLogHtml(pr);
             setLabTab('log');
             wireCopyButtons();
             btnFullJson.disabled = true;
