@@ -589,7 +589,7 @@ class RagPrepareSearchIndexer:
             if not line:
                 result.append(line)  # 空行は常に保持
             elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
-                if any(result[-1].startswith(p) for p in STRUCT):
+                if any(result[-1].startswith(p) for p in STRUCT) or any(line.startswith(p) for p in STRUCT):
                     result.append(line)
                 else:
                     result[-1] += line
