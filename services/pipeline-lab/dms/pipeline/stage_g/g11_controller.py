@@ -564,11 +564,18 @@ class G11Controller:
         _HEAD_PREFIXES = ("# ", "## ", G11Controller._SPLIT_MARKER)
 
         # 散文折り返し結合: no_merge に含まれない連続行を直結する
+        # ただし直前行が注釈済み（no_merge）の場合は結合しない（新しい行として扱う）
         merged: List[str] = []
         for i, line in enumerate(lines):
             if not line:
                 merged.append(line)  # 空行は保持
-            elif merged and merged[-1] and i not in no_merge and not merged[-1].startswith(_HEAD_PREFIXES) and not line.startswith(_HEAD_PREFIXES):
+            elif (
+                merged and merged[-1]
+                and i not in no_merge
+                and (i - 1) not in no_merge
+                and not merged[-1].startswith(_HEAD_PREFIXES)
+                and not line.startswith(_HEAD_PREFIXES)
+            ):
                 merged[-1] += line
             else:
                 merged.append(line)
