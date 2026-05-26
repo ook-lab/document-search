@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from typing import List, Optional
 
+import httpx
 from openai import OpenAI
 
 
@@ -14,7 +15,8 @@ class EmbeddingGen:
         self.api_key = api_key or (os.environ.get("OPENAI_API_KEY") or "").strip()
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY is not set")
-        self.client = OpenAI(api_key=self.api_key)
+        # http_client 経由でタイムアウトを設定（openai + httpx バージョン差異の proxies エラー回避）
+        self.client = OpenAI(api_key=self.api_key, http_client=httpx.Client(timeout=30.0))
         self.model_name = "text-embedding-3-small"
         self.dimensions = 1536
 

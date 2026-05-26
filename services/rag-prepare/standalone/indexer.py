@@ -602,31 +602,6 @@ class RagPrepareSearchIndexer:
         return "\n".join(lines)
 
     @staticmethod
-    def _merge_pdf_lines(text: str) -> str:
-        """PDF物理行の折り返しを段落単位に結合する。
-        - 連続行（\\n 区切り）: ENDERS で終わらない行 → 直結（改行なし結合）
-        - 空行（\\n\\n）: 常に保持（改行あり結合 = 段落区切り）
-        - 構造行（# ## - > ---）は前後と結合しない
-        """
-        ENDERS = frozenset('。！？」』）】…')
-        STRUCT = ('# ', '## ', '- ', '> ', '---')
-        lines = text.split('\n')
-        result: List[str] = []
-
-        for line in lines:
-            if not line:
-                result.append(line)  # 空行は常に保持
-            elif result and result[-1] and result[-1][-1] not in ENDERS and not line.startswith('　'):
-                if any(result[-1].startswith(p) for p in STRUCT) or any(line.startswith(p) for p in STRUCT):
-                    result.append(line)
-                else:
-                    result[-1] += line
-            else:
-                result.append(line)
-
-        return '\n'.join(result)
-
-    @staticmethod
     def _get_ai_annotations(text: str) -> Dict[str, Any]:
         """
         Gemini にテキストの行レベル構造型を JSON で返させる。
@@ -688,6 +663,7 @@ class RagPrepareSearchIndexer:
                     temperature=0.0,
                     response_mime_type="application/json",
                 ),
+                request_options={"timeout": 30},
             )
             data = _json.loads(resp.text.strip())
             return {"annotations": data.get("annotations") or []}
@@ -758,7 +734,7 @@ class RagPrepareSearchIndexer:
         # 地の文: 旧フォーマット（## 非表）または新フォーマット（## 表（埋め込み）より前のテキスト）
         prose_text = ""
         prose_m = re.search(
-            r'^## 非表（F 地の文）\s*\n(.*?)(?=^## |\Z)',
+            r'^## 非表（F 地の文）\s*\n(.*?)(?=^## (?:非表|表（埋め込み）)|\Z)',
             md_text, re.MULTILINE | re.DOTALL,
         )
         if prose_m:
@@ -853,8 +829,11 @@ class RagPrepareSearchIndexer:
         """
         results: List[tuple[str, str, float]] = []
 
+        # セクション境界: 既知のセクション見出しのみを停止条件にする
+        # （PDF 内容の # 見出しで誤停止しないよう (?=^# |\Z) は使わない）
+        _SECTION_STOP = r'(?=^# (?:PDF抽出Markdown|ファイル外テキスト)|\Z)'
         pdf_md_m = re.search(
-            r'^# PDF抽出Markdown\s*\n(.*?)(?=^# |\Z)',
+            r'^# PDF抽出Markdown\s*\n(.*?)' + _SECTION_STOP,
             full_markdown, re.MULTILINE | re.DOTALL,
         )
         if pdf_md_m:
@@ -871,11 +850,11 @@ class RagPrepareSearchIndexer:
                     results.append((c, "rag_prepare_plain", 1.0))
 
             ext_m = re.search(
-                r'^# ファイル外テキスト\s*\n(.*?)(?=^# |\Z)',
+                r'^# ファイル外テキスト\s*\n(.*?)' + _SECTION_STOP,
                 full_markdown, re.MULTILINE | re.DOTALL,
             )
             if ext_m:
-                ext_text = RagPrepareSearchIndexer._merge_pdf_lines(ext_m.group(1).strip())
+                ext_text = ext_m.group(1).strip()
                 if ext_text:
                     ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
                     annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, ann_result.get("annotations") or [])

@@ -513,6 +513,7 @@ class G11Controller:
                     temperature=0.0,
                     response_mime_type="application/json",
                 ),
+                request_options={"timeout": 120},
             )
             data = _json.loads(resp.text.strip())
             return {
