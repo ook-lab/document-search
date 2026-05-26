@@ -564,7 +564,9 @@ class G11Controller:
         _HEAD_PREFIXES = ("# ", "## ", G11Controller._SPLIT_MARKER)
 
         # 散文折り返し結合: no_merge に含まれない連続行を直結する
-        # ただし直前行が注釈済み（no_merge）の場合は結合しない（新しい行として扱う）
+        # paragraph_break 等の注釈行はその行自体が段落の起点であり、
+        # 後続の無注釈行はその起点行に結合する（起点行 i が no_merge でも
+        # 次の行 i+1 は結合対象）。
         merged: List[str] = []
         for i, line in enumerate(lines):
             if not line:
@@ -572,7 +574,6 @@ class G11Controller:
             elif (
                 merged and merged[-1]
                 and i not in no_merge
-                and (i - 1) not in no_merge
                 and not merged[-1].startswith(_HEAD_PREFIXES)
                 and not line.startswith(_HEAD_PREFIXES)
             ):
