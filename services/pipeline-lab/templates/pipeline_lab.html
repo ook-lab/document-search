@@ -3207,9 +3207,53 @@
         container.innerHTML = '';
         container.contentEditable = 'false';
         const sections = _dmeSplitMd(md);
+        
+        // Find which title and summary sections are consumed by tables
+        const consumed = new Set();
+        for (let i = 0; i < sections.length; i++) {
+            if (sections[i].type === 'table') {
+                let hasTitle = false, hasSummary = false;
+                for (let j = i - 1; j >= 0; j--) {
+                    if (sections[j].type === 'title') {
+                        if (!hasTitle && !consumed.has(j)) {
+                            consumed.add(j);
+                            hasTitle = true;
+                        } else {
+                            break;
+                        }
+                    } else if (sections[j].type === 'summary') {
+                        if (!hasSummary && !consumed.has(j)) {
+                            consumed.add(j);
+                            hasSummary = true;
+                        } else {
+                            break;
+                        }
+                    } else if (sections[j].type === 'text' && !sections[j].content.trim()) {
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+
         for (let i = 0; i < sections.length; i++) {
             const sec = sections[i];
-            if (sec.type === 'title' || sec.type === 'summary') continue;
+            if (sec.type === 'title' || sec.type === 'summary') {
+                if (consumed.has(i)) continue;
+                const prefix = sec.type === 'title' ? '## ' : '::summary:: ';
+                const textVal = prefix + sec.content;
+                const div = document.createElement('div');
+                div.className = 'dme-text-section';
+                const ta = document.createElement('textarea');
+                ta.className = 'dme-grow';
+                ta.dataset.index = i;
+                ta.addEventListener('input', () => _dmeAutoResize(ta));
+                ta.value = textVal;
+                div.appendChild(ta);
+                container.appendChild(div);
+                continue;
+            }
             if (sec.type === 'table') {
                 let titleSec = null, summarySec = null;
                 for (let j = i - 1; j >= 0; j--) {
