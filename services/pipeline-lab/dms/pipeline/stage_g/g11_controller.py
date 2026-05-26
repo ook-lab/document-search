@@ -436,7 +436,7 @@ class G11Controller:
         return "\n".join(result)
 
     @staticmethod
-    def _get_ai_annotations(text: str, has_typography: bool = False) -> Dict[str, Any]:
+    def _get_ai_annotations(text: str) -> Dict[str, Any]:
         """
         Gemini にテキスト構造のアノテーション指示を JSON で返させる。
         AI はテキストを生成・変更しない。行番号とスパン文字列のみ返す。
@@ -456,22 +456,14 @@ class G11Controller:
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
 
-            if has_typography:
-                line_types = (
-                    "paragraph_break（前行と結合しない・新しい項目・段落の開始行）, "
-                    "section_break（話題の切れ目・新しいセクションの開始行）, "
-                    "bullet_item（並列する箇条書き項目）, "
-                    "blockquote（注記・引用・お知らせ補足）"
-                )
-            else:
-                line_types = (
-                    "paragraph_break（前行と結合しない・新しい項目・段落の開始行）, "
-                    "heading_1（文書タイトル等の最重要見出し）, "
-                    "heading_2（セクション見出し）, "
-                    "section_break（内容のテーマが切り替わる境界行）, "
-                    "bullet_item（並列する箇条書き項目）, "
-                    "blockquote（注記・引用・お知らせ補足）"
-                )
+            line_types = (
+                "paragraph_break（前行と結合しない・新しい項目・段落の開始行）, "
+                "heading_1（文書タイトル等の最重要見出し）, "
+                "heading_2（セクション見出し）, "
+                "section_break（内容のテーマが切り替わる境界行）, "
+                "bullet_item（並列する箇条書き項目）, "
+                "blockquote（注記・引用・お知らせ補足）"
+            )
 
             prompt = (
                 "次のテキストの各行を読んで、行レベルの構造型を JSON のみで返してください。\n"
@@ -732,7 +724,7 @@ class G11Controller:
                 if not md_parts:
                     continue
                 full_text = "\n".join(md_parts)
-                result = G11Controller._get_ai_annotations(full_text, has_typography=has_any_typography)
+                result = G11Controller._get_ai_annotations(full_text)
                 annotations = result.get("annotations") or []
                 full_md = G11Controller._apply_annotations(full_text, annotations)
                 articles = G11Controller._split_md_to_articles(full_md)
@@ -743,7 +735,7 @@ class G11Controller:
             nt = (non_table_text or "").strip()
             if not nt:
                 return []
-            result = G11Controller._get_ai_annotations(nt, has_typography=False)
+            result = G11Controller._get_ai_annotations(nt)
             annotations = result.get("annotations") or []
             full_md = G11Controller._apply_annotations(nt, annotations)
             articles = G11Controller._split_md_to_articles(full_md)
