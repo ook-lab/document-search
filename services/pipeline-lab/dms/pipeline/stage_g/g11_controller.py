@@ -576,7 +576,7 @@ class G11Controller:
         for i, line in enumerate(lines):
             if not line:
                 merged.append(line)  # 空行は保持
-            elif merged and merged[-1] and i not in no_merge and not merged[-1].startswith(_HEAD_PREFIXES):
+            elif merged and merged[-1] and i not in no_merge and not merged[-1].startswith(_HEAD_PREFIXES) and not line.startswith(_HEAD_PREFIXES):
                 merged[-1] += line
             else:
                 merged.append(line)

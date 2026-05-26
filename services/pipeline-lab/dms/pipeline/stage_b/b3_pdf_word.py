@@ -671,26 +671,25 @@ class B3PDFWordProcessor:
     def _remove_sandwich_layer(self, file_path: Path) -> Path:
         """MD_SANDWICH不可視テキスト層を除去した一時PDFを返す。層がなければfile_pathをそのまま返す。"""
         MARKER_START = '<<<MD_SANDWICH_START>>>'
-        MARKER_END = '<<<MD_SANDWICH_END>>>'
         try:
-            import fitz
+            import re, fitz
+            _BT_ET = re.compile(rb'BT\b.*?\bET', re.DOTALL)
+            _INVIS = re.compile(rb'(?<!\d)3[ \t]+Tr\b')
             doc = fitz.open(str(file_path))
             modified = False
             for page in doc:
-                text = page.get_text()
-                if MARKER_START not in text or MARKER_END not in text:
+                if MARKER_START not in page.get_text():
                     continue
-                rects_start = page.search_for(MARKER_START)
-                rects_end = page.search_for(MARKER_END)
-                if not rects_start or not rects_end:
-                    continue
-                y0 = rects_start[0].y0
-                y1 = rects_end[0].y1
-                rect = fitz.Rect(0, y0, page.rect.width, y1)
-                page.add_redact_annot(rect)
-                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
-                logger.info(f"[B-3] MD_SANDWICH層除去: y={y0:.1f}〜{y1:.1f}")
-                modified = True
+                for xref in page.get_contents():
+                    content = doc.xref_stream(xref)
+                    new_content = _BT_ET.sub(
+                        lambda m: b'' if _INVIS.search(m.group(0)) else m.group(0),
+                        content
+                    )
+                    if new_content != content:
+                        doc.update_stream(xref, new_content)
+                        modified = True
+                        logger.info(f"[B-3] MD_SANDWICH層除去完了")
             if modified:
                 temp_path = file_path.parent / f"_nosandwich_{file_path.name}"
                 doc.save(str(temp_path))

@@ -326,23 +326,24 @@ class DebugPipeline:
     def _strip_sandwich_layer(self, pdf_path: str) -> str:
         MARKER_START = '<<<MD_SANDWICH_START>>>'
         try:
-            import fitz
+            import re, fitz, tempfile, pathlib
+            _BT_ET = re.compile(rb'BT\b.*?\bET', re.DOTALL)
+            _INVIS = re.compile(rb'(?<!\d)3[ \t]+Tr\b')
             doc = fitz.open(pdf_path)
             modified = False
             for page in doc:
                 if MARKER_START not in page.get_text():
                     continue
-                for block in page.get_text('dict')['blocks']:
-                    if block.get('type') != 0:
-                        continue
-                    for line in block['lines']:
-                        for span in line['spans']:
-                            if abs(span.get('size', 0) - 6.0) < 0.5:
-                                page.add_redact_annot(fitz.Rect(span['bbox']))
-                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
-                modified = True
+                for xref in page.get_contents():
+                    content = doc.xref_stream(xref)
+                    new_content = _BT_ET.sub(
+                        lambda m: b'' if _INVIS.search(m.group(0)) else m.group(0),
+                        content
+                    )
+                    if new_content != content:
+                        doc.update_stream(xref, new_content)
+                        modified = True
             if modified:
-                import tempfile, pathlib
                 tmp = pathlib.Path(tempfile.mktemp(suffix='.pdf'))
                 doc.save(str(tmp))
                 doc.close()

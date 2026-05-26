@@ -1861,18 +1861,20 @@ def api_strip_sandwich(session_id: str):
         import fitz
         doc = fitz.open(str(pdf_path))
         modified = False
+        _BT_ET = re.compile(rb'BT\b.*?\bET', re.DOTALL)
+        _INVIS = re.compile(rb'(?<!\d)3[ \t]+Tr\b')
         for page in doc:
             if '<<<MD_SANDWICH_START>>>' not in page.get_text():
                 continue
-            for block in page.get_text('dict')['blocks']:
-                if block.get('type') != 0:
-                    continue
-                for line in block['lines']:
-                    for span in line['spans']:
-                        if abs(span.get('size', 0) - 6.0) < 0.5:
-                            page.add_redact_annot(fitz.Rect(span['bbox']))
-            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE, graphics=False)
-            modified = True
+            for xref in page.get_contents():
+                content = doc.xref_stream(xref)
+                new_content = _BT_ET.sub(
+                    lambda m: b'' if _INVIS.search(m.group(0)) else m.group(0),
+                    content
+                )
+                if new_content != content:
+                    doc.update_stream(xref, new_content)
+                    modified = True
         if modified:
             tmp_path = pdf_path.with_suffix('.tmp.pdf')
             doc.save(str(tmp_path), incremental=False, encryption=fitz.PDF_ENCRYPT_NONE)
@@ -1966,7 +1968,7 @@ def api_download_result_pdf(session_id: str):
                 page = doc[p_idx]
                 payload = f'{MARKER_START}\n{body}\n{MARKER_END}'
                 rect = fitz.Rect(0, 0, page.rect.width, page.rect.height)
-                page.insert_textbox(rect, payload, fontsize=6, fontname='helv', render_mode=3)
+                page.insert_textbox(rect, payload, fontsize=6, fontname='japan', render_mode=3)
         doc.save(str(out_path))
         doc.close()
     except Exception as e:
