@@ -1,0 +1,5 @@
+{
+  "is_structured": false,
+  "error": "MULTI_PAGE_PDF_FORBIDDEN: 2 ページの PDF は B1 に渡せません。1ページに分割した PDF のみ渡してください。",
+  "processor_name": "B1_CONTROLLER"
+}

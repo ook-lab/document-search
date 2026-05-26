@@ -553,7 +553,7 @@ class G11Controller:
                     if not lines[idx].startswith(G11Controller._SPLIT_MARKER) and \
                        not lines[idx].startswith("# ") and \
                        not lines[idx].startswith("## "):
-                        lines[idx] = G11Controller._SPLIT_MARKER + lines[idx]
+                        lines[idx] = G11Controller._SPLIT_MARKER + "## " + lines[idx]
                     continue
                 if ann_type == "paragraph_break":
                     continue
@@ -631,14 +631,10 @@ class G11Controller:
     @staticmethod
     def _merge_small_articles(
         articles: List[Dict[str, Any]],
-        min_body_chars: int = 80,
-        max_articles: int = 8,
     ) -> List[Dict[str, Any]]:
         """
-        細かく分割しすぎた article を統合する。
-
-        - 本文が min_body_chars 未満の article は前の article に結合する
-        - それでも max_articles を超える場合は末尾から順に結合して上限に収める
+        分割アーティファクト（見出しなし・本文空）を前のアーティクルに結合する。
+        見出しがあるアーティクルは内容の長短にかかわらず結合しない。
         """
         if len(articles) <= 1:
             return articles
@@ -647,20 +643,10 @@ class G11Controller:
         for art in articles:
             body = (art.get("body") or "").strip()
             has_heading = body.startswith("# ") or body.startswith("## ")
-            if merged and not has_heading and len(body) < min_body_chars:
-                prev = merged[-1]
-                prev_body = (prev.get("body") or "").strip()
-                prev["body"] = (prev_body + "\n" + body).strip() if prev_body else body
+            if merged and not has_heading and not body:
+                pass  # 空の断片は捨てる
             else:
                 merged.append(dict(art))
-
-        while len(merged) > max_articles:
-            # 末尾2つを結合
-            last = merged.pop()
-            prev = merged[-1]
-            last_body = (last.get("body") or "").strip()
-            prev_body = (prev.get("body") or "").strip()
-            prev["body"] = (prev_body + "\n" + last_body).strip() if prev_body else last_body
 
         return merged
 

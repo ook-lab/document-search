@@ -1,0 +1,224 @@
+{
+  "success": true,
+  "a2_type": {
+    "origin_app": "EXCEL",
+    "confidence": "HIGH",
+    "reason": "Creator一致: microsoft.*excel",
+    "raw_metadata": {
+      "Author": "亘 角田",
+      "CreationDate": "D:20260503114250+09'00'",
+      "ModDate": "D:20260503114250+09'00'",
+      "Producer": "Microsoft® Excel® for Microsoft 365",
+      "Creator": "Microsoft® Excel® for Microsoft 365"
+    }
+  },
+  "a3_dimension": {
+    "page_count": 2,
+    "dimensions": {
+      "width": 595.2,
+      "height": 841.8,
+      "unit": "pt"
+    },
+    "dimensions_mm": {
+      "width": 209.97333333333333,
+      "height": 296.9683333333333,
+      "unit": "mm"
+    },
+    "is_multi_size": false
+  },
+  "a4_layout": {
+    "layout_profile": "FIXED",
+    "layout_metrics": {
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 20.0,
+      "avg_x_std": 106.02438523730481,
+      "avg_words_per_line": 1.1047619047619048,
+      "per_page": [
+        {
+          "page": 0,
+          "images": 0,
+          "words": 32,
+          "chars": 571,
+          "has_selectable_text": true,
+          "x_std": 97.34261983612608,
+          "lines": 30,
+          "words_per_line": 1.0666666666666667,
+          "vector_count": 0,
+          "fonts": [
+            {
+              "name": "BCDEEE+YuGothic-Regular",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            },
+            {
+              "name": "BCDFEE+YuGothic-Bold",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": []
+        },
+        {
+          "page": 1,
+          "images": 0,
+          "words": 8,
+          "chars": 173,
+          "has_selectable_text": true,
+          "x_std": 114.70615063848356,
+          "lines": 7,
+          "words_per_line": 1.1428571428571428,
+          "vector_count": 0,
+          "fonts": [
+            {
+              "name": "BCDEEE+YuGothic-Regular",
+              "type": "Type0",
+              "encoding": "Identity-H",
+              "embedded": true,
+              "has_toUnicode": true
+            }
+          ],
+          "images_detail": []
+        }
+      ]
+    }
+  },
+  "origin_app": "EXCEL",
+  "document_type": "EXCEL",
+  "confidence": "HIGH",
+  "reason": "Creator一致: microsoft.*excel",
+  "raw_metadata": {
+    "Author": "亘 角田",
+    "CreationDate": "D:20260503114250+09'00'",
+    "ModDate": "D:20260503114250+09'00'",
+    "Producer": "Microsoft® Excel® for Microsoft 365",
+    "Creator": "Microsoft® Excel® for Microsoft 365"
+  },
+  "page_type_map": {
+    "0": "EXCEL",
+    "1": "EXCEL"
+  },
+  "type_groups": {
+    "EXCEL": [
+      0,
+      1
+    ]
+  },
+  "page_confidence_map": {
+    "0": "HIGH",
+    "1": "HIGH"
+  },
+  "page_count": 2,
+  "dimensions": {
+    "width": 595.2,
+    "height": 841.8,
+    "unit": "pt"
+  },
+  "dimensions_mm": {
+    "width": 209.97333333333333,
+    "height": 296.9683333333333,
+    "unit": "mm"
+  },
+  "is_multi_size": false,
+  "layout_profile": "FIXED",
+  "layout_metrics": {
+    "avg_images_per_page": 0.0,
+    "avg_words_per_page": 20.0,
+    "avg_x_std": 106.02438523730481,
+    "avg_words_per_line": 1.1047619047619048,
+    "per_page": [
+      {
+        "page": 0,
+        "images": 0,
+        "words": 32,
+        "chars": 571,
+        "has_selectable_text": true,
+        "x_std": 97.34261983612608,
+        "lines": 30,
+        "words_per_line": 1.0666666666666667,
+        "vector_count": 0,
+        "fonts": [
+          {
+            "name": "BCDEEE+YuGothic-Regular",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          },
+          {
+            "name": "BCDFEE+YuGothic-Bold",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": []
+      },
+      {
+        "page": 1,
+        "images": 0,
+        "words": 8,
+        "chars": 173,
+        "has_selectable_text": true,
+        "x_std": 114.70615063848356,
+        "lines": 7,
+        "words_per_line": 1.1428571428571428,
+        "vector_count": 0,
+        "fonts": [
+          {
+            "name": "BCDEEE+YuGothic-Regular",
+            "type": "Type0",
+            "encoding": "Identity-H",
+            "embedded": true,
+            "has_toUnicode": true
+          }
+        ],
+        "images_detail": []
+      }
+    ]
+  },
+  "a5_gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B4_PDF_EXCEL"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（EXCEL+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "EXCEL",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 20.0,
+      "avg_x_std": 106.02438523730481,
+      "probe_ok": true,
+      "avg_chars_per_page": 372.0,
+      "avg_vectors_per_page": 0.0
+    },
+    "policy_version": "A5.v2"
+  },
+  "gatekeeper": {
+    "decision": "ALLOW",
+    "allowed_processors": [
+      "B4_PDF_EXCEL"
+    ],
+    "block_code": null,
+    "block_reason": "allowlist条件を満たしたため許可（EXCEL+FIXED + 安全閾値クリア）",
+    "evidence": {
+      "origin_app": "EXCEL",
+      "layout_profile": "FIXED",
+      "confidence": "HIGH",
+      "avg_images_per_page": 0.0,
+      "avg_words_per_page": 20.0,
+      "avg_x_std": 106.02438523730481,
+      "probe_ok": true,
+      "avg_chars_per_page": 372.0,
+      "avg_vectors_per_page": 0.0
+    },
+    "policy_version": "A5.v2"
+  }
+}
