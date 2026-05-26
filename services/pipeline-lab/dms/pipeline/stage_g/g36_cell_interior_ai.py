@@ -91,7 +91,7 @@ def judge_cell_interiors_ai(
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(G36_CELL_INTERIOR_AI_MODEL)
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, request_options={"timeout": 120})
         raw_text = getattr(response, "text", None) or ""
         logger.info(f"[G36-CELL-AI] interior\n{raw_text[:8000]}")
         parsed = json.loads(_extract_json(raw_text))

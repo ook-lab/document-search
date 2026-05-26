@@ -136,13 +136,16 @@ class E30TableStructureExtractor:
             logger.info("[E-30] ===== プロンプト終了 =====")
 
             logger.info("[E-30] Gemini API 呼び出し開始...")
-            response = self.model.generate_content([
-                prompt,
-                {
-                    'mime_type': 'image/png',
-                    'data': image_data
-                }
-            ])
+            response = self.model.generate_content(
+                [
+                    prompt,
+                    {
+                        'mime_type': 'image/png',
+                        'data': image_data
+                    }
+                ],
+                request_options={"timeout": 120},
+            )
             logger.info("[E-30] Gemini API 呼び出し完了")
 
             raw_text = response.text

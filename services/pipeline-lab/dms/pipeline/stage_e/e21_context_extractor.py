@@ -177,6 +177,7 @@ class E21ContextExtractor:
             response = self.model.generate_content(
                 [prompt, {'mime_type': 'image/png', 'data': image_data}],
                 generation_config=gen_config,
+                request_options={"timeout": 120},
             )
             logger.info("[E-21] Gemini API 呼び出し完了")
 

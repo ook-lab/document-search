@@ -426,7 +426,7 @@ def suggest_ai_table_split(
             prompt = prompt_base
             if last_err:
                 prompt += f"\n## 修正必須（前回の契約違反）\n{last_err}\n"
-            response = model.generate_content(prompt)
+            response = model.generate_content(prompt, request_options={"timeout": 120})
             raw_text = getattr(response, "text", None) or ""
             logger.info(f"[F55 AI] GENERATION attempt={attempt + 1}\n{raw_text[:8000]}")
             try:

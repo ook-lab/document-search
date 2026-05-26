@@ -1138,9 +1138,11 @@ class G26SemanticEstimator:
     def _call_and_log_llm(self, prompt: str, *, stage_label: str) -> Tuple[int, Dict[str, int]]:
         gen_cfg: Dict[str, Any] = {"response_mime_type": "application/json"}
         try:
-            response = self.model.generate_content(prompt, generation_config=gen_cfg)
+            response = self.model.generate_content(
+                prompt, generation_config=gen_cfg, request_options={"timeout": 120}
+            )
         except TypeError:
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options={"timeout": 120})
         raw = getattr(response, "text", None) or ""
         self._last_raw_text = raw
         body = raw

@@ -1088,6 +1088,7 @@ def _detect_block_starts(non_table_plain: str) -> List[str]:
         resp = model.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(max_output_tokens=300, temperature=0.0),
+            request_options={"timeout": 60},
         )
         text = resp.text.strip()
         if not text or text == "なし":
@@ -1621,7 +1622,9 @@ def api_extract_direct(session_id: str, page_index: int):
             }
         }
 
-        response = model.generate_content([_DIRECT_EXTRACT_PROMPT, img_part])
+        response = model.generate_content(
+            [_DIRECT_EXTRACT_PROMPT, img_part], request_options={"timeout": 120}
+        )
         structured_md = _direct_extract_build_structured_md(response.text or '')
 
         result_data = {

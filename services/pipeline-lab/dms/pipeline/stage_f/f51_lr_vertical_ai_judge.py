@@ -357,7 +357,7 @@ def judge_lr_vertical_layout_ai(
 
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel(F51_LR_VERTICAL_AI_MODEL)
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, request_options={"timeout": 120})
         raw_text = getattr(response, "text", None) or ""
         logger.info(f"[F51-AI] merged_cell GENERATION\n{raw_text[:14000]}")
         parsed = json.loads(_extract_json(raw_text))

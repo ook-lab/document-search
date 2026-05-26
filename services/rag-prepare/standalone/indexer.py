@@ -138,6 +138,7 @@ class RagPrepareSearchIndexer:
             if self.embedder is None:
                 self.embedder = EmbeddingGen()
 
+            inserted_count = 0
             for i, (chunk_text, chunk_type, chunk_weight) in enumerate(chunk_items):
                 chunk_text = (chunk_text or "").replace("\u0000", "").strip()
                 if not chunk_text:
@@ -157,6 +158,11 @@ class RagPrepareSearchIndexer:
                         "embedding": vector,
                     }
                 ).execute()
+                inserted_count += 1
+
+            if inserted_count == 0:
+                logger.error("chunk_count=0: unified_doc_id=%s", unified_doc_id)
+                return False, "インデックスに登録できるテキストがありませんでした（チャンク0件）"
 
             now_iso = datetime.now(timezone.utc).isoformat()
             self._write_meta_vectorized(
@@ -166,7 +172,7 @@ class RagPrepareSearchIndexer:
                 now_iso=now_iso,
             )
 
-            logger.info("Successfully updated search index unified_doc_id=%s", unified_doc_id)
+            logger.info("Successfully updated search index unified_doc_id=%s chunks=%d", unified_doc_id, inserted_count)
             return True, None
 
         except Exception as e:
@@ -554,8 +560,6 @@ class RagPrepareSearchIndexer:
             ("title", "タイトル"),
             ("description", "説明"),
             ("post_type", "投稿種別"),
-            ("post_at", "送信日"),
-            ("from_name", "送信者"),
             ("due_date", "期限日"),
             ("due_time", "期限時刻"),
             ("creator_name", "作成者"),
@@ -565,49 +569,24 @@ class RagPrepareSearchIndexer:
             ("original_path", "元パス"),
             ("mime_type", "MIMEタイプ"),
         ]
-        def _fmt_datetime(value: Any) -> str:
-            import re as _re
-            s = str(value).strip()
-            m = _re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})", s)
-            if m:
-                date = f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日"
-                time = f"{int(m.group(4))}時{int(m.group(5))}分"
-                return f"{date} {time}"
-            m = _re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
-            if m:
-                return f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日"
-            return s
-
-        def _fmt_time(value: Any) -> str:
-            import re as _re
-            s = str(value).strip()
-            m = _re.match(r"(\d{1,2}):(\d{2})", s)
-            if m:
-                return f"{int(m.group(1))}時{int(m.group(2))}分"
-            return s
-
         lines = []
         for key, label in fields:
             value = raw.get(key)
             if value is None:
                 continue
-            if key in ("post_at", "due_date"):
-                text = _fmt_datetime(value)
-            elif key == "due_time":
-                text = _fmt_time(value)
-            else:
-                text = str(value).strip()
+            text = str(value).strip()
             if text:
                 lines.append(f"- {label}: {text}")
         return "\n".join(lines)
 
+
     @staticmethod
     def _get_ai_annotations(text: str) -> Dict[str, Any]:
         """
-        Gemini にテキストの行レベル構造型を JSON で返させる。
-        AI はテキストを生成・変更しない。行番号と型名のみ返す。
+        Gemini にテキスト構造のアノテーション指示を JSON で返させる。
+        AI はテキストを生成・変更しない。行番号のみ返す（行レベル型）。
 
-        戻り値: {"annotations": [{"line": N, "type": "..."}, ...]}
+        戻り値: {"annotations": [...]}
         """
         if not text.strip():
             return {"annotations": []}
@@ -621,7 +600,15 @@ class RagPrepareSearchIndexer:
 
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
-            line_types = "heading_1, heading_2, bullet_item, blockquote, paragraph_break, section_break"
+
+            line_types = (
+                "paragraph_break（前行と結合しない・新しい項目・段落の開始行）, "
+                "heading_1（文書タイトル等の最重要見出し）, "
+                "heading_2（セクション見出し）, "
+                "section_break（内容のテーマが切り替わる境界行）, "
+                "bullet_item（並列する箇条書き項目）, "
+                "blockquote（注記・引用・お知らせ補足）"
+            )
 
             prompt = (
                 "次のテキストの各行を読んで、行レベルの構造型を JSON のみで返してください。\n"
@@ -631,6 +618,10 @@ class RagPrepareSearchIndexer:
                 "  同じレベルで並ぶ項目リストの行には bullet_item を付ける。\n"
                 "  例：「①〇〇」「②〇〇」、「・〇〇」、「項目名：値」が複数並ぶ行など。\n"
                 "  散文の途中で改行されただけの継続行には付けない（それは paragraph_break）。\n\n"
+                "【paragraph_break の使い方】\n"
+                "  このテキストは PDF の物理的な折り返しを含む。\n"
+                "  散文で前の行から文が継続する場合は付けない（折り返しは結合する）。\n"
+                "  前の行と意味的に独立した新しい段落・見出し行には付ける。\n\n"
                 "【blockquote の使い方】\n"
                 "  本文と別扱いの注記・補足・条件付きお知らせには blockquote を付ける。\n"
                 "  例：「※〜」「＊注意〜」「〔補足〕〜」「なお〜」「ただし〜」など、\n"
@@ -642,10 +633,6 @@ class RagPrepareSearchIndexer:
                 "【section_break の使い方】\n"
                 "  見出し行ではないが内容のテーマが切り替わる境界行に付ける。\n"
                 "  見出し行には heading_1/2 を使い、section_break は使わない。\n\n"
-                "【paragraph_break の使い方】\n"
-                "  このテキストは PDF の物理的な折り返しを含む。\n"
-                "  散文で前の行から文が継続する場合は付けない（折り返しは結合する）。\n"
-                "  前の行と意味的に独立した新しい段落・見出し行には付ける。\n\n"
                 "出力形式（例）:\n"
                 '{"annotations": [{"line": 0, "type": "heading_1"}, '
                 '{"line": 3, "type": "bullet_item"}, '
@@ -666,7 +653,9 @@ class RagPrepareSearchIndexer:
                 request_options={"timeout": 30},
             )
             data = _json.loads(resp.text.strip())
-            return {"annotations": data.get("annotations") or []}
+            return {
+                "annotations": data.get("annotations") or [],
+            }
         except Exception as e:
             logger.warning("[RAG] AI アノテーション取得失敗: %s", e)
             return {"annotations": []}
@@ -675,7 +664,8 @@ class RagPrepareSearchIndexer:
     def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
         """
         AI アノテーション指示を md テキストに機械的に適用する。
-        元テキストの文字は変えない。行頭プレフィックスのみ挿入。
+        元テキストの文字は変えない。行頭プレフィックスとスパンタグのみ挿入。
+        スパン型は [TYPE_NAME]...[/TYPE_NAME] に統一（型名は大文字化）。
         section_break は _SPLIT_MARKER を挿入（呼び出し元が --- に変換）。
         """
         if not annotations:
@@ -685,29 +675,28 @@ class RagPrepareSearchIndexer:
         marker = RagPrepareSearchIndexer._SPLIT_MARKER
 
         for ann in annotations:
-            if "line" not in ann:
-                continue
-            idx = ann.get("line")
-            ann_type = ann.get("type", "")
-            if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
-                continue
-            if ann_type == "section_break":
-                if not lines[idx].startswith(marker) and \
-                   not lines[idx].startswith("# ") and \
-                   not lines[idx].startswith("## "):
-                    lines[idx] = marker + lines[idx]
-                continue
-            prefix = RagPrepareSearchIndexer._LINE_PREFIX.get(ann_type)
-            if prefix is None:
-                continue
-            line = lines[idx]
-            if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
-                continue
-            if line.startswith("## ") and ann_type == "heading_2":
-                continue
-            if line.startswith(prefix):
-                continue
-            lines[idx] = prefix + line
+            if "line" in ann:
+                idx = ann.get("line")
+                ann_type = ann.get("type", "")
+                if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
+                    continue
+                if ann_type == "section_break":
+                    if not lines[idx].startswith(marker) and \
+                       not lines[idx].startswith("# ") and \
+                       not lines[idx].startswith("## "):
+                        lines[idx] = marker + lines[idx]
+                    continue
+                prefix = RagPrepareSearchIndexer._LINE_PREFIX.get(ann_type)
+                if prefix is None:
+                    continue
+                line = lines[idx]
+                if line.startswith("# ") and ann_type in ("heading_1", "heading_2"):
+                    continue
+                if line.startswith("## ") and ann_type == "heading_2":
+                    continue
+                if line.startswith(prefix):
+                    continue
+                lines[idx] = prefix + line
 
         return "\n".join(lines)
 
@@ -829,8 +818,7 @@ class RagPrepareSearchIndexer:
         """
         results: List[tuple[str, str, float]] = []
 
-        # セクション境界: 既知のセクション見出しのみを停止条件にする
-        # （PDF 内容の # 見出しで誤停止しないよう (?=^# |\Z) は使わない）
+        # section stop: named headers only, not PDF content headings
         _SECTION_STOP = r'(?=^# (?:PDF抽出Markdown|ファイル外テキスト)|\Z)'
         pdf_md_m = re.search(
             r'^# PDF抽出Markdown\s*\n(.*?)' + _SECTION_STOP,
@@ -870,3 +858,4 @@ class RagPrepareSearchIndexer:
                 results.append((c, "rag_prepare_plain", 1.0))
 
         return results
+

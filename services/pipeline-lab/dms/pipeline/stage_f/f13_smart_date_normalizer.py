@@ -221,7 +221,7 @@ class F13SmartDateNormalizer:
             logger.info("=" * 80)
 
             # Gemini に送信
-            response = self.model.generate_content(prompt)
+            response = self.model.generate_content(prompt, request_options={"timeout": 60})
             raw_text = response.text
 
             # レスポンス全文をログ出力
