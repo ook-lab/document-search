@@ -13,7 +13,7 @@ class B61PDFWordLTSCProcessor:
     """B-61: PDF-Word LTSC Processor（Microsoft® Word LTSC 専用）"""
 
     # ルビ除外の閾値（pt）
-    RUBY_SIZE_THRESHOLD = 6.0
+    RUBY_SIZE_THRESHOLD = 7.5
 
     # 空白列検出の最小幅（pt）
     GAP_MIN_WIDTH = 10.0

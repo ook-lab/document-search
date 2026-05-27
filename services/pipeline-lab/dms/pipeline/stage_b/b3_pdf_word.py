@@ -21,7 +21,7 @@ class B3PDFWordProcessor:
     """B-3: PDF-Word Processor（PDF-Word専用）"""
 
     # ルビ除外の閾値（pt）
-    RUBY_SIZE_THRESHOLD = 6.0
+    RUBY_SIZE_THRESHOLD = 7.5
 
     # 空白列検出の最小幅（pt）
     GAP_MIN_WIDTH = 10.0

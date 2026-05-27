@@ -23,7 +23,7 @@ from loguru import logger
 class B17StudyaidProcessor:
     """B-17: Studyaid Processor（Studyaid D.B. 由来 PDF 専用）"""
 
-    RUBY_SIZE_THRESHOLD = 6.0
+    RUBY_SIZE_THRESHOLD = 7.5
     GAP_MIN_WIDTH = 10.0
 
     def process(self, file_path: Path, masked_pages=None, log_file=None) -> Dict[str, Any]:
