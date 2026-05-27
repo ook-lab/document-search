@@ -22,13 +22,72 @@
 
 ## 表（ui_data.tables）
 
+
+
 ## B_T1
-> 感染症とその主なワクチン、標準的な接種時期に関する表
+::summary:: 感染症ごとの主なワクチンと標準的な接種時期
 | header | 主なワクチン | 標準的な接種時期 |
 |---|---|---|
-| 感染症 | 主なワクチン | 標準的な接種時期 |
+| 感染症 | | |
 | 麻疹・風疹（MR） | ● MRワクチン | ● 1歳、年長児（小学校入学前年度） |
 | 水痘（水ぼうそう） | ● 水痘ワクチン | ● 1歳以降に2回 |
 | 流行性耳下腺炎（おたふくかぜ） | ● おたふくかぜワクチン（任意接種） | ● 1歳頃、就学前頃の2回接種推奨 |
 | 日本脳炎 | ● 日本脳炎ワクチン | ● 3歳頃から |
 | 二種混合（DT） | ● ジフテリア・破傷風 | ● 11～12歳頃 |
+
+## 表（埋め込み）
+
+<!-- dms:tables-md-embed v1 -->
+### `tables`（YAML・検索・LLM 向け）
+
+```yaml
+tables:
+- table_id: B_T1
+  description: '感染症ごとの主なワクチンと標準的な接種時期'
+  table_semantics:
+    type: unknown
+    type_ja: null
+    target: null
+    scope: null
+    date_range: null
+    confidence: 0.5
+  header_row_indices:
+  - 0
+  month_blocks: []
+  data_rows:
+  - sheet_row: 1
+    cells:
+    - 感染症
+    - ''
+    - ''
+  - sheet_row: 2
+    cells:
+    - 麻疹・風疹（MR）
+    - ● MRワクチン
+    - ● 1歳、年長児（小学校入学前年度）
+  - sheet_row: 3
+    cells:
+    - 水痘（水ぼうそう）
+    - ● 水痘ワクチン
+    - ● 1歳以降に2回
+  - sheet_row: 4
+    cells:
+    - 流行性耳下腺炎（おたふくかぜ）
+    - ● おたふくかぜワクチン（任意接種）
+    - ● 1歳頃、就学前頃の2回接種推奨
+  - sheet_row: 5
+    cells:
+    - 日本脳炎
+    - ● 日本脳炎ワクチン
+    - ● 3歳頃から
+  - sheet_row: 6
+    cells:
+    - 二種混合（DT）
+    - ● ジフテリア・破傷風
+    - ● 11～12歳頃
+```
+
+### 表 HTML（MD に埋め込み可）
+
+<!-- table:B_T1 -->
+<table class="md-embed-table"><thead><tr><th>header</th><th>主なワクチン</th><th>標準的な接種時期</th></tr></thead><tbody><tr><td>感染症</td><td></td><td></td></tr><tr><td>麻疹・風疹（MR）</td><td>● MRワクチン</td><td>● 1歳、年長児（小学校入学前年度）</td></tr><tr><td>水痘（水ぼうそう）</td><td>● 水痘ワクチン</td><td>● 1歳以降に2回</td></tr><tr><td>流行性耳下腺炎（おたふくかぜ）</td><td>● おたふくかぜワクチン（任意接種）</td><td>● 1歳頃、就学前頃の2回接種推奨</td></tr><tr><td>日本脳炎</td><td>● 日本脳炎ワクチン</td><td>● 3歳頃から</td></tr><tr><td>二種混合（DT）</td><td>● ジフテリア・破傷風</td><td>● 11～12歳頃</td></tr></tbody></table>

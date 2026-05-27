@@ -1323,7 +1323,11 @@ def api_page_full_result(session_id: str, page_index: int):
         return jsonify({'error': 'not found'}), 404
     p = base / 'page_results' / f'{page_index}.json'
     if not p.is_file():
-        return jsonify({'error': 'このページの実行結果がありません'}), 404
+        fallback_p = base / f'result_page_{page_index}.json'
+        if fallback_p.is_file():
+            p = fallback_p
+        else:
+            return jsonify({'error': 'このページの実行結果がありません'}), 404
     try:
         data = json.loads(p.read_text(encoding='utf-8'))
     except json.JSONDecodeError:
@@ -1478,6 +1482,10 @@ def _direct_extract_build_structured_md(ai_text: str) -> str:
         ai_text = '\n\n'.join(m.strip() for m in matches)
     ai_text = ai_text.strip()
 
+    # 親かっこ記号の全角・半角の揺れを標準化
+    ai_text = _re.sub(r'## 非表[\(（](.*?)[）\)]', r'## 非表（\1）', ai_text)
+    ai_text = _re.sub(r'## 表[\(（](.*?)[）\)]', r'## 表（\1）', ai_text)
+
     # AI の出力が既に ## 非表 / ## 表 のセクション構造を持っているか確認
     has_prose_section = bool(_re.search(r'^## 非表', ai_text, _re.MULTILINE))
     has_table_section = bool(_re.search(r'^## 表', ai_text, _re.MULTILINE))
@@ -1531,25 +1539,30 @@ def _direct_extract_build_structured_md(ai_text: str) -> str:
         return [c.strip() for c in line.strip().strip('|').split('|')]
 
     table_section_match = _re.search(
-        r'^## 表（ui_data\.tables）\s*\n(.*?)(?=^## (?!B_T\d)|$)',
-        structured, _re.MULTILINE | _re.DOTALL
+        r'^## 表（ui_data\.tables）\s*\n(.*)',
+        structured, _re.MULTILINE | _re.DOTALL | _re.IGNORECASE
     )
     if table_section_match:
         table_section_text = table_section_match.group(1)
-        table_blocks_in_section = _re.split(r'^## (B_T\d+)\s*$', table_section_text, flags=_re.MULTILINE)
+        table_blocks_in_section = _re.split(r'^## (B_T\d+|T\d+)\s*$', table_section_text, flags=_re.MULTILINE | _re.IGNORECASE)
         # [pre, id1, block1, id2, block2, ...]
+        
+        reconstructed_blocks = [table_blocks_in_section[0]]
         i = 1
         while i + 1 < len(table_blocks_in_section):
             tbl_id = table_blocks_in_section[i].strip()
+            if not tbl_id.upper().startswith('B_'):
+                tbl_id = f"B_{tbl_id}"
             tbl_md = table_blocks_in_section[i + 1].strip()
             tbl_lines = [ln for ln in tbl_md.split('\n') if ln.strip().startswith('|')]
+            
+            # ## T1 直後の > blockquote を表の説明として抽出（複数行対応、スペースの揺れを許容）
+            desc_m = _re.findall(r'^>\s*(.*)$', tbl_md, _re.MULTILINE)
+            description = ' '.join(desc_m).strip() if desc_m else ''
+            
             if len(tbl_lines) >= 2:
                 headers = _parse_cells(tbl_lines[0])
                 data_rows = [_parse_cells(ln) for ln in tbl_lines[2:]]  # skip separator
-
-                # ## T1 直後の > blockquote を表の説明として抽出
-                desc_m = _re.search(r'^> (.+)$', tbl_md, _re.MULTILINE)
-                description = desc_m.group(1).strip() if desc_m else ''
 
                 tables_data.append({
                     'table_id': tbl_id,
@@ -1575,7 +1588,19 @@ def _direct_extract_build_structured_md(ai_text: str) -> str:
                     f'<table class="md-embed-table"><thead><tr>{th_html}</tr></thead>'
                     f'<tbody>{"".join(rows_html_parts)}</tbody></table>'
                 )
+            
+            # > で始まる行を削除し、::summary:: description に置換する
+            clean_tbl_md = _re.sub(r'^>.*$\n?', '', tbl_md, flags=_re.MULTILINE).strip()
+            if description:
+                new_tbl_md = f"::summary:: {description}\n{clean_tbl_md}"
+            else:
+                new_tbl_md = clean_tbl_md
+            
+            reconstructed_blocks.append(f"## {tbl_id}\n{new_tbl_md}")
             i += 2
+            
+        new_table_section_text = '\n\n'.join(reconstructed_blocks)
+        structured = structured[:table_section_match.start(1)] + new_table_section_text + structured[table_section_match.end(1):]
 
     if tables_data or html_lines:
         embed_parts: list[str] = ['## 表（埋め込み）', '', '<!-- dms:tables-md-embed v1 -->']
@@ -1623,10 +1648,86 @@ def api_extract_direct(session_id: str, page_index: int):
             }
         }
 
+        from dms.common.ai_cost_logger import start_cost_accumulation, stop_cost_accumulation, log_ai_usage
+        start_cost_accumulation()
+
         response = model.generate_content(
             [_DIRECT_EXTRACT_PROMPT, img_part], request_options={"timeout": 120}
         )
+        
+        usage_meta = getattr(response, "usage_metadata", None)
+        pt = getattr(usage_meta, "prompt_token_count", 0) or 0 if usage_meta else 0
+        ct = getattr(usage_meta, "candidates_token_count", 0) or 0 if usage_meta else 0
+        tt = getattr(usage_meta, "thoughts_token_count", 0) or 0 if usage_meta else 0
+        tot = getattr(usage_meta, "total_token_count", 0) or 0 if usage_meta else 0
+        tokens = int(tot or (pt + ct + tt) or 1)
+
+        try:
+            log_ai_usage(
+                app="dms-pipeline",
+                stage="DIRECT-EXTRACT",
+                model=model_name,
+                prompt_token_count=pt,
+                candidates_token_count=ct,
+                thoughts_token_count=tt,
+                total_token_count=tokens,
+                session_id=session_id,
+            )
+        except Exception as _e:
+            loguru_logger.warning(f"Cost log failed: {_e}")
+
+        accumulated = stop_cost_accumulation()
+        if not accumulated and tokens > 0:
+            accumulated = [{
+                'stage': 'DIRECT-EXTRACT',
+                'model': model_name,
+                'prompt_tokens': pt,
+                'completion_tokens': ct,
+                'thinking_tokens': tt,
+            }]
+
+        ai_cost = _calc_ai_cost(accumulated)
+
         structured_md = _direct_extract_build_structured_md(response.text or '')
+
+        # 構造化された Markdown から ui_data 用の yaml tables メタデータを取り込むための summary
+        ui_data_summary = {
+            "actions_count": 0,
+            "g21_articles_count": 0,
+            "g36_rebuild": [],
+            "notices_count": 0,
+            "sections_count": 0,
+            "table_ids": [],
+            "tables_count": 0,
+            "tables_md_embed_chars": 0,
+            "timeline_count": 0
+        }
+        
+        import re as _re
+        table_matches = _re.findall(r'<!-- table:(B_T\d+) -->', structured_md)
+        if table_matches:
+            ui_data_summary["table_ids"] = table_matches
+            ui_data_summary["tables_count"] = len(table_matches)
+        
+        embed_match = _re.search(r'<!-- dms:tables-md-embed v1 -->.*$', structured_md, _re.DOTALL)
+        if embed_match:
+            ui_data_summary["tables_md_embed_chars"] = len(embed_match.group(0))
+
+        # 直接抽出用のログ保存処理（パイプライン画面のデバッグタブにログを表示するため、実時刻を使用）
+        import datetime as _datetime
+        def _get_now_str() -> str:
+            return _datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+        direct_log_lines = []
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1631 - [Direct] AI直接抽出開始 (ページ={page_index}, モデル={model_name})")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1636 - [Direct] Gemini 送信中... (画像のバイト数: {len(img_bytes)} bytes)")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1640 - [Direct] Gemini レスポンス受信成功。トークンカウント: Prompt={pt}, Candidates={ct}, Total={tokens}")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1666 - [Direct] 料金計算結果: TotalCost={ai_cost.get('total_cost_usd', 0.0):.6f} USD")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1688 - [Direct] 表データ抽出結果: 検出表数={ui_data_summary['tables_count']} (YAML文字数={ui_data_summary['tables_md_embed_chars']})")
+
+        direct_log_txt = "\n".join(direct_log_lines)
+        log_file = base / f'direct_extract_page_{page_index}.log'
+        log_file.write_text(direct_log_txt, encoding='utf-8')
 
         result_data = {
             'success': True,
@@ -1636,13 +1737,33 @@ def api_extract_direct(session_id: str, page_index: int):
             'model': model_name,
             'reading_stream': [{'type': 'non_table', 'text': structured_md}],
             'raw_md': structured_md,
+            'ai_cost': ai_cost,
+            'ui_data_summary': ui_data_summary,
+            'pipeline_log': direct_log_txt,
+            'f46_log': '',
+            'f47_log': '',
         }
         result_file = base / f'result_page_{page_index}.json'
         result_file.write_text(
             json.dumps(result_data, ensure_ascii=False, indent=2), encoding='utf-8'
         )
 
-        return jsonify({'success': True, 'markdown': structured_md, 'model': model_name})
+        page_results_dir = base / 'page_results'
+        page_results_dir.mkdir(parents=True, exist_ok=True)
+        (page_results_dir / f'{page_index}.json').write_text(
+            json.dumps(result_data, ensure_ascii=False, indent=2), encoding='utf-8'
+        )
+
+        return jsonify({
+            'success': True, 
+            'markdown': structured_md, 
+            'model': model_name,
+            'ai_cost': ai_cost,
+            'ui_data_summary': ui_data_summary,
+            'pipeline_log': direct_log_txt,
+            'f46_log': '',
+            'f47_log': '',
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -2099,14 +2220,37 @@ def api_update_page_md(session_id: str, page_index: int):
         return jsonify({'error': 'not found'}), 404
     body = request.get_json(silent=True) or {}
     md_text = body.get('markdown_text', '')
-    result_file = base / f'result_page_{page_index}.json'
+    
+    files_to_update = [
+        base / f'result_page_{page_index}.json',
+        base / 'page_results' / f'{page_index}.json'
+    ]
+    
     try:
-        if result_file.exists():
-            r = json.loads(result_file.read_text(encoding='utf-8'))
-        else:
-            r = {'success': True, 'session_id': session_id, 'page_index': page_index}
-        r['reading_stream'] = [{'type': 'non_table', 'text': md_text}]
-        result_file.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding='utf-8')
+        updated = False
+        for f in files_to_update:
+            if f.exists():
+                try:
+                    r = json.loads(f.read_text(encoding='utf-8'))
+                except Exception:
+                    continue
+                r['reading_stream'] = [{'type': 'non_table', 'text': md_text}]
+                if 'raw_md' in r:
+                    r['raw_md'] = md_text
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding='utf-8')
+                updated = True
+                
+        if not updated:
+            f = base / f'result_page_{page_index}.json'
+            r = {
+                'success': True,
+                'session_id': session_id,
+                'page_index': page_index,
+                'reading_stream': [{'type': 'non_table', 'text': md_text}]
+            }
+            f.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding='utf-8')
+            
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

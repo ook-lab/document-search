@@ -2440,6 +2440,28 @@
         );
     }
 
+    function renderDirectLogHtml(p) {
+        if (!p) return '<p class="empty-hint">データがありません。</p>';
+        const pi = p.page_index;
+        const logText = p.direct_log || '';
+        const aiCost = p.ai_cost;
+
+        window.__lastPipelineLog = logText;
+
+        let costHtml = '';
+        if (aiCost) {
+            costHtml = renderAiCostHtml({ ai_cost: aiCost });
+        }
+
+        const logPanel = 
+            '<details class="acc-panel" open><summary>AI直接抽出ログ（Gemini）</summary>' +
+            '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyPipelineLog">ログをコピー</button></div>' +
+            '<div class="acc-body">' +
+            '<pre class="log-pre" id="labPipelineLogPre">' + escapeHtml(logText) + '</pre></div></details>';
+
+        return '<div class="debug-stack acc-stack">' + costHtml + logPanel + '</div>';
+    }
+
     function renderErrorReadingHtml(pr) {
         var h = '<div class="error-box">' + escapeHtml(pr.error || '失敗') +
             (pr.stage ? ' <span class="badge">' + escapeHtml(pr.stage) + '</span>' : '') + '</div>';
@@ -2517,7 +2539,21 @@
             _dmeRenderVisualEditor(paneVisualEditor, p.direct_md);
             paneRawMd.innerHTML = _makeRawMdTextarea(p.direct_md);
             _wireRawMdSync(appState.currentPage);
-            paneLog.innerHTML = '';
+            
+            if (!p.direct_log) {
+                try {
+                    const resFull = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + appState.currentPage);
+                    if (resFull.ok) {
+                        const full = await resFull.json();
+                        p.direct_log = full.pipeline_log || '';
+                        p.ai_cost = full.ai_cost;
+                    }
+                } catch (ignore) {}
+            }
+            
+            paneLog.innerHTML = renderDirectLogHtml(p);
+            wireCopyButtons();
+            
             setLabTab('visual');
             btnFullJson.disabled = true;
             _showConfirmBtn(true);
@@ -2698,11 +2734,14 @@
             if (!res.ok) throw new Error((data && data.error) || 'HTTP ' + res.status);
             // 結果を Visual Editor と Raw MD 両方に表示
             appState.pages[pg].direct_md = data.markdown || '';
+            appState.pages[pg].direct_log = data.pipeline_log || '';
+            appState.pages[pg].ai_cost = data.ai_cost;
             labOverlay.style.display = 'none';
             _dmeRenderVisualEditor(paneVisualEditor, appState.pages[pg].direct_md);
             paneRawMd.innerHTML = _makeRawMdTextarea(appState.pages[pg].direct_md);
             _wireRawMdSync(pg);
-            paneLog.innerHTML = '';
+            paneLog.innerHTML = renderDirectLogHtml(appState.pages[pg]);
+            wireCopyButtons();
             setLabTab('visual');
             btnFullJson.disabled = true;
             // 即時永続化（保存ボタンがユーザー入力前でも機能するよう）
