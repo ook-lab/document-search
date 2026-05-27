@@ -277,18 +277,26 @@ JSONのみ出力してください。説明文は不要です。"""
     ) -> tuple:
         """レスポンスからセル構造を抽出。失敗時は Stage D の cell_map にフォールバック"""
         try:
-            # ```json ... ``` ブロックを抽出
-            if '```json' in raw_text:
-                start = raw_text.find('```json') + 7
-                end = raw_text.find('```', start)
-                json_str = raw_text[start:end].strip()
-            elif '```' in raw_text:
-                start = raw_text.find('```') + 3
-                end = raw_text.find('```', start)
-                json_str = raw_text[start:end].strip()
-            else:
-                json_str = raw_text.strip()
+            def _extract_json(text: str) -> str:
+                first_brace = text.find('{')
+                first_bracket = text.find('[')
+                if first_brace == -1 and first_bracket == -1:
+                    return text
+                start_char = '{' if (first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket)) else '['
+                end_char = '}' if start_char == '{' else ']'
+                start_idx = text.find(start_char)
+                depth = 0
+                for idx in range(start_idx, len(text)):
+                    char = text[idx]
+                    if char == start_char:
+                        depth += 1
+                    elif char == end_char:
+                        depth -= 1
+                        if depth == 0:
+                            return text[start_idx:idx+1]
+                return text[start_idx:]
 
+            json_str = _extract_json(raw_text)
             data = json.loads(json_str)
             cells = data.get('cells', [])
             n_rows = data.get('n_rows', 0)

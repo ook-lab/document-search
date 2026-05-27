@@ -483,21 +483,27 @@ class F13SmartDateNormalizer:
             (normalized_events, all_dates, date_string_map)
         """
         try:
-            # ```json ... ``` で囲まれている場合
-            if '```json' in raw_text:
-                start = raw_text.find('```json') + 7
-                end = raw_text.find('```', start)
-                json_str = raw_text[start:end].strip()
-                parsed = json.loads(json_str)
-            # ``` ... ``` で囲まれている場合
-            elif '```' in raw_text:
-                start = raw_text.find('```') + 3
-                end = raw_text.find('```', start)
-                json_str = raw_text[start:end].strip()
-                parsed = json.loads(json_str)
-            # JSON部分のみの場合
-            else:
-                parsed = json.loads(raw_text)
+            def _extract_json(text: str) -> str:
+                first_brace = text.find('{')
+                first_bracket = text.find('[')
+                if first_brace == -1 and first_bracket == -1:
+                    return text
+                start_char = '{' if (first_brace != -1 and (first_bracket == -1 or first_brace < first_bracket)) else '['
+                end_char = '}' if start_char == '{' else ']'
+                start_idx = text.find(start_char)
+                depth = 0
+                for idx in range(start_idx, len(text)):
+                    char = text[idx]
+                    if char == start_char:
+                        depth += 1
+                    elif char == end_char:
+                        depth -= 1
+                        if depth == 0:
+                            return text[start_idx:idx+1]
+                return text[start_idx:]
+
+            json_str = _extract_json(raw_text)
+            parsed = json.loads(json_str)
 
             # 新形式: {"normalized_events": [...], "all_dates": [...], "date_string_map": {...}}
             if isinstance(parsed, dict) and 'normalized_events' in parsed:

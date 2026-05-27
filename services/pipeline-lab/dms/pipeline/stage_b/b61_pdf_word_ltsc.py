@@ -42,7 +42,7 @@ class B61PDFWordLTSCProcessor:
                 logger.remove(_sink_id)
 
     def _rebuild_with_ghostscript(self, file_path: Path) -> Path:
-        """Ghostscriptで再構築。ToUnicodeを作り直す。失敗したらエラーを上げる（フォールバックなし）。"""
+        """Ghostscriptで再構築。ToUnicodeを作り直す。見つからない、または失敗した場合は警告をログして元のファイルを返す（フォールバック）。"""
         import subprocess
         import shutil
 
@@ -50,15 +50,19 @@ class B61PDFWordLTSCProcessor:
         if not gs_cmd:
             # Windowsの固定インストールパスを探す
             import glob as _glob
+            user_home = Path.home()
             candidates = _glob.glob(r"C:\Program Files\gs\gs*\bin\gswin64c.exe") + \
                          _glob.glob(r"C:\Program Files\gs\gs*\bin\gswin32c.exe") + \
                          _glob.glob(r"C:\Program Files (x86)\gs\gs*\bin\gswin64c.exe") + \
-                         _glob.glob(r"C:\Program Files (x86)\gs\gs*\bin\gswin32c.exe")
+                         _glob.glob(r"C:\Program Files (x86)\gs\gs*\bin\gswin32c.exe") + \
+                         _glob.glob(str(user_home / "scoop/shims/gswin64c.exe")) + \
+                         _glob.glob(str(user_home / "scoop/shims/gs.exe"))
             if candidates:
                 gs_cmd = candidates[-1]  # 最新バージョン（末尾）
-                logger.info(f"[B-61] Ghostscript固定パスで発見: {gs_cmd}")
+                logger.info(f"[B-61] Ghostscript固定/Scoopパスで発見: {gs_cmd}")
             else:
-                raise RuntimeError("Ghostscriptが見つかりません。インストールしてください: https://www.ghostscript.com/")
+                logger.warning("[B-61] Ghostscriptが見つかりません。再構築を行わずに元のファイルをそのまま使用します。")
+                return file_path
 
         rebuilt_dir = file_path.parent / "rebuilt"
         rebuilt_dir.mkdir(parents=True, exist_ok=True)
@@ -73,9 +77,18 @@ class B61PDFWordLTSCProcessor:
             str(file_path),
         ]
         logger.info(f"[B-61] Ghostscript再構築: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Ghostscript失敗 (rc={result.returncode}): {result.stderr[:500]}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+            if result.returncode != 0:
+                logger.warning(f"[B-61] Ghostscript失敗 (rc={result.returncode}): {result.stderr[:500]}。元のファイルをそのまま使用します。")
+                return file_path
+        except Exception as e:
+            logger.warning(f"[B-61] Ghostscript実行中の例外発生 (フォールバックします): {e}")
+            return file_path
+
+        if not rebuilt_path.exists() or rebuilt_path.stat().st_size == 0:
+            logger.warning("[B-61] Ghostscriptは正常終了しましたが、出力ファイルが生成されていないか空です。元のファイルを使用します。")
+            return file_path
 
         logger.info(f"[B-61] Ghostscript再構築完了: {rebuilt_path.name}")
         return rebuilt_path

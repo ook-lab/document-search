@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+import sys
 import requests
 import json
 import time
+
+sys.stdout.reconfigure(encoding='utf-8')
 
 pdf_path = r"H:\共有ドライブ\DataBase\Classroom\IKUYA-classroom\文書名学年通信 (50).pdf [1wOeCX5hPq4DK2T7zp1e_oyOkfATWrfbB]-3.pdf"
 upload_url = "http://127.0.0.1:5055/pipeline-lab/api/upload"

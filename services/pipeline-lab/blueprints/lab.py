@@ -1403,14 +1403,10 @@ _DIRECT_EXTRACT_PROMPT = """
 
 
 def _cell_to_yaml_item(cell: str) -> str:
-    """YAML cells リストアイテム（4スペースインデント）。純整数はクォートして文字列扱い。"""
-    import re as _r
-    prefix = '    - '
-    if not cell:
-        return prefix + "''"
-    if _r.match(r'^\d+$', cell.strip()):
-        return f"{prefix}'{cell.strip()}'"
-    return f"{prefix}{cell}"
+    """YAML cells リストアイテム（4スペースインデント）。安全にエスケープ処理を行う。"""
+    import yaml as _yaml
+    dumped = _yaml.safe_dump([cell], allow_unicode=True).strip()
+    return '    ' + dumped
 
 
 def _infer_table_semantics(headers: List[str], rows: List[List[str]]) -> Dict[str, Any]:
@@ -1440,6 +1436,7 @@ def _infer_table_semantics(headers: List[str], rows: List[List[str]]) -> Dict[st
 
 def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
     """tables リストから YAML テキストを生成する。"""
+    import yaml as _yaml
     lines = ['tables:']
     for tbl in tables_data:
         tbl_id = tbl['table_id']
@@ -1449,7 +1446,10 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
         type_ja_str = sem['type_ja'] if sem['type_ja'] else 'null'
 
         description = str(tbl.get('description') or '')
-        desc_yaml = f"'{description}'" if description else "''"
+        desc_yaml = _yaml.safe_dump(description, allow_unicode=True).strip()
+        if desc_yaml.endswith('...'):
+            desc_yaml = desc_yaml[:-3].strip()
+
         lines.append(f'- table_id: {tbl_id}')
         lines.append(f'  description: {desc_yaml}')
         lines.append('  table_semantics:')
