@@ -322,7 +322,7 @@ class G62TableLayoutProcessor:
             )
 
             sub_meta = sub.get("metadata") if isinstance(sub.get("metadata"), dict) else {}
-            if sub_meta.get("lr_rebuilt"):
+            if sub_meta.get("lr_rebuilt") or "header_rows" in sub_meta:
                 header_info = self._header_info_from_f51_metadata(
                     sub_data, sub_meta, ncols, col_analysis=ca_f46
                 )
@@ -389,13 +389,7 @@ class G62TableLayoutProcessor:
                         )
                     },
                 }
-            if split_axis == "col" and resolved_data:
-                sec_meta_out["column_headers"] = [
-                    _cell_text(c) for c in resolved_data[0]
-                ]
-                while len(sec_meta_out["column_headers"]) < ncols:
-                    sec_meta_out["column_headers"].append("")
-                sec_meta_out["column_headers"] = sec_meta_out["column_headers"][:ncols]
+            if split_axis == "col":
                 sec_meta_out.pop("horizontal_merges", None)
             processed_sections.append({
                 'title': title,

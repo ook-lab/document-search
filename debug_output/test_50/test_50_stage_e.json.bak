@@ -1,0 +1,67 @@
+{
+  "success": true,
+  "non_table_content": {
+    "success": true,
+    "extracted_content": {
+      "text": "2026年\n\n50\n\n5/22 発行"
+    },
+    "blocks": [
+      {
+        "text": "2026年",
+        "bbox": [
+          241.0,
+          249.0,
+          515.0,
+          319.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "50",
+        "bbox": [
+          303.0,
+          330.0,
+          547.0,
+          463.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      },
+      {
+        "text": "5/22 発行",
+        "bbox": [
+          298.0,
+          471.0,
+          636.0,
+          539.0
+        ],
+        "page": 0,
+        "bbox_source": "e21_xyxy",
+        "matched_words": 0,
+        "debug_note": "e21_text_respected"
+      }
+    ],
+    "raw_response": "```json\n{\n  \"blocks\": [\n    {\n      \"text\": \"2026年\",\n      \"bbox\": [241, 249, 515, 319]\n    },\n    {\n      \"text\": \"50\",\n      \"bbox\": [303, 330, 547, 463]\n    },\n    {\n      \"text\": \"5/22 発行\",\n      \"bbox\": [298, 471, 636, 539]\n    }\n  ]\n}\n```",
+    "model_used": "gemini-2.5-flash-lite",
+    "tokens_used": 959,
+    "route": "E21_VISION+E22",
+    "vision_text_used": true,
+    "role": "NON_TABLE_FINAL_TEXT",
+    "priority": 100,
+    "is_final_non_table": true
+  },
+  "table_contents": [],
+  "table_audit": [],
+  "page_scout": {},
+  "metadata": {
+    "total_tokens": 959,
+    "models_used": [
+      "gemini-2.5-flash-lite"
+    ]
+  }
+}
