@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional
 import re
 from loguru import logger
 
-from dms.pipeline.stage_g.merged_cell_grid import prune_blank_body_rows
+from dms.pipeline.stage_g.merged_cell_grid import prune_blank_body_rows, resolve_horizontal_merges_in_row
 
 _DAY_ROW_RE = re.compile(r"^\d{1,2}\s*[（(]")
 
@@ -252,10 +252,14 @@ class G44TableReconstructor:
 
             # common_left 列 ＋ ブロック本体列 ＋ common_right 列のインデックスを結合
             col_indices = common_left + list(range(col_start, col_end + 1)) + common_right
-            sub_table = [
-                [row[c] if c < len(row) else None for c in col_indices]
-                for row in table
-            ]
+            parent_hdr_depth = _infer_header_depth(table)
+            sub_table = []
+            for r_idx, row in enumerate(table):
+                if r_idx < parent_hdr_depth:
+                    sub_table.append([row[c] if c < len(row) else None for c in col_indices])
+                else:
+                    resolved_row, _ = resolve_horizontal_merges_in_row(list(row), start_col=0)
+                    sub_table.append([resolved_row[c] if c < len(resolved_row) else None for c in col_indices])
             hdr_depth = _infer_header_depth(sub_table)
             sub_table = prune_blank_body_rows(sub_table, data_start_row=hdr_depth)
 
