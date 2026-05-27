@@ -60,6 +60,32 @@ def _ai_layout_env_enabled() -> bool:
 
 
 def _extract_json(text: str) -> str:
+    text = text.strip()
+    
+    start_obj = text.find('{')
+    end_obj = text.rfind('}')
+    
+    start_arr = text.find('[')
+    end_arr = text.rfind(']')
+    
+    if start_obj != -1 and start_arr != -1:
+        if start_obj < start_arr:
+            if end_obj != -1 and end_obj > end_arr:
+                return text[start_obj:end_obj + 1]
+            elif end_arr != -1:
+                return text[start_arr:end_arr + 1]
+        else:
+            if end_arr != -1 and end_arr > end_obj:
+                return text[start_arr:end_arr + 1]
+            elif end_obj != -1:
+                return text[start_obj:end_obj + 1]
+    
+    if start_obj != -1 and end_obj != -1 and start_obj < end_obj:
+        return text[start_obj:end_obj + 1]
+        
+    if start_arr != -1 and end_arr != -1 and start_arr < end_arr:
+        return text[start_arr:end_arr + 1]
+        
     if "```json" in text:
         start = text.find("```json") + 7
         end = text.find("```", start)
@@ -68,7 +94,7 @@ def _extract_json(text: str) -> str:
         start = text.find("```") + 3
         end = text.find("```", start)
         return text[start:end].strip()
-    return text.strip()
+    return text
 
 
 def _cell_one_line(v: Any) -> str:
