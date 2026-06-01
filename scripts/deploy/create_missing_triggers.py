@@ -52,6 +52,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("portal-deploy", "portal-app/cloudbuild.yaml", "portal-app/**"),
     ("rag-prepare", "services/rag-prepare/cloudbuild.yaml", "services/rag-prepare/**"),
     ("reading-context-editor", "services/reading-context-editor/cloudbuild.yaml", "services/reading-context-editor/**"),
+    ("sansu-base", "services/sansu-base/cloudbuild.yaml", "services/sansu-base/**"),
     ("tenshoku-tool", "services/tenshoku-tool/cloudbuild.yaml", "services/tenshoku-tool/**"),
     ("youtube-search-links", "services/youtube-search-links/cloudbuild.yaml", "services/youtube-search-links/**"),
 )

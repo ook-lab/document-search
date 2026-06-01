@@ -10,10 +10,44 @@ venv/
 .tmp/
 .gemini/
 _runtime/
-# 各サービスの cloudbuild はリポジトリルートがコンテキストのため、
-# services/<name>/ を丸ごと除外すると Dockerfile の COPY が必ず失敗する。
+
+# Root applications and directories not needed for builds
+portal-app/
+my-calendar-app/
+docs/
+apps/
+supabase/
+pdf_optimizer/
+debug_output/
+temp/
+tmp/
+.tmp-*/
+.tmp-venv-di/
+.tmp.driveupload/
+.pytest_cache/
+.vscode/
+recovered_history.md
+
+# Services not needed for building sansu-base (excluding services/sansu-base)
+services/ai-cost-tracker/
+services/calendar-register/
+services/daily-report/
+services/data-ingestion/
+services/doc-search/
 services/doda-dashboard/
-# services/doda-scraper/
-# services/kakeibo/
-# services/kakeibo_view/
+services/doda-scraper/
+services/drive-duplicate-checker/
+services/drive-manager-flask/
+services/gmail-service/
+services/html-to-a4/
+services/kakeibo/
+services/netsuper-search/
 services/pdf-splitter/
+services/pdf-toolbox/
+services/pipeline-lab/
+services/print-run-calculator/
+services/rag-prepare/
+services/reading-context-editor/
+services/sansu-drawing/
+services/tenshoku-tool/
+services/youtube-search-links/
