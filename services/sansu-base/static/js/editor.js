@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chapter: '',
         unit: '',
         strategy: '',
+        problem_number: '',
         problem: {
             blocks: [] // Unified flat list: { id, type, content, title, compiled_image_url, is_sub_start, sub_number, elev, azim }
         },
@@ -44,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalChapterInput = document.getElementById('modal-chapter');
     const modalUnitInput = document.getElementById('modal-unit');
     const modalStrategyInput = document.getElementById('modal-page-number');
+    const modalProblemNumberInput = document.getElementById('modal-problem-number');
     const modalSourceBooksDatalist = document.getElementById('modal-source-books-list');
 
     const tabProblemBtn = document.getElementById('tab-problem-blocks');
@@ -950,6 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.chapter) titleParts.push(`${state.chapter}章/回`);
             if (state.unit) titleParts.push(`単元: ${state.unit}`);
             if (state.strategy) titleParts.push(`${state.strategy}ページ`);
+            if (state.problem_number) titleParts.push(`No.${state.problem_number}`);
             
             displayEl.textContent = titleParts.length > 0 ? titleParts.join(' | ') : '(未設定)';
         }
@@ -1493,8 +1496,11 @@ document.addEventListener('DOMContentLoaded', () => {
             previewIdBadge.textContent = 'ID: AUTO';
         }
 
-        if (tempModalState.strategy) {
-            previewStrategyBox.innerHTML = `<strong>ページ数:</strong> ${tempModalState.strategy} ページ`;
+        if (tempModalState.strategy || tempModalState.problem_number) {
+            let metaParts = [];
+            if (tempModalState.strategy) metaParts.push(`<strong>ページ数:</strong> ${tempModalState.strategy} ページ`);
+            if (tempModalState.problem_number) metaParts.push(`<strong>問題番号:</strong> ${tempModalState.problem_number}`);
+            previewStrategyBox.innerHTML = metaParts.join('　');
             previewStrategyBox.style.display = 'block';
         } else {
             previewStrategyBox.style.display = 'none';
@@ -1792,7 +1798,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     modalStrategyInput.addEventListener('input', (e) => {
         if (tempModalState) {
+            const start = e.target.selectionStart;
+            const end = e.target.selectionEnd;
+            const val = e.target.value;
+            const normalized = toHalfWidth(val);
+            if (val !== normalized) {
+                e.target.value = normalized;
+                if (document.activeElement === e.target) {
+                    e.target.setSelectionRange(start, end);
+                }
+            }
             tempModalState.strategy = e.target.value.trim();
+            updateModalPreview();
+        }
+    });
+
+    modalProblemNumberInput.addEventListener('input', (e) => {
+        if (tempModalState) {
+            const start = e.target.selectionStart;
+            const end = e.target.selectionEnd;
+            const val = e.target.value;
+            const normalized = toHalfWidth(val);
+            if (val !== normalized) {
+                e.target.value = normalized;
+                if (document.activeElement === e.target) {
+                    e.target.setSelectionRange(start, end);
+                }
+            }
+            tempModalState.problem_number = e.target.value.trim();
             updateModalPreview();
         }
     });
@@ -1870,6 +1903,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.chapter = tempModalState.chapter;
             state.unit = tempModalState.unit;
             state.strategy = tempModalState.strategy;
+            state.problem_number = tempModalState.problem_number || '';
             state.problem = tempModalState.problem;
             state.explanation = tempModalState.explanation;
         }
@@ -1900,6 +1934,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chapter: state.chapter || '',
             unit: state.unit || '',
             strategy: state.strategy || '',
+            problem_number: state.problem_number || '',
             problem: JSON.parse(JSON.stringify(state.problem)),
             explanation: JSON.parse(JSON.stringify(state.explanation))
         };
@@ -1909,6 +1944,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modalChapterInput.value = tempModalState.chapter;
         modalUnitInput.value = tempModalState.unit;
         modalStrategyInput.value = tempModalState.strategy;
+        modalProblemNumberInput.value = tempModalState.problem_number;
 
         btnViewLayout.classList.add('active');
         btnViewElements.classList.remove('active');
@@ -1927,6 +1963,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.chapter = tempModalState.chapter;
             state.unit = tempModalState.unit;
             state.strategy = tempModalState.strategy;
+            state.problem_number = tempModalState.problem_number || '';
             state.problem = tempModalState.problem;
             state.explanation = tempModalState.explanation;
         }
@@ -1958,6 +1995,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chapter: state.chapter,
             unit: state.unit,
             strategy_summary: state.strategy,
+            problem_number: state.problem_number || '',
             problem_markdown: problemMarkdown,
             explanation_markdown: explanationMarkdown,
             grading_status: state.grading_status || {}
@@ -2185,6 +2223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.chapter = draft.data.chapter || '';
         state.unit = draft.data.unit || '';
         state.strategy = draft.data.strategy || '';
+        state.problem_number = draft.data.problem_number || '';
 
         // Backward compatibility for old flat drafts
         if (draft.data.problem_blocks) {
@@ -2215,6 +2254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modalChapterInput.value = state.chapter;
         modalUnitInput.value = state.unit;
         modalStrategyInput.value = state.strategy;
+        modalProblemNumberInput.value = state.problem_number;
 
         renderWorkspace();
         updatePreviewMeta();
@@ -2243,6 +2283,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 chapter: state.chapter,
                 unit: state.unit,
                 strategy: state.strategy,
+                problem_number: state.problem_number,
                 problem: state.problem,
                 explanation: state.explanation
             }
@@ -2309,7 +2350,8 @@ document.addEventListener('DOMContentLoaded', () => {
         lines.push(`source_book: "${state.source_book || '未設定'}"`);
         lines.push(`chapter: "${state.chapter || ''}"`);
         lines.push(`unit: "${state.unit || ''}"`);
-        lines.push(`page: "${state.strategy || ''}"`);
+        lines.push(`page: "${state.strategy || ''}"`);  
+        lines.push(`problem_number: "${state.problem_number || ''}"`);
         lines.push(`id: "${state.display_id || 'AUTO'}"`);
         lines.push('---');
         lines.push('');
@@ -2369,6 +2411,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.chapter = tempModalState.chapter;
             state.unit = tempModalState.unit;
             state.strategy = tempModalState.strategy;
+            state.problem_number = tempModalState.problem_number || '';
             state.problem = tempModalState.problem;
             state.explanation = tempModalState.explanation;
         }
@@ -2747,6 +2790,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.chapter = '';
         state.unit = '';
         state.strategy = '';
+        state.problem_number = '';
         state.grading_status = {};
         
         state.problem.blocks = [];
@@ -2945,6 +2989,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.chapter = prob.chapter || '';
                 state.unit = prob.unit || '';
                 state.strategy = prob.strategy_summary || '';
+                state.problem_number = prob.problem_number || '';
                 state.grading_status = prob.grading_status || {};
                 
                 state.problem = parseMarkdownToNested(prob.problem_markdown);
@@ -2954,6 +2999,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 modalChapterInput.value = state.chapter;
                 modalUnitInput.value = state.unit;
                 modalStrategyInput.value = state.strategy;
+                modalProblemNumberInput.value = state.problem_number;
 
                 renderWorkspace();
                 updatePreviewMeta();
@@ -3144,6 +3190,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     state.chapter = prob.chapter || '';
                     state.unit = prob.unit || '';
                     state.strategy = prob.strategy_summary || '';
+                    state.problem_number = prob.problem_number || '';
                     state.grading_status = prob.grading_status || {};
                     
                     state.problem = parseMarkdownToNested(prob.problem_markdown);
@@ -3153,6 +3200,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     modalChapterInput.value = state.chapter;
                     modalUnitInput.value = state.unit;
                     modalStrategyInput.value = state.strategy;
+                    modalProblemNumberInput.value = state.problem_number;
 
                     renderWorkspace();
                     updatePreviewMeta();

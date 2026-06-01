@@ -941,6 +941,7 @@ def api_save_blocks():
     problem_markdown = data.get("problem_markdown", "").strip()
     explanation_markdown = data.get("explanation_markdown", "").strip()
     strategy_summary = data.get("strategy_summary", "").strip()
+    problem_number = data.get("problem_number", "").strip()
     grading_status = data.get("grading_status") or {}
     
     if not source_book or (not problem_markdown and not explanation_markdown):
@@ -1001,6 +1002,7 @@ def api_save_blocks():
         "problem_markdown": problem_markdown,
         "explanation_markdown": explanation_markdown,
         "strategy_summary": strategy_summary,
+        "problem_number": problem_number or None,
         "grading_status": grading_status,
         "owner_id": os.getenv("DEFAULT_OWNER_ID", "d1b18b1c-a4dc-4b2e-97af-5153a85e685c")
     }
