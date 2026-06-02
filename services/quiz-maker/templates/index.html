@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 4択クイズメーカー Premium</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans JP', sans-serif;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.04);
+    }
+    .light-glass-card {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+      box-shadow: 0 10px 40px 0 rgba(99, 102, 241, 0.06);
+    }
+    .neon-border {
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.1);
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen antialiased bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-50 via-slate-50 to-slate-100 selection:bg-indigo-100 selection:text-indigo-900">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    {% raw %}
+    const { useState, useEffect } = React;
+
+    function App() {
+      // 画面状態
+      const [step, setStep] = useState('input'); // 'input', 'loading', 'quiz', 'result'
+      
+      // クイズ生成パラメータ
+      const [sourceText, setSourceText] = useState('');
+      const [inputType, setInputType] = useState('text'); // 'text', 'pdf'
+      const [pdfFile, setPdfFile] = useState(null);
+      const [questionCount, setQuestionCount] = useState(10);
+      // 苦手分析の反映度 (strong, medium, weak, none)
+      const [historyAnalysisLevel, setHistoryAnalysisLevel] = useState(() => {
+        return localStorage.getItem('historyAnalysisLevel') || 'none';
+      });
+      
+      // 科目データ関連
+      const [subjects, setSubjects] = useState([]);
+      const [selectedSubjectId, setSelectedSubjectId] = useState('');
+      
+      // クイズ実行データ
+      const [questions, setQuestions] = useState([]);
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [selectedOption, setSelectedOption] = useState(null);
+      const [showAnswer, setShowAnswer] = useState(false);
+      const [score, setScore] = useState(0);
+      const [answerHistory, setAnswerHistory] = useState([]);
+      
+      // トークン消費情報
+      const [tokenUsage, setTokenUsage] = useState(null);
+      
+      // 保存・通信ステータス
+      const [error, setError] = useState(null);
+      const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
+      
+      // 隠し設定画面用 (モーダル/タブ)
+      const [showSettings, setShowSettings] = useState(false);
+      const [newSubjectName, setNewSubjectName] = useState('');
+      const [selectedEditSubjectId, setSelectedEditSubjectId] = useState('');
+      const [editingPrompt, setEditingPrompt] = useState('');
+      const [optimizingPrompt, setOptimizingPrompt] = useState(false);
+      const [settingsSaveStatus, setSettingsSaveStatus] = useState(null);
+
+      // 苦手分析反映度のローカルストレージ同期
+      useEffect(() => {
+        localStorage.setItem('historyAnalysisLevel', historyAnalysisLevel);
+      }, [historyAnalysisLevel]);
+
+      // 初期ロード: 科目データの取得
+      useEffect(() => {
+        fetchSubjects();
+      }, []);
+
+      // Lucideアイコンの再描画
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [step, inputType, pdfFile, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel]);
+
+      const fetchSubjects = async () => {
+        try {
+          const res = await fetch('/api/subjects');
+          if (!res.ok) throw new Error("科目の取得に失敗しました。");
+          const data = await res.json();
+          setSubjects(data);
+          if (data.length > 0) {
+            setSelectedSubjectId(data[0].id);
+            setSelectedEditSubjectId(data[0].id);
+            setEditingPrompt(data[0].prompt);
+          }
+        } catch (err) {
+          console.error(err);
+          setError("DB接続エラー: 科目データが読み込めません。マイグレーションファイルが適用されているか確認してください。");
+        }
+      };
+
+      // 科目選択時に編集プロンプトを同期
+      const handleEditSubjectChange = (id) => {
+        setSelectedEditSubjectId(id);
+        const sub = subjects.find(s => s.id === id);
+        if (sub) {
+          setEditingPrompt(sub.prompt);
+        }
+      };
+
+      // 科目の並び替え処理
+      const handleMoveSubject = async (index, direction) => {
+        if (direction === 'up' && index === 0) return;
+        if (direction === 'down' && index === subjects.length - 1) return;
+
+        const newSubjects = [...subjects];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        
+        // 要素を入れ替える
+        const temp = newSubjects[index];
+        newSubjects[index] = newSubjects[targetIndex];
+        newSubjects[targetIndex] = temp;
+
+        // sort_order をインデックス順に振り直す (1から始める)
+        const reordered = newSubjects.map((sub, idx) => ({
+          ...sub,
+          sort_order: idx + 1
+        }));
+
+        setSubjects(reordered);
+
+        // バックエンドに順序変更を送信
+        setSettingsSaveStatus('saving');
+        try {
+          const payload = reordered.map(sub => ({
+            id: sub.id,
+            sort_order: sub.sort_order
+          }));
+          const res = await fetch('/api/subjects/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error("順序の更新に失敗しました。");
+          setSettingsSaveStatus('success_save');
+        } catch (err) {
+          console.error(err);
+          setSettingsSaveStatus('error');
+          // エラーの場合は元の順序を再取得
+          fetchSubjects();
+        }
+        setTimeout(() => setSettingsSaveStatus(null), 3000);
+      };
+
+      // クイズ生成API呼び出し
+      const generateQuestions = async () => {
+        setStep('loading');
+        setError(null);
+        setAnswerHistory([]);
+        setTokenUsage(null);
+
+        const formData = new FormData();
+        formData.append("subject_id", selectedSubjectId);
+        formData.append("question_count", questionCount);
+        formData.append("history_analysis_level", historyAnalysisLevel);
+        
+        if (inputType === 'text') {
+          formData.append("source_text", sourceText);
+        } else if (inputType === 'pdf' && pdfFile) {
+          formData.append("pdf", pdfFile);
+        } else {
+          setError("入力データが不足しています。");
+          setStep('input');
+          return;
+        }
+
+        try {
+          const response = await fetch('/api/generate-questions', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "問題の作成中にエラーが発生しました。");
+          }
+
+          setQuestions(data.questions);
+          setTokenUsage(data.tokens); // トークン情報保存
+          setCurrentIndex(0);
+          setSelectedOption(null);
+          setShowAnswer(false);
+          setScore(0);
+          setStep('quiz');
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "問題の生成に失敗しました。APIキーを確認してください。");
+          setStep('input');
+        }
+      };
+
+      // 科目の追加
+      const handleAddSubject = async () => {
+        if (!newSubjectName.trim()) return;
+        setSettingsSaveStatus('saving');
+        try {
+          // デフォルトのプロンプトをセット
+          const defaultPrompt = `あなたは最難関中学校に生徒を合格させるために最適な問題を作る教材クリエイターです。入力されたテキストやファイルから${newSubjectName}に関する重要な要素を抽出し、問題文、正解、もっともらしいダミーの選択肢3つを含む4択問題を作成してください。`;
+          const res = await fetch('/api/subjects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newSubjectName, prompt: defaultPrompt })
+          });
+          if (!res.ok) throw new Error("科目の追加に失敗しました。");
+          setNewSubjectName('');
+          await fetchSubjects();
+          setSettingsSaveStatus('success_add');
+        } catch (err) {
+          console.error(err);
+          setSettingsSaveStatus('error');
+        }
+        setTimeout(() => setSettingsSaveStatus(null), 3000);
+      };
+
+      // 科目の削除
+      const handleDeleteSubject = async (id) => {
+        if (!confirm("この科目を削除しますか？紐づく履歴もすべて削除されます。")) return;
+        setSettingsSaveStatus('saving');
+        try {
+          const res = await fetch(`/api/subjects/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error("科目の削除に失敗しました。");
+          await fetchSubjects();
+          setSettingsSaveStatus('success_delete');
+        } catch (err) {
+          console.error(err);
+          setSettingsSaveStatus('error');
+        }
+        setTimeout(() => setSettingsSaveStatus(null), 3000);
+      };
+
+      // プロンプトの保存
+      const handleSavePrompt = async () => {
+        if (!selectedEditSubjectId || !editingPrompt.trim()) return;
+        setSettingsSaveStatus('saving');
+        try {
+          const currentSubject = subjects.find(s => s.id === selectedEditSubjectId);
+          const res = await fetch('/api/subjects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: selectedEditSubjectId,
+              name: currentSubject.name,
+              prompt: editingPrompt
+            })
+          });
+          if (!res.ok) throw new Error("プロンプトの保存に失敗しました。");
+          await fetchSubjects();
+          setSettingsSaveStatus('success_save');
+        } catch (err) {
+          console.error(err);
+          setSettingsSaveStatus('error');
+        }
+        setTimeout(() => setSettingsSaveStatus(null), 3000);
+      };
+
+      // AIによるプロンプト自動調整
+      const handleOptimizePrompt = async () => {
+        if (!editingPrompt.trim()) return;
+        setOptimizingPrompt(true);
+        try {
+          const currentSubject = subjects.find(s => s.id === selectedEditSubjectId);
+          const res = await fetch('/api/optimize-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: editingPrompt,
+              subject: currentSubject ? currentSubject.name : '一般科目'
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "最適化に失敗しました。");
+          setEditingPrompt(data.optimized_prompt);
+        } catch (err) {
+          alert("自動調整エラー: " + err.message);
+        } finally {
+          setOptimizingPrompt(false);
+        }
+      };
+
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (file.type !== "application/pdf") {
+          setError("PDFファイルを選択してください。");
+          return;
+        }
+        setError(null);
+        setPdfFile(file);
+      };
+
+      const handleStart = () => {
+        if (!selectedSubjectId) {
+          setError("科目を選択してください。科目が登録されていない場合は、設定（⚙️）から作成してください。");
+          return;
+        }
+        if (inputType === 'text' && sourceText.trim().length < 40) {
+          setError("テキストが短すぎます。もう少し詳しい内容（目安: 40文字以上）を入力してください。");
+          return;
+        }
+        if (inputType === 'pdf' && !pdfFile) {
+          setError("PDFファイルが準備されていません。ファイルを選択してください。");
+          return;
+        }
+        generateQuestions();
+      };
+
+      const handleOptionSelect = (option) => {
+        if (showAnswer) return;
+        setSelectedOption(option);
+        setShowAnswer(true);
+        
+        const isCorrect = option === questions[currentIndex].correctAnswer;
+        if (isCorrect) setScore(prev => prev + 1);
+        setAnswerHistory(prev => {
+          const newHistory = [...prev];
+          newHistory[currentIndex] = {
+            timestamp: new Date().toLocaleString('ja-JP'),
+            question: questions[currentIndex].question,
+            correctAnswer: questions[currentIndex].correctAnswer,
+            userAnswer: option,
+            isCorrect: isCorrect
+          };
+          return newHistory;
+        });
+      };
+
+      const handleNext = () => {
+        if (currentIndex < questions.length - 1) {
+          setCurrentIndex(prev => prev + 1);
+          setSelectedOption(null);
+          setShowAnswer(false);
+        } else {
+          setStep('result');
+        }
+      };
+
+      // 回答履歴のSupabase保存
+      const saveQuizResultToSupabase = async () => {
+        setSaveStatus('saving');
+        try {
+          const payload = {
+            subject_id: selectedSubjectId,
+            history: answerHistory.filter(Boolean)
+          };
+          const res = await fetch('/api/save-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || "保存に失敗しました。");
+          setSaveStatus('success');
+        } catch (err) {
+          console.error(err);
+          setSaveStatus('error');
+        }
+        setTimeout(() => setSaveStatus(null), 5000);
+      };
+
+      const resetApp = () => {
+        setStep('input');
+        setSourceText('');
+        setPdfFile(null);
+        setQuestions([]);
+        setCurrentIndex(0);
+        setSelectedOption(null);
+        setShowAnswer(false);
+        setScore(0);
+        setError(null);
+        setAnswerHistory([]);
+        setSaveStatus(null);
+        setTokenUsage(null);
+      };
+
+      const insertSampleText = () => {
+        setSourceText("日本国憲法は、1946年（昭和21年）11月3日に公布され、1947年（昭和22年）5月3日に施行された日本の憲法である。国民主権、基本的人権の尊重、平和主義を基本原理としている。天皇は日本国の象徴であり日本国民統合の象徴とされ、国政に関する権能を有しない。国会は国権の最高機関であり、国の唯一の立法機関である。衆議院と参議院の両院で構成される二院制をとる。行政権は内閣に属し、内閣総理大臣は国会議員の中から国会の議決で指名される。司法権は最高裁判所及び下級裁判所に属する。");
+        setError(null);
+      };
+
+      return (
+        <div className="min-h-screen pb-16 flex flex-col justify-between">
+          <div>
+            {/* ヘッダー */}
+            <header className="border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-20">
+              <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-600 text-white p-2 rounded-xl neon-border">
+                    <i data-lucide="brain-circuit" className="w-6 h-6"></i>
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                      AI 4択クイズメーカー <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded font-mono">v3.5</span>
+                    </h1>
+                    <p className="text-[10px] text-slate-500">Powered by Gemini 3.5 Flash & Supabase</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/50 hover:border-indigo-200 transition-all flex items-center gap-1.5 text-xs font-semibold shadow-sm"
+                    title="科目別プロンプト設定 (隠しタブ)"
+                  >
+                    <i data-lucide="settings" className="w-4 h-4"></i>
+                    <span>プロンプト設定</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            {/* メインコンテンツ */}
+            <main className="max-w-3xl mx-auto px-6 py-8">
+              
+              {/* エラー表示 */}
+              {error && (
+                <div className="mb-8 p-4 rounded-2xl bg-rose-5 border border-rose-200 text-rose-700 text-sm flex items-start gap-3 animate-in fade-in duration-300 shadow-sm">
+                  <i data-lucide="alert-triangle" className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5"></i>
+                  <div className="leading-relaxed">
+                    <p className="font-semibold text-rose-800">エラーが発生しました</p>
+                    <p className="mt-1 opacity-90">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 隠し設定タブ（プロンプト・科目編集画面） */}
+              {showSettings && (
+                <div className="mb-8 glass-card rounded-3xl p-6 sm:p-8 animate-in slide-in-from-top-4 duration-300 relative overflow-hidden shadow-xl border border-slate-200/80">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -z-10"></div>
+                  
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
+                    <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-600">
+                      <i data-lucide="settings" className="w-5 h-5"></i>
+                      ⚙️ システム設定 & 科目並び替え
+                    </h2>
+                    <button 
+                      onClick={() => setShowSettings(false)}
+                      className="text-slate-500 hover:text-indigo-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                    >
+                      <i data-lucide="x" className="w-5 h-5"></i>
+                    </button>
+                  </div>
+
+                  {/* サブステータス */}
+                  {settingsSaveStatus && (
+                    <div className="mb-4 p-3 text-sm rounded-xl font-medium flex items-center gap-2 border animate-in fade-in">
+                      {settingsSaveStatus === 'saving' && (
+                        <span className="text-indigo-600 border-indigo-200 bg-indigo-50 flex items-center gap-1.5 w-full">
+                          <i data-lucide="loader" className="w-4 h-4 animate-spin"></i> 処理中...
+                        </span>
+                      )}
+                      {settingsSaveStatus === 'success_save' && (
+                        <span className="text-emerald-700 border-emerald-200 bg-emerald-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
+                          <i data-lucide="check-circle" className="w-4 h-4"></i> 設定を保存しました！
+                        </span>
+                      )}
+                      {settingsSaveStatus === 'success_add' && (
+                        <span className="text-emerald-700 border-emerald-200 bg-emerald-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
+                          <i data-lucide="plus-circle" className="w-4 h-4"></i> 新しい科目を追加しました！
+                        </span>
+                      )}
+                      {settingsSaveStatus === 'success_delete' && (
+                        <span className="text-amber-700 border-amber-200 bg-amber-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
+                          <i data-lucide="trash-2" className="w-4 h-4"></i> 科目を削除しました。
+                        </span>
+                      )}
+                      {settingsSaveStatus === 'error' && (
+                        <span className="text-rose-700 border-rose-200 bg-rose-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
+                          <i data-lucide="alert-circle" className="w-4 h-4"></i> 操作に失敗しました。
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 苦手分析レベルの選択 */}
+                  <div className="bg-slate-100/60 p-4 rounded-2xl border border-slate-200 mb-6">
+                    <label htmlFor="historyAnalysisLevelSelect" className="block text-xs font-bold text-slate-500 mb-2">
+                      過去の成績（誤答履歴）の反映度
+                    </label>
+                    <select
+                      id="historyAnalysisLevelSelect"
+                      value={historyAnalysisLevel}
+                      onChange={(e) => setHistoryAnalysisLevel(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 font-semibold cursor-pointer shadow-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="strong">強く反映 (苦手対策を約8割以上)</option>
+                      <option value="medium">中くらいの反映 (苦手対策を約5割)</option>
+                      <option value="weak">弱く反映 (苦手対策を約2割)</option>
+                      <option value="none">反映しない (誤答履歴を考慮しない)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+                      ※この設定はブラウザに自動保存されます。反映度が「反映しない」以外の場合、クイズ作成時に過去の誤答データに基づいた苦手対策問題が組み込まれます。
+                    </p>
+                  </div>
+
+                  {/* 科目追加 */}
+                  <div className="bg-slate-100/60 p-4 rounded-2xl border border-slate-200 mb-6 flex flex-col sm:flex-row gap-3 items-end">
+                    <div className="flex-1 w-full">
+                      <label className="block text-xs font-bold text-slate-500 mb-1.5">新規科目の追加</label>
+                      <input
+                        type="text"
+                        placeholder="例: 数学、時事問題"
+                        value={newSubjectName}
+                        onChange={(e) => setNewSubjectName(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddSubject}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-1.5 whitespace-nowrap w-full sm:w-auto justify-center shadow-md shadow-indigo-500/10"
+                    >
+                      <i data-lucide="plus" className="w-4 h-4"></i>
+                      科目追加
+                    </button>
+                  </div>
+
+                  {/* プロンプト編集 */}
+                  {subjects.length > 0 ? (
+                    <div className="space-y-4">
+                      {/* 科目並び替え & 管理リスト */}
+                      <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
+                        <label className="block text-xs font-bold text-slate-500 mb-2">科目の表示順と管理（クリックでプロンプト編集を選択）</label>
+                        <div className="space-y-2">
+                          {subjects.map((sub, idx) => (
+                            <div 
+                              key={sub.id} 
+                              className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                selectedEditSubjectId === sub.id 
+                                  ? 'border-indigo-500 bg-indigo-50/10 ring-1 ring-indigo-500/20' 
+                                  : 'border-slate-200 bg-white'
+                              }`}
+                            >
+                              <span 
+                                onClick={() => handleEditSubjectChange(sub.id)}
+                                className={`font-bold text-sm cursor-pointer hover:text-indigo-600 transition-colors flex-1 ${
+                                  selectedEditSubjectId === sub.id ? 'text-indigo-600' : 'text-slate-800'
+                                }`}
+                              >
+                                {sub.name}
+                                {selectedEditSubjectId === sub.id && (
+                                  <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 bg-indigo-100 text-indigo-600 rounded">編集対象</span>
+                                )}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {/* 上へ移動ボタン */}
+                                <button
+                                  onClick={() => handleMoveSubject(idx, 'up')}
+                                  disabled={idx === 0}
+                                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                                  title="上へ移動"
+                                >
+                                  <i data-lucide="arrow-up" className="w-4 h-4"></i>
+                                </button>
+                                {/* 下へ移動ボタン */}
+                                <button
+                                  onClick={() => handleMoveSubject(idx, 'down')}
+                                  disabled={idx === subjects.length - 1}
+                                  className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                                  title="下へ移動"
+                                >
+                                  <i data-lucide="arrow-down" className="w-4 h-4"></i>
+                                </button>
+                                {/* 削除ボタン */}
+                                <button
+                                  onClick={() => handleDeleteSubject(sub.id)}
+                                  className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                                  title="科目を削除"
+                                >
+                                  <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="block text-xs font-bold text-slate-500">
+                            「{subjects.find(s => s.id === selectedEditSubjectId)?.name || '未選択'}」のシステムプロンプトの指示内容
+                          </label>
+                          <button
+                            onClick={handleOptimizePrompt}
+                            disabled={optimizingPrompt}
+                            className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white border border-indigo-200 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 font-bold disabled:opacity-50 shadow-sm"
+                          >
+                            {optimizingPrompt ? (
+                              <>
+                                <i data-lucide="loader" className="w-3.5 h-3.5 animate-spin"></i>
+                                <span>AI調整中...</span>
+                              </>
+                            ) : (
+                              <>
+                                <i data-lucide="wand-2" className="w-3.5 h-3.5"></i>
+                                <span>AI自動調整</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <textarea
+                          value={editingPrompt}
+                          onChange={(e) => setEditingPrompt(e.target.value)}
+                          className="w-full h-48 bg-white border border-slate-200 rounded-2xl p-4 text-xs sm:text-sm leading-relaxed text-slate-700 font-mono focus:outline-none focus:border-indigo-500 transition-all resize-none shadow-sm"
+                          placeholder="Geminiへの指示プロンプトを入力..."
+                        />
+                        <p className="text-[10px] text-slate-400 leading-relaxed mt-1">
+                          ※AI自動調整ボタンを押すと、入力した指示文をGeminiが整理し、より高品質なクイズを生成しやすい記述に自動変更します。調整後に保存してください。
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={handleSavePrompt}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md shadow-emerald-500/10 flex items-center justify-center gap-2"
+                      >
+                        <i data-lucide="save" className="w-4 h-4"></i>
+                        プロンプトを保存する
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-slate-500 text-sm text-center py-6">科目がありません。上の「科目追加」から追加してください。</p>
+                  )}
+                </div>
+              )}
+
+
+              {/* 1. 設定・入力フェーズ */}
+              {step === 'input' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="glass-card rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl -z-10"></div>
+                    
+                    <div className="mb-6">
+                      <h2 className="text-xl sm:text-2xl font-bold mb-2 text-slate-900">4択問題の自動生成</h2>
+                      <p className="text-slate-500 text-xs sm:text-sm">
+                        AIがテキストやPDFの内容から重要な要点を抽出し、科目別のプロンプト設計に従って本格的な4択問題を作成します。
+                      </p>
+                    </div>
+
+                    {/* 科目プルダウンと苦手分析 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                      <div>
+                        <label htmlFor="subjectSelect" className="block text-xs font-bold text-slate-500 mb-2">
+                          学習する科目
+                        </label>
+                        <select
+                          id="subjectSelect"
+                          value={selectedSubjectId}
+                          onChange={(e) => setSelectedSubjectId(e.target.value)}
+                          className="w-full p-3.5 rounded-xl border border-slate-200 bg-white focus:border-indigo-500 transition-all font-semibold text-slate-800 cursor-pointer text-sm shadow-sm"
+                        >
+                          {subjects.length > 0 ? (
+                            subjects.map(s => (
+                              <option key={s.id} value={s.id}>{s.name}</option>
+                            ))
+                          ) : (
+                            <option value="">(科目がありません)</option>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="questionCount" className="block text-xs font-bold text-slate-500 mb-2">
+                          問題数
+                        </label>
+                        <select
+                          id="questionCount"
+                          value={questionCount}
+                          onChange={(e) => setQuestionCount(Number(e.target.value))}
+                          className="w-full p-3.5 rounded-xl border border-slate-200 bg-white focus:border-indigo-500 transition-all font-semibold text-slate-800 cursor-pointer text-sm shadow-sm"
+                        >
+                          <option value={5}>5問（スピーディ）</option>
+                          <option value={10}>10問（標準）</option>
+                          <option value={20}>20問</option>
+                          <option value={30}>30問</option>
+                        </select>
+                      </div>
+                    </div>
+
+
+
+                    {/* 入力タイプ切り替え */}
+                    <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-xl border border-slate-200 max-w-sm shadow-sm">
+                      <button
+                        onClick={() => { setInputType('text'); setError(null); }}
+                        className={`flex-1 py-2 px-1 text-xs rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all ${
+                          inputType === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-indigo-600'
+                        }`}
+                      >
+                        <i data-lucide="type" className="w-3.5 h-3.5"></i> テキスト入力
+                      </button>
+                      <button
+                        onClick={() => { setInputType('pdf'); setError(null); }}
+                        className={`flex-1 py-2 px-1 text-xs rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all ${
+                          inputType === 'pdf' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-indigo-600'
+                        }`}
+                      >
+                        <i data-lucide="file-text" className="w-3.5 h-3.5"></i> PDF選択
+                      </button>
+                    </div>
+
+                    <div className="mb-8">
+                      {inputType === 'text' && (
+                        <div className="animate-in fade-in">
+                          <div className="flex justify-between items-center mb-2">
+                            <label htmlFor="sourceText" className="block text-xs font-bold text-slate-500">
+                              学習テキスト
+                            </label>
+                            <button 
+                              onClick={insertSampleText}
+                              className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-bold bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg transition-all shadow-sm"
+                            >
+                              <i data-lucide="file-text" className="w-3.5 h-3.5"></i> サンプル文を挿入
+                            </button>
+                          </div>
+                          <textarea
+                            id="sourceText"
+                            value={sourceText}
+                            onChange={(e) => setSourceText(e.target.value)}
+                            placeholder="ここに学習したい内容 of テキストをコピー＆ペーストしてください... (40文字以上)"
+                            className="w-full h-60 p-4 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800 text-sm sm:text-base leading-relaxed resize-none shadow-sm"
+                          />
+                        </div>
+                      )}
+                      
+                      {inputType === 'pdf' && (
+                        <div className="animate-in fade-in space-y-4">
+                          <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:bg-slate-50/50 transition-colors bg-white/50 flex flex-col items-center justify-center min-h-[200px] shadow-sm">
+                            <input 
+                              type="file" 
+                              accept="application/pdf" 
+                              onChange={handleFileUpload} 
+                              className="hidden" 
+                              id="pdf-upload"
+                            />
+                            <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center w-full">
+                              <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mb-4 text-indigo-600 hover:scale-105 transition-transform shadow-sm">
+                                <i data-lucide="upload" className="w-6 h-6"></i>
+                              </div>
+                              <span className="text-slate-800 font-bold text-base mb-1">PDFファイルを選択</span>
+                              <p className="text-slate-400 text-xs">iPad / PC などの端末内ファイル</p>
+                            </label>
+                            {pdfFile && (
+                              <div className="mt-4 p-3 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-3 border border-indigo-200 w-full max-w-sm shadow-sm">
+                                <i data-lucide="file-text" className="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
+                                <span className="text-xs font-bold truncate flex-1 text-left">{pdfFile.name}</span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">READY</span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="bg-white/80 p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                            <p className="font-bold text-indigo-600 text-sm flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                              <i data-lucide="lightbulb" className="w-4 h-4 text-amber-500"></i>
+                              iPad / iPhoneでGoogleドライブから直接追加する方法
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-slate-700 text-xs">
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between shadow-sm">
+                                <div>
+                                  <span className="inline-block px-1.5 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded mb-2">STEP 1</span>
+                                  <p className="leading-relaxed font-semibold text-slate-800">アプリを準備</p>
+                                  <p className="text-[11px] text-slate-500 mt-1">iPadに「Google ドライブ」アプリを入れてログインしておきます。</p>
+                                </div>
+                              </div>
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between shadow-sm">
+                                <div>
+                                  <span className="inline-block px-1.5 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded mb-2">STEP 2</span>
+                                  <p className="leading-relaxed font-semibold text-slate-800">ファイル連携を有効化</p>
+                                  <p className="text-[11px] text-slate-500 mt-1">「ファイル」アプリを開き、「ブラウズ」右上「…」 ＞「編集」からGoogle Driveをオンにします。</p>
+                                </div>
+                              </div>
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between shadow-sm">
+                                <div>
+                                  <span className="inline-block px-1.5 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded mb-2">STEP 3</span>
+                                  <p className="leading-relaxed font-semibold text-slate-800">ドライブから直接選択</p>
+                                  <p className="text-[11px] text-slate-500 mt-1">「PDFファイルを選択」をタップし、左メニューから「Google Drive」を選んでファイルを選択するだけ！</p>
+                                </div>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 text-right">※アカウントの変更も、iPadのGoogleドライブアプリ側で切り替えるだけで自動適用されます。</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleStart}
+                      disabled={
+                        (inputType === 'text' && !sourceText.trim()) || 
+                        (inputType === 'pdf' && !pdfFile)
+                      }
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg hover:shadow-indigo-500/10 hover:shadow-2xl flex items-center justify-center gap-2 text-base sm:text-lg shadow-indigo-600/10"
+                    >
+                      問題を作成する <i data-lucide="sparkles" className="w-5 h-5"></i>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+
+              {/* 2. ローディングフェーズ */}
+              {step === 'loading' && (
+                <div className="flex flex-col items-center justify-center py-24 animate-in fade-in duration-300">
+                  <div className="relative mb-6">
+                    <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin absolute top-3 left-3 animate-reverse"></div>
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-800 mb-2 tracking-wide">問題を自動生成中...</h2>
+                  <p className="text-slate-500 text-center text-xs sm:text-sm max-w-sm leading-relaxed">
+                    Gemini 3.5 Flashが資料を精査し、科目別プロンプトに準じた厳格なクイズを作成しています。
+                  </p>
+                </div>
+              )}
+
+
+              {/* 3. クイズ進行フェーズ */}
+              {step === 'quiz' && questions.length > 0 && (
+                <div className="animate-in zoom-in-95 fade-in duration-300">
+                  
+                  {/* ヘッダーと進捗 */}
+                  <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex justify-between items-end mb-2">
+                        <span className="text-xs font-bold text-slate-500">PROGRESS</span>
+                        <span className="text-sm font-black text-indigo-600 font-mono">
+                          {currentIndex + 1} <span className="text-xs text-slate-400">/ {questions.length}</span>
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-indigo-600 rounded-full transition-all duration-300 ease-out"
+                          style={{ width: `${((currentIndex) / questions.length) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    {/* トークン消費バッジ */}
+                    {tokenUsage && (
+                      <div className="flex items-center gap-1.5 bg-indigo-55 border border-indigo-200 px-3 py-1.5 rounded-xl text-indigo-700 text-xs shrink-0 self-end sm:self-auto font-mono shadow-sm bg-indigo-50/50">
+                        <i data-lucide="database" className="w-3.5 h-3.5"></i>
+                        <span>生成トークン: {tokenUsage.total_tokens}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="glass-card rounded-3xl border border-slate-200 shadow-xl overflow-hidden min-h-[420px] flex flex-col relative">
+                    
+                    {/* 問題文 */}
+                    <div className="p-6 sm:p-8 flex flex-col justify-center items-center text-center border-b border-slate-200 bg-white">
+                      <div className="inline-flex items-center gap-1.5 bg-indigo-55 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-xs font-black tracking-wide mb-4 font-mono bg-indigo-50/50">
+                        <i data-lucide="help-circle" className="w-3.5 h-3.5"></i>
+                        QUESTION {currentIndex + 1}
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-bold text-slate-800 leading-relaxed max-w-2xl">
+                        {questions[currentIndex].question}
+                      </h3>
+                    </div>
+
+                    {/* 選択肢ボタン */}
+                    <div className="flex-1 p-6 flex flex-col gap-3 bg-slate-50/50">
+                      {questions[currentIndex].options.map((option, idx) => {
+                        let buttonClass = "w-full text-left p-4 rounded-2xl border transition-all text-sm sm:text-base font-semibold flex items-center justify-between ";
+                        
+                        if (!showAnswer) {
+                          buttonClass += "bg-white border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/50 text-slate-700 shadow-sm";
+                        } else {
+                          if (option === questions[currentIndex].correctAnswer) {
+                            buttonClass += "bg-emerald-50 border-emerald-300 text-emerald-800 shadow-sm";
+                          } else if (option === selectedOption) {
+                            buttonClass += "bg-rose-50 border-rose-300 text-rose-800 shadow-sm";
+                          } else {
+                            buttonClass += "bg-white/40 border-slate-150 text-slate-400 opacity-60";
+                          }
+                        }
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleOptionSelect(option)}
+                            disabled={showAnswer}
+                            className={buttonClass}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className={`w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full text-xs font-bold font-mono border ${
+                                showAnswer && option === questions[currentIndex].correctAnswer 
+                                  ? 'bg-emerald-100 border-emerald-400 text-emerald-700' 
+                                  : 'bg-slate-100 border-slate-200 text-slate-500'
+                              }`}>
+                                {['A', 'B', 'C', 'D'][idx]}
+                              </span>
+                              <span>{option}</span>
+                            </div>
+                            
+                            {showAnswer && option === questions[currentIndex].correctAnswer && (
+                              <i data-lucide="check" className="w-5 h-5 text-emerald-600 shrink-0"></i>
+                            )}
+                            {showAnswer && option === selectedOption && option !== questions[currentIndex].correctAnswer && (
+                              <i data-lucide="x" className="w-5 h-5 text-rose-600 shrink-0"></i>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* 解説表示 */}
+                    {showAnswer && (
+                      <div className="p-6 bg-white border-t border-slate-200 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
+                        <div className={`font-bold text-sm sm:text-base flex items-center gap-2 ${
+                          selectedOption === questions[currentIndex].correctAnswer ? 'text-emerald-600' : 'text-rose-600'
+                        }`}>
+                          {selectedOption === questions[currentIndex].correctAnswer ? (
+                            <><i data-lucide="smile" className="w-5 h-5 animate-bounce text-emerald-500"></i> 正解！お見事です。</>
+                          ) : (
+                            <><i data-lucide="frown" className="w-5 h-5 text-rose-500"></i> 不正解... 正解は「{questions[currentIndex].correctAnswer}」です</>
+                          )}
+                        </div>
+                        
+                        <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-slate-700 text-xs sm:text-sm leading-relaxed shadow-inner">
+                          <p className="font-bold mb-1 flex items-center gap-1 text-slate-500 text-xs">
+                            <i data-lucide="lightbulb" className="w-4 h-4 text-amber-500"></i> 解説
+                          </p>
+                          <p>
+                            {selectedOption === questions[currentIndex].correctAnswer 
+                              ? questions[currentIndex].explanationShort 
+                              : questions[currentIndex].explanationDetailed}
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={handleNext}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-8 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base mt-2 shadow-indigo-600/10"
+                        >
+                          {currentIndex < questions.length - 1 ? '次の問題へ' : '結果を見る'} <i data-lucide="chevron-right" className="w-4 h-4"></i>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. 結果表示フェーズ */}
+              {step === 'result' && (
+                <div className="animate-in slide-in-from-bottom-8 fade-in duration-500 text-center py-8">
+                  
+                  {/* スコアグラフィック */}
+                  <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-200 shadow-lg neon-border">
+                    <i data-lucide="award" className="w-10 h-10"></i>
+                  </div>
+                  
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-2">クイズ完了</h2>
+                  <div className="text-4xl sm:text-5xl font-black text-indigo-600 mb-6 font-mono">
+                    {score} <span className="text-lg text-slate-500 font-bold font-sans">/ {questions.length} 問正解</span>
+                  </div>
+                  
+                  <p className="text-slate-500 mb-8 max-w-md mx-auto text-sm leading-relaxed font-medium">
+                    {score === questions.length ? "パーフェクト！素晴らしい理解力です。" : 
+                     score >= questions.length * 0.7 ? "優秀な成績です！復習して満点を目指しましょう。" : 
+                     "解説をよく読み、もう一度挑戦してみましょう！"}
+                  </p>
+
+                  {/* トークン消費量詳細表示 */}
+                  {tokenUsage && (
+                    <div className="max-w-md mx-auto mb-8 bg-white p-4 rounded-2xl border border-slate-200 text-left shadow-sm">
+                      <h4 className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1.5">
+                        <i data-lucide="database" className="w-4 h-4 text-indigo-600"></i>
+                        API Token Usage (Gemini 3.5 Flash)
+                      </h4>
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <p className="text-[10px] text-slate-400 mb-0.5">Input</p>
+                          <p className="font-bold text-slate-700">{tokenUsage.prompt_tokens}</p>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <p className="text-[10px] text-slate-400 mb-0.5">Output</p>
+                          <p className="font-bold text-slate-700">{tokenUsage.candidates_tokens}</p>
+                        </div>
+                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                          <p className="text-[10px] text-slate-400 mb-0.5">Total</p>
+                          <p className="font-bold text-indigo-600">{tokenUsage.total_tokens}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Supabase保存セクション */}
+                  <div className="mb-10 max-w-sm mx-auto">
+                    <button
+                      onClick={saveQuizResultToSupabase}
+                      disabled={saveStatus === 'saving'}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm shadow-indigo-600/10"
+                    >
+                      {saveStatus === 'saving' ? (
+                        <i data-lucide="loader" className="w-4 h-4 animate-spin"></i>
+                      ) : (
+                        <i data-lucide="database" className="w-4 h-4"></i>
+                      )}
+                      {saveStatus === 'saving' ? "Supabaseに保存中..." : "回答履歴をDBへ同期する"}
+                    </button>
+                    
+                    <div className="h-6 mt-3">
+                      {saveStatus === 'success' && (
+                        <span className="text-emerald-600 font-bold text-xs flex items-center justify-center gap-1 animate-in fade-in">
+                          <i data-lucide="check-circle" className="w-4 h-4 text-emerald-500"></i> 回答データをSupabaseに同期しました！
+                        </span>
+                      )}
+                      {saveStatus === 'error' && (
+                        <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1 animate-in fade-in">
+                          <i data-lucide="alert-circle" className="w-4 h-4 text-rose-500"></i> 同期に失敗しました。DB設定を確認してください。
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* アクションボタン */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
+                    <button
+                      onClick={() => {
+                        setCurrentIndex(0);
+                        setSelectedOption(null);
+                        setShowAnswer(false);
+                        setScore(0);
+                        setStep('quiz');
+                        setAnswerHistory([]); 
+                      }}
+                      className="w-full bg-white border border-slate-200 hover:border-slate-350 text-slate-700 hover:text-slate-900 font-bold py-3 px-6 rounded-xl transition-all text-sm shadow-sm"
+                    >
+                      同じ問題に再挑戦
+                    </button>
+                    <button
+                      onClick={generateQuestions}
+                      className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
+                    >
+                      <i data-lucide="refresh-cw" className="w-4 h-4"></i> 別の問題を作成
+                    </button>
+                    <button
+                      onClick={resetApp}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 text-sm shadow-indigo-600/10"
+                    >
+                      <i data-lucide="rotate-ccw" className="w-4 h-4"></i> トップに戻る
+                    </button>
+                  </div>
+
+                  {/* 復習リスト */}
+                  <div className="mt-16 text-left max-w-2xl mx-auto border-t border-slate-200 pt-8">
+                    <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                      <i data-lucide="book-open" className="text-indigo-600 w-5 h-5"></i>
+                      今回の問題と詳細解説（復習リスト）
+                    </h3>
+                    <div className="space-y-4">
+                      {questions.map((q, idx) => (
+                        <div key={idx} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                          <p className="font-bold text-xs text-indigo-600 mb-1">QUESTION {idx + 1}</p>
+                          <p className="text-slate-800 mb-3 font-bold text-base leading-relaxed">{q.question}</p>
+                          <div className="bg-emerald-50 text-emerald-750 p-3.5 rounded-xl text-xs sm:text-sm font-semibold border border-emerald-200 flex items-start gap-2 mb-3">
+                            <span className="font-bold shrink-0 text-emerald-600">正解：</span>
+                            <span>{q.correctAnswer}</span>
+                          </div>
+                          <div className="text-xs sm:text-sm text-slate-600 bg-slate-50 p-4 rounded-xl border border-slate-200 leading-relaxed shadow-inner">
+                            <span className="font-bold text-slate-400 block mb-1 text-xs">解説：</span>
+                            {q.explanationDetailed}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+
+          {/* フッター */}
+          <footer className="max-w-4xl mx-auto px-6 pt-12 border-t border-slate-200 w-full text-center text-[10px] sm:text-xs text-slate-500">
+            <p>© 2026 AI Quiz Maker Premium. All Rights Reserved.</p>
+          </footer>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+    {% endraw %}
+  </script>
+</body>
+</html>
