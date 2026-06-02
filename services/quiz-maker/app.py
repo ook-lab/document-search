@@ -15,13 +15,13 @@ app = Flask(__name__)
 CORS(app)
 
 # APIキーの取得と厳密なチェック (フォールバックは全面禁止)
-GEMINI_AI_API_KEY = os.environ.get("GEMINI_AI_API_KEY")
+GEMINI_AI_API_KEY = os.environ.get("GEMINI_AI_API_KEY", "").strip()
 if not GEMINI_AI_API_KEY:
     print("[WARNING] GEMINI_AI_API_KEY is not set in environment variables.")
 
 # Supabaseクライアントの初期化
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
+SUPABASE_KEY = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY") or "").strip()
 
 supabase: Client = None
 if SUPABASE_URL and SUPABASE_KEY:
@@ -29,6 +29,8 @@ if SUPABASE_URL and SUPABASE_KEY:
         supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     except Exception as e:
         print(f"[ERROR] Failed to initialize Supabase client: {e}")
+        import traceback
+        traceback.print_exc()
 
 # Gemini API の設定
 if GEMINI_AI_API_KEY:
@@ -64,6 +66,8 @@ def check_db_connection():
         supabase.table("quiz_subjects").select("id").limit(1).execute()
         return True, None
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return False, (
             "DB接続またはテーブルが存在しません。Supabaseのマイグレーションが適用されているか確認してください。\n"
             f"エラー詳細: {e}"
