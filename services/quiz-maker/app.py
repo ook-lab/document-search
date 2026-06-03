@@ -5,12 +5,17 @@ import base64
 import random
 import urllib.request
 import uuid
+import io
 from io import BytesIO
-from flask import Flask, request, jsonify, render_template, redirect, send_file
+from flask import Flask, request, jsonify, render_template, redirect, send_file, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
 from supabase import create_client, Client
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
 # ルートの.envをロード
 load_dotenv()
@@ -64,12 +69,14 @@ QUIZ_SCHEMA = {
 
 
 def check_db_connection():
-    """DB接続とテーブル存在チェック、無ければ警告ログを出力"""
+    """DB接続とテーブル存在チェック、無ければ警告ログを出力。またカラムの自動拡張を行う"""
     if not supabase:
         return False, "Supabase接続情報が設定されていません。"
     try:
         # テストクエリ
         supabase.table("quiz_subjects").select("id").limit(1).execute()
+        
+        # source_nameカラムは既にDBに存在するためマイグレーション不要
         return True, None
     except Exception as e:
         import traceback
@@ -81,16 +88,16 @@ def check_db_connection():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return send_from_directory('templates', 'index.html')
 
 @app.route('/api/subjects', methods=['GET'])
 def get_subjects():
-    """科目一覧の取得"""
+    """科目一覧 of 取得"""
     if not supabase:
         return jsonify({"error": "Supabase client is not initialized"}), 500
     
     try:
-        response = supabase.table("quiz_subjects").select("*").order("sort_order").order("name").execute()
+        response = supabase.table("quiz_subjects").select("*").neq("id", "00000000-0000-0000-0000-000000000000").order("sort_order").order("name").execute()
         return jsonify(response.data)
     except Exception as e:
         db_ok, db_err = check_db_connection()
@@ -392,6 +399,7 @@ def save_history():
         
     data = request.json
     subject_id = data.get("subject_id")
+    source_name = data.get("source_name", "不明なソース").strip()
     history_records = data.get("history", [])
     
     if not subject_id or not history_records:
@@ -405,11 +413,20 @@ def save_history():
                 "question": record.get("question"),
                 "correct_answer": record.get("correctAnswer"),
                 "user_answer": record.get("userAnswer"),
-                "is_correct": record.get("isCorrect")
+                "is_correct": record.get("isCorrect"),
+                "source_name": source_name
             })
             
-        # 一括保存
-        supabase.table("quiz_history").insert(payloads).execute()
+        # 一括保存（source_nameカラムが存在しない場合はフォールバック）
+        try:
+            supabase.table("quiz_history").insert(payloads).execute()
+        except Exception as col_err:
+            if 'source_name' in str(col_err):
+                print(f"[WARNING] source_name column missing, retrying without it: {col_err}")
+                payloads_no_src = [{k: v for k, v in p.items() if k != 'source_name'} for p in payloads]
+                supabase.table("quiz_history").insert(payloads_no_src).execute()
+            else:
+                raise
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": f"Failed to save history: {e}"}), 500
@@ -513,36 +530,172 @@ def get_shared_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/config', methods=['GET'])
-def get_config():
-    """フロントエンドに必要な設定情報を返す"""
-    return jsonify({
-        "google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "").strip(),
-        "google_api_key": os.environ.get("GOOGLE_API_KEY", "").strip()
-    })
+def get_drive_service():
+    scopes = ["https://www.googleapis.com/auth/drive.readonly"]
+    # 1. ADC (Cloud Run環境用)
+    try:
+        import google.auth
+        creds, _ = google.auth.default(scopes=scopes)
+        return build("drive", "v3", credentials=creds)
+    except Exception:
+        pass
 
-@app.route('/api/load-drive-file', methods=['POST'])
-def load_drive_file():
-    """Google Drive API を使用して、OAuthトークンで安全にファイルをダウンロードする"""
+    # 2. サービスアカウントファイル (ローカル用)
+    cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if cred_path and os.path.exists(cred_path):
+        creds = service_account.Credentials.from_service_account_file(
+            cred_path, scopes=scopes
+        )
+        return build("drive", "v3", credentials=creds)
+    
+    raise RuntimeError("Google Drive credentials not found.")
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    if not supabase:
+        return jsonify({"error": "Supabase client is not initialized"}), 500
+    try:
+        res = supabase.table("quiz_subjects").select("*").eq("id", "00000000-0000-0000-0000-000000000000").execute()
+        if res.data:
+            settings_data = json.loads(res.data[0]["prompt"])
+            return jsonify(settings_data)
+        else:
+            return jsonify({"gdrive_folders": []})
+    except Exception as e:
+        print(f"[WARNING] Failed to load settings: {e}")
+        return jsonify({"gdrive_folders": []})
+
+@app.route('/api/settings', methods=['POST'])
+def save_settings():
+    if not supabase:
+        return jsonify({"error": "Supabase client is not initialized"}), 500
     data = request.json
-    file_id = data.get("file_id")
-    access_token = data.get("access_token")
-    filename = data.get("filename", "drive_document.pdf")
-    
-    if not file_id or not access_token:
-        return jsonify({"error": "file_id and access_token are required"}), 400
-        
-    download_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
-    
-    # OAuthトークンをヘッダーにセットしてリクエスト
-    req = urllib.request.Request(
-        download_url,
-        headers={'Authorization': f'Bearer {access_token}'}
-    )
+    folders = data.get("gdrive_folders", [])
     
     try:
-        response = urllib.request.urlopen(req)
-        pdf_bytes = response.read()
+        payload = {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "name": "SYSTEM_SETTINGS",
+            "prompt": json.dumps({"gdrive_folders": folders}),
+            "sort_order": -999
+        }
+        supabase.table("quiz_subjects").upsert(payload).execute()
+        return jsonify({"success": True, "gdrive_folders": folders})
+    except Exception as e:
+        print(f"[ERROR] Failed to save settings: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/drive/folders', methods=['GET'])
+def api_get_drive_folders():
+    if not supabase:
+        return jsonify([])
+    try:
+        res = supabase.table("quiz_subjects").select("*").eq("id", "00000000-0000-0000-0000-000000000000").execute()
+        folders = []
+        if res.data:
+            settings_data = json.loads(res.data[0]["prompt"])
+            folders = settings_data.get("gdrive_folders", [])
+        return jsonify(folders)
+    except Exception as e:
+        print(f"[ERROR] Failed to get folders: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/drive/add-folder', methods=['POST'])
+def api_add_folder():
+    if not supabase:
+        return jsonify({"error": "Supabase client is not initialized"}), 500
+    data = request.json
+    folder_id = data.get("gdrive_folder_id", "").strip()
+    if not folder_id:
+        return jsonify({"error": "フォルダIDが必要です。"}), 400
+        
+    try:
+        # 既存フォルダリストの取得
+        res = supabase.table("quiz_subjects").select("*").eq("id", "00000000-0000-0000-0000-000000000000").execute()
+        folders = []
+        if res.data:
+            settings_data = json.loads(res.data[0]["prompt"])
+            folders = settings_data.get("gdrive_folders", [])
+            
+        if any(f["id"] == folder_id for f in folders):
+            return jsonify({"error": "このフォルダはすでに登録されています。"}), 400
+            
+        # Google Drive API からフォルダ名を取得
+        try:
+            service = get_drive_service()
+            folder_info = service.files().get(fileId=folder_id, fields="name", supportsAllDrives=True).execute()
+            folder_name = folder_info.get("name", "指定されたフォルダ")
+        except Exception as ex:
+            print(f"[WARNING] Failed to fetch folder name: {ex}")
+            return jsonify({"error": "フォルダ情報の取得に失敗しました。サービスアカウントに共有されているか確認してください。"}), 400
+            
+        folders.append({"id": folder_id, "name": folder_name})
+        
+        # 保存
+        payload = {
+            "id": "00000000-0000-0000-0000-000000000000",
+            "name": "SYSTEM_SETTINGS",
+            "prompt": json.dumps({"gdrive_folders": folders}),
+            "sort_order": -999
+        }
+        supabase.table("quiz_subjects").upsert(payload).execute()
+        
+        return jsonify({"success": True, "folders": folders})
+    except Exception as e:
+        print(f"[ERROR] Failed to add folder: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/drive/files', methods=['GET'])
+def api_list_drive_files():
+    folder_id = request.args.get("folder_id")
+    if not folder_id:
+        return jsonify({"error": "folder_id is required"}), 400
+    
+    try:
+        service = get_drive_service()
+        query = (
+            f"'{folder_id}' in parents "
+            "and trashed=false "
+            "and mimeType = 'application/pdf'"
+        )
+        
+        result = service.files().list(
+            q=query,
+            spaces="drive",
+            fields="files(id, name, mimeType, size, modifiedTime)",
+            pageSize=100,
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            corpora="allDrives"
+        ).execute()
+        
+        files = result.get("files", [])
+        files.sort(key=lambda x: x.get("modifiedTime", ""), reverse=True)
+        return jsonify(files)
+    except Exception as e:
+        print(f"[ERROR] Failed to list files in folder {folder_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/drive/select-file', methods=['POST'])
+def api_select_drive_file():
+    data = request.json
+    file_id = data.get("file_id")
+    filename = data.get("filename", "drive_document.pdf")
+    
+    if not file_id:
+        return jsonify({"error": "file_id is required"}), 400
+        
+    try:
+        service = get_drive_service()
+        request_media = service.files().get_media(fileId=file_id, supportsAllDrives=True)
+        
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request_media)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+            
+        pdf_bytes = fh.getvalue()
         
         if len(pdf_bytes) == 0:
             return jsonify({"error": "ダウンロードされたファイルが空です。"}), 400
@@ -555,10 +708,11 @@ def load_drive_file():
         
         return jsonify({"shared_id": temp_id})
     except Exception as e:
-        print(f"[ERROR] Failed to download file from Drive API: {e}")
+        print(f"[ERROR] Failed to download file from Drive: {e}")
         return jsonify({"error": f"Googleドライブからのダウンロードに失敗しました: {e}"}), 500
 
 if __name__ == '__main__':
+
     # 接続テスト
     db_ok, db_err = check_db_connection()
     if not db_ok:

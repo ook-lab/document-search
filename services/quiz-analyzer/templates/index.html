@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>学習履歴アナライザー - クイズメーカーPremium</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Plus Jakarta Sans', 'Noto Sans JP', sans-serif;
+      background-color: #f8fafc;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      box-shadow: 0 10px 30px -10px rgba(99, 102, 241, 0.05);
+    }
+    .accuracy-high {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    }
+    .accuracy-medium {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    }
+    .accuracy-low {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }
+    /* スクロールバー非表示 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    function App() {
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [statsData, setStatsData] = useState(null);
+      const [activeTab, setActiveTab] = useState('daily'); // 'daily', 'subject', 'logs'
+      const [selectedDate, setSelectedDate] = useState(null);
+      const [selectedSubject, setSelectedSubject] = useState(null);
+      const [selectedSession, setSelectedSession] = useState(null);
+
+      const chartRef = useRef(null);
+      const chartInstanceRef = useRef(null);
+
+      // 初回ロードでAPIからデータを取得
+      useEffect(() => {
+        fetchStats();
+      }, []);
+
+      const fetchStats = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+          const res = await fetch('/api/stats');
+          if (!res.ok) throw new Error("データのロードに失敗しました。");
+          const data = await res.json();
+          setStatsData(data);
+          setLoading(false);
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "予期しないエラーが発生しました。");
+          setLoading(false);
+        }
+      };
+
+      // グラフの描画
+      useEffect(() => {
+        if (!statsData || loading || activeTab === 'logs') return;
+
+        // 既存グラフインスタンスがあれば破棄
+        if (chartInstanceRef.current) {
+          chartInstanceRef.current.destroy();
+        }
+
+        const ctx = document.getElementById('analyticsChart');
+        if (!ctx) return;
+
+        let config = {};
+
+        if (activeTab === 'daily') {
+          // 日別進捗（折れ線＋棒グラフ）
+          const labels = statsData.daily_stats.map(d => d.date.substring(5)); // MM-DD
+          const accuracyData = statsData.daily_stats.map(d => d.accuracy);
+          const countData = statsData.daily_stats.map(d => d.total_questions);
+
+          config = {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: '正解率 (%)',
+                  data: accuracyData,
+                  type: 'line',
+                  borderColor: '#6366f1',
+                  backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                  borderWidth: 3,
+                  tension: 0.3,
+                  yAxisID: 'yAccuracy',
+                  pointBackgroundColor: '#6366f1',
+                  pointRadius: 4
+                },
+                {
+                  label: '回答問題数 (問)',
+                  data: countData,
+                  backgroundColor: 'rgba(148, 163, 184, 0.25)',
+                  borderRadius: 6,
+                  yAxisID: 'yCount',
+                  barThickness: 20
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { position: 'top', labels: { font: { weight: 'bold' } } }
+              },
+              scales: {
+                x: { grid: { display: false } },
+                yAccuracy: {
+                  type: 'linear',
+                  position: 'left',
+                  min: 0,
+                  max: 100,
+                  title: { display: true, text: '正解率 (%)', font: { weight: 'bold' } }
+                },
+                yCount: {
+                  type: 'linear',
+                  position: 'right',
+                  grid: { drawOnChartArea: false },
+                  title: { display: true, text: '問題数 (問)', font: { weight: 'bold' } }
+                }
+              }
+            }
+          };
+        } else if (activeTab === 'subject') {
+          // 科目別（横棒グラフ）
+          const labels = statsData.subject_stats.map(s => s.subject_name);
+          const accuracies = statsData.subject_stats.map(s => s.accuracy);
+          const totalQuestions = statsData.subject_stats.map(s => s.total_questions);
+
+          config = {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: '平均正解率 (%)',
+                  data: accuracies,
+                  backgroundColor: ['#818cf8', '#34d399', '#fbbf24', '#f87171'],
+                  borderRadius: 8,
+                  barThickness: 24
+                }
+              ]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                x: { min: 0, max: 100, title: { display: true, text: '正解率 (%)', font: { weight: 'bold' } } },
+                y: { grid: { display: false } }
+              }
+            }
+          };
+        }
+
+        chartInstanceRef.current = new Chart(ctx, config);
+
+        // アイコン再描画
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [statsData, loading, activeTab]);
+
+      // アイコンロード
+      useEffect(() => {
+        if (!loading && window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [loading, activeTab, selectedDate, selectedSubject, selectedSession]);
+
+      if (loading) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-slate-600 font-bold">学習履歴をロードして分析中...</p>
+          </div>
+        );
+      }
+
+      if (error) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4 p-6">
+            <div className="bg-red-50 text-red-700 p-6 rounded-2xl border border-red-200 max-w-md w-full shadow-lg">
+              <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
+                ⚠️ エラーが発生しました
+              </h2>
+              <p className="text-sm">{error}</p>
+            </div>
+            <button onClick={fetchStats} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md">
+              再試行する
+            </button>
+          </div>
+        );
+      }
+
+      const { summary, sessions, daily_stats, subject_stats, file_stats } = statsData;
+
+      // 正解率によるグレードカラー取得
+      const getAccuracyColor = (acc) => {
+        if (acc >= 80) return 'text-emerald-600 bg-emerald-50 border-emerald-100';
+        if (acc >= 50) return 'text-amber-600 bg-amber-50 border-amber-100';
+        return 'text-rose-600 bg-rose-50 border-rose-100';
+      };
+
+      const getAccuracyBg = (acc) => {
+        if (acc >= 80) return 'accuracy-high';
+        if (acc >= 50) return 'accuracy-medium';
+        return 'accuracy-low';
+      };
+
+      // 選択した日付に紐づくセッション
+      const filteredSessionsByDate = selectedDate 
+        ? sessions.filter(s => s.date === selectedDate)
+        : [];
+
+      return (
+        <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+          {/* ヘッダー */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
+                📊 学習履歴ダッシュボード
+              </h1>
+              <p className="text-slate-500 text-xs sm:text-sm font-semibold mt-1">
+                クイズメーカーでの回答履歴・正解率・苦手分野のビジュアル分析
+              </p>
+            </div>
+            <button 
+              onClick={fetchStats}
+              className="self-start sm:self-center bg-white border border-slate-200 hover:border-indigo-500 text-slate-600 hover:text-indigo-600 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center gap-2 shadow-sm transition-all"
+            >
+              <i data-lucide="refresh-cw" className="w-3.5 h-3.5"></i> データを更新
+            </button>
+          </div>
+
+          {/* 概要カード (Stats summary) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div className="glass-card rounded-3xl p-5 border border-slate-200/80 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="calendar" className="w-6 h-6"></i>
+              </div>
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400">学習日数</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-800 mt-0.5">{summary.study_days} <span className="text-xs font-bold text-slate-500">日</span></p>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-3xl p-5 border border-slate-200/80 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="award" className="w-6 h-6"></i>
+              </div>
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400">総セッション数</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-800 mt-0.5">{summary.total_sessions} <span className="text-xs font-bold text-slate-500">回</span></p>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-3xl p-5 border border-slate-200/80 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                <i data-lucide="help-circle" className="w-6 h-6"></i>
+              </div>
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400">回答問題数</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-800 mt-0.5">{summary.total_questions} <span className="text-xs font-bold text-slate-500">問</span></p>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-3xl p-5 border border-slate-200/80 flex items-center gap-4">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 text-white ${getAccuracyBg(summary.overall_accuracy)}`}>
+                <i data-lucide="check-circle" className="w-6 h-6"></i>
+              </div>
+              <div>
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400">平均正解率</p>
+                <p className="text-xl sm:text-2xl font-black text-slate-800 mt-0.5">{summary.overall_accuracy} <span className="text-xs font-bold text-slate-500">%</span></p>
+              </div>
+            </div>
+          </div>
+
+          {/* メインレイアウト */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:items-start">
+            
+            {/* 左側: グラフ & フォルダ別苦手分析リスト */}
+            <div className="lg:col-span-2 grid gap-6">
+              
+              {/* グラフカード */}
+              {activeTab !== 'logs' && (
+                <div className="glass-card rounded-3xl p-6 border border-slate-200/80">
+                  <h2 className="text-sm font-bold text-slate-500 mb-4 flex items-center gap-1.5">
+                    <i data-lucide="trending-up" className="w-4 h-4 text-indigo-500"></i>
+                    {activeTab === 'daily' ? '学習進捗の推移（日別）' : '科目別の正解率比較'}
+                  </h2>
+                  <div className="h-64 sm:h-80 relative">
+                    <canvas id="analyticsChart"></canvas>
+                  </div>
+                </div>
+              )}
+
+              {/* プリント(ファイル)ごとの正解率ランキング (苦手なもの順) */}
+              <div className="glass-card rounded-3xl p-6 border border-slate-200/80">
+                <h2 className="text-base font-extrabold text-slate-800 mb-4 flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <i data-lucide="alert-triangle" className="w-5 h-5 text-rose-500"></i>
+                    プリント別 苦手ランキング（正解率が低い順）
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
+                    全 {file_stats.length} ファイル
+                  </span>
+                </h2>
+                
+                {file_stats.length === 0 ? (
+                  <p className="text-slate-400 text-xs py-8 text-center">プリントの学習履歴はありません。</p>
+                ) : (
+                  <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-1">
+                    {file_stats.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3.5 bg-white rounded-2xl border border-slate-150 shadow-sm hover:border-slate-300 transition-all gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                              {file.subject_name}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400">
+                              回答: {file.total_questions}問 ({file.session_count}回)
+                            </span>
+                          </div>
+                          <p className="text-xs font-extrabold text-slate-800 truncate" title={file.source_name}>
+                            📁 {file.source_name}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="text-[10px] text-slate-400 font-bold">正解率</p>
+                            <p className="text-sm font-black text-slate-800">{file.accuracy}%</p>
+                          </div>
+                          <span className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${getAccuracyColor(file.accuracy)}`}>
+                            {file.accuracy >= 80 ? '得意' : file.accuracy >= 50 ? 'ふつう' : '要復習'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 右側: 日別リスト / 解答ログ / セッション詳細 */}
+            <div className="grid gap-6">
+              
+              {/* タブメニュー */}
+              <div className="bg-slate-200/60 p-1.5 rounded-2xl flex gap-1 border border-slate-300/40">
+                <button
+                  onClick={() => { setActiveTab('daily'); setSelectedDate(null); }}
+                  className={`flex-1 text-center py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'daily' ? 'bg-white text-indigo-600 shadow-md shadow-indigo-600/5' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📅 日別
+                </button>
+                <button
+                  onClick={() => { setActiveTab('subject'); setSelectedSubject(null); }}
+                  className={`flex-1 text-center py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'subject' ? 'bg-white text-indigo-600 shadow-md shadow-indigo-600/5' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📚 科目別
+                </button>
+                <button
+                  onClick={() => { setActiveTab('logs'); setSelectedSession(null); }}
+                  className={`flex-1 text-center py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'logs' ? 'bg-white text-indigo-600 shadow-md shadow-indigo-600/5' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  📋 詳細ログ
+                </button>
+              </div>
+
+              {/* 日別リスト */}
+              {activeTab === 'daily' && (
+                <div className="glass-card rounded-3xl p-5 border border-slate-200/80">
+                  <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center gap-1.5">
+                    <i data-lucide="calendar" className="w-4 h-4 text-indigo-500"></i> 日別学習履歴
+                  </h3>
+                  <div className="grid gap-2 max-h-[350px] overflow-y-auto pr-1">
+                    {daily_stats.slice().reverse().map((day, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedDate(selectedDate === day.date ? null : day.date)}
+                        className={`w-full flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all ${selectedDate === day.date ? 'bg-indigo-50 border-indigo-300 shadow-md shadow-indigo-500/5' : 'bg-white border-slate-150 hover:bg-slate-50'}`}
+                      >
+                        <div>
+                          <p className="text-xs font-extrabold text-slate-800">📅 {day.date}</p>
+                          <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                            勉強量: {day.session_count}プリント ({day.total_questions}問)
+                          </p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAccuracyColor(day.accuracy)}`}>
+                          {day.accuracy}%
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 選択した日付に紐づくセッション一覧のモーダル/パネル */}
+                  {selectedDate && (
+                    <div className="mt-4 pt-4 border-t border-slate-200/80 animate-in slide-in-from-top-2">
+                      <h4 className="text-xs font-extrabold text-indigo-600 mb-3">
+                        📌 {selectedDate} の勉強プリント
+                      </h4>
+                      <div className="grid gap-2 max-h-[250px] overflow-y-auto">
+                        {filteredSessionsByDate.map((session, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedSession(session)}
+                            className="w-full flex items-center justify-between p-3 bg-white hover:bg-slate-50 rounded-xl border border-slate-200 text-left shadow-sm transition-all"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className="text-[8px] font-bold px-1 py-0.2 bg-indigo-50 text-indigo-600 rounded">
+                                  {session.subject_name}
+                                </span>
+                                <span className="text-[9px] text-slate-400">
+                                  {session.datetime.substring(11, 16)}
+                                </span>
+                              </div>
+                              <p className="text-xs font-extrabold text-slate-700 truncate">
+                                📁 {session.source_name}
+                              </p>
+                            </div>
+                            <span className="text-xs font-black text-slate-800 ml-2">{session.accuracy}%</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 科目別詳細 */}
+              {activeTab === 'subject' && (
+                <div className="glass-card rounded-3xl p-5 border border-slate-200/80">
+                  <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center gap-1.5">
+                    <i data-lucide="book-open" className="w-4 h-4 text-indigo-500"></i> 科目別の正解率
+                  </h3>
+                  <div className="grid gap-3">
+                    {subject_stats.map((sub, idx) => (
+                      <div key={idx} className="bg-white p-4 rounded-2xl border border-slate-150 shadow-sm">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                            📚 {sub.subject_name}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAccuracyColor(sub.accuracy)}`}>
+                            平均: {sub.accuracy}%
+                          </span>
+                        </div>
+                        {/* 進捗バー */}
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-1">
+                          <div 
+                            className={`h-full rounded-full ${sub.accuracy >= 80 ? 'bg-emerald-500' : sub.accuracy >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                            style={{ width: `${sub.accuracy}%` }}
+                          ></div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-semibold text-right">
+                          総回答数: {sub.total_questions}問 ({sub.session_count}回)
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ログ一覧 */}
+              {activeTab === 'logs' && (
+                <div className="glass-card rounded-3xl p-5 border border-slate-200/80">
+                  <h3 className="text-sm font-bold text-slate-500 mb-4 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <i data-lucide="list" className="w-4 h-4 text-indigo-500"></i> 解答セッション履歴
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                      最新順
+                    </span>
+                  </h3>
+                  <div className="grid gap-2 max-h-[500px] overflow-y-auto pr-1">
+                    {sessions.map((session, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedSession(session)}
+                        className={`w-full flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all ${selectedSession && selectedSession.datetime === session.datetime ? 'bg-indigo-50 border-indigo-300 shadow-md shadow-indigo-500/5' : 'bg-white border-slate-150 hover:bg-slate-50'}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">
+                              {session.subject_name}
+                            </span>
+                            <span className="text-[9px] font-semibold text-slate-400">
+                              {session.date} {session.datetime.substring(11, 16)}
+                            </span>
+                          </div>
+                          <p className="text-xs font-extrabold text-slate-800 truncate">
+                            📁 {session.source_name}
+                          </p>
+                          <p className="text-[9px] text-slate-400 font-semibold mt-0.5">
+                            問題数: {session.total_questions}問 · 正解: {session.correct_count}問
+                          </p>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAccuracyColor(session.accuracy)}`}>
+                          {session.accuracy}%
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+
+          {/* セッション詳細モーダル（回答された問題の正誤一覧） */}
+          {selectedSession && (
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+                {/* ヘッダー */}
+                <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-black px-2 py-0.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">
+                        {selectedSession.subject_name}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-400">
+                        {selectedSession.datetime.substring(0, 16).replace('T', ' ')}
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-slate-800 truncate">
+                      📁 {selectedSession.source_name}
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedSession(null)}
+                    className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors ml-4"
+                  >
+                    <i data-lucide="x" className="w-5 h-5"></i>
+                  </button>
+                </div>
+
+                {/* スコア・結果サマリー */}
+                <div className="bg-slate-50 p-6 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-slate-500 font-bold">結果:</span>
+                    <span className="text-2xl font-black text-slate-800">{selectedSession.correct_count}</span>
+                    <span className="text-xs text-slate-400">/ {selectedSession.total_questions} 問正解</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500 font-bold">正解率:</span>
+                    <span className={`px-3 py-1 rounded-xl font-extrabold text-sm border ${getAccuracyColor(selectedSession.accuracy)}`}>
+                      {selectedSession.accuracy}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* 問題ごとのログリスト */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {selectedSession.questions.map((q, idx) => (
+                    <div key={idx} className="bg-slate-50/60 p-4 rounded-2xl border border-slate-150 relative overflow-hidden">
+                      <div className="absolute top-4 left-4">
+                        {q.is_correct ? (
+                          <span className="text-emerald-600 font-bold text-sm bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                            <i data-lucide="check-circle" className="w-3.5 h-3.5"></i> 正解
+                          </span>
+                        ) : (
+                          <span className="text-rose-600 font-bold text-sm bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                            <i data-lucide="alert-circle" className="w-3.5 h-3.5"></i> 不正解
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="pt-8">
+                        <p className="text-xs font-extrabold text-slate-800 leading-relaxed mb-3">
+                          Q{idx + 1}. {q.question}
+                        </p>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold">
+                          <div className="p-2.5 rounded-xl border border-slate-200 bg-white">
+                            <span className="text-[10px] text-slate-400 block mb-0.5">子供の解答</span>
+                            <span className={q.is_correct ? 'text-emerald-600' : 'text-rose-600'}>
+                              {q.user_answer}
+                            </span>
+                          </div>
+                          
+                          <div className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/20">
+                            <span className="text-[10px] text-slate-400 block mb-0.5">正しい答え</span>
+                            <span className="text-emerald-700">
+                              {q.correct_answer}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

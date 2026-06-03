@@ -1,0 +1,8 @@
+steps:
+  - name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install psycopg2-binary python-dotenv
+        python scratch/add_source_name.py

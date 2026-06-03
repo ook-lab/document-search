@@ -16,9 +16,6 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <!-- Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Google Drive API & Identity Services SDK -->
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://apis.google.com/js/api.js" async defer></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Google Fonts -->
@@ -71,8 +68,27 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    {% raw %}
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
+
+    // Lucide icons を React 管理下で安全に描画するコンポーネント
+    // createIcons() は使わず dangerouslySetInnerHTML で SVG を挿入することで
+    // React の DOM reconciliation と競合しない
+    function Icon({ name, className }) {
+      const iconData = window.lucide && window.lucide.icons && window.lucide.icons[name];
+      if (!iconData) return <span className={className} />;
+      const svg = iconData.toSvg({ class: className, width: undefined, height: undefined, style: 'display:inline-block;vertical-align:middle' });
+      return <span dangerouslySetInnerHTML={{ __html: svg }} />;
+    }
+
+    // JSONパースの安全なラッパー（HTMLエラーページなどの非JSONレスポンスでSafariがクラッシュするのを防ぐ）
+    async function safeParseJson(res) {
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return await res.json();
+      }
+      const text = await res.text();
+      throw new Error(`サーバーエラー (${res.status}): ${text.substring(0, 150)}`);
+    }
 
     function App() {
       // 画面状態
@@ -95,6 +111,7 @@
       // クイズ実行データ
       const [questions, setQuestions] = useState([]);
       const [currentIndex, setCurrentIndex] = useState(0);
+      const transitioningRef = useRef(false);
       const [selectedOption, setSelectedOption] = useState(null);
       const [showAnswer, setShowAnswer] = useState(false);
       const [score, setScore] = useState(0);
@@ -122,10 +139,17 @@
         localStorage.setItem('historyAnalysisLevel', historyAnalysisLevel);
       }, [historyAnalysisLevel]);
 
+      // クイズ結果画面に遷移した際に自動でSupabaseへ履歴を同期
+      useEffect(() => {
+        if (step === 'result' && answerHistory.length > 0) {
+          saveQuizResultToSupabase();
+        }
+      }, [step]);
+
+
       // 初期ロード: 科目データの取得 & モバイル縦向きロック & PWA・共有ファイルのロード
       useEffect(() => {
         fetchSubjects();
-        fetchConfig();
         
         // 縦向きロック
         if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
@@ -159,16 +183,148 @@
         }
       }, []);
 
-      const fetchConfig = async () => {
+      // ドライブ連携用
+      // ドライブ連携用
+      const [gdriveFoldersList, setGdriveFoldersList] = useState([]);
+      const [newFolderId, setNewFolderId] = useState('');
+      const [folderAddError, setFolderAddError] = useState(null);
+      const [loadingAddFolder, setLoadingAddFolder] = useState(false);
+
+      const [driveModalOpen, setDriveModalOpen] = useState(false);
+      const [driveFolders, setDriveFolders] = useState([]);
+      const [selectedFolderId, setSelectedFolderId] = useState('');
+      const [driveFiles, setDriveFiles] = useState([]);
+      const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
+      const [loadingDriveSelect, setLoadingDriveSelect] = useState(false);
+
+      const fetchSettings = async () => {
         try {
-          const res = await fetch('/api/config');
-          const data = await res.json();
-          setGoogleConfig({
-            clientId: data.google_client_id,
-            apiKey: data.google_api_key
-          });
+          const res = await fetch('/api/settings');
+          if (res.ok) {
+            const data = await safeParseJson(res);
+            setGdriveFoldersList(data.gdrive_folders || []);
+          }
         } catch (err) {
-          console.error("Failed to load Google Config:", err);
+          console.error("Failed to load settings:", err);
+        }
+      };
+
+      const handleAddFolder = async () => {
+        if (!newFolderId.trim()) return;
+        setFolderAddError(null);
+        setLoadingAddFolder(true);
+        try {
+          const res = await fetch('/api/drive/add-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gdrive_folder_id: newFolderId.trim() })
+          });
+          const data = await safeParseJson(res);
+          if (!res.ok) throw new Error(data.error || "フォルダの追加に失敗しました。");
+          
+          setGdriveFoldersList(data.folders);
+          setNewFolderId('');
+          setSettingsSaveStatus('success_add');
+          setTimeout(() => setSettingsSaveStatus(null), 3000);
+        } catch (err) {
+          console.error(err);
+          setFolderAddError(err.message || "フォルダを追加できませんでした。");
+        } finally {
+          setLoadingAddFolder(false);
+        }
+      };
+
+      const handleDeleteFolder = async (folderId) => {
+        if (!confirm("このフォルダを一覧から削除しますか？")) return;
+        setSettingsSaveStatus('saving');
+        try {
+          const updatedFolders = gdriveFoldersList.filter(f => f.id !== folderId);
+          const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gdrive_folders: updatedFolders })
+          });
+          if (!res.ok) throw new Error("フォルダの削除に失敗しました。");
+          
+          setGdriveFoldersList(updatedFolders);
+          setSettingsSaveStatus('success_delete');
+          setTimeout(() => setSettingsSaveStatus(null), 3000);
+        } catch (err) {
+          console.error(err);
+          setSettingsSaveStatus('error');
+          setTimeout(() => setSettingsSaveStatus(null), 3000);
+        }
+      };
+
+      // 設定モーダルが開いたときに設定を取得
+      useEffect(() => {
+        if (showSettings) {
+          fetchSettings();
+        }
+      }, [showSettings]);
+
+      const openDriveModal = async () => {
+        setDriveModalOpen(true);
+        setDriveFiles([]);
+        setLoadingDriveFiles(true);
+        try {
+          const res = await fetch('/api/drive/folders');
+          if (!res.ok) throw new Error("フォルダ一覧の取得に失敗しました。");
+          const folders = await safeParseJson(res);
+          setDriveFolders(folders);
+          if (folders.length > 0) {
+            setSelectedFolderId(folders[0].id);
+          } else {
+            setLoadingDriveFiles(false);
+          }
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "Googleドライブの連携フォルダが見つかりません。");
+          setLoadingDriveFiles(false);
+        }
+      };
+
+      const fetchDriveFiles = async (folderId) => {
+        setLoadingDriveFiles(true);
+        try {
+          const res = await fetch(`/api/drive/files?folder_id=${folderId}`);
+          if (!res.ok) throw new Error("ファイル一覧の取得に失敗しました。");
+          const files = await safeParseJson(res);
+          setDriveFiles(files);
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "ファイル一覧の取得に失敗しました。");
+        } finally {
+          setLoadingDriveFiles(false);
+        }
+      };
+
+      // フォルダタブの切り替え時
+      useEffect(() => {
+        if (selectedFolderId) {
+          fetchDriveFiles(selectedFolderId);
+        }
+      }, [selectedFolderId]);
+
+      // ドライブからファイル選択時
+      const handleSelectDriveFile = async (fileId, filename) => {
+        setLoadingDriveSelect(true);
+        try {
+          const res = await fetch('/api/drive/select-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file_id: fileId, filename: filename })
+          });
+          const data = await safeParseJson(res);
+          if (!res.ok) throw new Error(data.error || "ファイルの読み込みに失敗しました。");
+          
+          setDriveModalOpen(false);
+          await loadSharedPdf(data.shared_id);
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "ファイルの読み込みに失敗しました。");
+        } finally {
+          setLoadingDriveSelect(false);
         }
       };
 
@@ -203,80 +359,6 @@
         }
       };
 
-      // Google Picker をロードして開く
-      const handleGoogleDriveSelect = () => {
-        if (!googleConfig.clientId || !googleConfig.apiKey) {
-          setError("Google ドライブ連携の設定（GOOGLE_CLIENT_ID, GOOGLE_API_KEY）がサーバー側で設定されていません。");
-          return;
-        }
-
-        gapi.load('client:picker', () => {
-          const tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: googleConfig.clientId,
-            scope: 'https://www.googleapis.com/auth/drive.file',
-            callback: async (response) => {
-              if (response.error !== undefined) {
-                console.error("GIS Error:", response);
-                setError("Google認証に失敗しました。");
-                return;
-              }
-              createPicker(response.access_token);
-            },
-          });
-          tokenClient.requestAccessToken({ prompt: 'consent' });
-        });
-      };
-
-      // Pickerの生成と表示
-      const createPicker = (accessToken) => {
-        // DocsView を使って、フォルダ構成を表示する
-        const docsView = new google.picker.DocsView(google.picker.ViewId.DOCS)
-          .setMimeTypes("application/pdf")
-          .setShowFolders(true);
-
-        const picker = new google.picker.PickerBuilder()
-          .enableFeature(google.picker.Feature.NAV_HIDDEN)
-          .setDeveloperKey(googleConfig.apiKey)
-          .setOAuthToken(accessToken)
-          .addView(docsView)
-          .setCallback((data) => {
-            if (data.action === google.picker.Action.PICKED) {
-              const doc = data.docs[0];
-              const fileId = doc.id;
-              const filename = doc.name;
-              loadDriveFileFromServer(fileId, accessToken, filename);
-            }
-          })
-          .build();
-        picker.setVisible(true);
-      };
-
-      // サーバー経由でドライブファイルを安全にダウンロードしてセット
-      const loadDriveFileFromServer = async (fileId, accessToken, filename) => {
-        setStep('loading');
-        setError(null);
-        try {
-          const res = await fetch('/api/load-drive-file', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              file_id: fileId,
-              access_token: accessToken,
-              filename: filename
-            })
-          });
-          
-          const result = await res.json();
-          if (!res.ok) throw new Error(result.error || "Google ドライブからのファイル取得に失敗しました。");
-          
-          await loadSharedPdf(result.shared_id);
-        } catch (err) {
-          console.error(err);
-          setError(err.message || "ファイルのダウンロードに失敗しました。");
-          setStep('input');
-        }
-      };
-
       // Lucideアイコンの再描画
       useEffect(() => {
         if (window.lucide) {
@@ -288,7 +370,7 @@
         try {
           const res = await fetch('/api/subjects');
           if (!res.ok) throw new Error("科目の取得に失敗しました。");
-          const data = await res.json();
+          const data = await safeParseJson(res);
           setSubjects(data);
           if (data.length > 0) {
             setSelectedSubjectId(data[0].id);
@@ -382,7 +464,7 @@
             body: formData
           });
 
-          const data = await response.json();
+          const data = await safeParseJson(response);
           if (!response.ok) {
             throw new Error(data.error || "問題の作成中にエラーが発生しました。");
           }
@@ -479,7 +561,7 @@
               subject: currentSubject ? currentSubject.name : '一般科目'
             })
           });
-          const data = await res.json();
+          const data = await safeParseJson(res);
           if (!res.ok) throw new Error(data.error || "最適化に失敗しました。");
           setEditingPrompt(data.optimized_prompt);
         } catch (err) {
@@ -579,6 +661,8 @@
       };
 
       const handleNext = () => {
+        if (transitioningRef.current) return;
+        transitioningRef.current = true;
         if (currentIndex < questions.length - 1) {
           setCurrentIndex(prev => prev + 1);
           setSelectedOption(null);
@@ -586,14 +670,24 @@
         } else {
           setStep('result');
         }
+        setTimeout(() => { transitioningRef.current = false; }, 500);
       };
 
       // 回答履歴のSupabase保存
       const saveQuizResultToSupabase = async () => {
         setSaveStatus('saving');
         try {
+          let sourceName = "不明なソース";
+          if (inputType === 'pdf' && pdfFile) {
+            sourceName = pdfFile.name;
+          } else if (inputType === 'text' && sourceText) {
+            const cleanText = sourceText.replace(/\s+/g, ' ').trim();
+            sourceName = `テキスト: ${cleanText.substring(0, 25)}${cleanText.length > 25 ? '...' : ''}`;
+          }
+
           const payload = {
             subject_id: selectedSubjectId,
+            source_name: sourceName,
             history: answerHistory.filter(Boolean)
           };
           const res = await fetch('/api/save-history', {
@@ -601,7 +695,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
-          const result = await res.json();
+          const result = await safeParseJson(res);
           if (!res.ok) throw new Error(result.error || "保存に失敗しました。");
           setSaveStatus('success');
         } catch (err) {
@@ -639,7 +733,7 @@
               <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="bg-indigo-600 text-white p-2 rounded-xl neon-border">
-                    <i data-lucide="brain-circuit" className="w-6 h-6"></i>
+                    <Icon name="brain-circuit" className="w-6 h-6" />
                   </div>
                   <div>
                     <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
@@ -655,7 +749,7 @@
                     className="p-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:text-indigo-600 hover:bg-indigo-50/50 hover:border-indigo-200 transition-all flex items-center gap-1.5 text-xs font-semibold shadow-sm"
                     title="科目別プロンプト設定 (隠しタブ)"
                   >
-                    <i data-lucide="settings" className="w-4 h-4"></i>
+                    <Icon name="settings" className="w-4 h-4" />
                     <span>プロンプト設定</span>
                   </button>
                 </div>
@@ -668,10 +762,101 @@
               {/* エラー表示 */}
               {error && (
                 <div className="mb-8 p-4 rounded-2xl bg-rose-5 border border-rose-200 text-rose-700 text-sm flex items-start gap-3 animate-in fade-in duration-300 shadow-sm">
-                  <i data-lucide="alert-triangle" className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5"></i>
+                  <Icon name="alert-triangle" className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
                   <div className="leading-relaxed">
                     <p className="font-semibold text-rose-800">エラーが発生しました</p>
                     <p className="mt-1 opacity-90">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Google ドライブから選択するモーダル */}
+              {driveModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+                  <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+                    {/* ヘッダー */}
+                    <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                      <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M19.349 14.525l-4.14-7.185h-6.42l4.14 7.185h6.42z" fill="#0066DA"/>
+                          <path d="M9.162 14.525l3.21-5.568H5.952l-3.21 5.568h6.42z" fill="#00A25B"/>
+                          <path d="M11.972 5.342l3.21 5.568H8.762l-3.21-5.568h6.42z" fill="#FFC107"/>
+                        </svg>
+                        Google ドライブからプリントを選択
+                      </h3>
+                      <button 
+                        onClick={() => setDriveModalOpen(false)}
+                        className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                      >
+                        <Icon name="x" className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    {/* フォルダ選択タブ */}
+                    {driveFolders.length > 0 && (
+                      <div className="flex gap-1.5 p-4 bg-slate-50 border-b border-slate-100 overflow-x-auto whitespace-nowrap scrollbar-none">
+                        {driveFolders.map(folder => (
+                          <button
+                            key={folder.id}
+                            onClick={() => setSelectedFolderId(folder.id)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                              selectedFolderId === folder.id 
+                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' 
+                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            📁 {folder.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ファイルリスト */}
+                    <div className="flex-1 overflow-y-auto p-6 relative">
+                      {loadingDriveFiles ? (
+                        <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-500">
+                          <Icon name="loader" className="w-8 h-8 animate-spin text-indigo-600" />
+                          <span className="text-sm font-semibold">ファイルをロード中...</span>
+                        </div>
+                      ) : driveFiles.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 gap-2 text-slate-400">
+                          <Icon name="folder-open" className="w-12 h-12 stroke-[1.5]" />
+                          <span className="text-sm font-semibold">PDFファイルが見つかりません。</span>
+                        </div>
+                      ) : (
+                        <div className="grid gap-2">
+                          {driveFiles.map(file => (
+                            <button
+                              key={file.id}
+                              onClick={() => handleSelectDriveFile(file.id, file.name)}
+                              className="flex items-center gap-4 p-4 text-left rounded-2xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group"
+                            >
+                              <div className="w-10 h-10 bg-rose-50 text-rose-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                                <Icon name="file-text" className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
+                                  {file.name}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                  更新日: {new Date(file.modifiedTime).toLocaleDateString('ja-JP')}
+                                  {file.size && ` · ${(file.size / 1024 / 1024).toFixed(2)} MB`}
+                                </p>
+                              </div>
+                              <Icon name="chevron-right" className="w-5 h-5 text-slate-300 group-hover:text-indigo-600 transition-colors" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 選択中のオーバーレイローディング */}
+                      {loadingDriveSelect && (
+                        <div className="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center gap-3">
+                          <Icon name="loader" className="w-8 h-8 animate-spin text-indigo-600" />
+                          <span className="text-sm font-bold text-slate-700">プリントをダウンロード中...</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -683,14 +868,14 @@
                   
                   <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
                     <h2 className="text-xl font-bold flex items-center gap-2 text-indigo-600">
-                      <i data-lucide="settings" className="w-5 h-5"></i>
+                      <Icon name="settings" className="w-5 h-5" />
                       ⚙️ システム設定 & 科目並び替え
                     </h2>
                     <button 
                       onClick={() => setShowSettings(false)}
                       className="text-slate-500 hover:text-indigo-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
                     >
-                      <i data-lucide="x" className="w-5 h-5"></i>
+                      <Icon name="x" className="w-5 h-5" />
                     </button>
                   </div>
 
@@ -699,31 +884,96 @@
                     <div className="mb-4 p-3 text-sm rounded-xl font-medium flex items-center gap-2 border animate-in fade-in">
                       {settingsSaveStatus === 'saving' && (
                         <span className="text-indigo-600 border-indigo-200 bg-indigo-50 flex items-center gap-1.5 w-full">
-                          <i data-lucide="loader" className="w-4 h-4 animate-spin"></i> 処理中...
+                          <Icon name="loader" className="w-4 h-4 animate-spin" /> 処理中...
                         </span>
                       )}
                       {settingsSaveStatus === 'success_save' && (
                         <span className="text-emerald-700 border-emerald-200 bg-emerald-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
-                          <i data-lucide="check-circle" className="w-4 h-4"></i> 設定を保存しました！
+                          <Icon name="check-circle" className="w-4 h-4" /> 設定を保存しました！
                         </span>
                       )}
                       {settingsSaveStatus === 'success_add' && (
                         <span className="text-emerald-700 border-emerald-200 bg-emerald-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
-                          <i data-lucide="plus-circle" className="w-4 h-4"></i> 新しい科目を追加しました！
+                          <Icon name="plus-circle" className="w-4 h-4" /> 新しい科目を追加しました！
                         </span>
                       )}
                       {settingsSaveStatus === 'success_delete' && (
                         <span className="text-amber-700 border-amber-200 bg-amber-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
-                          <i data-lucide="trash-2" className="w-4 h-4"></i> 科目を削除しました。
+                          <Icon name="trash-2" className="w-4 h-4" /> 科目を削除しました。
                         </span>
                       )}
                       {settingsSaveStatus === 'error' && (
                         <span className="text-rose-700 border-rose-200 bg-rose-50 px-3 py-1.5 rounded-lg w-full flex items-center gap-1.5">
-                          <i data-lucide="alert-circle" className="w-4 h-4"></i> 操作に失敗しました。
+                          <Icon name="alert-circle" className="w-4 h-4" /> 操作に失敗しました。
                         </span>
                       )}
                     </div>
                   )}
+
+                  {/* Google ドライブ設定 */}
+                  <div className="bg-slate-100/60 p-5 rounded-2xl border border-slate-200 mb-6">
+                    <h3 className="text-xs font-bold text-slate-500 mb-3 flex items-center gap-1.5">
+                      📁 クイズ用Googleドライブフォルダの設定
+                    </h3>
+
+                    {/* 新規追加フォーム */}
+                    <div className="flex flex-col gap-2 mb-4">
+                      <div className="flex gap-2">
+                        <input
+                          id="gdriveFolderIdInput"
+                          type="text"
+                          value={newFolderId}
+                          onChange={(e) => setNewFolderId(e.target.value)}
+                          placeholder="GoogleドライブフォルダのID（例: 1wZW-IRNGOpJgcW...）"
+                          className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-800 shadow-sm focus:outline-none focus:border-indigo-500"
+                        />
+                        <button
+                          onClick={handleAddFolder}
+                          disabled={loadingAddFolder || !newFolderId.trim()}
+                          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:shadow-none text-white font-bold px-4 py-2 rounded-xl text-xs transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1.5 flex-shrink-0"
+                        >
+                          {loadingAddFolder ? (
+                            <Icon name="loader" className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Icon name="plus" className="w-3.5 h-3.5" />
+                          )}
+                          追加
+                        </button>
+                      </div>
+                      {folderAddError && (
+                        <p className="text-[10px] text-rose-600 font-bold px-1">{folderAddError}</p>
+                      )}
+                    </div>
+
+                    {/* 登録済みフォルダ一覧 */}
+                    <div className="bg-white/80 rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 mb-3 shadow-sm">
+                      {gdriveFoldersList.length === 0 ? (
+                        <p className="text-slate-400 text-xs p-4 text-center">登録されているフォルダはありません。</p>
+                      ) : (
+                        gdriveFoldersList.map(folder => (
+                          <div key={folder.id} className="flex items-center justify-between p-3 gap-2 group hover:bg-slate-50 transition-colors">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-700 truncate">📁 {folder.name}</p>
+                              <p className="text-[9px] text-slate-400 font-mono truncate mt-0.5">{folder.id}</p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteFolder(folder.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all opacity-80 group-hover:opacity-100"
+                              title="削除"
+                            >
+                              <Icon name="trash-2" className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="text-[10px] text-slate-400 leading-relaxed bg-white/50 p-2.5 rounded-lg border border-slate-200/50">
+                      <span className="font-bold text-slate-500">【重要・共有手順】</span><br />
+                      追加する各フォルダの「共有」設定を開き、以下のサービスアカウント（閲覧者）を追加してください。追加していない場合、ファイルの読み込みに失敗します。<br />
+                      <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 select-all font-mono">document-management-system@consummate-yew-479020-u2.iam.gserviceaccount.com</code>
+                    </div>
+                  </div>
 
                   {/* 苦手分析レベルの選択 */}
                   <div className="bg-slate-100/60 p-4 rounded-2xl border border-slate-200 mb-6">
@@ -762,7 +1012,7 @@
                       onClick={handleAddSubject}
                       className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-colors flex items-center gap-1.5 whitespace-nowrap w-full sm:w-auto justify-center shadow-md shadow-indigo-500/10"
                     >
-                      <i data-lucide="plus" className="w-4 h-4"></i>
+                      <Icon name="plus" className="w-4 h-4" />
                       科目追加
                     </button>
                   </div>
@@ -802,7 +1052,7 @@
                                   className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                                   title="上へ移動"
                                 >
-                                  <i data-lucide="arrow-up" className="w-4 h-4"></i>
+                                  <Icon name="arrow-up" className="w-4 h-4" />
                                 </button>
                                 {/* 下へ移動ボタン */}
                                 <button
@@ -811,7 +1061,7 @@
                                   className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                                   title="下へ移動"
                                 >
-                                  <i data-lucide="arrow-down" className="w-4 h-4"></i>
+                                  <Icon name="arrow-down" className="w-4 h-4" />
                                 </button>
                                 {/* 削除ボタン */}
                                 <button
@@ -819,7 +1069,7 @@
                                   className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
                                   title="科目を削除"
                                 >
-                                  <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                  <Icon name="trash-2" className="w-4 h-4" />
                                 </button>
                               </div>
                             </div>
@@ -839,12 +1089,12 @@
                           >
                             {optimizingPrompt ? (
                               <>
-                                <i data-lucide="loader" className="w-3.5 h-3.5 animate-spin"></i>
+                                <Icon name="loader" className="w-3.5 h-3.5 animate-spin" />
                                 <span>AI調整中...</span>
                               </>
                             ) : (
                               <>
-                                <i data-lucide="wand-2" className="w-3.5 h-3.5"></i>
+                                <Icon name="wand-2" className="w-3.5 h-3.5" />
                                 <span>AI自動調整</span>
                               </>
                             )}
@@ -865,7 +1115,7 @@
                         onClick={handleSavePrompt}
                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md shadow-emerald-500/10 flex items-center justify-center gap-2"
                       >
-                        <i data-lucide="save" className="w-4 h-4"></i>
+                        <Icon name="save" className="w-4 h-4" />
                         プロンプトを保存する
                       </button>
                     </div>
@@ -936,7 +1186,7 @@
                           inputType === 'pdf' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-indigo-600'
                         }`}
                       >
-                        <i data-lucide="file-text" className="w-3.5 h-3.5"></i> PDF選択
+                        <Icon name="file-text" className="w-3.5 h-3.5" /> PDF選択
                       </button>
                       <button
                         onClick={() => { setInputType('text'); setError(null); }}
@@ -944,7 +1194,7 @@
                           inputType === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-indigo-600'
                         }`}
                       >
-                        <i data-lucide="type" className="w-3.5 h-3.5"></i> テキスト入力
+                        <Icon name="type" className="w-3.5 h-3.5" /> テキスト入力
                       </button>
                     </div>
 
@@ -959,7 +1209,7 @@
                               onClick={insertSampleText}
                               className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-bold bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg transition-all shadow-sm"
                             >
-                              <i data-lucide="file-text" className="w-3.5 h-3.5"></i> サンプル文を挿入
+                              <Icon name="file-text" className="w-3.5 h-3.5" /> サンプル文を挿入
                             </button>
                           </div>
                           <textarea
@@ -993,7 +1243,7 @@
                             />
                             <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center w-full">
                               <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mb-4 text-indigo-600 hover:scale-105 transition-transform shadow-sm">
-                                <i data-lucide="upload" className="w-6 h-6"></i>
+                                <Icon name="upload" className="w-6 h-6" />
                               </div>
                               <span className="text-slate-800 font-bold text-base mb-1">
                                 {isDragging ? "ここにファイルをドロップ" : "PDFファイルを選択"}
@@ -1004,27 +1254,25 @@
                             </label>
                             {pdfFile && (
                               <div className="mt-4 p-3 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-3 border border-indigo-200 w-full max-w-sm shadow-sm">
-                                <i data-lucide="file-text" className="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
+                                <Icon name="file-text" className="w-5 h-5 text-indigo-600 flex-shrink-0" />
                                 <span className="text-xs font-bold truncate flex-1 text-left">{pdfFile.name}</span>
                                 <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">READY</span>
                               </div>
                             )}
 
                             {/* Google ドライブから直接安全にインポートするボタン */}
-                            {googleConfig.clientId && (
-                              <button
-                                type="button"
-                                onClick={handleGoogleDriveSelect}
-                                className="mt-4 w-full max-w-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
-                              >
-                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M19.349 14.525l-4.14-7.185h-6.42l4.14 7.185h6.42z" fill="#0066DA"/>
-                                  <path d="M9.162 14.525l3.21-5.568H5.952l-3.21 5.568h6.42z" fill="#00A25B"/>
-                                  <path d="M11.972 5.342l3.21 5.568H8.762l-3.21-5.568h6.42z" fill="#FFC107"/>
-                                </svg>
-                                <span>Google ドライブから安全に直接選択</span>
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={openDriveModal}
+                              className="mt-4 w-full max-w-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                            >
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M19.349 14.525l-4.14-7.185h-6.42l4.14 7.185h6.42z" fill="#0066DA"/>
+                                <path d="M9.162 14.525l3.21-5.568H5.952l-3.21 5.568h6.42z" fill="#00A25B"/>
+                                <path d="M11.972 5.342l3.21 5.568H8.762l-3.21-5.568h6.42z" fill="#FFC107"/>
+                              </svg>
+                              <span>Google ドライブから直接選択 (ログイン不要)</span>
+                            </button>
                           </div>
                         </div>
                       )}
@@ -1038,7 +1286,7 @@
                       }
                       className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg hover:shadow-indigo-500/10 hover:shadow-2xl flex items-center justify-center gap-2 text-base sm:text-lg shadow-indigo-600/10"
                     >
-                      問題を作成する <i data-lucide="sparkles" className="w-5 h-5"></i>
+                      問題を作成する <Icon name="sparkles" className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
@@ -1083,7 +1331,7 @@
                     {/* トークン消費バッジ */}
                     {tokenUsage && (
                       <div className="flex items-center gap-1.5 bg-indigo-55 border border-indigo-200 px-3 py-1.5 rounded-xl text-indigo-700 text-xs shrink-0 self-end sm:self-auto font-mono shadow-sm bg-indigo-50/50">
-                        <i data-lucide="database" className="w-3.5 h-3.5"></i>
+                        <Icon name="database" className="w-3.5 h-3.5" />
                         <span>生成トークン: {tokenUsage.total_tokens}</span>
                       </div>
                     )}
@@ -1094,7 +1342,7 @@
                     {/* 問題文 */}
                     <div className="p-6 sm:p-8 flex flex-col justify-center items-center text-center border-b border-slate-200 bg-white">
                       <div className="inline-flex items-center gap-1.5 bg-indigo-55 border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-xs font-black tracking-wide mb-4 font-mono bg-indigo-50/50">
-                        <i data-lucide="help-circle" className="w-3.5 h-3.5"></i>
+                        <Icon name="help-circle" className="w-3.5 h-3.5" />
                         QUESTION {currentIndex + 1}
                       </div>
                       <h3 className="text-lg sm:text-xl font-bold text-slate-800 leading-relaxed max-w-2xl">
@@ -1137,10 +1385,10 @@
                             </div>
                             
                             {showAnswer && option === questions[currentIndex].correctAnswer && (
-                              <i data-lucide="check" className="w-5 h-5 text-emerald-600 shrink-0"></i>
+                              <Icon name="check" className="w-5 h-5 text-emerald-600 shrink-0" />
                             )}
                             {showAnswer && option === selectedOption && option !== questions[currentIndex].correctAnswer && (
-                              <i data-lucide="x" className="w-5 h-5 text-rose-600 shrink-0"></i>
+                              <Icon name="x" className="w-5 h-5 text-rose-600 shrink-0" />
                             )}
                           </button>
                         );
@@ -1154,15 +1402,15 @@
                           selectedOption === questions[currentIndex].correctAnswer ? 'text-emerald-600' : 'text-rose-600'
                         }`}>
                           {selectedOption === questions[currentIndex].correctAnswer ? (
-                            <><i data-lucide="smile" className="w-5 h-5 animate-bounce text-emerald-500"></i> 正解！お見事です。</>
+                            <><Icon name="smile" className="w-5 h-5 animate-bounce text-emerald-500" /> 正解！お見事です。</>
                           ) : (
-                            <><i data-lucide="frown" className="w-5 h-5 text-rose-500"></i> 不正解... 正解は「{questions[currentIndex].correctAnswer}」です</>
+                            <><Icon name="frown" className="w-5 h-5 text-rose-500" /> 不正解... 正解は「{questions[currentIndex].correctAnswer}」です</>
                           )}
                         </div>
                         
                         <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl text-slate-700 text-xs sm:text-sm leading-relaxed shadow-inner">
                           <p className="font-bold mb-1 flex items-center gap-1 text-slate-500 text-xs">
-                            <i data-lucide="lightbulb" className="w-4 h-4 text-amber-500"></i> 解説
+                            <Icon name="lightbulb" className="w-4 h-4 text-amber-500" /> 解説
                           </p>
                           <p>
                             {selectedOption === questions[currentIndex].correctAnswer 
@@ -1175,7 +1423,7 @@
                           onClick={handleNext}
                           className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-8 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm sm:text-base mt-2 shadow-indigo-600/10"
                         >
-                          {currentIndex < questions.length - 1 ? '次の問題へ' : '結果を見る'} <i data-lucide="chevron-right" className="w-4 h-4"></i>
+                          {currentIndex < questions.length - 1 ? '次の問題へ' : '結果を見る'} <Icon name="chevron-right" className="w-4 h-4" />
                         </button>
                       </div>
                     )}
@@ -1189,7 +1437,7 @@
                   
                   {/* スコアグラフィック */}
                   <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-200 shadow-lg neon-border">
-                    <i data-lucide="award" className="w-10 h-10"></i>
+                    <Icon name="award" className="w-10 h-10" />
                   </div>
                   
                   <h2 className="text-2xl sm:text-3xl font-black text-slate-800 mb-2">クイズ完了</h2>
@@ -1207,7 +1455,7 @@
                   {tokenUsage && (
                     <div className="max-w-md mx-auto mb-8 bg-white p-4 rounded-2xl border border-slate-200 text-left shadow-sm">
                       <h4 className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1.5">
-                        <i data-lucide="database" className="w-4 h-4 text-indigo-600"></i>
+                        <Icon name="database" className="w-4 h-4 text-indigo-600" />
                         API Token Usage (Gemini 3.5 Flash)
                       </h4>
                       <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
@@ -1227,30 +1475,27 @@
                     </div>
                   )}
 
-                  {/* Supabase保存セクション */}
-                  <div className="mb-10 max-w-sm mx-auto">
-                    <button
-                      onClick={saveQuizResultToSupabase}
-                      disabled={saveStatus === 'saving'}
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm shadow-indigo-600/10"
-                    >
-                      {saveStatus === 'saving' ? (
-                        <i data-lucide="loader" className="w-4 h-4 animate-spin"></i>
-                      ) : (
-                        <i data-lucide="database" className="w-4 h-4"></i>
+                  {/* Supabase自動同期ステータス */}
+                  <div className="mb-8 max-w-sm mx-auto bg-slate-50 border border-slate-200/80 p-3 rounded-2xl shadow-sm">
+                    <div className="flex items-center justify-center min-h-[32px]">
+                      {saveStatus === 'saving' && (
+                        <span className="text-indigo-600 font-bold text-xs flex items-center justify-center gap-1.5 animate-pulse">
+                          <Icon name="loader" className="w-4 h-4 animate-spin text-indigo-500" /> 解答履歴を自動同期しています...
+                        </span>
                       )}
-                      {saveStatus === 'saving' ? "Supabaseに保存中..." : "回答履歴をDBへ同期する"}
-                    </button>
-                    
-                    <div className="h-6 mt-3">
                       {saveStatus === 'success' && (
-                        <span className="text-emerald-600 font-bold text-xs flex items-center justify-center gap-1 animate-in fade-in">
-                          <i data-lucide="check-circle" className="w-4 h-4 text-emerald-500"></i> 回答データをSupabaseに同期しました！
+                        <span className="text-emerald-700 font-bold text-xs flex items-center justify-center gap-1.5">
+                          <Icon name="check-circle" className="w-4 h-4 text-emerald-500" /> 回答データを自動同期しました！
                         </span>
                       )}
                       {saveStatus === 'error' && (
-                        <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1 animate-in fade-in">
-                          <i data-lucide="alert-circle" className="w-4 h-4 text-rose-500"></i> 同期に失敗しました。DB設定を確認してください。
+                        <span className="text-rose-600 font-bold text-xs flex items-center justify-center gap-1.5">
+                          <Icon name="alert-circle" className="w-4 h-4 text-rose-500" /> 同期に失敗しました。DB設定を確認してください。
+                        </span>
+                      )}
+                      {!saveStatus && (
+                        <span className="text-slate-400 font-medium text-xs flex items-center justify-center gap-1.5">
+                          <Icon name="database" className="w-4 h-4 text-slate-300" /> 履歴同期完了
                         </span>
                       )}
                     </div>
@@ -1275,20 +1520,20 @@
                       onClick={generateQuestions}
                       className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
                     >
-                      <i data-lucide="refresh-cw" className="w-4 h-4"></i> 別の問題を作成
+                      <Icon name="refresh-cw" className="w-4 h-4" /> 別の問題を作成
                     </button>
                     <button
                       onClick={resetApp}
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 text-sm shadow-indigo-600/10"
                     >
-                      <i data-lucide="rotate-ccw" className="w-4 h-4"></i> トップに戻る
+                      <Icon name="rotate-ccw" className="w-4 h-4" /> トップに戻る
                     </button>
                   </div>
 
                   {/* 復習リスト */}
                   <div className="mt-16 text-left max-w-2xl mx-auto border-t border-slate-200 pt-8">
                     <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                      <i data-lucide="book-open" className="text-indigo-600 w-5 h-5"></i>
+                      <Icon name="book-open" className="text-indigo-600 w-5 h-5" />
                       今回の問題と詳細解説（復習リスト）
                     </h3>
                     <div className="space-y-4">
@@ -1323,7 +1568,7 @@
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
-    {% endraw %}
   </script>
 </body>
 </html>
+
