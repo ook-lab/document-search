@@ -1,7 +1,9 @@
 import os
+import re
 import json
 import base64
 import random
+import urllib.request
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -56,6 +58,56 @@ QUIZ_SCHEMA = {
         ]
     }
 }
+
+def download_file_from_google_drive(url_or_id):
+    """Googleドライブの共有リンクまたはファイルIDからPDFデータをダウンロードする"""
+    file_id = url_or_id.strip()
+    if "drive.google.com" in url_or_id or "docs.google.com" in url_or_id:
+        # URLからファイルIDを抽出
+        match = re.search(r'/d/([a-zA-Z0-9_-]+)', url_or_id)
+        if match:
+            file_id = match.group(1)
+        else:
+            match = re.search(r'id=([a-zA-Z0-9_-]+)', url_or_id)
+            if match:
+                file_id = match.group(1)
+            
+    if not file_id:
+        return None, "GoogleドライブのURLからファイルIDを抽出できませんでした。"
+        
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    # ユーザーエージェントを偽装してリクエスト
+    req = urllib.request.Request(
+        download_url, 
+        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    )
+    
+    try:
+        response = urllib.request.urlopen(req)
+        content = response.read()
+        
+        # ウイルス警告（大容量ファイルの場合）のハンドリング
+        if b"confirm=" in content or b"download_warning" in content:
+            html_text = content.decode('utf-8', errors='ignore')
+            token_match = re.search(r'confirm=([a-zA-Z0-9_-]+)', html_text)
+            if token_match:
+                confirm_token = token_match.group(1)
+                confirm_url = f"https://drive.google.com/uc?export=download&confirm={confirm_token}&id={file_id}"
+                confirm_req = urllib.request.Request(
+                    confirm_url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                response = urllib.request.urlopen(confirm_req)
+                content = response.read()
+                
+        # 簡易チェック: 返ってきた中身がHTML（エラーページなど）でないか確認
+        if content.strip().startswith(b"<!DOCTYPE html") or content.strip().startswith(b"<html"):
+            return None, "ファイルを取得できませんでした。リンクが『リンクを知っている全員』に共有されているか確認してください。"
+            
+        return content, None
+    except Exception as e:
+        return None, str(e)
 
 def check_db_connection():
     """DB接続とテーブル存在チェック、無ければ警告ログを出力"""
@@ -213,6 +265,7 @@ def generate_questions():
     source_text = request.form.get("source_text", "")
     history_analysis_level = request.form.get("history_analysis_level", "none")
     pdf_file = request.files.get("pdf")
+    gdrive_url = request.form.get("gdrive_url", "")
     
     if not subject_id:
         return jsonify({"error": "subject_id is required"}), 400
@@ -270,9 +323,25 @@ def generate_questions():
     # 3. Gemini APIへのインプット組み立て
     parts = []
     
+    pdf_bytes = None
     if pdf_file:
         try:
             pdf_bytes = pdf_file.read()
+        except Exception as e:
+            return jsonify({"error": f"PDFファイルの読み込みに失敗しました: {e}"}), 400
+    elif gdrive_url.strip():
+        # Google ドライブからダウンロード
+        downloaded_bytes, err = download_file_from_google_drive(gdrive_url)
+        if err:
+            return jsonify({"error": f"Googleドライブからのファイル取得に失敗しました。共有設定（『リンクを知っている全員』）になっているか確認してください。\n詳細: {err}"}), 400
+        pdf_bytes = downloaded_bytes
+
+    if pdf_bytes is not None:
+        try:
+            # 0バイトチェック
+            if len(pdf_bytes) == 0:
+                raise ValueError("ファイルの中身が空（0バイト）です。iOSファイルアプリ経由の場合、事前にオフラインダウンロードを完了させるか、Googleドライブの共有リンクをご利用ください。")
+                
             pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
             
             parts = [
@@ -290,10 +359,10 @@ def generate_questions():
                 }
             ]
         except Exception as e:
-            return jsonify({"error": f"Failed to process PDF file: {e}"}), 400
+            return jsonify({"error": f"Failed to process PDF data: {e}"}), 400
     else:
         if not source_text.strip() or len(source_text.strip()) < 40:
-            return jsonify({"error": "テキストが短すぎます。詳細を入力するか、ファイルを指定してください。"}), 400
+            return jsonify({"error": "テキストが短すぎます。詳細を入力するか、ファイルまたはGoogleドライブのリンクを指定してください。"}), 400
             
         parts = [
             {
