@@ -36,6 +36,8 @@
     .neon-border {
       box-shadow: 0 0 15px rgba(99, 102, 241, 0.1);
     }
+
+
   </style>
   <script>
     tailwind.config = {
@@ -57,6 +59,7 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen antialiased bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-50 via-slate-50 to-slate-100 selection:bg-indigo-100 selection:text-indigo-900">
 
+
   <div id="root"></div>
 
   <script type="text/babel">
@@ -71,8 +74,6 @@
       const [sourceText, setSourceText] = useState('');
       const [inputType, setInputType] = useState('pdf'); // 'pdf', 'text'
       const [pdfFile, setPdfFile] = useState(null);
-      const [gdriveUrl, setGdriveUrl] = useState('');
-      const [pdfSourceType, setPdfSourceType] = useState('file'); // 'file', 'gdrive'
       const [questionCount, setQuestionCount] = useState(10);
       // 苦手分析の反映度 (strong, medium, weak, none)
       const [historyAnalysisLevel, setHistoryAnalysisLevel] = useState(() => {
@@ -111,9 +112,14 @@
         localStorage.setItem('historyAnalysisLevel', historyAnalysisLevel);
       }, [historyAnalysisLevel]);
 
-      // 初期ロード: 科目データの取得
+      // 初期ロード: 科目データの取得 & モバイル縦向きロックの試行
       useEffect(() => {
         fetchSubjects();
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+          window.screen.orientation.lock('portrait').catch(err => {
+            console.log("Orientation lock is not supported or was rejected:", err);
+          });
+        }
       }, []);
 
       // Lucideアイコンの再描画
@@ -207,22 +213,8 @@
         
         if (inputType === 'text') {
           formData.append("source_text", sourceText);
-        } else if (inputType === 'pdf') {
-          if (pdfSourceType === 'file') {
-            if (!pdfFile) {
-              setError("PDFファイルを選択してください。");
-              setStep('input');
-              return;
-            }
-            formData.append("pdf", pdfFile);
-          } else if (pdfSourceType === 'gdrive') {
-            if (!gdriveUrl.trim()) {
-              setError("Googleドライブの共有リンクを入力してください。");
-              setStep('input');
-              return;
-            }
-            formData.append("gdrive_url", gdriveUrl);
-          }
+        } else if (inputType === 'pdf' && pdfFile) {
+          formData.append("pdf", pdfFile);
         } else {
           setError("入力データが不足しています。");
           setStep('input');
@@ -362,15 +354,9 @@
           setError("テキストが短すぎます。もう少し詳しい内容（目安: 40文字以上）を入力してください。");
           return;
         }
-        if (inputType === 'pdf') {
-          if (pdfSourceType === 'file' && !pdfFile) {
-            setError("PDFファイルが選択されていません。デバイスからファイルを選択してください。");
-            return;
-          }
-          if (pdfSourceType === 'gdrive' && !gdriveUrl.trim()) {
-            setError("Googleドライブの共有リンクが入力されていません。");
-            return;
-          }
+        if (inputType === 'pdf' && !pdfFile) {
+          setError("PDFファイルが準備されていません。ファイルを選択してください。");
+          return;
         }
         generateQuestions();
       };
@@ -432,7 +418,6 @@
         setStep('input');
         setSourceText('');
         setPdfFile(null);
-        setGdriveUrl('');
         setQuestions([]);
         setCurrentIndex(0);
         setSelectedOption(null);
@@ -792,113 +777,28 @@
                       
                       {inputType === 'pdf' && (
                         <div className="animate-in fade-in space-y-4">
-                          {/* PDFソース選択トグル */}
-                          <div className="flex gap-2 p-1 bg-slate-200/80 rounded-xl border border-slate-300/30 max-w-sm shadow-sm">
-                            <button
-                              type="button"
-                              onClick={() => { setPdfSourceType('file'); setError(null); }}
-                              className={`flex-1 py-2 px-3 text-xs rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all ${
-                                pdfSourceType === 'file' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
-                              }`}
-                            >
-                              <i data-lucide="upload" className="w-3.5 h-3.5"></i> デバイスから選択
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setPdfSourceType('gdrive'); setError(null); }}
-                              className={`flex-1 py-2 px-3 text-xs rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all ${
-                                pdfSourceType === 'gdrive' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
-                              }`}
-                            >
-                              <i data-lucide="link" className="w-3.5 h-3.5"></i> Googleドライブ共有リンク
-                            </button>
-                          </div>
-
-                          {/* ソースタイプ別のUI */}
-                          {pdfSourceType === 'file' ? (
-                            <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:bg-slate-50/50 transition-colors bg-white/50 flex flex-col items-center justify-center min-h-[200px] shadow-sm animate-in fade-in duration-200">
-                              <input 
-                                type="file" 
-                                accept="application/pdf" 
-                                onChange={handleFileUpload} 
-                                className="hidden" 
-                                id="pdf-upload"
-                              />
-                              <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center w-full">
-                                <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mb-4 text-indigo-600 hover:scale-105 transition-transform shadow-sm">
-                                  <i data-lucide="upload" className="w-6 h-6"></i>
-                                </div>
-                                <span className="text-slate-800 font-bold text-base mb-1">PDFファイルを選択</span>
-                                <p className="text-slate-400 text-xs">iPad / PC などの端末内ファイル</p>
-                              </label>
-                              {pdfFile && (
-                                <div className="mt-4 p-3 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-3 border border-indigo-200 w-full max-w-sm shadow-sm">
-                                  <i data-lucide="file-text" className="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
-                                  <span className="text-xs font-bold truncate flex-1 text-left">{pdfFile.name}</span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">READY</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="bg-white/80 p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 animate-in fade-in duration-200">
-                              <div>
-                                <label htmlFor="gdriveUrlInput" className="block text-xs font-bold text-slate-500 mb-1.5">
-                                  Google ドライブ PDF 共有リンク (URL)
-                                </label>
-                                <div className="relative rounded-xl shadow-sm">
-                                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <i data-lucide="link" className="h-5 w-5 text-indigo-500"></i>
-                                  </div>
-                                  <input
-                                    type="url"
-                                    id="gdriveUrlInput"
-                                    value={gdriveUrl}
-                                    onChange={(e) => { setGdriveUrl(e.target.value); setError(null); }}
-                                    placeholder="https://drive.google.com/file/d/xxxxxx/view?usp=sharing"
-                                    className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
-                                  />
-                                </div>
+                          <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:bg-slate-50/50 transition-colors bg-white/50 flex flex-col items-center justify-center min-h-[200px] shadow-sm animate-in fade-in duration-200">
+                            <input 
+                              type="file" 
+                              accept="application/pdf" 
+                              onChange={handleFileUpload} 
+                              className="hidden" 
+                              id="pdf-upload"
+                            />
+                            <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center w-full">
+                              <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mb-4 text-indigo-600 hover:scale-105 transition-transform shadow-sm">
+                                <i data-lucide="upload" className="w-6 h-6"></i>
                               </div>
-                              <div className="p-3.5 bg-amber-50/50 border border-amber-200 text-amber-800 rounded-xl text-[11px] space-y-1">
-                                <p className="font-bold flex items-center gap-1">
-                                  <i data-lucide="alert-circle" className="w-4 h-4 text-amber-600"></i> リンク共有設定の注意点
-                                </p>
-                                <p className="leading-relaxed">
-                                  入力するリンクは、Googleドライブアプリで **「共有」＞「一般的なアクセス」から『リンクを知っている全員』** に変更したうえでコピーしてください（「閲覧者」権限で構いません）。制限付きリンクのままだと、AIサーバーがPDFを読み込めません。
-                                </p>
+                              <span className="text-slate-800 font-bold text-base mb-1">PDFファイルを選択</span>
+                              <p className="text-slate-400 text-xs">iPad / PC などの端末内ファイル</p>
+                            </label>
+                            {pdfFile && (
+                              <div className="mt-4 p-3 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-3 border border-indigo-200 w-full max-w-sm shadow-sm">
+                                <i data-lucide="file-text" className="w-5 h-5 text-indigo-600 flex-shrink-0"></i>
+                                <span className="text-xs font-bold truncate flex-1 text-left">{pdfFile.name}</span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">READY</span>
                               </div>
-                            </div>
-                          )}
-
-                          {/* iPad/iPhone用のトラブルシューティングガイド */}
-                          <div className="bg-white/80 p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                            <p className="font-bold text-indigo-600 text-sm flex items-center gap-1.5 border-b border-slate-200 pb-2">
-                              <i data-lucide="help-circle" className="w-4 h-4 text-indigo-500"></i>
-                              ファイルアプリで接続エラー（0バイト）になる場合の対策
-                            </p>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                              iOSのセキュリティ制限により、ファイルアプリ経由でGoogleドライブ上のファイルを直接選択すると、未同期（ダウンロード未完了）のためにファイルの中身が空（0バイト）として送信され、エラーになることがあります。以下のいずれかの方法で解消できます：
-                            </p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-700 text-[11px] mt-2">
-                              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between shadow-sm">
-                                <div>
-                                  <span className="inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded mb-2">対策 A: オフライン保存</span>
-                                  <p className="leading-relaxed font-bold text-slate-800 mb-1">Google ドライブアプリでダウンロード</p>
-                                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                                    Googleドライブアプリで対象ファイルの「…」をタップし、**「オフラインで使用可能にする」** をオンに設定します。端末への保存が完了してから、「ファイル」アプリから選択してください。
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-col justify-between shadow-sm">
-                                <div>
-                                  <span className="inline-block px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded mb-2">対策 B: 共有リンク貼り付け (推奨)</span>
-                                  <p className="leading-relaxed font-bold text-slate-800 mb-1">共有リンクをコピーして貼り付け</p>
-                                  <p className="text-[10px] text-slate-500 leading-relaxed">
-                                    ファイルをデバイスに保存する手間を省けます。Googleドライブアプリで **「リンクをコピー」** し（※アクセス権を「リンクを知っている全員」に設定）、上の「Googleドライブ共有リンク」タブに貼り付けてください。
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         </div>
                       )}
@@ -908,8 +808,7 @@
                       onClick={handleStart}
                       disabled={
                         (inputType === 'text' && !sourceText.trim()) || 
-                        (inputType === 'pdf' && pdfSourceType === 'file' && !pdfFile) ||
-                        (inputType === 'pdf' && pdfSourceType === 'gdrive' && !gdriveUrl.trim())
+                        (inputType === 'pdf' && !pdfFile)
                       }
                       className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg hover:shadow-indigo-500/10 hover:shadow-2xl flex items-center justify-center gap-2 text-base sm:text-lg shadow-indigo-600/10"
                     >
