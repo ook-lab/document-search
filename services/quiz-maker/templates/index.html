@@ -213,7 +213,7 @@
         gapi.load('client:picker', () => {
           const tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: googleConfig.clientId,
-            scope: 'https://www.googleapis.com/auth/drive.readonly',
+            scope: 'https://www.googleapis.com/auth/drive.file',
             callback: async (response) => {
               if (response.error !== undefined) {
                 console.error("GIS Error:", response);
