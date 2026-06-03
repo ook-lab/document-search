@@ -229,14 +229,16 @@
 
       // Pickerの生成と表示
       const createPicker = (accessToken) => {
-        const view = new google.picker.View(google.picker.ViewId.DOCS);
-        view.setMimeTypes("application/pdf");
+        // DocsView を使って、フォルダ構成を表示する
+        const docsView = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setMimeTypes("application/pdf")
+          .setShowFolders(true);
 
         const picker = new google.picker.PickerBuilder()
           .enableFeature(google.picker.Feature.NAV_HIDDEN)
           .setDeveloperKey(googleConfig.apiKey)
           .setOAuthToken(accessToken)
-          .addView(view)
+          .addView(docsView)
           .setCallback((data) => {
             if (data.action === google.picker.Action.PICKED) {
               const doc = data.docs[0];
