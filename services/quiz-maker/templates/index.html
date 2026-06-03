@@ -16,6 +16,9 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <!-- Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Google Drive API & Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js" async defer></script>
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Google Fonts -->
@@ -104,6 +107,7 @@
       const [error, setError] = useState(null);
       const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
       const [isDragging, setIsDragging] = useState(false); // ドラッグ中フラグ
+      const [googleConfig, setGoogleConfig] = useState({ clientId: '', apiKey: '' }); // Google Picker用
       
       // 隠し設定画面用 (モーダル/タブ)
       const [showSettings, setShowSettings] = useState(false);
@@ -121,6 +125,7 @@
       // 初期ロード: 科目データの取得 & モバイル縦向きロック & PWA・共有ファイルのロード
       useEffect(() => {
         fetchSubjects();
+        fetchConfig();
         
         // 縦向きロック
         if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
@@ -154,6 +159,19 @@
         }
       }, []);
 
+      const fetchConfig = async () => {
+        try {
+          const res = await fetch('/api/config');
+          const data = await res.json();
+          setGoogleConfig({
+            clientId: data.google_client_id,
+            apiKey: data.google_api_key
+          });
+        } catch (err) {
+          console.error("Failed to load Google Config:", err);
+        }
+      };
+
       const loadSharedPdf = async (id) => {
         setStep('loading');
         setError(null);
@@ -182,6 +200,78 @@
           setStep('input');
         } finally {
           window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      };
+
+      // Google Picker をロードして開く
+      const handleGoogleDriveSelect = () => {
+        if (!googleConfig.clientId || !googleConfig.apiKey) {
+          setError("Google ドライブ連携の設定（GOOGLE_CLIENT_ID, GOOGLE_API_KEY）がサーバー側で設定されていません。");
+          return;
+        }
+
+        gapi.load('client:picker', () => {
+          const tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: googleConfig.clientId,
+            scope: 'https://www.googleapis.com/auth/drive.readonly',
+            callback: async (response) => {
+              if (response.error !== undefined) {
+                console.error("GIS Error:", response);
+                setError("Google認証に失敗しました。");
+                return;
+              }
+              createPicker(response.access_token);
+            },
+          });
+          tokenClient.requestAccessToken({ prompt: 'consent' });
+        });
+      };
+
+      // Pickerの生成と表示
+      const createPicker = (accessToken) => {
+        const view = new google.picker.View(google.picker.ViewId.DOCS);
+        view.setMimeTypes("application/pdf");
+
+        const picker = new google.picker.PickerBuilder()
+          .enableFeature(google.picker.Feature.NAV_HIDDEN)
+          .setDeveloperKey(googleConfig.apiKey)
+          .setOAuthToken(accessToken)
+          .addView(view)
+          .setCallback((data) => {
+            if (data.action === google.picker.Action.PICKED) {
+              const doc = data.docs[0];
+              const fileId = doc.id;
+              const filename = doc.name;
+              loadDriveFileFromServer(fileId, accessToken, filename);
+            }
+          })
+          .build();
+        picker.setVisible(true);
+      };
+
+      // サーバー経由でドライブファイルを安全にダウンロードしてセット
+      const loadDriveFileFromServer = async (fileId, accessToken, filename) => {
+        setStep('loading');
+        setError(null);
+        try {
+          const res = await fetch('/api/load-drive-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              file_id: fileId,
+              access_token: accessToken,
+              filename: filename
+            })
+          });
+          
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || "Google ドライブからのファイル取得に失敗しました。");
+          
+          await loadSharedPdf(result.shared_id);
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "ファイルのダウンロードに失敗しました。");
+          setStep('input');
         }
       };
 
@@ -916,6 +1006,22 @@
                                 <span className="text-xs font-bold truncate flex-1 text-left">{pdfFile.name}</span>
                                 <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">READY</span>
                               </div>
+                            )}
+
+                            {/* Google ドライブから直接安全にインポートするボタン */}
+                            {googleConfig.clientId && (
+                              <button
+                                type="button"
+                                onClick={handleGoogleDriveSelect}
+                                className="mt-4 w-full max-w-sm bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-sm"
+                              >
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M19.349 14.525l-4.14-7.185h-6.42l4.14 7.185h6.42z" fill="#0066DA"/>
+                                  <path d="M9.162 14.525l3.21-5.568H5.952l-3.21 5.568h6.42z" fill="#00A25B"/>
+                                  <path d="M11.972 5.342l3.21 5.568H8.762l-3.21-5.568h6.42z" fill="#FFC107"/>
+                                </svg>
+                                <span>Google ドライブから安全に直接選択</span>
+                              </button>
                             )}
                           </div>
                         </div>

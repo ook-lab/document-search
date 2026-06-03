@@ -513,6 +513,51 @@ def get_shared_pdf():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    """フロントエンドに必要な設定情報を返す"""
+    return jsonify({
+        "google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "").strip(),
+        "google_api_key": os.environ.get("GOOGLE_API_KEY", "").strip()
+    })
+
+@app.route('/api/load-drive-file', methods=['POST'])
+def load_drive_file():
+    """Google Drive API を使用して、OAuthトークンで安全にファイルをダウンロードする"""
+    data = request.json
+    file_id = data.get("file_id")
+    access_token = data.get("access_token")
+    filename = data.get("filename", "drive_document.pdf")
+    
+    if not file_id or not access_token:
+        return jsonify({"error": "file_id and access_token are required"}), 400
+        
+    download_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+    
+    # OAuthトークンをヘッダーにセットしてリクエスト
+    req = urllib.request.Request(
+        download_url,
+        headers={'Authorization': f'Bearer {access_token}'}
+    )
+    
+    try:
+        response = urllib.request.urlopen(req)
+        pdf_bytes = response.read()
+        
+        if len(pdf_bytes) == 0:
+            return jsonify({"error": "ダウンロードされたファイルが空です。"}), 400
+            
+        temp_id = str(uuid.uuid4())
+        shared_pdfs[temp_id] = {
+            "data": pdf_bytes,
+            "name": filename
+        }
+        
+        return jsonify({"shared_id": temp_id})
+    except Exception as e:
+        print(f"[ERROR] Failed to download file from Drive API: {e}")
+        return jsonify({"error": f"Googleドライブからのダウンロードに失敗しました: {e}"}), 500
+
 if __name__ == '__main__':
     # 接続テスト
     db_ok, db_err = check_db_connection()

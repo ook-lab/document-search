@@ -47,6 +47,8 @@ gcloud run deploy $SERVICE_NAME `
     --update-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
     --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
     --update-env-vars "GEMINI_AI_API_KEY=$env:GEMINI_AI_API_KEY" `
+    --update-env-vars "GOOGLE_API_KEY=AIzaSyDV-k7lhNbw49ucHpszG50aIPiYX0V6rjA" `
+    --update-env-vars "GOOGLE_CLIENT_ID=983922127476-knufv74n37hk0t5k6q08g1cndv9imha4.apps.googleusercontent.com" `
     --update-env-vars "LOG_LEVEL=INFO"
 
 if ($LASTEXITCODE -eq 0) {
