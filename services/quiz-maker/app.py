@@ -4,7 +4,9 @@ import json
 import base64
 import random
 import urllib.request
-from flask import Flask, request, jsonify, render_template
+import uuid
+from io import BytesIO
+from flask import Flask, request, jsonify, render_template, redirect, send_file
 from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -411,6 +413,105 @@ def save_history():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": f"Failed to save history: {e}"}), 500
+
+# 一時共有ファイル用オンメモリ・ストア
+shared_pdfs = {}
+
+@app.route('/manifest.json')
+def manifest():
+    """PWAのマニフェストを返す"""
+    manifest_data = {
+        "name": "AI 4択クイズメーカー Premium",
+        "short_name": "クイズメーカー",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#f8fafc",
+        "theme_color": "#6366f1",
+        "icons": [
+            {
+                "src": "/static/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": "/static/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            }
+        ],
+        "share_target": {
+            "action": "/api/share-target",
+            "method": "POST",
+            "enctype": "multipart/form-data",
+            "params": {
+                "files": [
+                    {
+                        "name": "pdf",
+                        "accept": ["application/pdf"]
+                    }
+                ]
+            }
+        }
+    }
+    return jsonify(manifest_data)
+
+@app.route('/sw.js')
+def service_worker():
+    """PWA最小限のサービスワーカーを返す"""
+    sw_code = """
+    self.addEventListener('install', (e) => {
+        self.skipWaiting();
+    });
+    self.addEventListener('activate', (e) => {
+        e.waitUntil(self.clients.claim());
+    });
+    self.addEventListener('fetch', (e) => {
+        e.respondWith(fetch(e.request));
+    });
+    """
+    return sw_code, 200, {'Content-Type': 'application/javascript'}
+
+@app.route('/api/share-target', methods=['POST'])
+def share_target():
+    """他アプリからのファイル共有受信"""
+    pdf_file = request.files.get("pdf")
+    if not pdf_file:
+        return redirect('/')
+        
+    try:
+        pdf_bytes = pdf_file.read()
+        if len(pdf_bytes) == 0:
+            return redirect('/?error=empty_file')
+            
+        temp_id = str(uuid.uuid4())
+        shared_pdfs[temp_id] = {
+            "data": pdf_bytes,
+            "name": pdf_file.filename or "shared_document.pdf"
+        }
+        return redirect(f"/?shared_id={temp_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to process shared file: {e}")
+        return redirect('/?error=share_failed')
+
+@app.route('/api/get-shared-pdf', methods=['GET'])
+def get_shared_pdf():
+    """共有されたPDFデータの引き渡し（フロントエンド用）"""
+    shared_id = request.args.get("id")
+    if not shared_id or shared_id not in shared_pdfs:
+        return jsonify({"error": "File not found or expired"}), 404
+        
+    try:
+        file_info = shared_pdfs.pop(shared_id)
+        return send_file(
+            BytesIO(file_info["data"]),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=file_info["name"]
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     # 接続テスト

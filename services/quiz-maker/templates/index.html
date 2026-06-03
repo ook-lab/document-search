@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI 4択クイズメーカー Premium</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="クイズメーカー">
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & ReactDOM -->
@@ -98,6 +103,7 @@
       // 保存・通信ステータス
       const [error, setError] = useState(null);
       const [saveStatus, setSaveStatus] = useState(null); // 'saving', 'success', 'error'
+      const [isDragging, setIsDragging] = useState(false); // ドラッグ中フラグ
       
       // 隠し設定画面用 (モーダル/タブ)
       const [showSettings, setShowSettings] = useState(false);
@@ -112,15 +118,72 @@
         localStorage.setItem('historyAnalysisLevel', historyAnalysisLevel);
       }, [historyAnalysisLevel]);
 
-      // 初期ロード: 科目データの取得 & モバイル縦向きロックの試行
+      // 初期ロード: 科目データの取得 & モバイル縦向きロック & PWA・共有ファイルのロード
       useEffect(() => {
         fetchSubjects();
+        
+        // 縦向きロック
         if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
           window.screen.orientation.lock('portrait').catch(err => {
             console.log("Orientation lock is not supported or was rejected:", err);
           });
         }
+        
+        // サービスワーカー登録
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('ServiceWorker registered'))
+            .catch(err => console.error('ServiceWorker registration failed', err));
+        }
+
+        // URLパラメータの解析 (共有ファイルやエラーの受け取り)
+        const params = new URLSearchParams(window.location.search);
+        const sharedId = params.get('shared_id');
+        const errParam = params.get('error');
+
+        if (errParam) {
+          if (errParam === 'empty_file') {
+            setError("共有されたファイルの中身が空（0バイト）でした。");
+          } else if (errParam === 'share_failed') {
+            setError("共有ファイルの受け取りに失敗しました。");
+          }
+          // URLパラメータをクリア
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (sharedId) {
+          loadSharedPdf(sharedId);
+        }
       }, []);
+
+      const loadSharedPdf = async (id) => {
+        setStep('loading');
+        setError(null);
+        try {
+          const res = await fetch(`/api/get-shared-pdf?id=${id}`);
+          if (!res.ok) throw new Error("共有ファイルの取得に失敗したか、期限が切れています。");
+          
+          const blob = await res.blob();
+          
+          const contentDisposition = res.headers.get('Content-Disposition');
+          let filename = "shared_document.pdf";
+          if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename\*?=(?:UTF-8'')?([^;'\"]+)/i) || contentDisposition.match(/filename=\"?([^;\"]+)\"?/i);
+            if (filenameMatch && filenameMatch[1]) {
+              filename = decodeURIComponent(filenameMatch[1]);
+            }
+          }
+          
+          const file = new File([blob], filename, { type: 'application/pdf' });
+          setPdfFile(file);
+          setInputType('pdf');
+          setStep('input');
+        } catch (err) {
+          console.error(err);
+          setError(err.message || "共有ファイルの読み込みに失敗しました。");
+          setStep('input');
+        } finally {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      };
 
       // Lucideアイコンの再描画
       useEffect(() => {
@@ -341,8 +404,50 @@
           setError("PDFファイルを選択してください。");
           return;
         }
+        
+        if (file.size === 0) {
+          setError(
+            "ファイルの中身が空（0バイト）です。iOSの制限により、Google ドライブ等のクラウド上のファイルが一時的に端末にダウンロードされていないとこのエラーが発生します。\n\n" +
+            "【対策①】iPadの「ファイル」アプリで対象ファイルを「長押し」して「今すぐダウンロード」を実行してから選択し直してください。\n" +
+            "【対策②】iPadの画面分割（Split View）を使い、「ファイル」アプリから対象のPDFを直接この画面の「PDFファイルを選択」エリアにドラッグ＆ドロップしてください。"
+          );
+          setPdfFile(null);
+          return;
+        }
+        
         setError(null);
         setPdfFile(file);
+      };
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      };
+
+      const handleDragLeave = () => {
+        setIsDragging(false);
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        setError(null);
+        
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          const file = files[0];
+          if (file.type !== "application/pdf") {
+            setError("PDFファイルを選択してください。");
+            return;
+          }
+          if (file.size === 0) {
+            setError(
+              "ファイルの中身が空（0バイト）です。ファイルが完全にダウンロードされているか確認してください。"
+            );
+            return;
+          }
+          setPdfFile(file);
+        }
       };
 
       const handleStart = () => {
@@ -777,7 +882,16 @@
                       
                       {inputType === 'pdf' && (
                         <div className="animate-in fade-in space-y-4">
-                          <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:bg-slate-50/50 transition-colors bg-white/50 flex flex-col items-center justify-center min-h-[200px] shadow-sm animate-in fade-in duration-200">
+                          <div 
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all flex flex-col items-center justify-center min-h-[200px] shadow-sm animate-in fade-in duration-200 ${
+                              isDragging 
+                                ? 'border-indigo-500 bg-indigo-50/30 scale-[1.02]' 
+                                : 'border-slate-200 bg-white/50 hover:bg-slate-50/50'
+                            }`}
+                          >
                             <input 
                               type="file" 
                               accept="application/pdf" 
@@ -789,8 +903,12 @@
                               <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mb-4 text-indigo-600 hover:scale-105 transition-transform shadow-sm">
                                 <i data-lucide="upload" className="w-6 h-6"></i>
                               </div>
-                              <span className="text-slate-800 font-bold text-base mb-1">PDFファイルを選択</span>
-                              <p className="text-slate-400 text-xs">iPad / PC などの端末内ファイル</p>
+                              <span className="text-slate-800 font-bold text-base mb-1">
+                                {isDragging ? "ここにファイルをドロップ" : "PDFファイルを選択"}
+                              </span>
+                              <p className="text-slate-400 text-xs">
+                                iPadの「ファイル」アプリからここに直接ドラッグ＆ドロップも可能
+                              </p>
                             </label>
                             {pdfFile && (
                               <div className="mt-4 p-3 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-3 border border-indigo-200 w-full max-w-sm shadow-sm">
