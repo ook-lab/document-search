@@ -41,7 +41,7 @@ gcloud run deploy $SERVICE_NAME `
     --region $REGION `
     --memory 512Mi `
     --cpu 1 `
-    --timeout 60 `
+    --timeout 300 `
     --allow-unauthenticated `
     --service-account "document-management-system@$PROJECT_ID.iam.gserviceaccount.com" `
     --update-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `

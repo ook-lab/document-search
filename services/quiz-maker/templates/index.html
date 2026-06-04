@@ -97,7 +97,7 @@
       // クイズ生成パラメータ
       const [sourceText, setSourceText] = useState('');
       const [inputType, setInputType] = useState('pdf'); // 'pdf', 'text'
-      const [pdfFile, setPdfFile] = useState(null);
+      const [pdfFiles, setPdfFiles] = useState([]);
       const [questionCount, setQuestionCount] = useState(10);
       // 苦手分析の反映度 (strong, medium, weak, none)
       const [historyAnalysisLevel, setHistoryAnalysisLevel] = useState(() => {
@@ -347,7 +347,10 @@
           }
           
           const file = new File([blob], filename, { type: 'application/pdf' });
-          setPdfFile(file);
+          setPdfFiles(prev => {
+            if (prev.some(f => f.name === file.name)) return prev;
+            return [...prev, file];
+          });
           setInputType('pdf');
           setStep('input');
         } catch (err) {
@@ -364,7 +367,7 @@
         if (window.lucide) {
           window.lucide.createIcons();
         }
-      }, [step, inputType, pdfFile, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel]);
+      }, [step, inputType, pdfFiles, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel]);
 
       const fetchSubjects = async () => {
         try {
@@ -450,8 +453,10 @@
         
         if (inputType === 'text') {
           formData.append("source_text", sourceText);
-        } else if (inputType === 'pdf' && pdfFile) {
-          formData.append("pdf", pdfFile);
+        } else if (inputType === 'pdf' && pdfFiles.length > 0) {
+          pdfFiles.forEach(file => {
+            formData.append("pdf", file);
+          });
         } else {
           setError("入力データが不足しています。");
           setStep('input');
@@ -572,25 +577,38 @@
       };
 
       const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        if (file.type !== "application/pdf") {
-          setError("PDFファイルを選択してください。");
-          return;
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+        
+        const validFiles = [];
+        for (const file of files) {
+          if (file.type !== "application/pdf") {
+            setError("PDFファイルを選択してください。");
+            continue;
+          }
+          if (file.size === 0) {
+            setError(
+              "ファイルの中身が空（0バイト）のファイルが含まれています。iOSの制限により、Google ドライブ等のクラウド上のファイルが一時的に端末にダウンロードされていないとこのエラーが発生します。\n\n" +
+              "【対策①】iPadの「ファイル」アプリで対象ファイルを「長押し」して「今すぐダウンロード」を実行してから選択し直してください。\n" +
+              "【対策②】iPadの画面分割（Split View）を使い、「ファイル」アプリから対象のPDFを直接この画面の「PDFファイルを選択」エリアにドラッグ＆ドロップしてください。"
+            );
+            continue;
+          }
+          validFiles.push(file);
         }
         
-        if (file.size === 0) {
-          setError(
-            "ファイルの中身が空（0バイト）です。iOSの制限により、Google ドライブ等のクラウド上のファイルが一時的に端末にダウンロードされていないとこのエラーが発生します。\n\n" +
-            "【対策①】iPadの「ファイル」アプリで対象ファイルを「長押し」して「今すぐダウンロード」を実行してから選択し直してください。\n" +
-            "【対策②】iPadの画面分割（Split View）を使い、「ファイル」アプリから対象のPDFを直接この画面の「PDFファイルを選択」エリアにドラッグ＆ドロップしてください。"
-          );
-          setPdfFile(null);
-          return;
+        if (validFiles.length > 0) {
+          setError(null);
+          setPdfFiles(prev => {
+            const newFiles = [...prev];
+            validFiles.forEach(vf => {
+              if (!newFiles.some(f => f.name === vf.name)) {
+                newFiles.push(vf);
+              }
+            });
+            return newFiles;
+          });
         }
-        
-        setError(null);
-        setPdfFile(file);
       };
 
       const handleDragOver = (e) => {
@@ -607,21 +625,40 @@
         setIsDragging(false);
         setError(null);
         
-        const files = e.dataTransfer.files;
+        const files = Array.from(e.dataTransfer.files);
         if (files && files.length > 0) {
-          const file = files[0];
-          if (file.type !== "application/pdf") {
-            setError("PDFファイルを選択してください。");
-            return;
+          const validFiles = [];
+          for (const file of files) {
+            if (file.type !== "application/pdf") {
+              setError("PDFファイルを選択してください。");
+              continue;
+            }
+            if (file.size === 0) {
+              setError(
+                "ファイルの中身が空（0バイト）です。ファイルが完全にダウンロードされているか確認してください。"
+              );
+              continue;
+            }
+            validFiles.push(file);
           }
-          if (file.size === 0) {
-            setError(
-              "ファイルの中身が空（0バイト）です。ファイルが完全にダウンロードされているか確認してください。"
-            );
-            return;
+          
+          if (validFiles.length > 0) {
+            setPdfFiles(prev => {
+              const newFiles = [...prev];
+              validFiles.forEach(vf => {
+                if (!newFiles.some(f => f.name === vf.name)) {
+                  newFiles.push(vf);
+                }
+              });
+              return newFiles;
+            });
           }
-          setPdfFile(file);
         }
+      };
+
+      // ファイルの個別削除
+      const removePdfFile = (index) => {
+        setPdfFiles(prev => prev.filter((_, idx) => idx !== index));
       };
 
       const handleStart = () => {
@@ -633,7 +670,7 @@
           setError("テキストが短すぎます。もう少し詳しい内容（目安: 40文字以上）を入力してください。");
           return;
         }
-        if (inputType === 'pdf' && !pdfFile) {
+        if (inputType === 'pdf' && pdfFiles.length === 0) {
           setError("PDFファイルが準備されていません。ファイルを選択してください。");
           return;
         }
@@ -654,7 +691,8 @@
             question: questions[currentIndex].question,
             correctAnswer: questions[currentIndex].correctAnswer,
             userAnswer: option,
-            isCorrect: isCorrect
+            isCorrect: isCorrect,
+            sourceName: questions[currentIndex].sourceName || "不明なソース"
           };
           return newHistory;
         });
@@ -678,8 +716,8 @@
         setSaveStatus('saving');
         try {
           let sourceName = "不明なソース";
-          if (inputType === 'pdf' && pdfFile) {
-            sourceName = pdfFile.name;
+          if (inputType === 'pdf' && pdfFiles.length > 0) {
+            sourceName = pdfFiles.map(f => f.name).join(", ");
           } else if (inputType === 'text' && sourceText) {
             const cleanText = sourceText.replace(/\s+/g, ' ').trim();
             sourceName = `テキスト: ${cleanText.substring(0, 25)}${cleanText.length > 25 ? '...' : ''}`;
@@ -688,7 +726,13 @@
           const payload = {
             subject_id: selectedSubjectId,
             source_name: sourceName,
-            history: answerHistory.filter(Boolean)
+            history: answerHistory.filter(Boolean).map(h => ({
+              question: h.question,
+              correctAnswer: h.correctAnswer,
+              userAnswer: h.userAnswer,
+              isCorrect: h.isCorrect,
+              source_name: h.sourceName
+            }))
           };
           const res = await fetch('/api/save-history', {
             method: 'POST',
@@ -708,7 +752,7 @@
       const resetApp = () => {
         setStep('input');
         setSourceText('');
-        setPdfFile(null);
+        setPdfFiles([]);
         setQuestions([]);
         setCurrentIndex(0);
         setSelectedOption(null);
@@ -1240,23 +1284,42 @@
                               onChange={handleFileUpload} 
                               className="hidden" 
                               id="pdf-upload"
+                              multiple
                             />
                             <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center w-full">
                               <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-full flex items-center justify-center mb-4 text-indigo-600 hover:scale-105 transition-transform shadow-sm">
                                 <Icon name="upload" className="w-6 h-6" />
                               </div>
                               <span className="text-slate-800 font-bold text-base mb-1">
-                                {isDragging ? "ここにファイルをドロップ" : "PDFファイルを選択"}
+                                {isDragging ? "ここにファイルをドロップ" : "PDFファイルを選択 (複数可)"}
                               </span>
                               <p className="text-slate-400 text-xs">
                                 iPadの「ファイル」アプリからここに直接ドラッグ＆ドロップも可能
                               </p>
                             </label>
-                            {pdfFile && (
-                              <div className="mt-4 p-3 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-3 border border-indigo-200 w-full max-w-sm shadow-sm">
-                                <Icon name="file-text" className="w-5 h-5 text-indigo-600 flex-shrink-0" />
-                                <span className="text-xs font-bold truncate flex-1 text-left">{pdfFile.name}</span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded border border-indigo-200">READY</span>
+                            
+                            {/* 選択されたファイルの一覧表示 */}
+                            {pdfFiles.length > 0 && (
+                              <div className="mt-6 w-full max-w-md space-y-2 animate-in fade-in duration-200">
+                                <p className="text-xs font-black text-slate-500 text-left px-1">選択されたプリント ({pdfFiles.length}枚):</p>
+                                <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-2xl bg-white/80 p-2 shadow-inner">
+                                  {pdfFiles.map((file, index) => (
+                                    <div key={index} className="flex items-center justify-between p-2 gap-2 text-left">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        <Icon name="file-text" className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                                        <span className="text-xs font-bold text-slate-700 truncate">{file.name}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => removePdfFile(index)}
+                                        className="text-slate-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded-lg transition-all"
+                                        title="削除"
+                                      >
+                                        <Icon name="trash-2" className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
 
@@ -1282,7 +1345,7 @@
                       onClick={handleStart}
                       disabled={
                         (inputType === 'text' && !sourceText.trim()) || 
-                        (inputType === 'pdf' && !pdfFile)
+                        (inputType === 'pdf' && pdfFiles.length === 0)
                       }
                       className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg hover:shadow-indigo-500/10 hover:shadow-2xl flex items-center justify-center gap-2 text-base sm:text-lg shadow-indigo-600/10"
                     >

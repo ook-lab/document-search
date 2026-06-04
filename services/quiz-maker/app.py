@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import os
 import re
 import json
@@ -57,11 +58,12 @@ QUIZ_SCHEMA = {
             "wrongOption2": {"type": "STRING", "description": "ダミーの選択肢2"},
             "wrongOption3": {"type": "STRING", "description": "ダミーの選択肢3"},
             "explanationShort": {"type": "STRING", "description": "正解した時のための短い解説（1〜2文）"},
-            "explanationDetailed": {"type": "STRING", "description": "不正解だった時のための詳しい解説（なぜそれが正解なのか、他の選択肢がなぜ違うのかなど）"}
+            "explanationDetailed": {"type": "STRING", "description": "不正解だった時のための詳しい解説（なぜそれが正解なのか、他の選択肢がなぜ違うのかなど）"},
+            "sourceName": {"type": "STRING", "description": "この問題を作成するにあたり、中心的に引用・参照したファイル名（例: file1.pdf）。必ず送られたファイル名群の中から最も主たるもの1つを選択して正確に記載してください。もしファイル名がないテキスト入力の場合は 'テキスト' としてください。"}
         },
         "required": [
             "question", "correctAnswer", "wrongOption1", 
-            "wrongOption2", "wrongOption3", "explanationShort", "explanationDetailed"
+            "wrongOption2", "wrongOption3", "explanationShort", "explanationDetailed", "sourceName"
         ]
     }
 }
@@ -225,7 +227,7 @@ def generate_questions():
     question_count = int(request.form.get("question_count", 10))
     source_text = request.form.get("source_text", "")
     history_analysis_level = request.form.get("history_analysis_level", "none")
-    pdf_file = request.files.get("pdf")
+    pdf_files = request.files.getlist("pdf")
     
     if not subject_id:
         return jsonify({"error": "subject_id is required"}), 400
@@ -280,40 +282,90 @@ def generate_questions():
         except Exception as e:
             print(f"[WARNING] Failed to fetch quiz history for analysis: {e}")
             
+    # 2-1. ファイルに関連する過去の回答履歴を取得（重複排除と未出題の網羅用）
+    avoid_context = ""
+    file_names = []
+    if pdf_files:
+        file_names = [f.filename for f in pdf_files if f and f.filename]
+    if not file_names and source_text:
+        file_names = ["テキスト"]
+        
+    if file_names:
+        try:
+            history_questions = []
+            # 各ファイル名について部分一致で過去の問題を取得 (created_at DESC で新しい順に)
+            # トークン制限を考慮し最大3000件
+            for fname in file_names:
+                if not fname:
+                    continue
+                res = supabase.table("quiz_history") \
+                    .select("question, correct_answer, is_correct") \
+                    .ilike("source_name", f"%{fname}%") \
+                    .order("created_at", desc=True) \
+                    .limit(3000) \
+                    .execute()
+                
+                if res.data:
+                    for row in res.data:
+                        q_text = row["question"]
+                        ans_text = row["correct_answer"]
+                        res_status = "正解" if row["is_correct"] else "不正解"
+                        history_questions.append(f"Q: {q_text} / A: {ans_text} (結果: {res_status})")
+            
+            # 重複を排除してユニークにする
+            history_questions = list(dict.fromkeys(history_questions))
+            
+            if history_questions:
+                # 最大3000件に制限
+                history_questions = history_questions[:3000]
+                q_list = "\n・" + "\n・".join(history_questions)
+                avoid_context = (
+                    f"\n\n【出題済み問題の重複回避と復習の指示（最優先事項）】\n"
+                    f"学習者はこの教材に関連して過去に以下の問題に回答しています（新しい順、最大3000件）。\n"
+                    f"＜過去の回答履歴一覧＞{q_list}\n\n"
+                    f"以下のルールに従って問題を作成してください：\n"
+                    f"1. 過去の履歴の中で結果が【正解】となっている問題については、重複を完全に避け、教材（添付ファイル）のまだ出題されていない別のセクションや、コラム、図表の注記、補足解説などの細かい記述（メイン文章以外）から新しい問題を作成してください。教材全体を満遍なく網羅することを重視してください。\n"
+                    f"2. 過去の履歴の中で結果が【不正解】となっている問題については、学習者の苦手分野であるため、同じトピックや知識を問う問題を、出題角度や聞き方（例: 順序の入れ替え、具体例から定義を問うなど）を工夫して再度出題（復習問題）してください。\n"
+                )
+        except Exception as e:
+            print(f"[WARNING] Failed to fetch history for source files: {e}")
+
     # 3. Gemini APIへのインプット組み立て
     parts = []
     
-    pdf_bytes = None
-    if pdf_file:
-        try:
-            pdf_bytes = pdf_file.read()
-        except Exception as e:
-            return jsonify({"error": f"PDFファイルの読み込みに失敗しました: {e}"}), 400
+    # 複数PDFの処理
+    pdf_datas = []
+    if pdf_files:
+        for pdf_file in pdf_files:
+            try:
+                pdf_bytes = pdf_file.read()
+                if pdf_bytes and len(pdf_bytes) > 0:
+                    pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+                    pdf_datas.append({
+                        "filename": pdf_file.filename,
+                        "base64": pdf_base64
+                    })
+            except Exception as e:
+                return jsonify({"error": f"PDFファイルの読み込みに失敗しました ({pdf_file.filename}): {e}"}), 400
 
-    if pdf_bytes is not None:
-        try:
-            # 0バイトチェック
-            if len(pdf_bytes) == 0:
-                raise ValueError("ファイルの中身が空（0バイト）です。iOSの「ファイル」アプリをご利用の場合、事前にiCloud等からローカルへダウンロード完了していることをご確認ください。")
-                
-            pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
-            
-            parts = [
-                {
-                    "text": (
-                        f"添付されたPDFドキュメントの内容を読み取り、重要な用語や概念から"
-                        f"学習用の4択形式の問題を正確に{question_count}問作成してください。{history_context}"
-                    )
-                },
-                {
-                    "inline_data": {
-                        "mime_type": "application/pdf",
-                        "data": pdf_base64
-                    }
+    if pdf_datas:
+        pdf_names_str = ", ".join([d["filename"] for d in pdf_datas])
+        text_instruction = (
+            f"添付された複数のPDFドキュメント（ファイル名: {pdf_names_str}）のすべての内容を正確に読み取り、"
+            f"重要な用語や概念から学習用の4択形式の問題を正確に{question_count}問作成してください。\n"
+            f"異なるファイルの内容を比較させたり、知識を組み合わせたりする横断問題も積極的に作成してください。\n"
+            f"{avoid_context}{history_context}"
+        )
+        parts.append({"text": text_instruction})
+        
+        # すべての PDF データを inline_data として parts に追加
+        for d in pdf_datas:
+            parts.append({
+                "inline_data": {
+                    "mime_type": "application/pdf",
+                    "data": d["base64"]
                 }
-            ]
-        except Exception as e:
-            return jsonify({"error": f"Failed to process PDF data: {e}"}), 400
+            })
     else:
         if not source_text.strip() or len(source_text.strip()) < 40:
             return jsonify({"error": "テキストが短すぎます。詳細を入力するか、ファイルを指定してください。"}), 400
@@ -322,7 +374,7 @@ def generate_questions():
             {
                 "text": (
                     f"以下のテキストの内容に基づいて、学習用の4択形式の問題を正確に{question_count}問作成してください。\n\n"
-                    f"【テキスト】\n{source_text}{history_context}"
+                    f"【テキスト】\n{source_text}{avoid_context}{history_context}"
                 )
             }
         ]
@@ -378,7 +430,8 @@ def generate_questions():
                 "options": options,
                 "correctAnswer": q["correctAnswer"],
                 "explanationShort": q["explanationShort"],
-                "explanationDetailed": q["explanationDetailed"]
+                "explanationDetailed": q["explanationDetailed"],
+                "sourceName": q.get("sourceName", "不明なソース")
             })
             
         return jsonify({
@@ -414,7 +467,7 @@ def save_history():
                 "correct_answer": record.get("correctAnswer"),
                 "user_answer": record.get("userAnswer"),
                 "is_correct": record.get("isCorrect"),
-                "source_name": source_name
+                "source_name": record.get("source_name") or source_name
             })
             
         # 一括保存（source_nameカラムが存在しない場合はフォールバック）
