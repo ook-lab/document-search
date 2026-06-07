@@ -51,6 +51,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("pipeline-lab", "services/pipeline-lab/cloudbuild.yaml", "services/pipeline-lab/**"),
     ("portal-deploy", "portal-app/cloudbuild.yaml", "portal-app/**"),
     ("quiz-maker", "services/quiz-maker/cloudbuild.yaml", "services/quiz-maker/**"),
+    ("quiz-maker-ema", "services/quiz-maker-ema/cloudbuild.yaml", "services/quiz-maker-ema/**"),
     ("rag-prepare", "services/rag-prepare/cloudbuild.yaml", "services/rag-prepare/**"),
     ("reading-context-editor", "services/reading-context-editor/cloudbuild.yaml", "services/reading-context-editor/**"),
     ("sansu-base", "services/sansu-base/cloudbuild.yaml", "services/sansu-base/**"),

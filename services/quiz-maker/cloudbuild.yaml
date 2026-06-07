@@ -23,8 +23,35 @@ steps:
       - 'push'
       - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/quiz-maker:latest'
 
+  # Deployment Step
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'quiz-maker'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/quiz-maker:latest'
+      - '--region=asia-northeast1'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--timeout=300'
+      - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--update-env-vars=SUPABASE_URL=${_SUPABASE_URL},SUPABASE_KEY=${_SUPABASE_KEY},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_SERVICE_ROLE_KEY},GEMINI_AI_API_KEY=${_GEMINI_AI_API_KEY},IKUYA_SCHOOL_FOLDER_ID=${_IKUYA_SCHOOL_FOLDER_ID},IKUYA_JUKU_FOLDER_ID=${_IKUYA_JUKU_FOLDER_ID},IKUYA_EXAM_FOLDER_ID=${_IKUYA_EXAM_FOLDER_ID},EMA_SCHOOL_FOLDER_ID=${_EMA_SCHOOL_FOLDER_ID},HOME_LIVING_FOLDER_ID=${_HOME_LIVING_FOLDER_ID},LOG_LEVEL=INFO'
+
 images:
   - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/quiz-maker:latest'
+
+substitutions:
+  _SUPABASE_URL: ''
+  _SUPABASE_KEY: ''
+  _SUPABASE_SERVICE_ROLE_KEY: ''
+  _GEMINI_AI_API_KEY: ''
+  _IKUYA_SCHOOL_FOLDER_ID: ''
+  _IKUYA_JUKU_FOLDER_ID: ''
+  _IKUYA_EXAM_FOLDER_ID: ''
+  _EMA_SCHOOL_FOLDER_ID: ''
+  _HOME_LIVING_FOLDER_ID: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -34,6 +34,8 @@ _SERVICE_RULES: tuple[tuple[str, str], ...] = (
     ("rag-prepare", "services/rag-prepare/**"),
     ("reading-context-editor", "services/reading-context-editor/**"),
     ("tenshoku-tool", "services/tenshoku-tool/**"),
+    ("quiz-maker-ema", "services/quiz-maker-ema/**"),
+    ("quiz-maker", "services/quiz-maker/**"),
     ("portal-app", "portal-app/**"),
     ("portal-deploy", "portal-app/**"),
     ("resume-maker", "services/resume-maker/**"),

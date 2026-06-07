@@ -22,11 +22,11 @@ from googleapiclient.http import MediaIoBaseDownload
 load_dotenv()
 
 # ユーザー設定
-USER_NAME = "ikuya"
-USER_DISPLAY_NAME = "育哉"
-SUBJECTS_TABLE = "quiz_subjects"
-HISTORY_TABLE = "quiz_history"
-DEFAULT_FOLDER_ENV_VARS = ["IKUYA_SCHOOL_FOLDER_ID", "IKUYA_JUKU_FOLDER_ID", "IKUYA_EXAM_FOLDER_ID", "HOME_LIVING_FOLDER_ID"]
+USER_NAME = "ema"
+USER_DISPLAY_NAME = "絵麻"
+SUBJECTS_TABLE = "ema_quiz_subjects"
+HISTORY_TABLE = "ema_quiz_history"
+DEFAULT_FOLDER_ENV_VARS = ["EMA_SCHOOL_FOLDER_ID", "HOME_LIVING_FOLDER_ID", "HOME_COOKING_FOLDER_ID"]
 
 app = Flask(__name__)
 CORS(app)
@@ -631,8 +631,8 @@ def get_settings():
         res = supabase.table(SUBJECTS_TABLE).select("*").eq("id", "00000000-0000-0000-0000-000000000000").execute()
         if res.data:
             settings_data = json.loads(res.data[0]["prompt"])
-            if "gdrive_folders" in settings_data:
-                return jsonify(settings_data)
+            # If the database record exists, return its folders directly (even if empty) to prevent auto-population on reload
+            return jsonify({"gdrive_folders": settings_data.get("gdrive_folders", [])})
         
         # If no folders exist yet (database record missing), pre-populate from environment variables
         folders = []
@@ -699,8 +699,8 @@ def api_get_drive_folders():
         res = supabase.table(SUBJECTS_TABLE).select("*").eq("id", "00000000-0000-0000-0000-000000000000").execute()
         if res.data:
             settings_data = json.loads(res.data[0]["prompt"])
-            folders = settings_data.get("gdrive_folders", [])
-            return jsonify(folders)
+            # If the database record exists, return its folders directly (even if empty) to prevent auto-population on reload
+            return jsonify(settings_data.get("gdrive_folders", []))
             
         # If database settings are empty (missing record), resolve from environment variables dynamically
         folders = []

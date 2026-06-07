@@ -16,7 +16,7 @@ if (-not (Test-Path ".env")) {
 $env:PATH = "C:\Users\ookub\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin;" + $env:PATH
 
 $PROJECT_ID = "consummate-yew-479020-u2"
-$SERVICE_NAME = "quiz-maker"
+$SERVICE_NAME = "quiz-maker-ema"
 $REGION = "asia-northeast1"
 $IMAGE = "$REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE_NAME`:latest"
 
@@ -31,7 +31,7 @@ gcloud auth list
 
 # 4. Run Cloud Build
 Write-Host "=== 2. Cloud Build ==="
-gcloud builds submit --region=$REGION --config=services/quiz-maker/cloudbuild.yaml .
+gcloud builds submit --region=$REGION --config=services/quiz-maker-ema/cloudbuild.yaml .
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Build failed"
@@ -51,12 +51,10 @@ gcloud run deploy $SERVICE_NAME `
     --update-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
     --update-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
     --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
-    --update-env-vars "GEMINI_AI_API_KEY=$env:GEMINI_AI_API_KEY" `
-    --update-env-vars "IKUYA_SCHOOL_FOLDER_ID=$env:IKUYA_SCHOOL_FOLDER_ID" `
-    --update-env-vars "IKUYA_JUKU_FOLDER_ID=$env:IKUYA_JUKU_FOLDER_ID" `
-    --update-env-vars "IKUYA_EXAM_FOLDER_ID=$env:IKUYA_EXAM_FOLDER_ID" `
+    --set-secrets "GEMINI_AI_API_KEY=GEMINI_E_AI_API_KEY:latest" `
     --update-env-vars "EMA_SCHOOL_FOLDER_ID=$env:EMA_SCHOOL_FOLDER_ID" `
     --update-env-vars "HOME_LIVING_FOLDER_ID=$env:HOME_LIVING_FOLDER_ID" `
+    --update-env-vars "HOME_COOKING_FOLDER_ID=$env:HOME_COOKING_FOLDER_ID" `
     --update-env-vars "LOG_LEVEL=INFO"
 
 if ($LASTEXITCODE -eq 0) {
