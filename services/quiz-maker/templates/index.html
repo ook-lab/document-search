@@ -158,13 +158,20 @@
           });
         }
         
-        // サービスワーカーの登録解除 (Load failed対策)
+        // サービスワーカーの登録解除 & キャッシュの完全消去 (Load failed対策)
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.getRegistrations().then(regs => {
             for (let r of regs) {
               r.unregister().then(() => console.log('ServiceWorker unregistered'));
             }
           }).catch(err => console.error('Failed to get registrations', err));
+        }
+        if ('caches' in window) {
+          caches.keys().then(names => {
+            for (let name of names) {
+              caches.delete(name).then(() => console.log('Cache deleted:', name));
+            }
+          }).catch(err => console.error('Failed to clear caches', err));
         }
 
         // URLパラメータの解析 (共有ファイルやエラーの受け取り)
