@@ -1,0 +1,383 @@
+/* sansu-base Premium OCR Reader Custom Stylesheet */
+
+/* Stepper Indicator (Horizontal Wizard Progress) */
+.stepper-container {
+    display: flex;
+    max-width: 1200px;
+    margin: 1.5rem auto 1.5rem auto;
+    padding: 0 1.5rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    position: relative;
+    opacity: 0.5;
+    transition: var(--transition-smooth);
+}
+
+.step-item.active {
+    opacity: 1;
+}
+
+.step-item.completed {
+    opacity: 0.85;
+}
+
+.step-number {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    border: 2px solid transparent;
+    transition: var(--transition-smooth);
+}
+
+.step-item.active .step-number {
+    background: var(--accent-gradient);
+    color: white;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.step-item.completed .step-number {
+    background: #10b981;
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.step-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.step-item.active .step-label {
+    color: var(--text-main);
+}
+
+.step-item.completed .step-label {
+    color: #0f172a;
+}
+
+.step-line {
+    flex: 1;
+    height: 3px;
+    background: #e2e8f0;
+    margin: 0 1rem;
+    margin-top: -1.25rem;
+    border-radius: 2px;
+    transition: var(--transition-smooth);
+}
+
+.step-line.completed {
+    background: #10b981;
+}
+
+/* Wizard Panels Grid Layout */
+.wizard-panel {
+    display: none;
+    animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wizard-panel.active {
+    display: block;
+}
+
+.panel-layout {
+    display: grid;
+    grid-template-columns: 460px 1fr;
+    gap: 1.5rem;
+    height: calc(100vh - 12rem);
+    min-height: 500px;
+}
+
+.panel-control {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.panel-preview {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.control-header {
+    border-bottom: 1px solid var(--card-border);
+    padding-bottom: 1rem;
+    margin-bottom: 1.25rem;
+    flex-shrink: 0;
+}
+
+.control-header h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.control-header p {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.control-body {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.control-footer {
+    border-top: 1px solid var(--card-border);
+    padding-top: 1rem;
+    margin-top: 1.25rem;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Wide buttons */
+.btn-wide {
+    width: 100%;
+    padding: 0.85rem 1rem;
+}
+
+/* Upload zone design */
+.upload-zone {
+    border: 2px dashed rgba(99, 102, 241, 0.2);
+    border-radius: 12px;
+    padding: 2.25rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.4);
+    transition: var(--transition-smooth);
+    margin-bottom: 1rem;
+}
+
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent-primary);
+    background: rgba(99, 102, 241, 0.04);
+}
+
+.upload-zone i {
+    font-size: 2.25rem;
+    margin-bottom: 0.75rem;
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.upload-zone p {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #475569;
+}
+
+.upload-zone span {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 0.5rem 0;
+}
+
+/* File info chip */
+.file-info-chip {
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--accent-primary);
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    animation: slideUp 0.2s ease-out;
+}
+
+/* Preview side style */
+.preview-header {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--card-border);
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.preview-header h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.preview-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+}
+
+.panel-actions-bottom {
+    border-top: 1px solid var(--card-border);
+    padding: 1rem 1.5rem;
+    background: rgba(255, 255, 255, 0.3);
+    flex-shrink: 0;
+}
+
+/* Token / Cost panel */
+.cost-summary {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.78rem;
+    color: #475569;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Drive Selector Modal style */
+.drive-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.drive-modal {
+    width: 90%;
+    max-width: 700px;
+    height: 80vh;
+    max-height: 600px;
+    background: white;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.drive-modal-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.drive-modal-header h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-close-modal {
+    background: transparent;
+    border: none;
+    font-size: 1.25rem;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.drive-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
+}
+
+.drive-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-muted);
+    gap: 1rem;
+}
+
+.drive-files-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 1rem;
+}
+
+.drive-file-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem 0.75rem;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    background: #fafafa;
+}
+
+.drive-file-card:hover {
+    border-color: var(--accent-primary);
+    background: white;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.05);
+}
+
+.drive-file-card i {
+    font-size: 2rem;
+    color: #64748b;
+}
+
+.drive-file-card i.fa-file-pdf {
+    color: #ef4444;
+}
+
+.drive-file-card i.fa-file-image {
+    color: #3b82f6;
+}
+
+.drive-file-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1e293b;
+    word-break: break-all;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.drive-file-date {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+}

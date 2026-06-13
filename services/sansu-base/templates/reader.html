@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sansu-base | OCR読み取りインポート</title>
+    
+    <!-- CSS Dependencies -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/reader.css">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- MathJax Setup for LaTeX Rendering -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true
+            },
+            options: {
+                ignoreHtmlClass: 'tex2jax_ignore',
+                processHtmlClass: 'tex2jax_process'
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body class="tex2jax_process">
+
+    <!-- Global Top Navigation Header -->
+    <header>
+        <div class="brand">
+            <div class="brand-logo"><i class="fa-solid">∑</i></div>
+            <h1>sansu-base</h1>
+        </div>
+        <nav style="display: flex; gap: 1.5rem;">
+            <a href="/" style="text-decoration: none; color: var(--text-muted); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-database"></i> 問題エディタ
+            </a>
+            <a href="/reader" style="text-decoration: none; color: var(--accent-primary); font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 2px solid var(--accent-primary); padding-bottom: 0.25rem;">
+                <i class="fa-solid fa-file-import"></i> OCR読み取りインポート
+            </a>
+        </nav>
+    </header>
+
+    <!-- Stepper indicator bar -->
+    <div class="stepper-container">
+        <div class="step-item active" id="step-indicator-1">
+            <div class="step-number">1</div>
+            <div class="step-label">問題の読み取り</div>
+        </div>
+        <div class="step-line" id="step-line-1"></div>
+        <div class="step-item" id="step-indicator-2">
+            <div class="step-number">2</div>
+            <div class="step-label">解答解説の読み込み・詳細化</div>
+        </div>
+        <div class="step-line" id="step-line-2"></div>
+        <div class="step-item" id="step-indicator-3">
+            <div class="step-number">3</div>
+            <div class="step-label">確認・保存</div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="reader-container" style="max-width: 1400px; margin: 0 auto 3rem auto; padding: 0 1.5rem;">
+        
+        <!-- STEP 1 PANEL -->
+        <div class="wizard-panel active" id="wizard-panel-1">
+            <div class="panel-layout">
+                <!-- Left Control Form -->
+                <div class="panel-control glass-panel">
+                    <div class="control-header">
+                        <h2><i class="fa-solid fa-circle-question"></i> 問題画像の読み込み</h2>
+                        <p>ローカルまたはGoogleドライブから問題の画像/PDFを選択してください。</p>
+                    </div>
+                    
+                    <div class="control-body">
+                        <!-- Upload Dropzone -->
+                        <div class="upload-zone" id="problem-upload-zone">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>ここに問題の画像/PDFをドラッグ＆ドロップ</p>
+                            <span>または</span>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('problem-file-input').click()">ファイルを選択</button>
+                            <input type="file" id="problem-file-input" accept="image/*,application/pdf" style="display: none;">
+                        </div>
+                        <div class="file-info-chip" id="problem-file-info" style="display: none;"></div>
+                        
+                        <!-- Drive Button -->
+                        <button type="button" class="btn btn-secondary btn-wide" id="btn-problem-drive" style="margin-bottom: 1.5rem;">
+                            <i class="fa-brands fa-google-drive"></i> Googleドライブから選択
+                        </button>
+                        
+                        <!-- Prompt Hints -->
+                        <div class="form-group">
+                            <label for="problem-hint">読み取りのヒント・手がかり（オプション）</label>
+                            <textarea id="problem-hint" placeholder="例: 「問4の折り返した長方形の問題」「答えは 24 cm2 になります」など、OCRや図形描画の助けになる情報を入力してください。"></textarea>
+                        </div>
+                        
+                        <!-- Model Selection -->
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="problem-model">使用モデル</label>
+                            <select id="problem-model">
+                                <option value="gemini-3.1-flash-lite" selected>Gemini 3.1 Flash-Lite (高速・エコ)</option>
+                                <option value="gemini-3.5-flash">Gemini 3.5 Flash (高品質・複雑な図形向け)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="control-footer">
+                        <div class="cost-summary" id="problem-cost-display"></div>
+                        <button type="button" class="btn btn-primary btn-wide" id="btn-run-problem-ocr">
+                            <i class="fa-solid fa-bolt"></i> 読み取りを実行する
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Right Preview Pane -->
+                <div class="panel-preview glass-panel">
+                    <div class="preview-header">
+                        <h3><i class="fa-solid fa-eye"></i> プレビュー・調整</h3>
+                        <div class="preview-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-problem" style="display: none;"><i class="fa-solid fa-pen"></i> 編集</button>
+                        </div>
+                    </div>
+                    <div class="preview-body" id="problem-preview-body">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-file-import"></i>
+                            <p>読み取りを実行すると、ここにOCR結果のプレビューが表示されます。</p>
+                        </div>
+                    </div>
+                    <div class="preview-editor-pane" id="problem-editor-pane" style="display: none; padding: 1.5rem; flex-direction: column; gap: 1rem; flex: 1;">
+                        <label>問題文マークダウン（修正可能）</label>
+                        <textarea id="problem-markdown-editor" style="flex: 1; min-height: 200px; font-family: monospace; font-size: 0.9rem;"></textarea>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-problem-preview">プレビューに反映</button>
+                    </div>
+                    <div class="panel-actions-bottom" style="display: none;" id="problem-actions-next">
+                        <button type="button" class="btn btn-primary btn-wide" id="btn-step1-next">ステップ2に進む <i class="fa-solid fa-arrow-right"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2 PANEL -->
+        <div class="wizard-panel" id="wizard-panel-2">
+            <div class="panel-layout">
+                <!-- Left Control Form -->
+                <div class="panel-control glass-panel">
+                    <div class="control-header">
+                        <h2><i class="fa-solid fa-lightbulb"></i> 解答解説の読み込み・詳細化</h2>
+                        <p>解説の画像/PDFを選択してください。問題文も参考にしながら詳細化します。</p>
+                    </div>
+                    
+                    <div class="control-body">
+                        <!-- Upload Dropzone -->
+                        <div class="upload-zone" id="explanation-upload-zone">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>ここに解説の画像/PDFをドラッグ＆ドロップ</p>
+                            <span>または</span>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('explanation-file-input').click()">ファイルを選択</button>
+                            <input type="file" id="explanation-file-input" accept="image/*,application/pdf" style="display: none;">
+                        </div>
+                        <div class="file-info-chip" id="explanation-file-info" style="display: none;"></div>
+                        
+                        <!-- Drive Button -->
+                        <button type="button" class="btn btn-secondary btn-wide" id="btn-explanation-drive" style="margin-bottom: 1.5rem;">
+                            <i class="fa-brands fa-google-drive"></i> Googleドライブから選択
+                        </button>
+                        
+                        <!-- Prompt Hints -->
+                        <div class="form-group">
+                            <label for="explanation-hint">詳細解説化のヒント・指示（オプション）</label>
+                            <textarea id="explanation-hint" placeholder="例: 「補助線の引き方を詳しく説明して」「比の推移を丁寧に」「丸数字で比を記述して」など。"></textarea>
+                        </div>
+                        
+                        <!-- Model Selection -->
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label for="explanation-model">使用モデル</label>
+                            <select id="explanation-model">
+                                <option value="gemini-3.1-flash-lite" selected>Gemini 3.1 Flash-Lite (高速・エコ)</option>
+                                <option value="gemini-3.5-flash">Gemini 3.5 Flash (高品質・複雑な解説図向け)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="control-footer">
+                        <div class="cost-summary" id="explanation-cost-display"></div>
+                        <div style="display: flex; gap: 0.5rem; width: 100%;">
+                            <button type="button" class="btn btn-secondary" id="btn-step2-back"><i class="fa-solid fa-arrow-left"></i> 戻る</button>
+                            <button type="button" class="btn btn-primary" id="btn-run-explanation-ocr" style="flex: 1;">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> 読み取り＆詳細化を実行
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Preview Pane -->
+                <div class="panel-preview glass-panel">
+                    <div class="preview-header">
+                        <h3><i class="fa-solid fa-eye"></i> プレビュー・調整</h3>
+                        <div class="preview-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-explanation" style="display: none;"><i class="fa-solid fa-pen"></i> 編集</button>
+                        </div>
+                    </div>
+                    <div class="preview-body" id="explanation-preview-body">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-file-import"></i>
+                            <p>読み取りを実行すると、ここに詳細化された解説のプレビューが表示されます。</p>
+                        </div>
+                    </div>
+                    <div class="preview-editor-pane" id="explanation-editor-pane" style="display: none; padding: 1.5rem; flex-direction: column; gap: 1rem; flex: 1;">
+                        <label>解説マークダウン（修正可能）</label>
+                        <textarea id="explanation-markdown-editor" style="flex: 1; min-height: 200px; font-family: monospace; font-size: 0.9rem;"></textarea>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-explanation-preview">プレビューに反映</button>
+                    </div>
+                    <div class="panel-actions-bottom" style="display: none;" id="explanation-actions-next">
+                        <button type="button" class="btn btn-primary btn-wide" id="btn-step2-next">ステップ3に進む <i class="fa-solid fa-arrow-right"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3 PANEL -->
+        <div class="wizard-panel" id="wizard-panel-3">
+            <div class="panel-layout" style="grid-template-columns: 1.2fr 1.8fr;">
+                <!-- Left Pane: Metadata and Save Configuration -->
+                <div class="panel-control glass-panel" style="padding: 1.5rem;">
+                    <div class="control-header" style="border-bottom: 1px solid var(--card-border); padding-bottom: 1rem; margin-bottom: 1rem;">
+                        <h2><i class="fa-solid fa-cloud-arrow-up"></i> メタデータ設定と保存</h2>
+                        <p>問題のメタデータを入力し、最終保存を実行してください。</p>
+                    </div>
+                    
+                    <div class="form-vertical-fields" style="flex: 1; overflow-y: auto;">
+                        <div class="form-group">
+                            <label for="save-source-book">教材名 <span style="color:#ef4444;">*</span></label>
+                            <input type="text" id="save-source-book" placeholder="例: 予習シリーズ" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="save-chapter">章 / 回</label>
+                            <input type="text" id="save-chapter" placeholder="例: 第5回">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="save-unit">単元名</label>
+                            <input type="text" id="save-unit" placeholder="例: 平面図形 (空欄も可)">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="save-page-number">ページ数</label>
+                            <input type="text" id="save-page-number" placeholder="例: P.45">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="save-problem-number">問題番号</label>
+                            <input type="text" id="save-problem-number" placeholder="例: 大問3">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="save-strategy">解法の核心</label>
+                            <input type="text" id="save-strategy" placeholder="自動抽出された核心要約">
+                        </div>
+                    </div>
+                    
+                    <div class="control-footer" style="margin-top: 1rem; border-top: 1px solid var(--card-border); padding-top: 1rem;">
+                        <div style="display: flex; gap: 0.5rem; width: 100%;">
+                            <button type="button" class="btn btn-secondary" id="btn-step3-back"><i class="fa-solid fa-arrow-left"></i> 戻る</button>
+                            <button type="button" class="btn btn-primary" id="btn-save-problem" style="flex: 1;">
+                                <i class="fa-solid fa-cloud-arrow-up"></i> データベースに保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Pane: Combined Preview Doc -->
+                <div class="panel-preview glass-panel">
+                    <div class="preview-header">
+                        <h3><i class="fa-solid fa-file-invoice"></i> 最終プレビュー</h3>
+                    </div>
+                    <div class="preview-body" id="final-preview-container" style="background: white; padding: 2rem; overflow-y: auto;">
+                        <!-- Injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Google Drive File Selector Modal -->
+    <div class="drive-modal-overlay" id="drive-modal-overlay" style="display: none;">
+        <div class="drive-modal glass-panel">
+            <div class="drive-modal-header">
+                <h3><i class="fa-brands fa-google-drive"></i> Googleドライブからファイルを選択</h3>
+                <button type="button" class="btn-close-modal" id="btn-close-drive-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <div class="drive-modal-body">
+                <div class="drive-loading" id="drive-loading">
+                    <div class="spinner"></div>
+                    <p>Googleドライブのファイルを読み込み中...</p>
+                </div>
+                <div class="drive-files-grid" id="drive-files-container" style="display: none;">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">読み取り中...</div>
+    </div>
+
+    <!-- Toast Notification Popup -->
+    <div class="toast" id="toast">
+        処理が成功しました！
+    </div>
+
+    <!-- JS Logic -->
+    <script src="/static/js/reader.js"></script>
+</body>
+</html>

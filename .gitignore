@@ -77,3 +77,6 @@ services/calendar-register/auth/token.json
 services/calendar-register/auth/credentials.json
 services/gmail-service/auth/credentials.json
 services/gmail-service/auth/gmail_cleaner_token.json
+
+# Scratch work directory (contains API keys, conversation logs, etc.)
+scratch/

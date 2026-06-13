@@ -13,6 +13,23 @@ from flask_cors import CORS
 from loguru import logger
 from typing import Optional
 from dotenv import load_dotenv
+import pypdfium2 as pdfium
+from PIL import Image
+
+# PDFから画像への変換ヘルパー
+def convert_pdf_to_images(pdf_path: Path) -> list:
+    """PDFの全ページをPIL Imageのリストに変換する"""
+    try:
+        doc = pdfium.PdfDocument(str(pdf_path))
+        images = []
+        for page in doc:
+            bitmap = page.render(scale=2)  # 解像度向上のためscale=2
+            pil_img = bitmap.to_pil()
+            images.append(pil_img)
+        return images
+    except Exception as e:
+        logger.error(f"Failed to convert PDF to images: {e}")
+        return []
 
 # 図形描画用Pythonコードの実行ヘルパー
 def run_diagram_code(code_str: str, session_id: str, suffix: str, elev: Optional[float] = None, azim: Optional[float] = None) -> dict:
@@ -1046,6 +1063,369 @@ def api_save_blocks():
             p.unlink()
         except Exception:
             pass
+            
+    return jsonify({
+        "status": "success",
+        "message": "Problem saved successfully",
+        "display_id": display_id,
+        "drive_synced": drive_md_synced
+    })
+
+
+# === OCR Reader / Import Routes ======================================
+
+@app.route("/reader")
+def reader():
+    """OCR読み取りインポート画面を表示"""
+    return render_template("reader.html")
+
+@app.route("/api/ocr/read-problem", methods=["POST"])
+def ocr_read_problem():
+    """Gemini API (3.5 Flash or 3.1 Flash-Lite) を使って問題画像をOCRし、
+    Matplotlibコードを生成してプレビュー画像を作る"""
+    hint = request.form.get("hint", "").strip()
+    model_name = request.form.get("model", "gemini-3.1-flash-lite")
+    session_id = request.form.get("session_id", "").strip()
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        
+    temp_file_path = None
+    pil_images = []
+    
+    if "file" in request.files:
+        file = request.files["file"]
+        if file.filename != "":
+            temp_dir = Path(tempfile.gettempdir())
+            suffix = Path(file.filename).suffix
+            temp_file_path = temp_dir / f"upload_{uuid.uuid4().hex}{suffix}"
+            file.save(str(temp_file_path))
+            
+            if suffix.lower() == ".pdf":
+                pil_images = convert_pdf_to_images(temp_file_path)
+            else:
+                try:
+                    pil_images = [Image.open(temp_file_path)]
+                except Exception as e:
+                    logger.error(f"Failed to open image: {e}")
+                    
+    elif "file_id" in request.form:
+        file_id = request.form.get("file_id")
+        drive = get_drive()
+        try:
+            downloaded_path = drive.download_file(file_id)
+            if downloaded_path:
+                temp_file_path = Path(downloaded_path)
+                if temp_file_path.suffix.lower() == ".pdf":
+                    pil_images = convert_pdf_to_images(temp_file_path)
+                else:
+                    pil_images = [Image.open(temp_file_path)]
+        except Exception as e:
+            logger.error(f"Failed to download from Drive: {e}")
+            
+    if not pil_images:
+        return jsonify({"error": "画像またはPDFの読み込みに失敗しました。"}), 400
+        
+    prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCRプログラムです。
+提供された画像（またはPDFの最初のページ）から、【問題文】と【図形（あれば）の構造】を正確に読み取ってください。
+
+【ヒント】:
+{hint if hint else "なし"}
+
+【読み取り指示】:
+1. 問題文のテキストを正確に抽出してください（数式は LaTeX 形式の $...$ または $$...$$ で記述してください）。
+2. 画像の中に幾何学的な図やグラフなどの図形が含まれている場合、その図形を再現するための Python (Matplotlib) コードを生成してください。
+   - 図形描画コードの絶対要件:
+     - GUIウインドウ（plt.show()など）は開かず、最後に `plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
+     - 図の中の文字や数値も、問題文と整合するように plt.text や plt.annotate で描画してください。
+     - 図がつぶれないように、それなりの大きさ（例：figsize=(6, 5)など）で描画してください。
+     - 余計な説明（「Matplotlibコードはこちらです」など）や ```python といったMarkdownのコードブロックタグは含めず、純粋なPythonスクリプトのみを出力内の `matplotlib_code` キーに格納してください。
+
+【出力フォーマット】:
+必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+{{
+  "problem_markdown": "問題文のマークダウン（LaTeX数式入り）\\nもし図形がある場合は、画像を表示したい場所に `![図](problem_diagram.png)` と記述してください。",
+  "matplotlib_code": "図形を描画するためのPythonコード（図形がない場合は空文字）"
+}}"""
+
+    try:
+        model = genai.GenerativeModel(model_name=model_name)
+        img_to_send = pil_images[0]
+        
+        response = model.generate_content(
+            [img_to_send, prompt],
+            generation_config={
+                "response_mime_type": "application/json",
+                "temperature": 0.1
+            }
+        )
+        
+        res_data = json.loads(response.text.strip())
+        problem_markdown = res_data.get("problem_markdown", "")
+        matplotlib_code = res_data.get("matplotlib_code", "")
+        
+        token_usage = {"input_tokens": 0, "output_tokens": 0}
+        try:
+            usage = response.usage_metadata
+            token_usage["input_tokens"] = getattr(usage, "prompt_token_count", 0) or 0
+            token_usage["output_tokens"] = getattr(usage, "candidates_token_count", 0) or 0
+        except Exception:
+            pass
+            
+        image_url = ""
+        error_msg = ""
+        if matplotlib_code:
+            run_res = run_diagram_code(matplotlib_code, session_id, "problem")
+            if run_res.get("success"):
+                image_url = run_res.get("image_url", "")
+                problem_markdown = problem_markdown.replace("problem_diagram.png", image_url)
+            else:
+                error_msg = run_res.get("error", "")
+                
+        if temp_file_path and temp_file_path.exists():
+            try: temp_file_path.unlink()
+            except Exception: pass
+            
+        return jsonify({
+            "problem_markdown": problem_markdown,
+            "matplotlib_code": matplotlib_code,
+            "image_url": image_url,
+            "error": error_msg,
+            "token_usage": token_usage
+        })
+        
+    except Exception as e:
+        logger.error(f"OCR problem error: {e}")
+        return jsonify({"error": f"OCR処理に失敗しました: {str(e)}"}), 500
+
+@app.route("/api/ocr/read-explanation", methods=["POST"])
+def ocr_read_explanation():
+    """Gemini APIを使って解説画像をOCRし、詳細化（代数は使わない）して
+    Matplotlibコードを生成してプレビューを作る"""
+    hint = request.form.get("hint", "").strip()
+    problem_text = request.form.get("problem_text", "").strip()
+    model_name = request.form.get("model", "gemini-3.1-flash-lite")
+    session_id = request.form.get("session_id", "").strip()
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        
+    temp_file_path = None
+    pil_images = []
+    
+    if "file" in request.files:
+        file = request.files["file"]
+        if file.filename != "":
+            temp_dir = Path(tempfile.gettempdir())
+            suffix = Path(file.filename).suffix
+            temp_file_path = temp_dir / f"upload_{uuid.uuid4().hex}{suffix}"
+            file.save(str(temp_file_path))
+            
+            if suffix.lower() == ".pdf":
+                pil_images = convert_pdf_to_images(temp_file_path)
+            else:
+                try:
+                    pil_images = [Image.open(temp_file_path)]
+                except Exception as e:
+                    logger.error(f"Failed to open image: {e}")
+                    
+    elif "file_id" in request.form:
+        file_id = request.form.get("file_id")
+        drive = get_drive()
+        try:
+            downloaded_path = drive.download_file(file_id)
+            if downloaded_path:
+                temp_file_path = Path(downloaded_path)
+                if temp_file_path.suffix.lower() == ".pdf":
+                    pil_images = convert_pdf_to_images(temp_file_path)
+                else:
+                    pil_images = [Image.open(temp_file_path)]
+        except Exception as e:
+            logger.error(f"Failed to download from Drive: {e}")
+            
+    if not pil_images:
+        return jsonify({"error": "画像またはPDFの読み込みに失敗しました。"}), 400
+        
+    prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCR・解答詳細化プログラムです。
+提供された解説画像（またはPDFの最初のページ）から、【解答解説文】と【図形（あれば）の構造】を正確に読み取り、詳細化してください。
+
+【ベースとなる問題文】:
+{problem_text}
+
+【ヒント】:
+{hint if hint else "なし"}
+
+【解説の詳細化・OCRの絶対条件】:
+1. 解説が簡潔すぎる場合は、中学受験算数を勉強している小学生が躓かないように、思考のプロセスを丁寧に書き足して詳細化（補強）してください。
+2. 【代数不使用ルール】: 小学生向けのため、 $x$ や $y$ などの代数・変数は絶対に使用しないでください。
+   - 代わりに「①」「④」などの丸数字（比の記号）や、「□（しかく）」などの算数の記号を用いて説明してください。
+3. 【トーン】: 算数に真剣に向き合う姿勢を伝える、知的で成熟した落ち着いたトーン（Mature tone）で解説を作成してください。
+4. 数式は LaTeX 形式の $...$ または $$...$$ で記述してください。
+5. 解説画像の中に幾何学的な図や解説の補助となる図形が含まれている場合、その図形を再現するための Python (Matplotlib) コードを生成してください。
+   - 図形描画コードの絶対要件:
+     - 最後に `plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
+     - GUIウインドウは開かないでください。
+6. この問題に最もふさわしい「解法の核心（コア戦略）」を20〜30文字程度で要約し、`strategy_summary` に格納してください。
+7. この問題の単元や解法パターンに関連するタグ（例：面積比, 相似, 旅人算など）を3個程度抽出し、`tags` に格納してください。
+
+【出力フォーマット】:
+必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+{{
+  "explanation_markdown": "詳細化された解説のマークダウン（LaTeX数式入り）\\nもし図形がある場合は、画像を表示したい場所に `![解説図](explanation_diagram.png)` と記述してください。",
+  "matplotlib_code": "解説図を描画するためのPythonコード（図形がない場合は空文字）",
+  "strategy_summary": "解法の核心の要約文",
+  "tags": ["タグ1", "タグ2", "タグ3"]
+}}"""
+
+    try:
+        model = genai.GenerativeModel(model_name=model_name)
+        img_to_send = pil_images[0]
+        
+        response = model.generate_content(
+            [img_to_send, prompt],
+            generation_config={
+                "response_mime_type": "application/json",
+                "temperature": 0.1
+            }
+        )
+        
+        res_data = json.loads(response.text.strip())
+        explanation_markdown = res_data.get("explanation_markdown", "")
+        matplotlib_code = res_data.get("matplotlib_code", "")
+        strategy_summary = res_data.get("strategy_summary", "")
+        tags = res_data.get("tags", [])
+        
+        token_usage = {"input_tokens": 0, "output_tokens": 0}
+        try:
+            usage = response.usage_metadata
+            token_usage["input_tokens"] = getattr(usage, "prompt_token_count", 0) or 0
+            token_usage["output_tokens"] = getattr(usage, "candidates_token_count", 0) or 0
+        except Exception:
+            pass
+            
+        image_url = ""
+        error_msg = ""
+        if matplotlib_code:
+            run_res = run_diagram_code(matplotlib_code, session_id, "explanation")
+            if run_res.get("success"):
+                image_url = run_res.get("image_url", "")
+                explanation_markdown = explanation_markdown.replace("explanation_diagram.png", image_url)
+            else:
+                error_msg = run_res.get("error", "")
+                
+        if temp_file_path and temp_file_path.exists():
+            try: temp_file_path.unlink()
+            except Exception: pass
+            
+        return jsonify({
+            "explanation_markdown": explanation_markdown,
+            "matplotlib_code": matplotlib_code,
+            "image_url": image_url,
+            "strategy_summary": strategy_summary,
+            "tags": tags,
+            "error": error_msg,
+            "token_usage": token_usage
+        })
+        
+    except Exception as e:
+        logger.error(f"OCR explanation error: {e}")
+        return jsonify({"error": f"OCR処理に失敗しました: {str(e)}"}), 500
+
+@app.route("/api/problems/import", methods=["POST"])
+def import_problem():
+    """OCR読み取りされたデータをコンパイルし、SupabaseとGoogle Driveに保存する"""
+    data = request.json or {}
+    session_id = data.get("session_id")
+    source_book = data.get("source_book", "").strip()
+    chapter = data.get("chapter", "").strip()
+    unit = data.get("unit", "").strip()
+    problem_markdown = data.get("problem_markdown", "").strip()
+    explanation_markdown = data.get("explanation_markdown", "").strip()
+    strategy_summary = data.get("strategy_summary", "").strip()
+    tags = data.get("tags") or []
+    
+    if not source_book or (not problem_markdown and not explanation_markdown):
+        return jsonify({"error": "教材名、および本文（問題または解説）は必須です。"}), 400
+        
+    if not unit or unit.strip() == "":
+        unit = "未設定"
+        
+    display_id = get_next_display_id(unit)
+    
+    static_gen_dir = _here / "static" / "generated"
+    static_gen_dir.mkdir(exist_ok=True, parents=True)
+    
+    def rename_and_replace(text, display_id):
+        if not text:
+            return ""
+        for suffix in ["problem", "explanation"]:
+            temp_filename = f"temp_{session_id}_{suffix}.png"
+            real_filename = f"{display_id}_{suffix}.png"
+            temp_path = static_gen_dir / temp_filename
+            real_path = static_gen_dir / real_filename
+            
+            temp_url = f"/static/generated/{temp_filename}"
+            real_url = f"/static/generated/{real_filename}"
+            
+            if temp_path.exists():
+                shutil.copy(temp_path, real_path)
+                text = text.replace(temp_url, real_url)
+                logger.info(f"OCR: Renamed diagram {temp_filename} to {real_filename}")
+                
+                drive = get_drive()
+                if drive and drive.drive:
+                    try:
+                        drive.upload_diagram(unit, str(real_path), real_filename)
+                    except Exception as e:
+                        logger.error(f"OCR: Failed to upload diagram {real_filename} to Drive: {e}")
+        return text
+        
+    problem_markdown = rename_and_replace(problem_markdown, display_id)
+    explanation_markdown = rename_and_replace(explanation_markdown, display_id)
+    
+    db = get_db()
+    grading_status = {"全体": "unanswered"}
+    
+    problem_record = {
+        "display_id": display_id,
+        "source_book": source_book,
+        "chapter": chapter or None,
+        "unit": unit,
+        "problem_markdown": problem_markdown,
+        "explanation_markdown": explanation_markdown,
+        "strategy_summary": strategy_summary,
+        "grading_status": grading_status,
+        "owner_id": os.getenv("DEFAULT_OWNER_ID", "d1b18b1c-a4dc-4b2e-97af-5153a85e685c")
+    }
+    
+    try:
+        db.client.table("math_problems").insert(problem_record).execute()
+        logger.info(f"OCR: Successfully inserted problem '{display_id}' into Supabase")
+    except Exception as e:
+        logger.error(f"OCR: Failed to save to Supabase: {e}")
+        return jsonify({"error": f"Supabase保存エラー: {str(e)}"}), 500
+        
+    drive_md_synced = False
+    drive = get_drive()
+    if drive and drive.drive:
+        chapter_str = f" {chapter}" if chapter else ""
+        append_md = f"""# [{display_id}] {source_book}{chapter_str}
+- 単元: {unit}
+- ページ数: {strategy_summary or 'なし'}
+ 
+ ## 問題
+{problem_markdown}
+
+## 解説
+{explanation_markdown}"""
+        try:
+            drive_md_synced = drive.append_problem_markdown(unit, append_md)
+        except Exception as e:
+            logger.error(f"OCR: Failed to append markdown to Google Drive: {e}")
+            
+    for suffix in ["problem", "explanation"]:
+        p = static_gen_dir / f"temp_{session_id}_{suffix}.png"
+        try:
+            if p.exists(): p.unlink()
+        except Exception: pass
             
     return jsonify({
         "status": "success",

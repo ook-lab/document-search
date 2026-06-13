@@ -161,6 +161,43 @@ class GoogleDriveHandler:
             logger.error(f"Failed to upload diagram to Google Drive: {e}")
             return None
 
+    def download_file(self, file_id: str) -> Optional[str]:
+        """Google Driveのファイルを一時ディレクトリにダウンロードし、そのパスを返す"""
+        if not self.drive:
+            logger.error("Google Drive connection is not available.")
+            return None
+        try:
+            # ファイルメタデータを取得してファイル名を取り出す
+            file_metadata = self.drive.service.files().get(
+                fileId=file_id,
+                fields="name",
+                supportsAllDrives=True
+            ).execute()
+            file_name = file_metadata.get("name", "drive_file")
+            
+            # 一時ファイルとしてダウンロード
+            temp_dir = tempfile.gettempdir()
+            dest_path = Path(temp_dir) / f"drive_{file_id}_{file_name}"
+            
+            # Connectorのdownload_fileを呼び出す
+            self.drive.download_file(file_id, file_name, temp_dir)
+            
+            # Connectorのdownload_fileは temp_dir/file_name に保存する仕様
+            # ただし競合を防ぐため、元のファイルパスを特定する
+            downloaded_path = Path(temp_dir) / file_name
+            if downloaded_path.exists():
+                # 重複回避のためリネーム
+                if downloaded_path != dest_path:
+                    if dest_path.exists():
+                        dest_path.unlink()
+                    downloaded_path.rename(dest_path)
+                return str(dest_path)
+            
+            return None
+        except Exception as e:
+            logger.error(f"Failed to download file {file_id} from Drive: {e}")
+            return None
+
 
 if __name__ == "__main__":
     # 簡単なテストスクリプト
