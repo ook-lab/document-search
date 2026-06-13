@@ -336,7 +336,7 @@ def parse_markdown_problem(md_text: str) -> dict:
 # === HTML Pages ====================================================
 @app.route("/")
 def index():
-    return render_template("editor.html")
+    return render_template("reader.html")
 
 # === API Endpoints ==================================================
 
@@ -917,10 +917,15 @@ def clean_ocr_text(text: str) -> str:
     text = re.sub(r'(?i)\[?copy\s+json\]?', '', text)
     return text.strip()
 
+@app.route("/manual-input")
+def manual_input_page():
+    """手動入力・修正画面を表示"""
+    return render_template("editor.html")
+
 @app.route("/editor")
 def editor_page():
-    """ブロック登録エディタの画面を表示（ルートにリダイレクト）"""
-    return redirect("/")
+    """旧エディタパスから手動入力・修正へリダイレクト"""
+    return redirect("/manual-input")
 
 @app.route("/api/diagram/run", methods=["POST"])
 def api_run_diagram():
@@ -1075,17 +1080,20 @@ def api_save_blocks():
 # === OCR Reader / Import Routes ======================================
 
 @app.route("/reader")
-def reader():
-    """OCR読み取りインポート画面を表示"""
-    return render_template("reader.html")
+def reader_redirect():
+    """旧OCRリーダーパスからルートへリダイレクト"""
+    return redirect("/")
 
 @app.route("/api/ocr/read-problem", methods=["POST"])
 def ocr_read_problem():
     """Gemini API (3.5 Flash or 3.1 Flash-Lite) を使って問題画像をOCRし、
-    Matplotlibコードを生成してプレビュー画像を作る"""
+    Matplotlibコードを生成してプレビュー画像を作る。
+    partパラメータによって 'text', 'diagram', 'all' のスキャンを制御する。
+    """
     hint = request.form.get("hint", "").strip()
     model_name = request.form.get("model", "gemini-3.1-flash-lite")
     session_id = request.form.get("session_id", "").strip()
+    part = request.form.get("part", "all").strip().lower()
     if not session_id:
         session_id = str(uuid.uuid4())
         
@@ -1125,7 +1133,45 @@ def ocr_read_problem():
     if not pil_images:
         return jsonify({"error": "画像またはPDFの読み込みに失敗しました。"}), 400
         
-    prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCRプログラムです。
+    # part パラメータによってプロンプトと言い回し、期待するJSON構造を分ける
+    if part == "text":
+        prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCRプログラムです。
+提供された画像（またはPDFの最初のページ）から、【問題文】のテキスト部分のみを極めて正確に読み取ってください。
+
+【ヒント】:
+{hint if hint else "なし"}
+
+【読み取り指示】:
+1. 問題文のテキストを正確に抽出してください（数式は LaTeX 形式の $...$ または $$...$$ で記述してください）。
+2. 図やグラフ、イラストなどの「描画用コード」は絶対に生成しないでください。
+3. もし問題文の中に図の存在を示す「図1」「下の図のように」といった表現がある場合は、画像を表示したい場所に `![図](problem_diagram.png)` と記述して構いません。
+
+【出力フォーマット】:
+必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+{{
+  "problem_markdown": "抽出された問題文のマークダウン（LaTeX数式入り）"
+}}"""
+    elif part == "diagram":
+        prompt = f"""あなたはプロの中学受験算数講師、および優秀な幾何学図形描画プログラムです。
+提供された画像（またはPDFの最初のページ）に含まれる幾何学的な図やグラフ、表などの図形を正確に分析し、その図形を完全に再現するための Python (Matplotlib) コードを生成してください。
+
+【ヒント】:
+{hint if hint else "なし"}
+
+【コード生成指示】:
+1. 図形描画コードの絶対要件:
+   - GUIウインドウ（plt.show()など）は開かず、最後に `plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
+   - 図の中の文字や数値（例：頂点記号A, B, Cや長さ、角度など）も、図形内の情報と整合するように plt.text や plt.annotate で描画してください。
+   - 図がつぶれないように、それなりの大きさ（例：figsize=(6, 5)など）で描画してください。
+   - 余計な説明（「Matplotlibコードはこちらです」など）や ```python といったMarkdownのコードブロックタグは含めず、純粋なPythonスクリプトのみを出力内の `matplotlib_code` キーに格納してください。
+
+【出力フォーマット】:
+必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+{{
+  "matplotlib_code": "図形を描画するためのPythonコード"
+}}"""
+    else:  # all
+        prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCRプログラムです。
 提供された画像（またはPDFの最初のページ）から、【問題文】と【図形（あれば）の構造】を正確に読み取ってください。
 
 【ヒント】:
@@ -1177,7 +1223,8 @@ def ocr_read_problem():
             run_res = run_diagram_code(matplotlib_code, session_id, "problem")
             if run_res.get("success"):
                 image_url = run_res.get("image_url", "")
-                problem_markdown = problem_markdown.replace("problem_diagram.png", image_url)
+                if problem_markdown:
+                    problem_markdown = problem_markdown.replace("problem_diagram.png", image_url)
             else:
                 error_msg = run_res.get("error", "")
                 
@@ -1200,11 +1247,14 @@ def ocr_read_problem():
 @app.route("/api/ocr/read-explanation", methods=["POST"])
 def ocr_read_explanation():
     """Gemini APIを使って解説画像をOCRし、詳細化（代数は使わない）して
-    Matplotlibコードを生成してプレビューを作る"""
+    Matplotlibコードを生成してプレビューを作る。
+    partパラメータによって 'text', 'diagram', 'all' のスキャンを制御する。
+    """
     hint = request.form.get("hint", "").strip()
     problem_text = request.form.get("problem_text", "").strip()
     model_name = request.form.get("model", "gemini-3.1-flash-lite")
     session_id = request.form.get("session_id", "").strip()
+    part = request.form.get("part", "all").strip().lower()
     if not session_id:
         session_id = str(uuid.uuid4())
         
@@ -1244,12 +1294,64 @@ def ocr_read_explanation():
     if not pil_images:
         return jsonify({"error": "画像またはPDFの読み込みに失敗しました。"}), 400
         
-    prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCR・解答詳細化プログラムです。
+    # part パラメータによってプロンプトと言い回し、期待するJSON構造を分ける
+    if part == "text":
+        prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCR・解答詳細化プログラムです。
+提供された解説画像（またはPDFの最初のページ）から、【解答解説文】を正確に読み取り、詳細化してください。
+
+【ベースとなる問題文】:
+{problem_text}
+
+【ヒント】:
+{hint if hint else "なし"}
+
+【解説の詳細化・OCRの絶対条件】:
+1. 解説が簡潔すぎる場合は、中学受験算数を勉強している小学生が躓かないように、思考のプロセスを丁寧に書き足して詳細化（補強）してください。
+2. 【代数不使用ルール】: 小学生向けのため、 $x$ や $y$ などの代数・変数は絶対に使用しないでください。
+   - 代わりに「①」「④」などの丸数字（比の記号）や、「□（しかく）」などの算数の記号を用いて説明してください。
+3. 【トーン】: 算数に真剣に向き合う姿勢を伝える、知的で成熟した落ち着いたトーン（Mature tone）で解説を作成してください。
+4. 数式は LaTeX 形式の $...$ または $$...$$ で記述してください。
+5. 図面やグラフを再現するMatplotlibコードは絶対に生成しないでください。
+6. この問題に最もふさわしい「解法の核心（コア戦略）」を20〜30文字程度で要約し、`strategy_summary` に格納してください。
+7. この問題の単元や解法パターンに関連するタグ（例：面積比, 相似, 旅人算など）を3個程度抽出し、`tags` に格納してください。
+
+【出力フォーマット】:
+必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+{{
+  "explanation_markdown": "詳細化された解説のマークダウン（LaTeX数式入り）",
+  "strategy_summary": "解法の核心の要約文",
+  "tags": ["タグ1", "タグ2", "タグ3"]
+}}"""
+    elif part == "diagram":
+        prompt = f"""あなたはプロの中学受験算数講師、および優秀な幾何学図形描画プログラムです。
+提供された解説画像（またはPDFの最初のページ）に含まれる、解説の補助となる幾何学的な図やグラフ、イラストなどの図形を正確に分析し、その図形を完全に再現するための Python (Matplotlib) コードを生成してください。
+
+【ベースとなる問題文】:
+{problem_text}
+
+【ヒント】:
+{hint if hint else "なし"}
+
+【図形再現コード生成の絶対条件】:
+1. 図形描画コードの絶対要件:
+   - GUIウインドウ（plt.show()など）は開かず、最後に `plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
+   - 図の中の文字や数値（例：頂点記号A, B, Cや長さ、角度など）も、図形内の情報と整合するように plt.text や plt.annotate で描画してください。
+   - 図がつぶれないように、それなりの大きさ（例：figsize=(6, 5)など）で描画してください。
+   - 余計な説明（「Matplotlibコードはこちらです」など）や ```python といったMarkdownのコードブロックタグは含めず、純粋なPythonスクリプトのみを出力内の `matplotlib_code` キーに格納してください。
+
+【出力フォーマット】:
+必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+{{
+  "matplotlib_code": "解説図を描画するためのPythonコード"
+}}"""
+    else:  # all
+        prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCR・解答詳細化プログラムです。
 提供された解説画像（またはPDFの最初のページ）から、【解答解説文】と【図形（あれば）の構造】を正確に読み取り、詳細化してください。
 
 【ベースとなる問題文】:
 {problem_text}
 
+// ... 
 【ヒント】:
 {hint if hint else "なし"}
 
@@ -1307,7 +1409,8 @@ def ocr_read_explanation():
             run_res = run_diagram_code(matplotlib_code, session_id, "explanation")
             if run_res.get("success"):
                 image_url = run_res.get("image_url", "")
-                explanation_markdown = explanation_markdown.replace("explanation_diagram.png", image_url)
+                if explanation_markdown:
+                    explanation_markdown = explanation_markdown.replace("explanation_diagram.png", image_url)
             else:
                 error_msg = run_res.get("error", "")
                 

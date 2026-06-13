@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>sansu-base | OCR読み取りインポート</title>
+    <title>sansu-base | 算数OCRスキャナー</title>
     
     <!-- CSS Dependencies -->
     <link rel="stylesheet" href="/static/css/style.css">
@@ -36,11 +36,11 @@
             <h1>sansu-base</h1>
         </div>
         <nav style="display: flex; gap: 1.5rem;">
-            <a href="/" style="text-decoration: none; color: var(--text-muted); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem;">
-                <i class="fa-solid fa-database"></i> 問題エディタ
+            <a href="/" style="text-decoration: none; color: var(--accent-primary); font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 2px solid var(--accent-primary); padding-bottom: 0.25rem;">
+                <i class="fa-solid fa-camera"></i> OCR読み取り登録
             </a>
-            <a href="/reader" style="text-decoration: none; color: var(--accent-primary); font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 2px solid var(--accent-primary); padding-bottom: 0.25rem;">
-                <i class="fa-solid fa-file-import"></i> OCR読み取りインポート
+            <a href="/manual-input" style="text-decoration: none; color: var(--text-muted); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-keyboard"></i> 手動入力・修正
             </a>
         </nav>
     </header>
@@ -108,35 +108,51 @@
                         </div>
                     </div>
                     
-                    <div class="control-footer">
+                    <div class="control-footer" style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%;">
                         <div class="cost-summary" id="problem-cost-display"></div>
-                        <button type="button" class="btn btn-primary btn-wide" id="btn-run-problem-ocr">
-                            <i class="fa-solid fa-bolt"></i> 読み取りを実行する
+                        <button type="button" class="btn btn-primary btn-wide" id="btn-ocr-text" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">
+                            <i class="fa-solid fa-file-lines"></i> 文字のみを正確にスキャン
+                        </button>
+                        <button type="button" class="btn btn-primary btn-wide" id="btn-ocr-diagram" style="background: linear-gradient(135deg, #10b981 0%, #047857 100%);">
+                            <i class="fa-solid fa-shapes"></i> 図形のみを正確に再現（コード生成）
                         </button>
                     </div>
                 </div>
                 
                 <!-- Right Preview Pane -->
-                <div class="panel-preview glass-panel">
-                    <div class="preview-header">
-                        <h3><i class="fa-solid fa-eye"></i> プレビュー・調整</h3>
-                        <div class="preview-actions">
-                            <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-problem" style="display: none;"><i class="fa-solid fa-pen"></i> 編集</button>
+                <div class="panel-preview glass-panel" style="display: flex; flex-direction: column; gap: 1rem;">
+                    <!-- Problem Text Block (OCR Text Result) -->
+                    <div class="preview-block" style="flex: 1; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; background: #fff;">
+                        <div class="preview-block-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
+                            <h4 style="margin: 0; font-size: 0.95rem; color: #1e293b;"><i class="fa-solid fa-align-left" style="color: #3b82f6;"></i> 問題文スキャン結果</h4>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-text-block" style="display: none;"><i class="fa-solid fa-pen"></i> 修正</button>
+                        </div>
+                        <div class="preview-block-body" id="problem-text-preview" style="flex: 1; overflow-y: auto; font-size: 0.95rem; line-height: 1.6; min-height: 80px;">
+                            <span style="color: #94a3b8;">「文字のみを正確にスキャン」を実行すると、ここにスキャンされたテキストが表示されます。</span>
+                        </div>
+                        <div class="preview-block-editor" id="problem-text-editor-pane" style="display: none; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                            <textarea id="problem-text-editor" style="width: 100%; min-height: 100px; font-family: monospace; font-size: 0.88rem; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px;"></textarea>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-text-preview" style="align-self: flex-end;">プレビューに反映</button>
                         </div>
                     </div>
-                    <div class="preview-body" id="problem-preview-body">
-                        <div class="empty-state">
-                            <i class="fa-solid fa-file-import"></i>
-                            <p>読み取りを実行すると、ここにOCR結果のプレビューが表示されます。</p>
+
+                    <!-- Problem Diagram Block (Generated Matplotlib Diagram) -->
+                    <div class="preview-block" style="flex: 1.2; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; background: #fff;">
+                        <div class="preview-block-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 0.5rem; margin-bottom: 0.5rem;">
+                            <h4 style="margin: 0; font-size: 0.95rem; color: #1e293b;"><i class="fa-solid fa-shapes" style="color: #10b981;"></i> 問題図形再現結果</h4>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-edit-diagram-block" style="display: none;"><i class="fa-solid fa-code"></i> コード修正</button>
+                        </div>
+                        <div class="preview-block-body" id="problem-diagram-preview" style="flex: 1; overflow-y: auto; text-align: center; min-height: 120px; display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 6px;">
+                            <span style="color: #94a3b8;">「図形のみを正確に再現」を実行すると、ここに再現された図形画像が表示されます。</span>
+                        </div>
+                        <div class="preview-block-editor" id="problem-diagram-editor-pane" style="display: none; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                            <textarea id="problem-diagram-code-editor" style="width: 100%; min-height: 120px; font-family: monospace; font-size: 0.85rem; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px;"></textarea>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-diagram-preview" style="align-self: flex-end;">コードを実行して再描画</button>
                         </div>
                     </div>
-                    <div class="preview-editor-pane" id="problem-editor-pane" style="display: none; padding: 1.5rem; flex-direction: column; gap: 1rem; flex: 1;">
-                        <label>問題文マークダウン（修正可能）</label>
-                        <textarea id="problem-markdown-editor" style="flex: 1; min-height: 200px; font-family: monospace; font-size: 0.9rem;"></textarea>
-                        <button type="button" class="btn btn-secondary btn-sm" id="btn-sync-problem-preview">プレビューに反映</button>
-                    </div>
+
                     <div class="panel-actions-bottom" style="display: none;" id="problem-actions-next">
-                        <button type="button" class="btn btn-primary btn-wide" id="btn-step1-next">ステップ2に進む <i class="fa-solid fa-arrow-right"></i></button>
+                        <button type="button" class="btn btn-primary btn-wide" id="btn-step1-next" style="width: 100%;">ステップ2（解説スキャン）に進む <i class="fa-solid fa-arrow-right"></i></button>
                     </div>
                 </div>
             </div>
