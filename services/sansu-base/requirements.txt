@@ -5,3 +5,7 @@ supabase==2.10.0
 python-dotenv==1.0.0
 loguru==0.7.2
 google-cloud-secret-manager
+pypdfium2==4.28.0
+Pillow==10.2.0
+matplotlib==3.8.2
+numpy==1.26.2
