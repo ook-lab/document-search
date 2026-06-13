@@ -30,10 +30,20 @@ def get_stats():
     if not supabase:
         return jsonify({"error": "Supabase client is not initialized"}), 500
         
+    from flask import request
+    user = request.args.get("user", "ikuya").strip().lower()
+    
+    if user == "ema":
+        subjects_table = "ema_quiz_subjects"
+        history_table = "ema_quiz_history"
+    else:
+        subjects_table = "quiz_subjects"
+        history_table = "quiz_history"
+        
     try:
         # DBから回答履歴と科目を全件取得
-        history_res = supabase.table("quiz_history").select("*").execute()
-        subjects_res = supabase.table("quiz_subjects").select("id, name").neq("id", "00000000-0000-0000-0000-000000000000").execute()
+        history_res = supabase.table(history_table).select("*").execute()
+        subjects_res = supabase.table(subjects_table).select("id, name").neq("id", "00000000-0000-0000-0000-000000000000").execute()
         
         subject_map = {s["id"]: s["name"] for s in subjects_res.data}
         history_data = history_res.data
