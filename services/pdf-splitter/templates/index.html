@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Question Splitter</title>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+            --panel-bg: rgba(30, 41, 59, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.4);
+            --accent: #06b6d4;
+            --split-line-color: #f97316;
+            --split-line-glow: rgba(249, 117, 22, 0.8);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, #fff 0%, var(--text-muted) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            max-width: 1600px;
+            width: 100%;
+            margin: 0 auto;
+            gap: 2rem;
+        }
+
+        /* Drag & Drop Upload Container */
+        .upload-card {
+            background: var(--panel-bg);
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 4rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(16px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            max-width: 800px;
+            width: 100%;
+            margin: 4rem auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .upload-card:hover, .upload-card.dragover {
+            border-color: var(--primary);
+            box-shadow: 0 0 25px var(--primary-glow);
+            background: rgba(30, 41, 59, 0.85);
+            transform: translateY(-2px);
+        }
+
+        .upload-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: var(--primary);
+            transition: all 0.3s;
+        }
+
+        .upload-card:hover .upload-icon {
+            transform: scale(1.1);
+            background: rgba(99, 102, 241, 0.1);
+            border-color: var(--primary);
+        }
+
+        .upload-text h3 {
+            font-size: 1.25rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-text p {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* Workspace Grid (Hidden initially) */
+        .workspace {
+            display: none;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+            width: 100%;
+            align-items: start;
+        }
+
+        /* Sidebar Settings */
+        .sidebar {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            position: sticky;
+            top: 6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        .sidebar-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .btn-group-toggle {
+            display: flex;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .toggle-btn {
+            flex: 1;
+            padding: 0.5rem;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 2px 8px var(--primary-glow);
+        }
+
+        /* Custom Checkbox */
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            user-select: none;
+            font-size: 0.9rem;
+            padding: 0.25rem 0;
+        }
+
+        .checkbox-container input {
+            display: none;
+        }
+
+        .checkmark {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border-color);
+            border-radius: 4px;
+            display: inline-block;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .checkbox-container input:checked + .checkmark {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .checkmark::after {
+            content: '';
+            position: absolute;
+            display: none;
+            left: 5px;
+            top: 1px;
+            width: 4px;
+            height: 8px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .checkbox-container input:checked + .checkmark::after {
+            display: block;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary) 0%, #7c3aed 100%);
+            color: white;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            opacity: 0.95;
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-1px);
+        }
+
+        /* Editor Area */
+        .editor-container {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .page-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: transform 0.2s;
+        }
+
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.75rem;
+        }
+
+        .page-title {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .page-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .page-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .page-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+        }
+
+        /* Interactive PDF Page Wrapper */
+        .page-wrapper {
+            position: relative;
+            margin: 0 auto;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255,255,255,0.05);
+            background: white;
+            cursor: crosshair;
+        }
+
+        .page-image {
+            width: 100%;
+            display: block;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        /* Split Line CSS */
+        .split-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 6px;
+            margin-top: -3px;
+            background: linear-gradient(90deg, var(--split-line-color), #ef4444);
+            box-shadow: 0 0 8px var(--split-line-glow);
+            cursor: ns-resize;
+            z-index: 10;
+            transition: box-shadow 0.2s, height 0.2s, margin-top 0.2s;
+        }
+
+        .split-line:hover, .split-line.active {
+            height: 10px;
+            margin-top: -5px;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 1);
+            background: #ef4444;
+        }
+
+        /* Split Line Delete Button */
+        .line-delete-btn {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.95);
+            border: none;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            opacity: 0;
+            pointer-events: auto;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .split-line:hover .line-delete-btn {
+            opacity: 1;
+        }
+
+        .line-delete-btn:hover {
+            transform: translateY(-50%) scale(1.15);
+            background: #dc2626;
+        }
+
+        /* Loading Spinner Overlay */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(2, 6, 23, 0.8);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(99, 102, 241, 0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .overlay-text {
+            font-size: 1.1rem;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* File Input */
+        #file-input {
+            display: none;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--accent);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            z-index: 1000;
+            transform: translateY(150%);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .toast.active {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-container">
+            <div class="logo-icon">Q</div>
+            <h1>PDF Question Splitter</h1>
+        </div>
+        <div>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Antigravity Engine v1.0</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Upload Card -->
+        <div class="upload-card" id="drop-zone" onclick="document.getElementById('file-input').click()">
+            <div class="upload-icon">↑</div>
+            <div class="upload-text">
+                <h3>PDFファイルをドラッグ＆ドロップ</h3>
+                <p>または、ここをクリックしてファイルを選択（12ページ程度までの問題集に対応）</p>
+            </div>
+            <input type="file" id="file-input" accept="application/pdf">
+        </div>
+
+        <!-- Interactive Workspace -->
+        <div class="workspace" id="workspace">
+            <!-- Sidebar controls -->
+            <div class="sidebar">
+                <div class="sidebar-title">コントロールパネル</div>
+                
+                <div class="form-group">
+                    <label>自動検出モード</label>
+                    <div class="btn-group-toggle">
+                        <button class="toggle-btn active" id="mode-sub-btn" onclick="setDetectionMode('sub')">小問単位 (カッコ)</button>
+                        <button class="toggle-btn" id="mode-big-btn" onclick="setDetectionMode('big')">大問単位 (四角)</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>出力フォーマット</label>
+                    <div class="btn-group-toggle">
+                        <button class="toggle-btn active" id="format-png-btn" onclick="setFormat('png')">画像 (PNG)</button>
+                        <button class="toggle-btn" id="format-pdf-btn" onclick="setFormat('pdf')">PDF</button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 0.5rem;">
+                    <label class="checkbox-container">
+                        <input type="checkbox" id="exclude-footer-check" checked>
+                        <span class="checkmark"></span>
+                        ヘッダー・フッターを除外
+                    </label>
+                </div>
+
+                <button class="btn btn-primary" id="export-btn" onclick="exportSplits()">
+                    分割＆エクスポート (ZIP)
+                </button>
+                
+                <button class="btn btn-secondary" onclick="resetAllSplits()">
+                    すべての切り出し線をリセット
+                </button>
+                
+                <button class="btn btn-secondary" onclick="clearWorkspace()" style="color: #ef4444; border-color: rgba(239,68,68,0.2);">
+                    ファイルを閉じる
+                </button>
+            </div>
+
+            <!-- Page list editor -->
+            <div class="editor-container" id="editor-container">
+                <!-- Page cards will be injected here dynamically -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Overlay Loader -->
+    <div class="overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="overlay-text" id="loading-text">PDFを解析中...</div>
+    </div>
+
+    <!-- Toast Notice -->
+    <div class="toast" id="toast-notify">
+        <span id="toast-message">処理が完了しました</span>
+    </div>
+
+    <script>
+        let pdfName = '';
+        let sessionId = '';
+        let pagesData = []; // Array storing info for each page
+        let activeSplits = {}; // key: page_num (1-based), value: list of y-coords in pixels
+        let currentMode = 'sub'; // 'sub' or 'big'
+        let exportFormat = 'png'; // 'png' or 'pdf'
+
+        // Drag and Drop implementation
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+            }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (fileInput.files.length > 0) {
+                handleFileUpload(fileInput.files[0]);
+            }
+        });
+
+        function showLoading(show, text = '処理中...') {
+            const overlay = document.getElementById('loading-overlay');
+            const overlayText = document.getElementById('loading-text');
+            overlayText.innerText = text;
+            if (show) {
+                overlay.classList.add('active');
+            } else {
+                overlay.classList.remove('active');
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast-notify');
+            const msgSpan = document.getElementById('toast-message');
+            msgSpan.innerText = message;
+            toast.classList.add('active');
+            setTimeout(() => {
+                toast.classList.remove('active');
+            }, 3000);
+        }
+
+        // Upload PDF to Server
+        function handleFileUpload(file) {
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showToast('PDFファイルのみサポートしています。');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            showLoading(true, 'PDFファイルを読み込んでいます。画像変換と問題マーカーの検出を行っています...');
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => {
+                if (!res.ok) throw new Error('サーバーエラーが発生しました。');
+                return res.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error);
+                    return;
+                }
+                pdfName = data.pdf_name;
+                sessionId = data.session_id;
+                pagesData = data.pages;
+                
+                // Initialize default split lines based on mode
+                initDefaultSplits();
+                
+                // Show workspace and hide upload card
+                document.getElementById('drop-zone').style.display = 'none';
+                document.getElementById('workspace').style.display = 'grid';
+                
+                // Render page cards
+                renderPages();
+                showToast('読み込みが成功しました。');
+            })
+            .catch(err => {
+                showToast(err.message);
+            })
+            .finally(() => {
+                showLoading(false);
+            });
+        }
+
+        function initDefaultSplits() {
+            activeSplits = {};
+            pagesData.forEach(p => {
+                activeSplits[p.page_num] = currentMode === 'big' 
+                    ? [...p.default_splits_big] 
+                    : [...p.default_splits_sub];
+            });
+        }
+
+        function setDetectionMode(mode) {
+            if (currentMode === mode) return;
+            currentMode = mode;
+            
+            document.getElementById('mode-sub-btn').classList.toggle('active', mode === 'sub');
+            document.getElementById('mode-big-btn').classList.toggle('active', mode === 'big');
+            
+            initDefaultSplits();
+            renderPages();
+            showToast(`${mode === 'sub' ? '小問' : '大問'}単位の初期割当にリセットしました。`);
+        }
+
+        function setFormat(format) {
+            if (exportFormat === format) return;
+            exportFormat = format;
+            
+            document.getElementById('format-png-btn').classList.toggle('active', format === 'png');
+            document.getElementById('format-pdf-btn').classList.toggle('active', format === 'pdf');
+        }
+
+        function resetAllSplits() {
+            initDefaultSplits();
+            renderPages();
+            showToast('すべての切り出し線を初期位置に戻しました。');
+        }
+
+        function clearWorkspace() {
+            pdfName = '';
+            sessionId = '';
+            pagesData = [];
+            activeSplits = {};
+            
+            document.getElementById('workspace').style.display = 'none';
+            document.getElementById('drop-zone').style.display = 'flex';
+            document.getElementById('editor-container').innerHTML = '';
+            fileInput.value = '';
+        }
+
+        // Render editor cards for each PDF page
+        function renderPages() {
+            const container = document.getElementById('editor-container');
+            container.innerHTML = '';
+
+            pagesData.forEach(p => {
+                const splits = activeSplits[p.page_num] || [];
+                
+                const card = document.createElement('div');
+                card.className = 'page-card';
+                card.dataset.pageNum = p.page_num;
+
+                // Create Page Header HTML
+                const headerHtml = `
+                    <div class="page-header">
+                        <span class="page-title">Page ${p.page_num}</span>
+                        <div class="page-actions">
+                            <button class="page-btn" onclick="addSplitLineAtCenter(${p.page_num})">＋ 線を追加</button>
+                            <button class="page-btn" onclick="clearPageSplits(${p.page_num})">クリア</button>
+                        </div>
+                    </div>
+                `;
+                
+                // Create interactive page wrapper
+                const wrapper = document.createElement('div');
+                wrapper.className = 'page-wrapper';
+                wrapper.style.maxWidth = '680px';
+                wrapper.style.width = '100%';
+                
+                const img = document.createElement('img');
+                img.className = 'page-image';
+                img.src = p.image_url;
+                img.alt = `Page ${p.page_num}`;
+                wrapper.appendChild(img);
+
+                // Double click container to add a new line at clicked location
+                wrapper.addEventListener('dblclick', (e) => {
+                    if (e.target !== wrapper && e.target !== img) return;
+                    const rect = wrapper.getBoundingClientRect();
+                    const clickY = e.clientY - rect.top;
+                    const percentY = clickY / rect.height;
+                    const pxY = Math.round(percentY * p.pixel_height);
+                    
+                    // Add new split
+                    if (!activeSplits[p.page_num]) activeSplits[p.page_num] = [];
+                    activeSplits[p.page_num].push(pxY);
+                    activeSplits[p.page_num].sort((a,b) => a-b);
+                    
+                    renderPageLines(wrapper, p.page_num, p.pixel_height);
+                });
+
+                card.innerHTML = headerHtml;
+                card.appendChild(wrapper);
+                container.appendChild(card);
+
+                // Render lines inside the wrapper
+                renderPageLines(wrapper, p.page_num, p.pixel_height);
+            });
+        }
+
+        // Render split lines for a specific page wrapper
+        function renderPageLines(wrapper, pageNum, pixelHeight) {
+            wrapper.querySelectorAll('.split-line').forEach(l => l.remove());
+            
+            const splits = activeSplits[pageNum] || [];
+            
+            splits.forEach((y, idx) => {
+                const percent = (y / pixelHeight) * 100;
+                
+                const line = document.createElement('div');
+                line.className = 'split-line';
+                line.style.top = `${percent}%`;
+                line.dataset.idx = idx;
+
+                // Delete button
+                const delBtn = document.createElement('button');
+                delBtn.className = 'line-delete-btn';
+                delBtn.innerHTML = '×';
+                delBtn.title = 'この分割線を削除';
+                delBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    splits.splice(idx, 1);
+                    renderPageLines(wrapper, pageNum, pixelHeight);
+                });
+                line.appendChild(delBtn);
+
+                // Mouse Dragging implementation
+                let isDragging = false;
+                
+                line.addEventListener('mousedown', (e) => {
+                    if (e.target === delBtn) return;
+                    isDragging = true;
+                    line.classList.add('active');
+                    e.preventDefault();
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+                    const rect = wrapper.getBoundingClientRect();
+                    const clientY = e.clientY - rect.top;
+                    
+                    let percentY = clientY / rect.height;
+                    percentY = Math.min(0.98, Math.max(0.02, percentY));
+                    
+                    line.style.top = `${percentY * 100}%`;
+                    
+                    const newPxY = Math.round(percentY * pixelHeight);
+                    splits[idx] = newPxY;
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (isDragging) {
+                        isDragging = false;
+                        line.classList.remove('active');
+                        splits.sort((a,b) => a-b);
+                        renderPageLines(wrapper, pageNum, pixelHeight);
+                    }
+                });
+
+                wrapper.appendChild(line);
+            });
+        }
+
+        // Helper: Add line at the center of page
+        function addSplitLineAtCenter(pageNum) {
+            const pageInfo = pagesData.find(p => p.page_num === pageNum);
+            if (!pageInfo) return;
+            
+            const centerPx = Math.round(pageInfo.pixel_height / 2);
+            if (!activeSplits[pageNum]) activeSplits[pageNum] = [];
+            activeSplits[pageNum].push(centerPx);
+            activeSplits[pageNum].sort((a,b) => a-b);
+            
+            const card = document.querySelector(`.page-card[data-page-num="${pageNum}"]`);
+            const wrapper = card.querySelector('.page-wrapper');
+            renderPageLines(wrapper, pageNum, pageInfo.pixel_height);
+        }
+
+        // Helper: Clear page splits
+        function clearPageSplits(pageNum) {
+            activeSplits[pageNum] = [];
+            const pageInfo = pagesData.find(p => p.page_num === pageNum);
+            if (!pageInfo) return;
+            
+            const card = document.querySelector(`.page-card[data-page-num="${pageNum}"]`);
+            const wrapper = card.querySelector('.page-wrapper');
+            renderPageLines(wrapper, pageNum, pageInfo.pixel_height);
+        }
+
+        // Submit to export
+        function exportSplits() {
+            if (!pdfName || !sessionId) {
+                showToast('エクスポートするファイルが読み込まれていません。');
+                return;
+            }
+
+            const excludeFooter = document.getElementById('exclude-footer-check').checked;
+
+            showLoading(true, '画像を切り出しています。ZIPファイルの作成中...');
+
+            fetch('/split', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    pdf_name: pdfName,
+                    session_id: sessionId,
+                    splits: activeSplits,
+                    format: exportFormat,
+                    exclude_footer: excludeFooter
+                })
+            })
+            .then(res => {
+                if (!res.ok) throw new Error('エクスポート処理に失敗しました。');
+                return res.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    showToast(data.error);
+                    return;
+                }
+                
+                window.location.href = data.zip_url;
+                showToast('エクスポートが完了しました。ダウンロードを開始します。');
+            })
+            .catch(err => {
+                showToast(err.message);
+            })
+            .finally(() => {
+                showLoading(false);
+            });
+        }
+    </script>
+</body>
+</html>

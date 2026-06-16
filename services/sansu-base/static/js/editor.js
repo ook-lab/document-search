@@ -75,7 +75,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Header actions
     const btnOpenDb = document.getElementById('btn-open-db');
-    const btnNewProblem = document.getElementById('btn-new-problem');
     const btnPrintPdf = document.getElementById('btn-print-pdf');
     const btnGenVariantModal = document.getElementById('btn-gen-variant-modal');
 
@@ -2445,8 +2444,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerSearchInput.addEventListener('input', renderDrawerProblems);
     drawerFilterUnit.addEventListener('change', renderDrawerProblems);
 
-    // New and Print Bindings
-    btnNewProblem.addEventListener('click', resetWorkspaceToNew);
+    // Print Binding
     btnPrintPdf.addEventListener('click', printCurrentWorkspace);
 
     // AI Variant Modal Bindings
@@ -3240,4 +3238,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ================================================================
     loadSourceBooksHistory();
     loadProblemFromUrlQuery();
+    // URLクエリで問題が指定されていない場合は、ドロワーを自動で開く
+    if (!new URLSearchParams(window.location.search).get('id')) {
+        openProblemsDrawer();
+    }
 });

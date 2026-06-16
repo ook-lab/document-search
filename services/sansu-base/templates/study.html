@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sansu-base | 学習提案</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .page-body { max-width: 860px; margin: 2rem auto; padding: 0 1.5rem; }
+        .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; box-shadow: var(--shadow-premium); padding: 1.75rem; margin-bottom: 1.25rem; }
+        .card h2 { font-size: 1.05rem; font-weight: 700; color: var(--text-main); margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.35rem; }
+        .form-group label { font-size: 0.78rem; font-weight: 700; color: var(--text-muted); }
+        .form-group input, .form-group select, .form-group textarea {
+            padding: 0.5rem 0.7rem; border: 1px solid #e2e8f0; border-radius: 8px;
+            font-size: 0.88rem; outline: none; transition: border-color .2s;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(79,70,229,.1);
+        }
+        .form-full { grid-column: 1 / -1; }
+        .btn-generate {
+            width: 100%; padding: 0.85rem; border: none; border-radius: 12px;
+            background: var(--accent-gradient); color: white; font-size: 1rem;
+            font-weight: 700; cursor: pointer; margin-top: 0.5rem;
+            transition: all .3s; box-shadow: 0 4px 14px rgba(79,70,229,.3);
+        }
+        .btn-generate:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(79,70,229,.4); }
+        .btn-generate:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+        .result-bar {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+            gap: 0.75rem; padding: 1rem 1.25rem; background: #f0fdf4;
+            border: 1px solid #bbf7d0; border-radius: 12px; margin-bottom: 1rem;
+        }
+        .result-stat { font-size: 0.88rem; font-weight: 700; color: #065f46; }
+        .btn-download {
+            padding: 0.55rem 1.25rem; border: none; border-radius: 8px;
+            background: linear-gradient(135deg,#10b981,#059669); color: white;
+            font-size: 0.88rem; font-weight: 700; cursor: pointer;
+            box-shadow: 0 2px 8px rgba(16,185,129,.3); transition: all .2s;
+        }
+        .btn-download:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16,185,129,.4); }
+        .hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
+        .spinner-inline { display: inline-block; width: 1rem; height: 1rem; border: 2px solid rgba(255,255,255,.4); border-top-color: white; border-radius: 50%; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .range-row { display: flex; align-items: center; gap: 0.5rem; }
+        .range-row input[type=number] { width: 80px; }
+        .range-sep { font-size: 0.85rem; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="brand">
+        <div class="brand-logo"><i class="fa-solid">∑</i></div>
+        <h1>sansu-base</h1>
+    </div>
+    <nav style="display:flex;gap:1.5rem;">
+        <a href="/" style="text-decoration:none;color:var(--text-muted);font-weight:600;font-size:0.95rem;display:flex;align-items:center;gap:0.5rem;">
+            <i class="fa-solid fa-camera"></i> OCR登録
+        </a>
+        <a href="/manual-input" style="text-decoration:none;color:var(--text-muted);font-weight:600;font-size:0.95rem;display:flex;align-items:center;gap:0.5rem;">
+            <i class="fa-solid fa-pen-to-square"></i> 問題を編集
+        </a>
+        <a href="/answer" style="text-decoration:none;color:var(--text-muted);font-weight:600;font-size:0.95rem;display:flex;align-items:center;gap:0.5rem;">
+            <i class="fa-solid fa-circle-check"></i> 解答記録
+        </a>
+        <a href="/study" style="text-decoration:none;color:var(--accent-primary);font-weight:700;font-size:0.95rem;display:flex;align-items:center;gap:0.5rem;border-bottom:2px solid var(--accent-primary);padding-bottom:0.25rem;">
+            <i class="fa-solid fa-brain"></i> 学習提案
+        </a>
+    </nav>
+</header>
+
+<div class="page-body">
+
+    <div class="card">
+        <h2><i class="fa-solid fa-sliders" style="color:var(--accent-primary)"></i> 絞り込み条件</h2>
+
+        <div class="form-grid">
+
+            <!-- 難易度範囲 -->
+            <div class="form-group">
+                <label>難易度</label>
+                <div class="range-row">
+                    <input type="number" id="diff-min" placeholder="最低 (例: 4)" min="0" max="10" step="0.5">
+                    <span class="range-sep">〜</span>
+                    <input type="number" id="diff-max" placeholder="最高 (例: 8)" min="0" max="10" step="0.5">
+                </div>
+                <p class="hint">空欄 = 絞り込まない</p>
+            </div>
+
+            <!-- 正解率フィルタ -->
+            <div class="form-group">
+                <label>正解率フィルタ</label>
+                <select id="rate-filter">
+                    <option value="all">全て（正解率問わず）</option>
+                    <option value="unanswered">未回答のみ</option>
+                    <option value="0.5">正解率 50% 未満</option>
+                    <option value="0.7">正解率 70% 未満</option>
+                    <option value="0.9">正解率 90% 未満</option>
+                </select>
+            </div>
+
+            <!-- キーワード（ベクトル検索） -->
+            <div class="form-group form-full">
+                <label>キーワード（ベクトル検索）<span style="font-weight:400;color:var(--text-muted);margin-left:0.3rem;">— 空欄 = 難易度・正解率のみで絞り込む</span></label>
+                <input type="text" id="keyword" placeholder="例: 立体切断　相似比と体積比　連比">
+                <p class="hint">スペース区切りで複数キーワード可。タグと意味的に近い問題を優先して並べます。</p>
+            </div>
+
+            <!-- 最大文字数 -->
+            <div class="form-group">
+                <label>最大文字数（コンテキスト上限）</label>
+                <select id="max-chars">
+                    <option value="50000">5万文字（約 Gemini Flash-lite）</option>
+                    <option value="100000" selected>10万文字（標準）</option>
+                    <option value="200000">20万文字</option>
+                    <option value="500000">50万文字</option>
+                    <option value="1000000">100万文字（Gemini 2.5 Pro 上限）</option>
+                </select>
+            </div>
+
+            <!-- 最大取得件数 -->
+            <div class="form-group">
+                <label>ベクトル検索 取得件数上限</label>
+                <input type="number" id="match-count" value="40" min="5" max="200">
+                <p class="hint">キーワードなし時は無視されます</p>
+            </div>
+
+        </div>
+
+        <button class="btn-generate" id="btn-generate">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> 学習用 MD を生成する
+        </button>
+    </div>
+
+    <!-- 結果エリア（生成後に表示） -->
+    <div id="result-area" style="display:none;">
+        <div class="result-bar">
+            <div>
+                <div class="result-stat" id="result-stat"></div>
+                <div class="hint" id="result-hint"></div>
+            </div>
+            <button class="btn-download" id="btn-download">
+                <i class="fa-solid fa-download"></i> MD をダウンロード
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let generatedMd = '';
+
+    document.getElementById('btn-generate').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-generate');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-inline"></span> 生成中...';
+        document.getElementById('result-area').style.display = 'none';
+
+        const diffMin   = document.getElementById('diff-min').value;
+        const diffMax   = document.getElementById('diff-max').value;
+        const rateVal   = document.getElementById('rate-filter').value;
+        const keyword   = document.getElementById('keyword').value.trim();
+        const maxChars  = parseInt(document.getElementById('max-chars').value);
+        const matchCount = parseInt(document.getElementById('match-count').value);
+
+        const body = {
+            keyword:            keyword || '',
+            difficulty_min:     diffMin !== '' ? parseFloat(diffMin) : null,
+            difficulty_max:     diffMax !== '' ? parseFloat(diffMax) : null,
+            max_chars:          maxChars,
+            match_count:        matchCount,
+            include_unanswered: true,
+            correct_rate_max:   null,
+        };
+        if (rateVal === 'unanswered') {
+            body.include_unanswered = true;
+            body.correct_rate_max   = 0;  // 未回答 OR 正解率0
+        } else if (rateVal !== 'all') {
+            body.correct_rate_max   = parseFloat(rateVal);
+            body.include_unanswered = true;
+        }
+
+        try {
+            const res = await fetch('/api/study/propose', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error('API error');
+            const data = await res.json();
+
+            generatedMd = data.md || '';
+            const count = data.count || 0;
+            const chars = (data.total_chars || 0).toLocaleString();
+            const matched = data.total_matched || 0;
+
+            document.getElementById('result-stat').textContent =
+                `${count} 問 / 約 ${chars} 文字`;
+            document.getElementById('result-hint').textContent =
+                `条件に合致した問題: ${matched} 問 → 文字数上限内に収まった問題数: ${count} 問`;
+            document.getElementById('result-area').style.display = 'block';
+        } catch (e) {
+            alert('生成に失敗しました: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> 学習用 MD を生成する';
+        }
+    });
+
+    document.getElementById('btn-download').addEventListener('click', () => {
+        if (!generatedMd) return;
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+        const keyword = document.getElementById('keyword').value.trim().replace(/\s+/g, '_').slice(0, 20);
+        const filename = keyword ? `${dateStr}_study_${keyword}.md` : `${dateStr}_study.md`;
+
+        const blob = new Blob([generatedMd], { type: 'text/markdown; charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+</script>
+</body>
+</html>

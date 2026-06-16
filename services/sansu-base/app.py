@@ -6,6 +6,7 @@ import uuid
 import tempfile
 import subprocess
 import shutil
+import base64
 import json
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, redirect
@@ -31,121 +32,59 @@ def convert_pdf_to_images(pdf_path: Path) -> list:
         logger.error(f"Failed to convert PDF to images: {e}")
         return []
 
-# 図形描画用Pythonコードの実行ヘルパー
-def run_diagram_code(code_str: str, session_id: str, suffix: str, elev: Optional[float] = None, azim: Optional[float] = None) -> dict:
-    """生成されたMatplotlibコードを実行し、生成された画像を static/generated/ に保存する"""
-    static_gen_dir = _here / "static" / "generated"
-    static_gen_dir.mkdir(exist_ok=True, parents=True)
-    
-    output_filename = f"temp_{session_id}_{suffix}.png"
-    dest_path = static_gen_dir / output_filename
-    
-    # すでに古いファイルがあれば削除
-    if dest_path.exists():
-        dest_path.unlink()
-        
+# 図形描画用Pythonコードの実行ヘルパー（ファイルシステム不使用）
+def render_to_base64(code_str: str, elev: Optional[float] = None, azim: Optional[float] = None) -> dict:
+    """Matplotlibコードをサブプロセスでメモリのみにレンダリングし、base64 PNG を返す。
+    ディスクへの永続書き込みは一切しない。"""
     if not code_str or code_str.strip() == "":
-        return {"success": True, "image_url": "", "error": ""}
+        return {"success": True, "image_b64": "", "error": ""}
 
-    # Remove plt.show() calls to prevent figure cleanups and Agg backend warnings
-    import re
-    cleaned_code_str = re.sub(r'(?m)^\s*plt\.show\(\s*\)', '# plt.show() # removed for web preview', code_str)
-        
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        script_path = tmp_path / "draw.py"
-        
-        view_override = ""
-        if elev is not None and azim is not None:
-            # Extract output filenames from the user code
-            saved_files = re.findall(r"plt\.savefig\(\s*['\"]([^'\"]+)['\"]", cleaned_code_str)
-            saved_files_repr = repr(saved_files)
-            
-            view_override = f"""
+    cleaned = re.sub(r'(?m)^\s*plt\.show\(\s*\)', '', code_str)
+
+    if 'plt.savefig(' not in cleaned:
+        cleaned += '\nplt.savefig("out.png", dpi=150, bbox_inches="tight")\n'
+
+    if elev is not None and azim is not None:
+        cleaned = re.sub(
+            r'(?m)^([ \t]*elev[ \t]*=[ \t]*)-?\d+\.?\d*',
+            lambda m: m.group(1) + str(elev), cleaned)
+        cleaned = re.sub(
+            r'(?m)^([ \t]*azim[ \t]*=[ \t]*)-?\d+\.?\d*',
+            lambda m: m.group(1) + str(azim), cleaned)
+        saved_files = re.findall(r"plt\.savefig\(\s*['\"]([^'\"]+)['\"]", cleaned)
+        saved_files_repr = repr(saved_files if saved_files else ["out.png"])
+        cleaned += f"""
 try:
-    overridden = False
     for ax in plt.gcf().get_axes():
         if hasattr(ax, 'view_init'):
             ax.view_init(elev={elev}, azim={azim})
-            overridden = True
-    if overridden:
-        saved_files = {saved_files_repr}
-        if not saved_files:
-            saved_files = ["{suffix}_diagram.png", "problem_diagram.png", "explanation_diagram.png"]
-        for f in saved_files:
-            plt.savefig(f, dpi=150, bbox_inches="tight")
+    for f in {saved_files_repr}:
+        plt.savefig(f, dpi=150, bbox_inches='tight')
 except Exception as e:
-    print("Failed to override 3D view and re-save:", e)
+    print("view_init override failed:", e)
 """
 
-        # Aggバックエンドを強制し、GUIウインドウを開かないようにする
-        modified_code = f"""
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import numpy as np
+    script = f"""import matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\nimport numpy as np\n{cleaned}"""
 
-{cleaned_code_str}
-
-{view_override}
-"""
-        with open(script_path, "w", encoding="utf-8") as f:
-            f.write(modified_code)
-            
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        script_path = tmp_path / "draw.py"
+        script_path.write_text(script, encoding="utf-8")
         try:
             result = subprocess.run(
                 [sys.executable, str(script_path)],
-                capture_output=True,
-                text=True,
-                cwd=str(tmp_path),
-                timeout=20
-            )
-            
-            logger.info(f"Matplotlib execution stdout: {result.stdout}")
+                capture_output=True, text=True, cwd=str(tmp_path), timeout=20)
             if result.stderr:
-                logger.warning(f"Matplotlib execution stderr: {result.stderr}")
-                
-            # 作成されたはずの画像ファイルを探す
-            expected_names = [f"{suffix}_diagram.png", "problem_diagram.png", "explanation_diagram.png"]
-            found_image = None
-            for name in expected_names:
-                p = tmp_path / name
-                if p.exists():
-                    found_image = p
-                    break
-                    
-            # 見つからない場合は任意のPNGファイルを探す
-            if not found_image:
-                png_files = list(tmp_path.glob("*.png"))
-                if png_files:
-                    found_image = png_files[0]
-                    
-            if found_image:
-                shutil.copy(found_image, dest_path)
-                logger.info(f"Successfully generated diagram in static: {output_filename}")
-                return {
-                    "success": True,
-                    "image_url": f"/static/generated/{output_filename}",
-                    "error": result.stderr
-                }
-            else:
-                return {
-                    "success": False,
-                    "image_url": "",
-                    "error": f"画像ファイルが生成されませんでした。\n標準エラー出力:\n{result.stdout}\n標準エラー:\n{result.stderr}"
-                }
+                logger.warning(f"Matplotlib stderr: {result.stderr}")
+            png_files = sorted(tmp_path.glob("*.png"))
+            if png_files:
+                b64 = base64.b64encode(png_files[0].read_bytes()).decode("ascii")
+                return {"success": True, "image_b64": b64, "error": result.stderr}
+            return {"success": False, "image_b64": "", "error": f"PNG未生成\n{result.stdout}\n{result.stderr}"}
         except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "image_url": "",
-                "error": "図形の描画実行がタイムアウト（20秒）しました。"
-            }
+            return {"success": False, "image_b64": "", "error": "タイムアウト（20秒）"}
         except Exception as e:
-            return {
-                "success": False,
-                "image_url": "",
-                "error": f"描画コード実行エラー: {str(e)}"
-            }
+            return {"success": False, "image_b64": "", "error": str(e)}
 
 
 # PYTHONPATHの設定と環境変数のロード
@@ -225,6 +164,39 @@ def get_drive():
 
 # Gemini API の初期化
 genai.configure(api_key=os.getenv("GOOGLE_AI_API_KEY"))
+
+_EMBEDDING_MODEL = "text-embedding-3-small"
+_EMBEDDING_DIM   = 1536
+
+def get_embedding(text: str) -> list:
+    try:
+        from openai import OpenAI as _OpenAI
+        client = _OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        resp = client.embeddings.create(model=_EMBEDDING_MODEL, input=text)
+        return resp.data[0].embedding
+    except Exception as e:
+        logger.error(f"Embedding error for '{text[:30]}': {e}")
+        return []
+
+def upsert_keywords(db, problem_id: str, display_id: str, keywords: list):
+    if not keywords:
+        return
+    try:
+        db.client.table("math_problem_keywords").delete().eq("problem_id", problem_id).execute()
+        rows = []
+        for kw in keywords:
+            kw = kw.strip()
+            if not kw:
+                continue
+            emb = get_embedding(kw)
+            if emb:
+                rows.append({"problem_id": problem_id, "display_id": display_id,
+                             "keyword": kw, "embedding": emb})
+        if rows:
+            db.client.table("math_problem_keywords").insert(rows).execute()
+        logger.info(f"Upserted {len(rows)} keyword embeddings for {display_id}")
+    except Exception as e:
+        logger.error(f"upsert_keywords error for {display_id}: {e}")
 
 
 # 単元名からID用プレフィックスへのマッピング
@@ -929,28 +901,18 @@ def editor_page():
 
 @app.route("/api/diagram/run", methods=["POST"])
 def api_run_diagram():
-    """ブロック用のPython/Matplotlibコードを実行し、一時ファイルを生成して返す"""
+    """Matplotlibコードを実行し、base64 PNG を返す（ファイル書き込みなし）"""
     data = request.json or {}
     code_str = data.get("code", "")
-    session_id = data.get("session_id")
-    suffix = data.get("suffix", "diagram")
-    
     elev = data.get("elev")
     azim = data.get("azim")
-    
-    # 浮動小数点数に型変換
     if elev is not None:
         try: elev = float(elev)
-        except ValueError: elev = None
+        except (ValueError, TypeError): elev = None
     if azim is not None:
         try: azim = float(azim)
-        except ValueError: azim = None
-        
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        
-    result = run_diagram_code(code_str, session_id, suffix, elev=elev, azim=azim)
-    return jsonify(result)
+        except (ValueError, TypeError): azim = None
+    return jsonify(render_to_base64(code_str, elev=elev, azim=azim))
 
 @app.route("/api/problems/save-blocks", methods=["POST"])
 def api_save_blocks():
@@ -1001,14 +963,6 @@ def api_save_blocks():
                 shutil.copy(temp_path, real_path)
                 text = text.replace(temp_url, real_url)
                 logger.info(f"Renamed diagram {temp_filename} to {real_filename}")
-                
-                # Google Driveへアップロード
-                drive = get_drive()
-                if drive and drive.drive:
-                    try:
-                        drive.upload_diagram(unit, str(real_path), real_filename)
-                    except Exception as e:
-                        logger.error(f"Failed to upload diagram {real_filename} to Drive: {e}")
         return text
         
     problem_markdown = rename_and_replace(problem_markdown, display_id)
@@ -1152,23 +1106,51 @@ def ocr_read_problem():
   "problem_markdown": "抽出された問題文のマークダウン（LaTeX数式入り）"
 }}"""
     elif part == "diagram":
-        prompt = f"""あなたはプロの中学受験算数講師、および優秀な幾何学図形描画プログラムです。
-提供された画像（またはPDFの最初のページ）に含まれる幾何学的な図やグラフ、表などの図形を正確に分析し、その図形を完全に再現するための Python (Matplotlib) コードを生成してください。
+        prompt = f"""あなたはプロの中学受験算数講師、および厳密な幾何学図形描画プログラムです。
+提供された画像（またはPDFの最初のページ）に含まれる図形を、数学的に正確に分析・計算し、Pythonコードで再現してください。
 
 【ヒント】:
 {hint if hint else "なし"}
 
-【コード生成指示】:
-1. 図形描画コードの絶対要件:
-   - GUIウインドウ（plt.show()など）は開かず、最後に `plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
-   - 図の中の文字や数値（例：頂点記号A, B, Cや長さ、角度など）も、図形内の情報と整合するように plt.text や plt.annotate で描画してください。
-   - 図がつぶれないように、それなりの大きさ（例：figsize=(6, 5)など）で描画してください。
-   - 余計な説明（「Matplotlibコードはこちらです」など）や ```python といったMarkdownのコードブロックタグは含めず、純粋なPythonスクリプトのみを出力内の `matplotlib_code` キーに格納してください。
+【最重要ルール】: まず図形が「2D平面図形」か「3D立体図形」かを判断してください。
+
+■ 図形が【3D立体図形】（直方体・立方体・三角錐・円錐・角柱・球など）の場合:
+1. 必ず以下のimportと3D軸を使うこと（絶対厳守）:
+   from mpl_toolkits.mplot3d import Axes3D
+   import matplotlib.pyplot as plt
+   import numpy as np
+   fig = plt.figure(figsize=(7, 6))
+   ax = fig.add_subplot(111, projection='3d')
+2. 立体の全頂点座標を、問題文中の寸法・数値から数学的に計算して求める（目分量禁止）
+3. 【隠れ線の計算（必須）】頂点名や固定リストで決め打ちしてはならない。必ず以下の手順で計算すること:
+   a. コードの最初の方に `elev = 30` と `azim = -60` を変数として定義する（サーバーがこの値を書き換えて再計算する）
+   b. elev/azimからカメラ方向ベクトルを計算: camera = np.array([cos(elev_rad)*cos(azim_rad), cos(elev_rad)*sin(azim_rad), sin(elev_rad)])
+   c. 各面の外向き法線ベクトルを定義する
+   d. np.dot(camera, face_normal) > 0 なら表面（実線）、< 0 なら裏面（破線）と判定する
+   e. 辺の両側の面をすべて確認し、1つでも表面があれば実線、すべて裏面なら破線
+4. 見える辺は ax.plot() で実線（lw=1.5）、隠れ辺は linestyle='--', alpha=0.4, lw=1 の破線で描く
+4. 頂点ラベル（A, B, C...）や辺の長さを ax.text() で付ける
+5. 必ず ax.view_init(elev=30, azim=-60) を記述する（視点スライダー用）
+6. plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight") で保存する
+【3D絶対禁止】plt.subplots() を使った2D等角投影（isometric）での立体描画は絶対に禁止。
+必ず projection='3d' の本物の3Dプロットを使うこと。
+
+■ 図形が【2D平面図形】（三角形・四角形・円・多角形など）の場合:
+1. 問題文中の寸法・角度・比率から数学的に計算して各頂点の座標を求める
+2. 補助線や角度マークも正確に描く
+3. ax.set_aspect('equal') で縦横比を正確に保つ
+4. 頂点ラベル・辺の長さを plt.text や plt.annotate で記述する
+5. plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight") で保存する
+
+【共通禁止事項】:
+- plt.show() は絶対に呼ばない
+- 目分量の座標を使わない。必ず数値から計算した座標を使う
+- コードブロックタグ（```python など）を含めない
 
 【出力フォーマット】:
-必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+必ず以下のJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
 {{
-  "matplotlib_code": "図形を描画するためのPythonコード"
+  "matplotlib_code": "Pythonコード"
 }}"""
     else:  # all
         prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCRプログラムです。
@@ -1217,25 +1199,23 @@ def ocr_read_problem():
         except Exception:
             pass
             
-        image_url = ""
+        image_b64 = ""
         error_msg = ""
         if matplotlib_code:
-            run_res = run_diagram_code(matplotlib_code, session_id, "problem")
+            run_res = render_to_base64(matplotlib_code)
             if run_res.get("success"):
-                image_url = run_res.get("image_url", "")
-                if problem_markdown:
-                    problem_markdown = problem_markdown.replace("problem_diagram.png", image_url)
+                image_b64 = run_res.get("image_b64", "")
             else:
                 error_msg = run_res.get("error", "")
-                
+
         if temp_file_path and temp_file_path.exists():
             try: temp_file_path.unlink()
             except Exception: pass
-            
+
         return jsonify({
             "problem_markdown": problem_markdown,
             "matplotlib_code": matplotlib_code,
-            "image_url": image_url,
+            "image_b64": image_b64,
             "error": error_msg,
             "token_usage": token_usage
         })
@@ -1323,8 +1303,8 @@ def ocr_read_explanation():
   "tags": ["タグ1", "タグ2", "タグ3"]
 }}"""
     elif part == "diagram":
-        prompt = f"""あなたはプロの中学受験算数講師、および優秀な幾何学図形描画プログラムです。
-提供された解説画像（またはPDFの最初のページ）に含まれる、解説の補助となる幾何学的な図やグラフ、イラストなどの図形を正確に分析し、その図形を完全に再現するための Python (Matplotlib) コードを生成してください。
+        prompt = f"""あなたはプロの中学受験算数の立体図形専門家、および精密な数学プログラマーです。
+提供された解説画像から立体図形（または平面図形）を完全に数学的に解析し、「再計算・再描画できる」Pythonコードを生成してください。
 
 【ベースとなる問題文】:
 {problem_text}
@@ -1332,17 +1312,39 @@ def ocr_read_explanation():
 【ヒント】:
 {hint if hint else "なし"}
 
-【図形再現コード生成の絶対条件】:
-1. 図形描画コードの絶対要件:
-   - GUIウインドウ（plt.show()など）は開かず、最後に `plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
-   - 図の中の文字や数値（例：頂点記号A, B, Cや長さ、角度など）も、図形内の情報と整合するように plt.text や plt.annotate で描画してください。
-   - 図がつぶれないように、それなりの大きさ（例：figsize=(6, 5)など）で描画してください。
-   - 余計な説明（「Matplotlibコードはこちらです」など）や ```python といったMarkdownのコードブロックタグは含めず、純粋なPythonスクリプトのみを出力内の `matplotlib_code` キーに格納してください。
+【最重要：このコードの目的】
+「絵を似せて描く」のではなく、「図形を数学的に完全定義し、あらゆる再計算が可能な状態にする」ことです。
+
+【コード生成の絶対要件】:
+■ 図形が【3D立体図形】（直方体・立方体・三角錐・円錐・角柱・球など）の場合:
+1. 必ず mpl_toolkits.mplot3d と projection='3d' を使って本物の3D描画をする
+2. 立体の全頂点座標を、問題文・解説の寸法から数学的に計算して求める（目分量禁止）
+3. コードの最初に elev = 30 と azim = -60 を変数として定義する
+4. elev/azim からカメラ方向ベクトルを計算し、各面の法線との内積で表面（実線）・裏面（破線）を判定する
+5. 見える辺は実線（lw=1.5）、隠れ辺は破線（linestyle='--', alpha=0.4, lw=1）で描く
+6. 頂点ラベル（A, B, C...）と辺の長さを ax.text() で付ける
+7. ax.view_init(elev=elev, azim=azim) を記述する
+8. plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight") で保存する
+
+■ 図形が【2D平面図形】（三角形・四角形・円・多角形など）の場合:
+1. 問題文・解説の寸法・角度・比率から数学的に頂点座標を計算する
+2. ax.set_aspect('equal') で縦横比を保つ
+3. 頂点ラベル・辺の長さを plt.text や plt.annotate で記述する
+4. plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight") で保存する
+
+【共通禁止事項】:
+- plt.show() は絶対に呼ばない
+- 目分量の座標を使わない。必ず寸法から計算した座標を使う
+- Markdownのコードブロックタグ（```python など）を含めない
+- plt.subplots() を使った2D等角投影での立体描画は禁止
+
+【再計算可能な値の算出（必須）】:
+体積・表面積・断面積・対角線の長さなど、解説で扱われる値をコード内で計算し、print() で出力する
 
 【出力フォーマット】:
-必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
+必ず以下のJSON形式のみで出力してください（前置き不要）。
 {{
-  "matplotlib_code": "解説図を描画するためのPythonコード"
+  "matplotlib_code": "図形を数学的に定義・計算・描画するPythonコード"
 }}"""
     else:  # all
         prompt = f"""あなたはプロの中学受験算数講師、および優秀なOCR・解答詳細化プログラムです。
@@ -1403,25 +1405,23 @@ def ocr_read_explanation():
         except Exception:
             pass
             
-        image_url = ""
+        image_b64 = ""
         error_msg = ""
         if matplotlib_code:
-            run_res = run_diagram_code(matplotlib_code, session_id, "explanation")
+            run_res = render_to_base64(matplotlib_code)
             if run_res.get("success"):
-                image_url = run_res.get("image_url", "")
-                if explanation_markdown:
-                    explanation_markdown = explanation_markdown.replace("explanation_diagram.png", image_url)
+                image_b64 = run_res.get("image_b64", "")
             else:
                 error_msg = run_res.get("error", "")
-                
+
         if temp_file_path and temp_file_path.exists():
             try: temp_file_path.unlink()
             except Exception: pass
-            
+
         return jsonify({
             "explanation_markdown": explanation_markdown,
             "matplotlib_code": matplotlib_code,
-            "image_url": image_url,
+            "image_b64": image_b64,
             "strategy_summary": strategy_summary,
             "tags": tags,
             "error": error_msg,
@@ -1443,99 +1443,381 @@ def import_problem():
     problem_markdown = data.get("problem_markdown", "").strip()
     explanation_markdown = data.get("explanation_markdown", "").strip()
     strategy_summary = data.get("strategy_summary", "").strip()
+    problem_number = data.get("problem_number", "").strip()
     tags = data.get("tags") or []
-    
+    difficulty = data.get("difficulty")
+    if difficulty is not None:
+        try:
+            difficulty = float(difficulty)
+        except (TypeError, ValueError):
+            difficulty = None
+    problem_parts = data.get("problem_parts")                # list or None
+    explanation_parts = data.get("explanation_parts")        # list or None
+    problem_matplotlib_code = data.get("problem_matplotlib_code", "").strip()
+    explanation_matplotlib_code = data.get("explanation_matplotlib_code", "").strip()
+
     if not source_book or (not problem_markdown and not explanation_markdown):
         return jsonify({"error": "教材名、および本文（問題または解説）は必須です。"}), 400
-        
+
     if not unit or unit.strip() == "":
         unit = "未設定"
-        
+
     display_id = get_next_display_id(unit)
-    
-    static_gen_dir = _here / "static" / "generated"
-    static_gen_dir.mkdir(exist_ok=True, parents=True)
-    
-    def rename_and_replace(text, display_id):
-        if not text:
-            return ""
-        for suffix in ["problem", "explanation"]:
-            temp_filename = f"temp_{session_id}_{suffix}.png"
-            real_filename = f"{display_id}_{suffix}.png"
-            temp_path = static_gen_dir / temp_filename
-            real_path = static_gen_dir / real_filename
-            
-            temp_url = f"/static/generated/{temp_filename}"
-            real_url = f"/static/generated/{real_filename}"
-            
-            if temp_path.exists():
-                shutil.copy(temp_path, real_path)
-                text = text.replace(temp_url, real_url)
-                logger.info(f"OCR: Renamed diagram {temp_filename} to {real_filename}")
-                
-                drive = get_drive()
-                if drive and drive.drive:
-                    try:
-                        drive.upload_diagram(unit, str(real_path), real_filename)
-                    except Exception as e:
-                        logger.error(f"OCR: Failed to upload diagram {real_filename} to Drive: {e}")
-        return text
-        
-    problem_markdown = rename_and_replace(problem_markdown, display_id)
-    explanation_markdown = rename_and_replace(explanation_markdown, display_id)
-    
+
     db = get_db()
     grading_status = {"全体": "unanswered"}
-    
+
     problem_record = {
         "display_id": display_id,
         "source_book": source_book,
         "chapter": chapter or None,
         "unit": unit,
+        "problem_number": problem_number or None,
         "problem_markdown": problem_markdown,
         "explanation_markdown": explanation_markdown,
         "strategy_summary": strategy_summary,
+        "problem_parts": problem_parts,
+        "explanation_parts": explanation_parts,
+        "tags": tags or [],
+        "difficulty": difficulty,
         "grading_status": grading_status,
         "owner_id": os.getenv("DEFAULT_OWNER_ID", "d1b18b1c-a4dc-4b2e-97af-5153a85e685c")
     }
-    
+
     try:
         db.client.table("math_problems").insert(problem_record).execute()
         logger.info(f"OCR: Successfully inserted problem '{display_id}' into Supabase")
     except Exception as e:
         logger.error(f"OCR: Failed to save to Supabase: {e}")
         return jsonify({"error": f"Supabase保存エラー: {str(e)}"}), 500
-        
+
+    # キーワードをベクトル化（タグ + 単元名 + 教材名を対象。失敗しても保存自体は成功扱い）
+    kw_for_embed = list(tags)
+    if unit and unit != "未設定":
+        kw_for_embed.append(unit)
+    if source_book:
+        kw_for_embed.append(source_book)
+    if kw_for_embed:
+        prob_row = db.client.table("math_problems").select("id").eq("display_id", display_id).limit(1).execute().data
+        if prob_row:
+            upsert_keywords(db, prob_row[0]["id"], display_id, kw_for_embed)
+
+    # Matplotlib コードブロック付き Markdown を生成
+    # 図版はコードとして埋め込み、PNG 参照は除去する（Drive 上で完全再現可能にする）
+    def parts_to_drive_md(parts, flat_md, flat_code):
+        img_re    = re.compile(r'!\[[^\]]*\]\([^)]+\.png\)')
+        marker_re = re.compile(r'^\s*\*\*\[[^\]]+\]\*\*\s*\n?', re.MULTILINE)
+        if parts:
+            chunks = []
+            for part in parts:
+                text = marker_re.sub('', img_re.sub('', part.get('content') or '')).strip()
+                if text:
+                    chunks.append(text)
+                for diag in (part.get('diagrams') or []):
+                    code = (diag.get('matplotlib_code') or '').strip()
+                    if code:
+                        chunks.append(f'```python\n# {diag["label"]}\n{code}\n```')
+            return '\n\n'.join(chunks)
+        else:
+            base = marker_re.sub('', img_re.sub('', flat_md or '')).strip()
+            if flat_code:
+                base += f'\n\n```python\n{flat_code.strip()}\n```'
+            return base
+
+    chapter_str = f" {chapter}" if chapter else ""
+    num_str = f" 問{problem_number}" if problem_number else ""
+    prob_drive_md = parts_to_drive_md(problem_parts, problem_markdown, problem_matplotlib_code)
+    exp_drive_md  = parts_to_drive_md(explanation_parts, explanation_markdown, explanation_matplotlib_code)
+
+    append_md = f"""# [{display_id}] {source_book}{chapter_str}{num_str}
+- 単元: {unit}
+- ページ数: {strategy_summary or 'なし'}
+
+## 問題
+{prob_drive_md}
+
+## 解説
+{exp_drive_md}"""
+
     drive_md_synced = False
     drive = get_drive()
     if drive and drive.drive:
-        chapter_str = f" {chapter}" if chapter else ""
-        append_md = f"""# [{display_id}] {source_book}{chapter_str}
-- 単元: {unit}
-- ページ数: {strategy_summary or 'なし'}
- 
- ## 問題
-{problem_markdown}
-
-## 解説
-{explanation_markdown}"""
         try:
             drive_md_synced = drive.append_problem_markdown(unit, append_md)
         except Exception as e:
             logger.error(f"OCR: Failed to append markdown to Google Drive: {e}")
-            
-    for suffix in ["problem", "explanation"]:
-        p = static_gen_dir / f"temp_{session_id}_{suffix}.png"
-        try:
-            if p.exists(): p.unlink()
-        except Exception: pass
-            
+
     return jsonify({
         "status": "success",
         "message": "Problem saved successfully",
         "display_id": display_id,
         "drive_synced": drive_md_synced
     })
+
+# =========================================================
+# 解答記録 (Answer Recording)
+# =========================================================
+
+@app.route("/answer")
+def answer_page():
+    return render_template("answer.html")
+
+
+@app.route("/api/answer/problems", methods=["GET"])
+def answer_list_problems():
+    """教材名・章でフィルタした問題一覧 + 各問題の直近解答ステータスを返す"""
+    source_book = request.args.get("source_book", "").strip()
+    chapter = request.args.get("chapter", "").strip()
+    db = get_db()
+    try:
+        q = db.client.table("math_problems").select(
+            "id, display_id, source_book, chapter, unit, tags, created_at"
+        ).order("created_at", desc=True).limit(200)
+        if source_book:
+            q = q.eq("source_book", source_book)
+        if chapter:
+            q = q.eq("chapter", chapter)
+        problems = (q.execute().data or [])
+
+        # 解答履歴を一括取得
+        pids = [p["id"] for p in problems]
+        answers_by_problem = {}
+        if pids:
+            ans_res = db.client.table("math_answers") \
+                .select("problem_id, is_correct, answered_at") \
+                .in_("problem_id", pids) \
+                .order("answered_at", desc=True) \
+                .execute()
+            for row in (ans_res.data or []):
+                pid = row["problem_id"]
+                if pid not in answers_by_problem:
+                    answers_by_problem[pid] = {"last": row, "total": 0, "correct": 0}
+                answers_by_problem[pid]["total"] += 1
+                if row["is_correct"]:
+                    answers_by_problem[pid]["correct"] += 1
+
+        result = []
+        for p in problems:
+            stat = answers_by_problem.get(p["id"], {"last": None, "total": 0, "correct": 0})
+            result.append({
+                "id": p["id"],
+                "display_id": p["display_id"],
+                "source_book": p["source_book"],
+                "chapter": p.get("chapter") or "",
+                "unit": p.get("unit") or "",
+                "tags": p.get("tags") or [],
+                "created_at": p.get("created_at"),
+                "last_answered_at": stat["last"]["answered_at"] if stat["last"] else None,
+                "last_is_correct": stat["last"]["is_correct"] if stat["last"] else None,
+                "total_answers": stat["total"],
+                "correct_answers": stat["correct"],
+            })
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"answer_list_problems error: {e}")
+        return jsonify([])
+
+
+@app.route("/api/answer/record", methods=["POST"])
+def answer_record():
+    """解答を記録する"""
+    data = request.get_json() or {}
+    display_id = (data.get("display_id") or "").strip()
+    is_correct = data.get("is_correct")
+    note = (data.get("note") or "").strip()
+    sub_question = (data.get("sub_question") or "").strip() or None
+    practice_date = (data.get("practice_date") or "").strip() or None
+    if not display_id or is_correct is None:
+        return jsonify({"error": "display_id and is_correct are required"}), 400
+
+    db = get_db()
+    try:
+        prob = db.client.table("math_problems") \
+            .select("id") \
+            .eq("display_id", display_id) \
+            .limit(1).execute().data
+        if not prob:
+            return jsonify({"error": "Problem not found"}), 404
+        problem_id = prob[0]["id"]
+        record = {
+            "problem_id": problem_id,
+            "display_id": display_id,
+            "is_correct": bool(is_correct),
+            "note": note or None,
+            "sub_question": sub_question,
+            "practice_date": practice_date,
+        }
+        db.client.table("math_answers").insert(record).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"answer_record error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/answer/record/<record_id>", methods=["DELETE"])
+def answer_delete_record(record_id):
+    """解答履歴を1件削除する"""
+    db = get_db()
+    try:
+        db.client.table("math_answers").delete().eq("id", record_id).execute()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"answer_delete_record error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/answer/history/<display_id>", methods=["GET"])
+def answer_history(display_id):
+    """特定問題の解答履歴を返す（実施日・登録日の新しい順）"""
+    db = get_db()
+    try:
+        res = db.client.table("math_answers") \
+            .select("id, is_correct, answered_at, practice_date, sub_question, note") \
+            .eq("display_id", display_id) \
+            .order("answered_at", desc=True) \
+            .limit(100).execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        logger.error(f"answer_history error: {e}")
+        return jsonify([])
+
+
+@app.route("/api/answer/detail/<display_id>", methods=["GET"])
+def answer_problem_detail(display_id):
+    """解答ページ用：問題詳細（マークダウン含む）を返す"""
+    db = get_db()
+    try:
+        res = db.client.table("math_problems") \
+            .select("display_id, source_book, chapter, unit, problem_markdown, explanation_markdown, strategy_summary, tags, problem_parts, explanation_parts") \
+            .eq("display_id", display_id) \
+            .limit(1).execute()
+        data = res.data
+        if not data:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(data[0])
+    except Exception as e:
+        logger.error(f"answer_problem_detail error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# =========================================================
+# 学習提案 (Study Proposal)
+# =========================================================
+
+@app.route("/study")
+def study_page():
+    return render_template("study.html")
+
+
+@app.route("/api/study/propose", methods=["POST"])
+def study_propose():
+    """難易度・正解率・キーワードで問題を絞り込み、学習用MDを生成する"""
+    data        = request.get_json() or {}
+    keyword     = (data.get("keyword") or "").strip()
+    diff_min    = data.get("difficulty_min")
+    diff_max    = data.get("difficulty_max")
+    rate_max    = data.get("correct_rate_max")   # 0.0〜1.0 or None
+    include_unanswered = data.get("include_unanswered", True)
+    max_chars   = int(data.get("max_chars") or 80000)
+    match_count = int(data.get("match_count") or 40)
+
+    db = get_db()
+
+    # ── 1. キーワードベクトル検索（複数キーワード対応）────
+    sim_map = {}  # display_id → max similarity across all keywords
+    if keyword:
+        # スペース・読点・カンマで分割し、空文字除去
+        kw_list = [k.strip() for k in re.split(r'[\s　,、]+', keyword) if k.strip()]
+        for kw in kw_list:
+            emb = get_embedding(kw)
+            if not emb:
+                continue
+            try:
+                rows = db.client.rpc("match_keywords", {
+                    "query_embedding": emb,
+                    "match_count": match_count
+                }).execute().data or []
+                for r in rows:
+                    did = r["display_id"]
+                    sim_map[did] = sim_map.get(did, 0.0) + float(r["max_similarity"])
+            except Exception as e:
+                logger.error(f"study match_keywords error ({kw}): {e}")
+
+    # ── 2. 問題一覧を取得（難易度フィルタ）──────────────
+    q = db.client.table("math_problems").select(
+        "id, display_id, source_book, chapter, unit, difficulty, tags, problem_markdown, explanation_markdown"
+    )
+    if diff_min is not None:
+        q = q.gte("difficulty", float(diff_min))
+    if diff_max is not None:
+        q = q.lte("difficulty", float(diff_max))
+    if keyword and sim_map:
+        q = q.in_("display_id", list(sim_map.keys()))
+    problems = q.limit(500).execute().data or []
+
+    # ── 3. 正解率フィルタ ─────────────────────────────────
+    if rate_max is not None or not include_unanswered:
+        pids = [p["id"] for p in problems]
+        ans_res = db.client.table("math_answers") \
+            .select("problem_id, is_correct") \
+            .in_("problem_id", pids).execute().data or []
+        stats = {}
+        for a in ans_res:
+            pid = a["problem_id"]
+            if pid not in stats:
+                stats[pid] = {"total": 0, "correct": 0}
+            stats[pid]["total"] += 1
+            if a["is_correct"]:
+                stats[pid]["correct"] += 1
+
+        filtered = []
+        for p in problems:
+            pid = p["id"]
+            if pid not in stats:
+                if include_unanswered:
+                    filtered.append(p)
+            else:
+                s = stats[pid]
+                rate = s["correct"] / s["total"] if s["total"] else 0.0
+                if rate_max is None or rate <= float(rate_max):
+                    filtered.append(p)
+        problems = filtered
+
+    # ── 4. ソート ─────────────────────────────────────────
+    if sim_map:
+        problems.sort(key=lambda p: sim_map.get(p["display_id"], 0.0), reverse=True)
+    else:
+        problems.sort(key=lambda p: (p.get("difficulty") or 0.0))
+
+    # ── 5. MD 生成（文字数上限まで）──────────────────────
+    chunks = []
+    total  = 0
+    for p in problems:
+        tags_line = "  ".join(p.get("tags") or [])
+        diff_line = f"難易度: {p['difficulty']}" if p.get("difficulty") else ""
+        header = (
+            f"# [{p['display_id']}] {p.get('source_book','')} {p.get('chapter','')}\n"
+            f"- 単元: {p.get('unit','')}\n"
+            + (f"- {diff_line}\n" if diff_line else "")
+            + (f"- タグ: {tags_line}\n" if tags_line else "")
+            + "\n"
+        )
+        prob_md = p.get("problem_markdown") or ""
+        exp_md  = p.get("explanation_markdown") or ""
+        chunk = header + "## 問題\n" + prob_md + "\n\n## 解説\n" + exp_md + "\n\n---\n\n"
+        if total + len(chunk) > max_chars:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+
+    md = "".join(chunks)
+    return jsonify({
+        "md":    md,
+        "count": len(chunks),
+        "total_chars": total,
+        "total_matched": len(problems),
+    })
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5058))

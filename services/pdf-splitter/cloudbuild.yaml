@@ -1,0 +1,50 @@
+steps:
+  # 1. Pull the latest image for cache
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'docker pull asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-splitter:latest || true'
+
+  # 2. Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--cache-from'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-splitter:latest'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-splitter:latest'
+      - '-f'
+      - 'services/pdf-splitter/Dockerfile'
+      - '.'
+    dir: '.'
+
+  # 3. Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-splitter:latest'
+
+  # 4. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'pdf-splitter'
+      - '--image=asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-splitter:latest'
+      - '--region=asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--timeout=300'
+      - '--memory=1Gi'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/pdf-splitter:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
+
+timeout: 1800s

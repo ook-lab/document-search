@@ -42,7 +42,6 @@ services/gmail-service/
 services/html-to-a4/
 services/kakeibo/
 services/netsuper-search/
-services/pdf-splitter/
 services/pdf-toolbox/
 services/pipeline-lab/
 services/print-run-calculator/

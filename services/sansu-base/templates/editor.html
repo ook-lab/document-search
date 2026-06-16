@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>sansu-base | 手動入力・修正</title>
+    <title>sansu-base | 問題を編集</title>
     
     <!-- CSS Dependencies -->
     <link rel="stylesheet" href="/static/css/style.css">
@@ -40,17 +40,20 @@
                 <i class="fa-solid fa-camera"></i> OCR読み取り登録
             </a>
             <a href="/manual-input" style="text-decoration: none; color: var(--accent-primary); font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 2px solid var(--accent-primary); padding-bottom: 0.25rem;">
-                <i class="fa-solid fa-keyboard"></i> 手動入力・修正
+                <i class="fa-solid fa-pen-to-square"></i> 問題を編集
+            </a>
+            <a href="/answer" style="text-decoration: none; color: var(--text-muted); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-circle-check"></i> 解答記録
+            </a>
+            <a href="/study" style="text-decoration: none; color: var(--text-muted); font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i class="fa-solid fa-brain"></i> 学習提案
             </a>
         </nav>
         <div class="header-actions" style="display: flex; gap: 0.65rem; align-items: center;">
             <button type="button" id="btn-open-db" class="btn btn-secondary btn-sm" style="padding: 0.5rem 0.85rem; font-weight: 600;">
                 <i class="fa-solid fa-database" style="color: var(--accent-primary);"></i> 既存問題を開く
             </button>
-            <button type="button" id="btn-new-problem" class="btn btn-secondary btn-sm" style="padding: 0.5rem 0.85rem; font-weight: 600;">
-                <i class="fa-solid fa-plus" style="color: #10b981;"></i> 新規作成
-            </button>
-            <button type="button" id="btn-print-pdf" class="btn btn-secondary btn-sm" style="padding: 0.5rem 0.85rem; font-weight: 600;">
+<button type="button" id="btn-print-pdf" class="btn btn-secondary btn-sm" style="padding: 0.5rem 0.85rem; font-weight: 600;">
                 <i class="fa-solid fa-print" style="color: #0284c7;"></i> A4 PDF印刷
             </button>
             <button type="button" id="btn-gen-variant-modal" class="btn btn-primary btn-sm" style="padding: 0.5rem 0.85rem; font-weight: 700; background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: white; border: none; box-shadow: 0 2px 6px rgba(139, 92, 246, 0.2);">

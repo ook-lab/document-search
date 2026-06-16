@@ -98,7 +98,6 @@
     display: grid;
     grid-template-columns: 460px 1fr;
     gap: 1.5rem;
-    height: calc(100vh - 12rem);
     min-height: 500px;
 }
 
@@ -106,15 +105,11 @@
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    height: 100%;
-    overflow: hidden;
 }
 
 .panel-preview {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    overflow: hidden;
 }
 
 .control-header {
