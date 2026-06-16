@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>絵麻のAI 4択クイズメーカー Premium</title>
+  <title>AI 4択クイズメーカー Premium</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="絵麻クイズ">
+  <meta name="apple-mobile-web-app-title" content="クイズ (e)">
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & ReactDOM -->
@@ -103,6 +103,10 @@
       const [historyAnalysisLevel, setHistoryAnalysisLevel] = useState(() => {
         return localStorage.getItem('historyAnalysisLevel') || 'none';
       });
+      // 出題モード
+      const [quizMode, setQuizMode] = useState('quiz'); // 'quiz' | 'print'
+      const [printSaveStatus, setPrintSaveStatus] = useState(null);
+      const [sheetAnswers, setSheetAnswers] = useState([]);
       
       // 科目データ関連
       const [subjects, setSubjects] = useState([]);
@@ -408,7 +412,7 @@
         if (window.lucide) {
           window.lucide.createIcons();
         }
-      }, [step, inputType, pdfFiles, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel]);
+      }, [step, inputType, pdfFiles, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel, sheetAnswers, quizMode, printSaveStatus]);
 
       const fetchSubjects = async () => {
         try {
@@ -491,6 +495,7 @@
         formData.append("subject_id", selectedSubjectId);
         formData.append("question_count", questionCount);
         formData.append("history_analysis_level", historyAnalysisLevel);
+        formData.append("quiz_mode", quizMode);
         
         if (inputType === 'text') {
           formData.append("source_text", sourceText);
@@ -521,7 +526,9 @@
           setSelectedOption(null);
           setShowAnswer(false);
           setScore(0);
-          setStep('quiz');
+          setSheetAnswers([]);
+          setPrintSaveStatus(null);
+          setStep(quizMode === 'print' ? 'print-output' : 'quiz');
         } catch (err) {
           console.error(err);
           setError(err.message || "問題の生成に失敗しました。APIキーを確認してください。");
@@ -767,6 +774,7 @@
           const payload = {
             subject_id: selectedSubjectId,
             source_name: sourceName,
+            quiz_mode: quizMode,
             history: answerHistory.filter(Boolean).map(h => ({
               question: h.question,
               correctAnswer: h.correctAnswer,
@@ -801,8 +809,88 @@
         setScore(0);
         setError(null);
         setAnswerHistory([]);
+        setSheetAnswers([]);
         setSaveStatus(null);
+        setPrintSaveStatus(null);
         setTokenUsage(null);
+      };
+
+      const escHtml = (str) => String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      const openPrintWindow = (mode) => {
+        const qs = questions.slice(0, 30);
+        const rows = qs.map((q, idx) => {
+          const num = idx + 1;
+          if (mode === 'question') {
+            return `<tr><td class="q"><span class="n">${num}.</span> ${escHtml(q.question)}</td><td class="a"></td></tr>`;
+          } else {
+            const opts = q.options.map((o, i) =>
+              `<div class="${o === q.correctAnswer ? 'cor' : 'opt'}">${['Ａ','Ｂ','Ｃ','Ｄ'][i]}．${escHtml(o)}</div>`
+            ).join('');
+            return `<tr><td class="q"><span class="n">${num}.</span> ${escHtml(q.question)}<div class="opts">${opts}</div></td><td class="a an"><strong>正解：</strong>${escHtml(q.correctAnswer)}<br><span class="ex">${escHtml(q.explanationDetailed)}</span></td></tr>`;
+          }
+        }).join('');
+        const css = mode === 'question' ? '.a{min-height:16mm;}' : '.an{font-size:8pt;} .ex{color:#444;font-size:7.5pt;}';
+        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+@page{size:A4;margin:10mm 12mm;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-size:9pt;font-family:"Hiragino Kaku Gothic ProN",Arial,sans-serif;line-height:1.4;}
+table{width:100%;border-collapse:collapse;}
+td{border:0.5pt solid #aaa;padding:2mm 2.5mm;vertical-align:top;}
+.q{width:55%;}
+.a{width:45%;}
+.n{font-weight:bold;}
+.opts{margin-top:1.5mm;font-size:8pt;}
+.opt{margin:0.3mm 0;}
+.cor{margin:0.3mm 0;font-weight:bold;text-decoration:underline;}
+tr{page-break-inside:avoid;}
+${css}
+</style></head><body><table>${rows}</table>
+<script>window.addEventListener('load',function(){window.print();});<\/script>
+</body></html>`;
+        const w = window.open('', '_blank');
+        if (w) { w.document.write(html); w.document.close(); }
+      };
+
+      const getSourceName = () => {
+        if (inputType === 'pdf' && pdfFiles.length > 0) {
+          return pdfFiles.map(f => f.name).join(", ");
+        } else if (inputType === 'text' && sourceText) {
+          const clean = sourceText.replace(/\s+/g, ' ').trim();
+          return `テキスト: ${clean.substring(0, 25)}${clean.length > 25 ? '...' : ''}`;
+        }
+        return "不明なソース";
+      };
+
+      const savePrintResults = async () => {
+        const answered = questions.slice(0, 30)
+          .map((q, idx) => ({ q, idx }))
+          .filter(({ idx }) => sheetAnswers[idx] !== null && sheetAnswers[idx] !== undefined);
+        if (!answered.length) return;
+        setPrintSaveStatus('saving');
+        try {
+          const history = answered.map(({ q, idx }) => ({
+            question: q.question,
+            correctAnswer: q.correctAnswer,
+            userAnswer: null,
+            isCorrect: sheetAnswers[idx] === true
+          }));
+          const res = await fetch('/api/save-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subject_id: selectedSubjectId,
+              source_name: getSourceName(),
+              quiz_mode: 'print',
+              history
+            })
+          });
+          if (!res.ok) throw new Error();
+          setPrintSaveStatus('success');
+        } catch {
+          setPrintSaveStatus('error');
+        }
+        setTimeout(() => setPrintSaveStatus(null), 4000);
       };
 
       const insertSampleText = () => {
@@ -822,7 +910,7 @@
                   </div>
                   <div>
                     <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                      絵麻のAI 4択クイズメーカー <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded font-mono">v3.5</span>
+                      AI 4択クイズメーカー <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded font-mono">v3.5 (e)</span>
                     </h1>
                     <p className="text-[10px] text-slate-500">Powered by Gemini 3.5 Flash & Supabase</p>
                   </div>
@@ -1284,10 +1372,34 @@
                     <div className="absolute top-0 left-0 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl -z-10"></div>
                     
                     <div className="mb-6">
-                      <h2 className="text-xl sm:text-2xl font-bold mb-2 text-slate-900">4択問題の自動生成</h2>
+                      <h2 className="text-xl sm:text-2xl font-bold mb-2 text-slate-900">
+                        {quizMode === 'quiz' ? '4択問題の自動生成' : 'プリントモード'}
+                      </h2>
                       <p className="text-slate-500 text-xs sm:text-sm">
-                        AIがテキストやPDFの内容から重要な要点を抽出し、科目別のプロンプト設計に従って本格的な4択問題を作成します。
+                        {quizMode === 'quiz'
+                          ? 'AIがテキストやPDFの内容から重要な要点を抽出し、科目別のプロンプト設計に従って本格的な4択問題を作成します。'
+                          : 'AIが問題を生成し、A4プリント形式で出力します。解答用紙・解答解説・解答入力モードを選べます。'}
                       </p>
+                    </div>
+
+                    {/* モード切替 */}
+                    <div className="flex gap-2 mb-6 bg-slate-100 p-1 rounded-xl border border-slate-200 max-w-xs shadow-sm">
+                      <button
+                        onClick={() => setQuizMode('quiz')}
+                        className={`flex-1 py-2 px-3 text-xs rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all ${
+                          quizMode === 'quiz' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
+                        }`}
+                      >
+                        <Icon name="help-circle" className="w-3.5 h-3.5" /> 4択クイズ
+                      </button>
+                      <button
+                        onClick={() => setQuizMode('print')}
+                        className={`flex-1 py-2 px-3 text-xs rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all ${
+                          quizMode === 'print' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600'
+                        }`}
+                      >
+                        <Icon name="printer" className="w-3.5 h-3.5" /> プリント
+                      </button>
                     </div>
 
                     {/* 科目プルダウンと苦手分析 */}
@@ -1477,6 +1589,45 @@
                 </div>
               )}
 
+
+              {/* 2b. プリント出力フェーズ */}
+              {step === 'print-output' && questions.length > 0 && (
+                <div className="animate-in fade-in duration-300 max-w-md mx-auto text-center py-8">
+                  <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-amber-200 shadow-lg">
+                    <Icon name="printer" className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-800 mb-2">問題を生成しました</h2>
+                  <p className="text-slate-500 text-sm mb-8">{questions.length}問 / プリントモード</p>
+
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={() => openPrintWindow('question')}
+                      className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-sm"
+                    >
+                      <Icon name="printer" className="w-5 h-5" /> 問題出力（回答欄あり）
+                    </button>
+                    <button
+                      onClick={() => openPrintWindow('answer')}
+                      className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-sm"
+                    >
+                      <Icon name="printer" className="w-5 h-5" /> 解答解説出力
+                    </button>
+                    <button
+                      onClick={() => { setSheetAnswers(new Array(Math.min(questions.length, 30)).fill(null)); setStep('answer-sheet'); }}
+                      className="w-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-sm"
+                    >
+                      <Icon name="check-square" className="w-5 h-5" /> 解答表示・正誤入力
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={resetApp}
+                    className="mt-8 text-slate-500 hover:text-slate-700 text-sm font-bold flex items-center justify-center gap-1.5 mx-auto"
+                  >
+                    <Icon name="rotate-ccw" className="w-4 h-4" /> トップに戻る
+                  </button>
+                </div>
+              )}
 
               {/* 3. クイズ進行フェーズ */}
               {step === 'quiz' && questions.length > 0 && (
@@ -1671,6 +1822,31 @@
                     </div>
                   </div>
 
+                  {/* 問題用紙の出力 */}
+                  <div className="max-w-md mx-auto mb-8">
+                    <p className="text-xs font-bold text-slate-500 mb-3 tracking-wider">問題用紙の出力</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        onClick={() => openPrintWindow('question')}
+                        className="flex-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
+                      >
+                        <Icon name="printer" className="w-4 h-4" /> 問題出力
+                      </button>
+                      <button
+                        onClick={() => openPrintWindow('answer')}
+                        className="flex-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
+                      >
+                        <Icon name="printer" className="w-4 h-4" /> 解答解説出力
+                      </button>
+                      <button
+                        onClick={() => { setSheetAnswers(new Array(Math.min(questions.length, 30)).fill(null)); setStep('answer-sheet'); }}
+                        className="flex-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
+                      >
+                        <Icon name="check-square" className="w-4 h-4" /> 解答表示
+                      </button>
+                    </div>
+                  </div>
+
                   {/* アクションボタン */}
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto">
                     <button
@@ -1680,7 +1856,7 @@
                         setShowAnswer(false);
                         setScore(0);
                         setStep('quiz');
-                        setAnswerHistory([]); 
+                        setAnswerHistory([]);
                       }}
                       className="w-full bg-white border border-slate-200 hover:border-slate-350 text-slate-700 hover:text-slate-900 font-bold py-3 px-6 rounded-xl transition-all text-sm shadow-sm"
                     >
@@ -1723,6 +1899,95 @@
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* 5. 解答表示フェーズ */}
+              {step === 'answer-sheet' && questions.length > 0 && (
+                <div className="animate-in fade-in duration-300 max-w-2xl mx-auto">
+                  <div className="flex items-center gap-3 mb-6">
+                    <button
+                      onClick={() => setStep(quizMode === 'print' ? 'print-output' : 'result')}
+                      className="p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-all flex items-center gap-1.5 text-sm font-bold shadow-sm"
+                    >
+                      <Icon name="arrow-left" className="w-4 h-4" /> 戻る
+                    </button>
+                    <h2 className="text-lg font-bold text-slate-800">解答表示</h2>
+                  </div>
+
+                  <div className="space-y-2">
+                    {questions.slice(0, 30).map((q, idx) => (
+                      <div key={idx} className={`bg-white rounded-xl border p-4 flex items-start gap-3 shadow-sm transition-all ${
+                        sheetAnswers[idx] === true ? 'border-emerald-300 bg-emerald-50/30' :
+                        sheetAnswers[idx] === false ? 'border-rose-300 bg-rose-50/30' :
+                        'border-slate-200'
+                      }`}>
+                        <span className="font-black text-slate-400 text-sm w-6 shrink-0 pt-0.5">{idx + 1}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-800 text-sm font-semibold leading-relaxed mb-2">{q.question}</p>
+                          <p className="text-xs text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-lg inline-block">
+                            正解：{q.correctAnswer}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => setSheetAnswers(prev => { const a=[...prev]; a[idx]=true; return a; })}
+                            className={`w-10 h-10 rounded-xl font-bold text-base transition-all ${
+                              sheetAnswers[idx] === true
+                                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                                : 'bg-white border border-slate-200 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'
+                            }`}
+                          >○</button>
+                          <button
+                            onClick={() => setSheetAnswers(prev => { const a=[...prev]; a[idx]=false; return a; })}
+                            className={`w-10 h-10 rounded-xl font-bold text-base transition-all ${
+                              sheetAnswers[idx] === false
+                                ? 'bg-rose-500 text-white shadow-md shadow-rose-500/20'
+                                : 'bg-white border border-slate-200 text-slate-400 hover:border-rose-400 hover:text-rose-600'
+                            }`}
+                          >✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {sheetAnswers.some(a => a !== undefined && a !== null) && (
+                    <div className="mt-6 p-4 bg-white rounded-2xl border border-slate-200 text-center shadow-sm">
+                      <p className="text-3xl font-black text-indigo-600">
+                        {sheetAnswers.filter(a => a === true).length}
+                        <span className="text-base text-slate-500 font-bold ml-1">
+                          / {sheetAnswers.filter(a => a !== undefined && a !== null).length} 問 正解
+                        </span>
+                      </p>
+                    </div>
+                  )}
+
+                  {/* プリントモードのみ: 保存ボタン */}
+                  {quizMode === 'print' && sheetAnswers.some(a => a !== undefined && a !== null) && (
+                    <div className="mt-4">
+                      <button
+                        onClick={savePrintResults}
+                        disabled={printSaveStatus === 'saving'}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-md shadow-indigo-600/10"
+                      >
+                        {printSaveStatus === 'saving' ? (
+                          <><Icon name="loader" className="w-4 h-4 animate-spin" /> 保存中...</>
+                        ) : (
+                          <><Icon name="save" className="w-4 h-4" /> 解答結果を保存</>
+                        )}
+                      </button>
+                      {printSaveStatus === 'success' && (
+                        <p className="text-emerald-600 text-xs font-bold text-center mt-2 flex items-center justify-center gap-1">
+                          <Icon name="check-circle" className="w-4 h-4" /> 保存しました
+                        </p>
+                      )}
+                      {printSaveStatus === 'error' && (
+                        <p className="text-rose-600 text-xs font-bold text-center mt-2 flex items-center justify-center gap-1">
+                          <Icon name="alert-circle" className="w-4 h-4" /> 保存に失敗しました
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </main>
