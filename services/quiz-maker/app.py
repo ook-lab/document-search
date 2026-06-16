@@ -23,7 +23,7 @@ load_dotenv()
 
 # ユーザー設定
 USER_NAME = "ikuya"
-USER_DISPLAY_NAME = "育哉"
+USER_DISPLAY_NAME = "(i)"
 SUBJECTS_TABLE = "quiz_subjects"
 HISTORY_TABLE = "quiz_history"
 DEFAULT_FOLDER_ENV_VARS = ["IKUYA_SCHOOL_FOLDER_ID", "IKUYA_JUKU_FOLDER_ID", "IKUYA_EXAM_FOLDER_ID", "HOME_LIVING_FOLDER_ID"]
@@ -234,6 +234,7 @@ def generate_questions():
     question_count = int(request.form.get("question_count", 10))
     source_text = request.form.get("source_text", "")
     history_analysis_level = request.form.get("history_analysis_level", "none")
+    quiz_mode = request.form.get("quiz_mode", "quiz")
     pdf_files = request.files.getlist("pdf")
     
     if not subject_id:
@@ -274,6 +275,7 @@ def generate_questions():
                 .select("question") \
                 .eq("subject_id", subject_id) \
                 .eq("is_correct", False) \
+                .eq("quiz_mode", quiz_mode) \
                 .order("created_at", desc=True) \
                 .limit(100) \
                 .execute()
@@ -314,6 +316,7 @@ def generate_questions():
                 res = supabase.table(HISTORY_TABLE) \
                     .select("question, correct_answer, is_correct") \
                     .ilike("source_name", f"%{fname}%") \
+                    .eq("quiz_mode", quiz_mode) \
                     .order("created_at", desc=True) \
                     .limit(3000) \
                     .execute()
@@ -466,16 +469,18 @@ def save_history():
     data = request.json
     subject_id = data.get("subject_id")
     source_name = data.get("source_name", "不明なソース").strip()
+    quiz_mode = data.get("quiz_mode", "quiz")
     history_records = data.get("history", [])
-    
+
     if not subject_id or not history_records:
         return jsonify({"error": "subject_id and history list are required"}), 400
-        
+
     try:
         payloads = []
         for record in history_records:
             payloads.append({
                 "subject_id": subject_id,
+                "quiz_mode": quiz_mode,
                 "question": record.get("question"),
                 "correct_answer": record.get("correctAnswer"),
                 "user_answer": record.get("userAnswer"),
@@ -504,8 +509,8 @@ shared_pdfs = {}
 def manifest():
     """PWAのマニフェストを返す"""
     manifest_data = {
-        "name": f"AI 4択クイズメーカー {USER_DISPLAY_NAME} Premium",
-        "short_name": f"{USER_DISPLAY_NAME}クイズ",
+        "name": f"AI 4択クイズメーカー {USER_DISPLAY_NAME}",
+        "short_name": f"クイズ {USER_DISPLAY_NAME}",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#f8fafc",
