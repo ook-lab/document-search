@@ -1733,11 +1733,7 @@ ${css}
                           <p className="font-bold mb-1 flex items-center gap-1 text-slate-500 text-xs">
                             <Icon name="lightbulb" className="w-4 h-4 text-amber-500" /> 解説
                           </p>
-                          <p>
-                            {selectedOption === questions[currentIndex].correctAnswer 
-                              ? questions[currentIndex].explanationShort 
-                              : questions[currentIndex].explanationDetailed}
-                          </p>
+                          <p>{questions[currentIndex].explanationDetailed}</p>
                         </div>
 
                         <button
