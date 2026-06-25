@@ -48,6 +48,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("kakeibo-ui", "services/kakeibo/cloudbuild.yaml", "services/kakeibo/**"),
     ("my-calendar-app", "my-calendar-app/cloudbuild.yaml", "my-calendar-app/**"),
     ("pdf-toolbox", "services/pdf-toolbox/cloudbuild.yaml", "services/pdf-toolbox/**"),
+    ("pdf-merger", "services/pdf-merger/cloudbuild.yaml", "services/pdf-merger/**"),
     ("pipeline-lab", "services/pipeline-lab/cloudbuild.yaml", "services/pipeline-lab/**"),
     ("portal-deploy", "portal-app/cloudbuild.yaml", "portal-app/**"),
     ("quiz-maker", "services/quiz-maker/cloudbuild.yaml", "services/quiz-maker/**"),

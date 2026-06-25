@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF自動結合ツール | PDF Merger Pro</title>
+    <meta name="description" content="メインフォルダ内のサブフォルダをスキャンし、所定のルールに従ってPDFを自動結合し支払一覧表を作成するプロフェッショナル向けツール。">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;600;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --card-border: rgba(0, 0, 0, 0.06);
+            --primary-gradient: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+            --success-gradient: linear-gradient(135deg, #10b981 0%, #047857 100%);
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-radius: 16px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', 'Noto Sans JP', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(59, 130, 246, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(99, 102, 241, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            padding: 2rem 1.5rem;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(to right, #2563eb, #4f46e5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo-icon {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            background: var(--primary-gradient);
+            border-radius: 6px;
+            transform: rotate(-10deg);
+        }
+
+        main {
+            flex-grow: 1;
+            padding: 1rem 1.5rem 3rem;
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 2rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--border-radius);
+            padding: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            border-color: rgba(0, 0, 0, 0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.06);
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.8px;
+            line-height: 1.2;
+            color: #0f172a;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            font-weight: 300;
+            line-height: 1.5;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #2563eb;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 1rem 1.2rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            color: #0f172a;
+            font-size: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            transition: var(--transition);
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+            background: #fff;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 1.1rem;
+            background: var(--primary-gradient);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.75rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3);
+            filter: brightness(1.05);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Alert / Messages */
+        .alert {
+            padding: 1rem 1.25rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: #d97706;
+        }
+
+        .alert-danger {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #dc2626;
+        }
+
+        /* Result Area */
+        .result-section {
+            animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+            padding-bottom: 1rem;
+        }
+
+        .result-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #059669;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .path-badge {
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            color: #475569;
+            display: block;
+        }
+
+        .flex-container {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .flex-child {
+            flex: 1 1 300px;
+        }
+
+        .global-result-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .csv-result-card {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(5, 150, 105, 0.05) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        .global-info h3, .csv-info h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .global-info h3 { color: #4f46e5; }
+        .csv-info h3 { color: #059669; }
+
+        .global-info p, .csv-info p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .global-badge {
+            background: var(--accent-gradient);
+            color: #fff;
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .csv-badge {
+            background: var(--success-gradient);
+            color: #fff;
+            padding: 0.35rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background: rgba(0, 0, 0, 0.02);
+            padding: 0.85rem 1rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        td {
+            padding: 0.85rem 1rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+            color: #334155;
+        }
+
+        .num-col {
+            text-align: right;
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 500;
+        }
+
+        th.num-col {
+            font-family: inherit;
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(0, 0, 0, 0.005);
+        }
+
+        .table-total-row {
+            font-weight: 700;
+            background: rgba(0, 0, 0, 0.015);
+        }
+        
+        .table-total-row td {
+            color: #0f172a;
+            border-top: 2px solid rgba(0, 0, 0, 0.08);
+            border-bottom: 2px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .code-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            color: #2563eb;
+        }
+
+        .section-label {
+            display: block;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid #2563eb;
+            padding-left: 0.5rem;
+        }
+
+        footer {
+            padding: 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.03);
+            margin-top: auto;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            .card {
+                padding: 1.5rem;
+            }
+            h1 {
+                font-size: 1.8rem;
+            }
+            .flex-container {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">
+            <span class="logo-icon"></span>
+            PDF MERGER PRO
+        </div>
+    </header>
+
+    <main>
+        <div class="card">
+            <h1>PDF自動結合 & 支払データ集集計 (Google Drive版)</h1>
+            <p class="subtitle">Google Drive上の指定フォルダをスキャンし、各サブフォルダ内のPDFを自動結合します。同時に、各社の金銭請求伝票から金額（支払総額、消費税、約束手形、振込金額）を自動抽出して、支払一覧表（CSV/PDF）を生成してGoogle Driveに保存します。</p>
+
+            <!-- フラッシュメッセージ表示 -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}" role="alert" id="alert-msg">
+                            {% if category == 'warning' or category == 'danger' %}
+                                ⚠️
+                            {% endif %}
+                            <span>{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form action="/" method="POST" id="merge-form">
+                <div class="form-group">
+                    <label for="folder_path">Google Drive フォルダID または フォルダURL</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="folder_path" name="folder_path" required 
+                               placeholder="例: 1wZW-IRNGOpJgcW2sq3Brip5sK0n2bBi6   またはブラウザのURLをそのまま貼り付け"
+                               value="{{ request.form.get('folder_path', '') }}">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit" id="btn-submit">
+                    <span class="spinner" id="btn-spinner"></span>
+                    <span id="btn-text">処理を実行 (Google Drive)</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- 処理結果表示 -->
+        {% if success %}
+        <div class="card result-section" id="results-card">
+            <div class="result-header">
+                <h2 class="result-title">
+                    ✨ 処理が正常に完了しました
+                </h2>
+            </div>
+            
+            <div>
+                <span class="section-label">Google Drive 上に作成された成果物フォルダ</span>
+                <div class="path-badge" style="font-size: 1.1rem; color: #1e3a8a; background: #eff6ff; font-weight: bold;">
+                    📁 {{ output_dir }}
+                </div>
+            </div>
+
+            <div class="flex-container">
+                {% if global_result %}
+                <div class="flex-child global-result-card">
+                    <div class="global-info">
+                        <h3>{{ global_result.output_file }}</h3>
+                        <p>金銭請求伝票と請求総括表のみを会社コード順に結合した出力用PDFです。</p>
+                    </div>
+                    <span class="global-badge">全体出力用 ({{ global_result.files_merged }}枚)</span>
+                </div>
+                {% endif %}
+
+                {% if csv_filename %}
+                <div class="flex-child csv-result-card">
+                    <div class="csv-info">
+                        <h3>{{ csv_filename }}</h3>
+                        <p>全社分の支払データをまとめたCSVファイルです（BOM付きUTF-8）。</p>
+                    </div>
+                    <span class="csv-badge">支払一覧 CSV</span>
+                </div>
+                {% endif %}
+
+                {% if pdf_report_filename %}
+                <div class="flex-child csv-result-card" style="background: linear-gradient(135deg, rgba(220, 38, 38, 0.05) 0%, rgba(185, 28, 28, 0.05) 100%); border-color: rgba(220, 38, 38, 0.2);">
+                    <div class="csv-info">
+                        <h3 style="color: #b91c1c;">{{ pdf_report_filename }}</h3>
+                        <p>全社分の支払データ一覧をA4印刷用にレイアウトしたPDFファイルです。</p>
+                    </div>
+                    <span class="csv-badge" style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);">支払一覧 PDF</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 支払データ一覧表 -->
+            {% if payment_list %}
+            <div>
+                <span class="section-label">全社支払データ一覧表 (支払一覧.csv と同等の内容)</span>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>コード</th>
+                                <th>支払い先名</th>
+                                <th class="num-col">支払総額 (税込)</th>
+                                <th class="num-col">消費税</th>
+                                <th class="num-col">約束手形</th>
+                                <th class="num-col">振込金額</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% set ns = namespace(total=0, tax=0, note=0, transfer=0) %}
+                            {% for row in payment_list %}
+                                {% set ns.total = ns.total + row.total %}
+                                {% set ns.tax = ns.tax + row.tax %}
+                                {% set ns.note = ns.note + row.note %}
+                                {% set ns.transfer = ns.transfer + row.transfer %}
+                            <tr>
+                                <td><span class="code-text">{{ row.code }}</span></td>
+                                <td>{{ row.name }}</td>
+                                <td class="num-col">{{ row.total|commajil }}円</td>
+                                <td class="num-col">{{ row.tax|commajil }}円</td>
+                                <td class="num-col">{{ row.note|commajil }}円</td>
+                                <td class="num-col">{{ row.transfer|commajil }}円</td>
+                            </tr>
+                            {% endfor %}
+                            <!-- 合計行 -->
+                            <tr class="table-total-row">
+                                <td>-</td>
+                                <td>合計 ({{ payment_list|length }} 社)</td>
+                                <td class="num-col">{{ ns.total|commajil }}円</td>
+                                <td class="num-col">{{ ns.tax|commajil }}円</td>
+                                <td class="num-col">{{ ns.note|commajil }}円</td>
+                                <td class="num-col">{{ ns.transfer|commajil }}円</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 結合PDFファイル一覧 -->
+            <div>
+                <span class="section-label">会社別の結合PDFファイル一覧 (計 {{ results|length }} 個)</span>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>サブフォルダ名</th>
+                                <th>会社コード</th>
+                                <th>結合されたPDF数</th>
+                                <th>生成ファイル名</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in results %}
+                            <tr>
+                                <td>{{ row.folder }}</td>
+                                <td><span class="code-text">{{ row.code }}</span></td>
+                                <td>{{ row.files_merged }} 個</td>
+                                <td class="code-text">{{ row.output_file }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </main>
+
+    <footer>
+        &copy; 2026 PDF Merger Pro. Powered by Flask & pypdf.
+    </footer>
+
+    <script>
+        const form = document.getElementById('merge-form');
+        const submitBtn = document.getElementById('btn-submit');
+        const btnSpinner = document.getElementById('btn-spinner');
+        const btnText = document.getElementById('btn-text');
+
+        form.addEventListener('submit', function() {
+            submitBtn.disabled = true;
+            btnSpinner.style.display = 'inline-block';
+            btnText.textContent = '処理を実行中...';
+            submitBtn.style.opacity = '0.8';
+        });
+
+        const alertMsg = document.getElementById('alert-msg');
+        if (alertMsg) {
+            setTimeout(() => {
+                alertMsg.style.transition = 'opacity 0.5s ease';
+                alertMsg.style.opacity = '0';
+                setTimeout(() => alertMsg.remove(), 500);
+            }, 6000);
+        }
+    </script>
+</body>
+</html>
