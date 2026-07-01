@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注文明細書PDF分割 & メール送信</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-soft: #eeebff;
+      --success: #10b981;
+      --success-soft: #ecfdf5;
+      --warning: #f59e0b;
+      --warning-soft: #fef3c7;
+      --danger: #ef4444;
+      --danger-soft: #fef2f2;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    p.subtitle {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+      gap: 6px;
+      text-decoration: none;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: #f1f5f9;
+      color: var(--text-main);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background-color: #e2e8f0;
+    }
+
+    .btn-success {
+      background-color: var(--success);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background-color: #059669;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 9999px;
+      margin-right: 4px;
+      margin-bottom: 4px;
+    }
+
+    .badge-info { background-color: var(--primary-soft); color: var(--primary); }
+    .badge-success { background-color: var(--success-soft); color: var(--success); }
+    .badge-warning { background-color: var(--warning-soft); color: var(--warning); }
+    .badge-danger { background-color: var(--danger-soft); color: var(--danger); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    th {
+      font-weight: 600;
+      background-color: #f8fafc;
+      color: var(--text-muted);
+    }
+
+    tr:hover td {
+      background-color: #f8fafc;
+    }
+
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alert-success { background-color: var(--success-soft); color: #065f46; border: 1px solid #a7f3d0; }
+    .alert-warning { background-color: var(--warning-soft); color: #92400e; border: 1px solid #fde68a; }
+    .alert-danger { background-color: var(--danger-soft); color: #991b1b; border: 1px solid #fca5a5; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 768px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .modal-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal {
+      background-color: white;
+      border-radius: var(--radius);
+      padding: 24px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+      transform: translateY(-20px);
+      transition: transform 0.2s;
+    }
+
+    .modal-backdrop.active .modal {
+      transform: translateY(0);
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: rgba(255,255,255,0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      display: none;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--primary-soft);
+      border-top: 4px solid var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <p style="font-weight: 500;" id="loadingText">処理を実行中...</p>
+</div>
+
+<div class="container">
+  <header>
+    <div>
+      <h1>🔀 注文明細書PDF分割 & メール送信</h1>
+      <p class="subtitle">PDFファイルを右上宛先別に自動スキャン・分割し、Gmailから各社宛てへ送信します。</p>
+    </div>
+    <a href="https://portal-983922127476.asia-northeast1.run.app" class="btn btn-secondary">🏠 ポータルに戻る</a>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- 1. フォルダ解析カード -->
+  <div class="card">
+    <div class="card-title">📂 解析対象 Google Drive フォルダ指定</div>
+    <form method="POST" action="/" id="analyzeForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label for="folder_url">Google Drive フォルダの URL または フォルダ ID</label>
+        <input type="text" id="folder_url" name="folder_url" value="{{ folder_url }}" required placeholder="例: https://drive.google.com/drive/folders/... または 11kzVIX... ">
+      </div>
+      <button type="submit" name="analyze" class="btn btn-primary" onclick="showLoading('Google DriveからPDFをダウンロードして解析中...')">🔍 PDFを解析してプレビューを表示</button>
+    </form>
+  </div>
+
+  {% if preview_data %}
+  <div class="grid-2">
+    <!-- 2. メールテンプレート設定 -->
+    <div class="card">
+      <div class="card-title">✉️ メール件名・本文テンプレート</div>
+      <div class="form-group">
+        <label for="mail_subject">件名テンプレート</label>
+        <input type="text" id="mail_subject" value="{{ mail_template.subject }}">
+      </div>
+      <div class="form-group">
+        <label for="mail_body">本文テンプレート</label>
+        <textarea id="mail_body" rows="8">{{ mail_template.body }}</textarea>
+      </div>
+      <button type="button" class="btn btn-secondary" onclick="saveTemplate()">💾 テンプレート保存</button>
+      <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
+        ※ `{company_name}`, `{company_code}` プレースホルダーが会社情報に置換されます。
+      </p>
+    </div>
+
+    <!-- 3. マスタ編集・新規登録 -->
+    <div class="card">
+      <div class="card-title" style="justify-content: space-between; display: flex; align-items: center; width: 100%;">
+        <span>📖 宛先マスタ一覧・編集</span>
+        <button type="button" class="btn btn-primary" style="padding: 6px 12px; font-size: 13px;" onclick="openEditModal('', '', '', true)">➕ 新規追加</button>
+      </div>
+      <div class="form-group" style="max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px;">
+        <table style="margin-top:0;">
+          <thead>
+            <tr>
+              <th>コード</th>
+              <th>会社名</th>
+              <th>メールアドレス</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for code, info in companies.items() %}
+            <tr>
+              <td><strong>{{ code }}</strong></td>
+              <td>{{ info.name }}</td>
+              <td>
+                <span id="display-email-{{ code }}">{{ info.email or '未設定' }}</span>
+              </td>
+              <td>
+                <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('{{ code }}', '{{ info.name }}', '{{ info.email }}')">編集</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px; padding: 0 4px;">
+        ※ 1社に複数アドレスを設定する場合は、カンマ `,` で区切って登録してください。(例: `aaa@test.com, bbb@test.com`)
+      </p>
+    </div>
+  </div>
+
+  <!-- 4. 送信プレビュー・一括送信 -->
+  <div class="card">
+    <div class="card-title" style="justify-content: space-between;">
+      <span>📑 送信プレビュー (プレフィックス: {{ prefix }})</span>
+      <div>
+        <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="toggleSelectAll(true)">全て選択</button>
+        <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="toggleSelectAll(false)">選択解除</button>
+      </div>
+    </div>
+
+    <table id="previewTable">
+      <thead>
+        <tr>
+          <th style="width: 50px;">選択</th>
+          <th style="width: 100px;">コード</th>
+          <th style="width: 250px;">会社名 (マスタ適用)</th>
+          <th style="width: 200px;">送信先メールアドレス</th>
+          <th>添付される明細書の種類</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for code, info in preview_data.items() %}
+        <tr>
+          <td>
+            <input type="checkbox" name="selected_companies" value="{{ code }}" class="company-checkbox" {% if info.email %}checked{% endif %}>
+          </td>
+          <td><strong>{{ code }}</strong></td>
+          <td>{{ info.name }}</td>
+          <td>
+            {% if info.email %}
+              <span class="badge badge-success">{{ info.email }}</span>
+            {% else %}
+              <span class="badge badge-danger">宛先アドレス未設定</span>
+            {% endif %}
+          </td>
+          <td>
+            {% for job_type in info.jobs.keys() %}
+              <span class="badge badge-info">{{ job_type }} ({{ info.jobs[job_type].pages|length }}ページ)</span>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center;">
+      <p style="font-size: 13px; color: var(--text-muted);">
+        ※ 送信が成功したファイルは、対象フォルダ直下の `送信済み明細_{{ prefix }}` フォルダにコピーバックアップされます。
+      </p>
+      <button type="button" class="btn btn-success" style="font-size: 16px; padding: 12px 24px;" onclick="sendEmails()">✉️ 選択した宛先にメールを一括送信</button>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 編集・新規登録モーダル -->
+<div class="modal-backdrop" id="editModalBackdrop">
+  <div class="modal">
+    <h3 style="font-family: 'Outfit', sans-serif; margin-bottom: 16px;" id="modalTitle">宛先メールアドレスの編集</h3>
+    
+    <div class="form-group">
+      <label for="edit_code">会社コード (4桁)</label>
+      <input type="text" id="edit_code" placeholder="例: 5020">
+    </div>
+    <div class="form-group">
+      <label for="edit_name">会社名</label>
+      <input type="text" id="edit_name" placeholder="例: DNP出版プロダクツ">
+    </div>
+    <div class="form-group">
+      <label for="edit_email">メールアドレス (複数指定時はカンマ区切り)</label>
+      <input type="text" id="edit_email" placeholder="example1@example.com, example2@example.com">
+      <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+        ※ 複数アドレスを設定する場合は、カンマ `,` で区切って入力してください。
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+      <button type="button" class="btn btn-primary" onclick="saveMaster()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function showLoading(text) {
+    document.getElementById('loadingText').innerText = text;
+    document.getElementById('loadingOverlay').style.display = 'flex';
+  }
+
+  function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+  }
+
+  function openEditModal(code, name, email, isNew = false) {
+    document.getElementById('modalTitle').innerText = isNew ? '宛先マスタの新規登録' : '宛先メールアドレスの編集';
+    
+    const codeInput = document.getElementById('edit_code');
+    codeInput.value = code;
+    if (isNew) {
+      codeInput.readOnly = false;
+      codeInput.style.backgroundColor = 'white';
+      codeInput.style.cursor = 'text';
+    } else {
+      codeInput.readOnly = true;
+      codeInput.style.backgroundColor = '#f1f5f9';
+      codeInput.style.cursor = 'not-allowed';
+    }
+    
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_email').value = email;
+    document.getElementById('editModalBackdrop').classList.add('active');
+  }
+
+  function closeModal() {
+    document.getElementById('editModalBackdrop').classList.remove('active');
+  }
+
+  function saveMaster() {
+    const code = document.getElementById('edit_code').value.trim();
+    const name = document.getElementById('edit_name').value.trim();
+    const email = document.getElementById('edit_email').value.trim();
+
+    if (!code || !name) {
+      alert('会社コードと会社名は必須項目です。');
+      return;
+    }
+
+    showLoading('マスタを保存中...');
+    fetch('/api/save_master', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token() }}'
+      },
+      body: JSON.stringify({ code, name, email })
+    })
+    .then(res => res.json())
+    .then(data => {
+      hideLoading();
+      if (data.success) {
+        closeModal();
+        // 表示を更新
+        document.getElementById(`display-email-${code}`).innerText = email || '未設定';
+        // 解析済みプレビューの画面も再読込するため、解析フォームを再送信
+        document.getElementById('analyzeForm').submit();
+      } else {
+        alert('保存に失敗しました: ' + data.error);
+      }
+    })
+    .catch(err => {
+      hideLoading();
+      alert('エラーが発生しました: ' + err);
+    });
+  }
+
+  function saveTemplate() {
+    const subject = document.getElementById('mail_subject').value;
+    const body = document.getElementById('mail_body').value;
+
+    showLoading('テンプレートを保存中...');
+    fetch('/api/save_template', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token() }}'
+      },
+      body: JSON.stringify({ subject, body })
+    })
+    .then(res => res.json())
+    .then(data => {
+      hideLoading();
+      if (data.success) {
+        alert('メールテンプレートを保存しました。');
+      } else {
+        alert('保存に失敗しました: ' + data.error);
+      }
+    })
+    .catch(err => {
+      hideLoading();
+      alert('エラーが発生しました: ' + err);
+    });
+  }
+
+  function toggleSelectAll(checked) {
+    const checkboxes = document.querySelectorAll('.company-checkbox');
+    checkboxes.forEach(cb => {
+      // メールアドレスが未設定の場合は選択させない
+      const row = cb.closest('tr');
+      const hasEmail = row.querySelector('.badge-success') !== null;
+      if (hasEmail || !checked) {
+        cb.checked = checked;
+      }
+    });
+  }
+
+  function sendEmails() {
+    const checkboxes = document.querySelectorAll('.company-checkbox:checked');
+    const codes = Array.from(checkboxes).map(cb => cb.value);
+    const folderUrl = document.getElementById('folder_url').value;
+
+    if (codes.length === 0) {
+      alert('送信対象の会社を1社以上選択してください。');
+      return;
+    }
+
+    if (!confirm(`${codes.length}社宛てにメールを一括送信します。よろしいですか？`)) {
+      return;
+    }
+
+    showLoading('注文明細書を分割し、メールを送信中...\n(送信後、Google Driveにバックアップ保存します)');
+    
+    fetch('/api/send_emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token() }}'
+      },
+      body: JSON.stringify({ folder_url: folderUrl, codes: codes })
+    })
+    .then(res => res.json())
+    .then(data => {
+      hideLoading();
+      if (data.success) {
+        alert(`一括送信が完了しました！\n送信成功: ${data.success_count} 社`);
+        window.location.reload();
+      } else {
+        let msg = '一部の送信でエラーが発生しました:\n\n';
+        if (data.errors && data.errors.length > 0) {
+          msg += data.errors.join('\n');
+        } else {
+          msg += data.error || '不明なエラー';
+        }
+        alert(msg);
+        window.location.reload();
+      }
+    })
+    .catch(err => {
+      hideLoading();
+      alert('通信エラーが発生しました: ' + err);
+    });
+  }
+</script>
+
+</body>
+</html>

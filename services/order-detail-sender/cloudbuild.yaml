@@ -1,0 +1,38 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/order-detail-sender:latest'
+      - '-f'
+      - 'services/order-detail-sender/Dockerfile'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/order-detail-sender:latest'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    dir: 'services/order-detail-sender'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'order-detail-sender'
+      - '--image'
+      - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/order-detail-sender:latest'
+      - '--region'
+      - 'asia-northeast1'
+      - '--allow-unauthenticated'
+      - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--memory'
+      - '512Mi'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,GMAIL_SMTP_PASSWORD=pbqy hwyh frkv tdoh,GMAIL_USER_EMAIL=ookubo.shodensha@gmail.com'
+
+images:
+  - 'asia-northeast1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/order-detail-sender:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: 'ALLOW_LOOSE'
