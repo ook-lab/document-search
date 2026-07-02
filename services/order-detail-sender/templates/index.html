@@ -511,6 +511,7 @@
     const code = document.getElementById('edit_code').value.trim();
     const name = document.getElementById('edit_name').value.trim();
     const email = document.getElementById('edit_email').value.trim();
+    const folderUrl = document.getElementById('folder_url').value;
 
     if (!code || !name) {
       alert('会社コードと会社名は必須項目です。');
@@ -524,7 +525,7 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': '{{ csrf_token() }}'
       },
-      body: JSON.stringify({ code, name, email })
+      body: JSON.stringify({ code, name, email, folder_url: folderUrl })
     })
     .then(res => res.json())
     .then(data => {
@@ -532,7 +533,9 @@
       if (data.success) {
         closeModal();
         // 表示を更新
-        document.getElementById(`display-email-${code}`).innerText = email || '未設定';
+        if (document.getElementById(`display-email-${code}`)) {
+          document.getElementById(`display-email-${code}`).innerText = email || '未設定';
+        }
         // 解析済みプレビューの画面も再読込するため、解析フォームを再送信
         document.getElementById('analyzeForm').submit();
       } else {
@@ -548,6 +551,7 @@
   function saveTemplate() {
     const subject = document.getElementById('mail_subject').value;
     const body = document.getElementById('mail_body').value;
+    const folderUrl = document.getElementById('folder_url').value;
 
     showLoading('テンプレートを保存中...');
     fetch('/api/save_template', {
@@ -556,7 +560,7 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': '{{ csrf_token() }}'
       },
-      body: JSON.stringify({ subject, body })
+      body: JSON.stringify({ subject, body, folder_url: folderUrl })
     })
     .then(res => res.json())
     .then(data => {
