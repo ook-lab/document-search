@@ -110,16 +110,19 @@ def save_companies_gdrive(folder_id, data):
                 json.dump(data, f, indent=2, ensure_ascii=False)
                 
             if file_id:
-                try:
-                    drive.trash_file(file_id)
-                except Exception as e:
-                    logger.warning(f"古いマスタの削除中にエラー (無視して継続): {e}")
-                    
-            drive.upload_file_from_path(str(temp_path), folder_id=folder_id)
+                # 既存ファイルがある場合は上書き更新 (これで容量制限403を回避！)
+                success = drive.update_file_content(file_id, str(temp_path))
+                if success:
+                    return True
+                logger.warning("既存マスタの上書き失敗。新規作成を試みます。")
+                
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=folder_id)
+            if not new_id:
+                raise RuntimeError("Google Driveへのマスタファイルの新規アップロードに失敗しました。")
         return True
     except Exception as e:
         logger.error(f"Google Driveへのマスタ保存失敗: {e}")
-        return False
+        raise e
 
 def load_mail_template_gdrive(folder_id):
     """Google Driveからメールテンプレートを読み込む"""
@@ -150,16 +153,19 @@ def save_mail_template_gdrive(folder_id, data):
                 json.dump(data, f, indent=2, ensure_ascii=False)
                 
             if file_id:
-                try:
-                    drive.trash_file(file_id)
-                except Exception as e:
-                    logger.warning(f"古いテンプレートの削除中にエラー (無視して継続): {e}")
-                    
-            drive.upload_file_from_path(str(temp_path), folder_id=folder_id)
+                # 既存ファイルがある場合は上書き更新 (これで容量制限403を回避！)
+                success = drive.update_file_content(file_id, str(temp_path))
+                if success:
+                    return True
+                logger.warning("既存テンプレートの上書き失敗。新規作成を試みます。")
+                
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=folder_id)
+            if not new_id:
+                raise RuntimeError("Google Driveへのテンプレートファイルの新規アップロードに失敗しました。")
         return True
     except Exception as e:
         logger.error(f"Google Driveへのテンプレート保存失敗: {e}")
-        return False
+        raise e
 
 # =============================================================================
 
@@ -476,8 +482,17 @@ def api_save_master():
         companies[code]["name"] = name
     companies[code]["email"] = email
     
-    if save_companies_gdrive(folder_id, companies):
-        return jsonify({"success": True})
+    try:
+        if save_companies_gdrive(folder_id, companies):
+            return jsonify({"success": True})
+    except Exception as e:
+        error_msg = str(e)
+        if "storageQuotaExceeded" in error_msg or "storage quota" in error_msg:
+            return jsonify({
+                "success": False,
+                "error": "Google Driveの制限により、新規ファイルを作成できませんでした。\n\n対象のGoogle Driveフォルダ内に、ご自身のアカウントで空のテキストファイル「dms_companies_master.json」を新規作成（中身に {} とだけ入力して保存）してから、もう一度マスタ保存を実行してください。"
+            }), 403
+        return jsonify({"success": False, "error": f"保存に失敗しました: {error_msg}"}), 500
     return jsonify({"success": False, "error": "Google Driveマスタの保存に失敗しました"}), 500
 
 @app.route("/api/save_template", methods=["POST"])
@@ -497,8 +512,17 @@ def api_save_template():
         return jsonify({"success": False, "error": "件名と本文が必要です"}), 400
         
     template = {"subject": subject, "body": body}
-    if save_mail_template_gdrive(folder_id, template):
-        return jsonify({"success": True})
+    try:
+        if save_mail_template_gdrive(folder_id, template):
+            return jsonify({"success": True})
+    except Exception as e:
+        error_msg = str(e)
+        if "storageQuotaExceeded" in error_msg or "storage quota" in error_msg:
+            return jsonify({
+                "success": False,
+                "error": "Google Driveの制限により、新規ファイルを作成できませんでした。\n\n対象のGoogle Driveフォルダ内に、ご自身のアカウントで空のテキストファイル「dms_mail_template.json」を新規作成（中身に {} とだけ入力して保存）してから、もう一度テンプレート保存を実行してください。"
+            }), 403
+        return jsonify({"success": False, "error": f"保存に失敗しました: {error_msg}"}), 500
     return jsonify({"success": False, "error": "Google Driveテンプレートの保存に失敗しました"}), 500
 
 @app.route("/api/send_emails", methods=["POST"])
