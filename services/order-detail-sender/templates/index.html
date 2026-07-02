@@ -360,7 +360,7 @@
           </thead>
           <tbody>
             {% for c in display_companies %}
-            <tr {% if c.detected and not c.email %}style="background-color: var(--warning-soft);"{% endif %}>
+            <tr id="master-row-{{ c.code }}" {% if c.detected and not c.email %}style="background-color: var(--warning-soft);"{% endif %}>
               <td><strong>{{ c.code }}</strong></td>
               <td>
                 {{ c.name }}
@@ -415,11 +415,11 @@
         {% for code, info in preview_data.items() %}
         <tr>
           <td>
-            <input type="checkbox" name="selected_companies" value="{{ code }}" class="company-checkbox" {% if info.email %}checked{% endif %}>
+            <input type="checkbox" id="checkbox-{{ code }}" name="selected_companies" value="{{ code }}" class="company-checkbox" {% if info.email %}checked{% else %}disabled{% endif %}>
           </td>
           <td><strong>{{ code }}</strong></td>
           <td>{{ info.name }}</td>
-          <td>
+          <td id="preview-email-container-{{ code }}">
             {% if info.email %}
               <span class="badge badge-success">{{ info.email }}</span>
             {% else %}
@@ -532,12 +532,51 @@
       hideLoading();
       if (data.success) {
         closeModal();
-        // 表示を更新
+        // 1. 宛先マスタ一覧テーブルのメールアドレス表示を更新
         if (document.getElementById(`display-email-${code}`)) {
           document.getElementById(`display-email-${code}`).innerText = email || '未設定';
         }
-        // 解析済みプレビューの画面も再読込するため、解析フォームを再送信
-        document.getElementById('analyzeForm').submit();
+        
+        // 2. 送信プレビューテーブルの表示とチェックボックス状態を同期 (リロードなし)
+        const previewEmailContainer = document.getElementById(`preview-email-container-${code}`);
+        const checkbox = document.getElementById(`checkbox-${code}`);
+        
+        if (previewEmailContainer) {
+          if (email) {
+            previewEmailContainer.innerHTML = `<span class="badge badge-success">${email}</span>`;
+            if (checkbox) {
+              checkbox.disabled = false;
+              checkbox.checked = true; // 自動でチェックを入れる
+            }
+          } else {
+            previewEmailContainer.innerHTML = `<span class="badge badge-danger">宛先アドレス未設定</span>`;
+            if (checkbox) {
+              checkbox.disabled = true;
+              checkbox.checked = false;
+            }
+          }
+        }
+        
+        // 3. マスタテーブル側の「未登録(今回検出)」バッジを消して、ボタンを「編集」に切り替える
+        const row = document.getElementById(`master-row-${code}`);
+        if (row) {
+          const badge = row.querySelector('.badge-danger');
+          if (badge) {
+            badge.remove();
+          }
+          if (!row.querySelector('.badge-success')) {
+            const nameCell = row.cells[1];
+            if (nameCell) {
+              nameCell.innerHTML += ` <span class="badge badge-success" style="font-size: 10px; padding: 2px 6px; margin-left: 4px; background-color: var(--primary-soft); color: var(--primary);">検出</span>`;
+            }
+          }
+          row.removeAttribute('style'); // 背景色リセット
+          
+          const btnCell = row.cells[3];
+          if (btnCell) {
+            btnCell.innerHTML = `<button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('${code}', '${name}', '${email}')">編集</button>`;
+          }
+        }
       } else {
         alert('保存に失敗しました: ' + data.error);
       }
