@@ -63,6 +63,9 @@ def load_mail_template_local():
 # Google Drive 永続化ストレージ用ヘルパー関数
 # =============================================================================
 
+# 設定用JSONファイルの保存先フォルダID (デフォルトは大久保様が作成された専用フォルダ)
+SETTINGS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SETTINGS_FOLDER_ID", "1_Xb-hH41MsQfVcNcqAEuHfwhKo96sY6y").strip()
+
 def get_gdrive_file_id(drive, filename, folder_id):
     """Google Drive上の特定のファイル名に対するファイルIDを取得する"""
     try:
@@ -85,7 +88,8 @@ def load_companies_gdrive(folder_id):
     """Google Driveから会社マスタを読み込む"""
     try:
         drive = GoogleDriveConnector()
-        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", folder_id)
+        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", target_folder_id)
         
         if file_id:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -102,7 +106,8 @@ def save_companies_gdrive(folder_id, data):
     """Google Driveへ会社マスタを保存する"""
     try:
         drive = GoogleDriveConnector()
-        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", folder_id)
+        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", target_folder_id)
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / "dms_companies_master.json"
@@ -116,7 +121,7 @@ def save_companies_gdrive(folder_id, data):
                     return True
                 logger.warning("既存マスタの上書き失敗。新規作成を試みます。")
                 
-            new_id = drive.upload_file_from_path(str(temp_path), folder_id=folder_id)
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
             if not new_id:
                 raise RuntimeError("Google Driveへのマスタファイルの新規アップロードに失敗しました。")
         return True
@@ -128,7 +133,8 @@ def load_mail_template_gdrive(folder_id):
     """Google Driveからメールテンプレートを読み込む"""
     try:
         drive = GoogleDriveConnector()
-        file_id = get_gdrive_file_id(drive, "dms_mail_template.json", folder_id)
+        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        file_id = get_gdrive_file_id(drive, "dms_mail_template.json", target_folder_id)
         
         if file_id:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -145,7 +151,8 @@ def save_mail_template_gdrive(folder_id, data):
     """Google Driveへメールテンプレートを保存する"""
     try:
         drive = GoogleDriveConnector()
-        file_id = get_gdrive_file_id(drive, "dms_mail_template.json", folder_id)
+        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        file_id = get_gdrive_file_id(drive, "dms_mail_template.json", target_folder_id)
         
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / "dms_mail_template.json"
@@ -159,7 +166,7 @@ def save_mail_template_gdrive(folder_id, data):
                     return True
                 logger.warning("既存テンプレートの上書き失敗。新規作成を試みます。")
                 
-            new_id = drive.upload_file_from_path(str(temp_path), folder_id=folder_id)
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
             if not new_id:
                 raise RuntimeError("Google Driveへのテンプレートファイルの新規アップロードに失敗しました。")
         return True
