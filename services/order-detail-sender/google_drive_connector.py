@@ -41,13 +41,19 @@ class GoogleDriveConnector:
         # logger.info("Google Driveコネクタ初期化完了")
     
     def _apply_delegation(self, creds):
-        delegated_user = (os.getenv("GMAIL_USER_EMAIL") or "").strip()
+        # Drive委任用は GOOGLE_DRIVE_DELEGATED_USER を優先。
+        # なければ GMAIL_USER_EMAIL を使うが、@gmail.com は委任不可なのでスキップ。
+        delegated_user = (os.getenv("GOOGLE_DRIVE_DELEGATED_USER") or "").strip()
+        if not delegated_user:
+            fallback = (os.getenv("GMAIL_USER_EMAIL") or "").strip()
+            if fallback and not fallback.endswith("@gmail.com"):
+                delegated_user = fallback
         if not delegated_user:
             return creds
         if hasattr(creds, "with_subject"):
             logger.info(f"Domain-wide delegation enabled for: {delegated_user}")
             return creds.with_subject(delegated_user)
-        logger.warning("GMAIL_USER_EMAIL is set, but current credentials do not support with_subject().")
+        logger.warning("GOOGLE_DRIVE_DELEGATED_USER is set, but current credentials do not support with_subject(). Drive will operate as the service account itself (no user delegation).")
         return creds
 
     def _credentials_from_env_value(self):
