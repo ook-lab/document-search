@@ -359,15 +359,26 @@
             </tr>
           </thead>
           <tbody>
-            {% for code, info in companies.items() %}
-            <tr>
-              <td><strong>{{ code }}</strong></td>
-              <td>{{ info.name }}</td>
+            {% for c in display_companies %}
+            <tr {% if c.detected and not c.email %}style="background-color: var(--warning-soft);"{% endif %}>
+              <td><strong>{{ c.code }}</strong></td>
               <td>
-                <span id="display-email-{{ code }}">{{ info.email or '未設定' }}</span>
+                {{ c.name }}
+                {% if c.detected and not c.in_master %}
+                  <span class="badge badge-danger" style="font-size: 10px; padding: 2px 6px; margin-left: 4px; background-color: var(--danger-soft); color: var(--danger);">未登録 (今回検出)</span>
+                {% elif c.detected %}
+                  <span class="badge badge-success" style="font-size: 10px; padding: 2px 6px; margin-left: 4px; background-color: var(--primary-soft); color: var(--primary);">検出</span>
+                {% endif %}
               </td>
               <td>
-                <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('{{ code }}', '{{ info.name }}', '{{ info.email }}')">編集</button>
+                <span id="display-email-{{ c.code }}">{{ c.email or '未設定' }}</span>
+              </td>
+              <td>
+                {% if not c.in_master %}
+                  <button type="button" class="btn btn-primary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('{{ c.code }}', '{{ c.name }}', '', true)">登録</button>
+                {% else %}
+                  <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('{{ c.code }}', '{{ c.name }}', '{{ c.email }}')">編集</button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}

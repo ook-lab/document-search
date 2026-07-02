@@ -345,12 +345,51 @@ def index():
                 logger.exception("PDF解析エラー")
                 flash(f"PDFの解析中にエラーが発生しました: {str(e)}", "danger")
                 
+    # マスタ表示用の会社リストを作成 (未登録優先でソート)
+    display_companies = []
+    for code, info in companies.items():
+        display_companies.append({
+            "code": code,
+            "name": info.get("name", ""),
+            "email": info.get("email", ""),
+            "in_master": True,
+            "detected": False
+        })
+        
+    if preview_data:
+        for code, info in preview_data.items():
+            found = False
+            for c in display_companies:
+                if c["code"] == code:
+                    c["detected"] = True
+                    found = True
+                    break
+            if not found:
+                display_companies.append({
+                    "code": code,
+                    "name": info["name"],
+                    "email": "",
+                    "in_master": False,
+                    "detected": True
+                })
+                
+    # ソート順: (1) 今回検出されたがアドレス未設定 -> (2) 今回検出された -> (3) 検出されずマスタにあるのみ
+    def sort_key(c):
+        if c["detected"] and not c["email"]:
+            return 0
+        if c["detected"]:
+            return 1
+        return 2
+        
+    display_companies.sort(key=sort_key)
+
     return render_template(
         "index.html",
         folder_url=folder_url,
         preview_data=preview_data,
         prefix=prefix,
         companies=companies,
+        display_companies=display_companies,
         mail_template=mail_template
     )
 
