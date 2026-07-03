@@ -189,12 +189,23 @@ def save_mail_template_gdrive(data, doc_type="order"):
 # =============================================================================
 
 def get_next_business_day_str():
-    """中1日平日（翻日から最初の平日）の日付文字列を生成する"""
+    """中1日平日（間に1平日を挟んだ次の平日）の日付文字列を生成する
+    例: 木曜送信 → 金曜(中) → 月曜が締切
+        水曜送信 → 木曜(中) → 金曜が締切
+    """
     WEEKDAYS_JP = ['月', '火', '水', '木', '金', '土', '日']
-    candidate = datetime.date.today() + datetime.timedelta(days=1)
-    while candidate.weekday() >= 5:  # 土(5)・日(6)はスキップ
-        candidate += datetime.timedelta(days=1)
-    return f"{candidate.month}月{candidate.day}日({WEEKDAYS_JP[candidate.weekday()]})"
+    
+    def next_business_day(d):
+        """指定日の翌平日を返す"""
+        d += datetime.timedelta(days=1)
+        while d.weekday() >= 5:
+            d += datetime.timedelta(days=1)
+        return d
+    
+    today = datetime.date.today()
+    middle = next_business_day(today)    # 中の1平日
+    deadline = next_business_day(middle) # 締切日
+    return f"{deadline.month}月{deadline.day}日({WEEKDAYS_JP[deadline.weekday()]})"
 
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 
