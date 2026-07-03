@@ -5,6 +5,7 @@ import logging
 import smtplib
 import tempfile
 import sys
+import time
 from pathlib import Path
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -129,33 +130,55 @@ def save_companies_gdrive(folder_id, data):
         logger.error(f"Google Driveへのマスタ保存失敗: {e}")
         raise e
 
-def load_mail_template_gdrive(folder_id):
+def load_mail_template_gdrive(folder_id, doc_type="order"):
     """Google Driveからメールテンプレートを読み込む"""
+    filename = "dms_mail_template.json"
+    if doc_type == "paper":
+        filename = "dms_mail_template_paper.json"
+    elif doc_type == "matching":
+        filename = "dms_mail_template_matching.json"
+        
     try:
         drive = GoogleDriveConnector()
         target_folder_id = SETTINGS_FOLDER_ID or folder_id
-        file_id = get_gdrive_file_id(drive, "dms_mail_template.json", target_folder_id)
+        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
         
         if file_id:
             with tempfile.TemporaryDirectory() as temp_dir:
-                local_path = drive.download_file(file_id, "dms_mail_template.json", temp_dir)
+                local_path = drive.download_file(file_id, filename, temp_dir)
                 if local_path and Path(local_path).exists():
                     with open(local_path, "r", encoding="utf-8") as f:
                         return json.load(f)
     except Exception as e:
-        logger.warning(f"Google Driveテンプレートのロード失敗 (ローカルにフォールバックします): {e}")
+        logger.warning(f"Google Driveテンプレートのロード失敗 ({filename}) (ローカルにフォールバックします): {e}")
         
+    if doc_type == "paper":
+        return {
+            "subject": "【用紙納入月報】ご送付の件",
+            "body": "各社担当者さま\n \nお世話になります。\n用紙納入月報をお送りします。\nよろしくお願いします。\n \n祥伝社　大久保"
+        }
+    elif doc_type == "matching":
+        return {
+            "subject": "【付合わせ明細書】ご送付の件",
+            "body": "各社担当者さま\n \nお世話になります。\n付合わせ明細書をお送りします。\nよろしくお願いします。\n \n祥伝社　大久保"
+        }
     return load_mail_template_local()
 
-def save_mail_template_gdrive(folder_id, data):
+def save_mail_template_gdrive(folder_id, data, doc_type="order"):
     """Google Driveへメールテンプレートを保存する"""
+    filename = "dms_mail_template.json"
+    if doc_type == "paper":
+        filename = "dms_mail_template_paper.json"
+    elif doc_type == "matching":
+        filename = "dms_mail_template_matching.json"
+        
     try:
         drive = GoogleDriveConnector()
         target_folder_id = SETTINGS_FOLDER_ID or folder_id
-        file_id = get_gdrive_file_id(drive, "dms_mail_template.json", target_folder_id)
+        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
         
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir) / "dms_mail_template.json"
+            temp_path = Path(temp_dir) / filename
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
                 
@@ -164,14 +187,14 @@ def save_mail_template_gdrive(folder_id, data):
                 success = drive.update_file_content(file_id, str(temp_path))
                 if success:
                     return True
-                logger.warning("既存テンプレートの上書き失敗。新規作成を試みます。")
+                logger.warning(f"既存テンプレート({filename})の上書き失敗。新規作成を試みます。")
                 
             new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
             if not new_id:
-                raise RuntimeError("Google Driveへのテンプレートファイルの新規アップロードに失敗しました。")
+                raise RuntimeError(f"Google Driveへのテンプレートファイル({filename})の新規アップロードに失敗しました。")
         return True
     except Exception as e:
-        logger.error(f"Google Driveへのテンプレート保存失敗: {e}")
+        logger.error(f"Google Driveへのテンプレート保存失敗 ({filename}): {e}")
         raise e
 
 # =============================================================================
@@ -233,6 +256,94 @@ def extract_company_from_page(page):
         
     return None, None
 
+def extract_paper_header(page):
+    """用紙納入月報PDFページから宛先会社名とページ番号を抽出する"""
+    # 会社名: Y [30, 50], X [700, 950]
+    crop_rect_name = fitz.Rect(700, 30, 950, 50)
+    name = page.get_text("text", clip=crop_rect_name).strip()
+    name = name.replace("\n", "").strip()
+    
+    # ページ番号: Y [10, 25], X [930, 990]
+    crop_rect_page = fitz.Rect(930, 10, 990, 25)
+    page_text = page.get_text("text", clip=crop_rect_page).strip()
+    page_text = page_text.replace("\n", "").strip()
+    
+    match = re.search(r"(\d+)\s*/\s*(\d+)", page_text)
+    if match:
+        cur_p = int(match.group(1))
+        tot_p = int(match.group(2))
+        return name, cur_p, tot_p
+    return name, None, None
+
+def extract_matching_header(page):
+    """付合わせ明細書PDFページから会社コード、会社名、ページ番号を抽出する"""
+    # 会社コード: Y [38, 55], X [590, 640]
+    crop_rect_code = fitz.Rect(590, 38, 640, 55)
+    code = page.get_text("text", clip=crop_rect_code).strip()
+    code = code.replace("\n", "").strip()
+    
+    # 会社名: Y [38, 55], X [640, 760]
+    crop_rect_name = fitz.Rect(640, 38, 760, 55)
+    name = page.get_text("text", clip=crop_rect_name).strip()
+    name = name.replace("\n", "").strip()
+    
+    # ページ番号: Y [30, 45], X [770, 810]
+    crop_rect_page = fitz.Rect(770, 30, 810, 45)
+    page_text = page.get_text("text", clip=crop_rect_page).strip()
+    page_text = page_text.replace("\n", "").strip()
+    
+    match = re.search(r"(\d+)\s*/\s*(\d+)", page_text)
+    if match:
+        cur_p = int(match.group(1))
+        tot_p = int(match.group(2))
+        return code, name, cur_p, tot_p
+    return code, name, None, None
+
+def load_sent_status_gdrive(folder_id):
+    """Google Driveから送信ステータスを読み込む"""
+    filename = "dms_sent_status.json"
+    try:
+        drive = GoogleDriveConnector()
+        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
+        
+        if file_id:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                local_path = drive.download_file(file_id, filename, temp_dir)
+                if local_path and Path(local_path).exists():
+                    with open(local_path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+    except Exception as e:
+        logger.warning(f"Google Drive送信ステータスのロード失敗 ({filename}): {e}")
+    return {"sent_jobs": []}
+
+def save_sent_status_gdrive(folder_id, data):
+    """Google Driveへ送信ステータスを保存する"""
+    filename = "dms_sent_status.json"
+    try:
+        drive = GoogleDriveConnector()
+        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir) / filename
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+                
+            if file_id:
+                success = drive.update_file_content(file_id, str(temp_path))
+                if success:
+                    return True
+                logger.warning(f"既存送信ステータス({filename})の上書き失敗。新規作成を試みます。")
+                
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
+            if not new_id:
+                raise RuntimeError(f"Google Driveへの送信ステータスファイル({filename})の新規アップロードに失敗しました。")
+        return True
+    except Exception as e:
+        logger.error(f"Google Driveへの送信ステータス保存失敗 ({filename}): {e}")
+        return False
+
 def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
     """Google Drive上のフォルダ内のPDFファイルを解析・仕分けし、プレビューデータを生成する"""
     drive = GoogleDriveConnector()
@@ -258,9 +369,16 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
                 prefix = match.group(1)
                 break
     if not prefix:
-        prefix = "注文明細書"
+        for f in pdf_files:
+            match = re.match(r"^(\d+年\d+月_[^_]+)_", f["name"])
+            if match:
+                prefix = match.group(1)
+                break
+    if not prefix:
+        prefix = "明細書"
 
-    types_mapping = {
+    # 注文明細書のサブタイプマッピング
+    order_types_mapping = {
         "（印刷）注文明細書_製作管理課": "印刷",
         "（加工）注文明細書_製作管理課": "加工",
         "（製本）注文明細書_製作管理課": "製本",
@@ -269,59 +387,131 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
 
     company_jobs = {}
     companies_master = load_companies_gdrive(folder_id)
+    sent_status = load_sent_status_gdrive(folder_id)
+    sent_job_ids = {job["job_id"] for job in sent_status.get("sent_jobs", [])}
 
     for pdf in pdf_files:
         filename = pdf["name"]
-        job_type = None
-        for key, val in types_mapping.items():
-            if key in filename:
-                job_type = val
-                break
-        if not job_type:
-            continue
-
+        
+        # ローカルにダウンロードして種類判定
         local_path = drive.download_file(pdf["id"], filename, temp_dir)
         if not local_path:
             continue
 
         doc = fitz.open(local_path)
+        if len(doc) == 0:
+            doc.close()
+            continue
+
+        # 1ページ目のテキストから書類種別を判定
+        first_page_text = doc[0].get_text("text")
+        
+        doc_type = None
+        if "用紙納入月報" in first_page_text or "用紙" in filename or "月報" in filename or "製紙会社" in first_page_text or "平巻" in first_page_text or "平判" in first_page_text or "銘柄" in first_page_text:
+            doc_type = "paper"
+        elif "付合わせ明細書" in first_page_text or "付合明細" in first_page_text or "付合わせ" in filename or "付合" in filename:
+            doc_type = "matching"
+        else:
+            # 注文明細書の場合、ファイル名が合致するかチェック
+            is_order = False
+            for key in order_types_mapping.keys():
+                if key in filename:
+                    is_order = True
+                    break
+            if is_order or "注文明細" in filename:
+                doc_type = "order"
+                
+        if not doc_type:
+            # どの種類にも判定できなかったPDFはスキップ
+            doc.close()
+            continue
+
+        # 各ページを解析して振り分ける
         for page_idx in range(len(doc)):
             page = doc[page_idx]
-            code, name = extract_company_from_page(page)
-            if not code:
-                logger.warning(f"会社コードを抽出できませんでした: {filename} Page {page_idx + 1}")
-                code = "unknown"
-                name = "宛先不明"
+            
+            code = ""
+            name = ""
+            job_type = "不明"
 
-            if code not in company_jobs:
-                m_name = companies_master.get(code, {}).get("name")
-                company_jobs[code] = {
+            if doc_type == "paper":
+                name, cur_p, tot_p = extract_paper_header(page)
+                if not name:
+                    name = "用紙代理店不明"
+                code = ""
+                job_type = "用紙"
+                job_id = f"{name}_paper"
+                doc_type_name = "用紙納入月報"
+            elif doc_type == "matching":
+                code, name, cur_p, tot_p = extract_matching_header(page)
+                if not code:
+                    code = "unknown"
+                if not name:
+                    name = "付合わせ宛先不明"
+                job_type = "付合わせ"
+                job_id = f"{code}_matching"
+                doc_type_name = "付合わせ明細書"
+            else: # order
+                code, name = extract_company_from_page(page)
+                if not code:
+                    code = "unknown"
+                    name = "宛先不明"
+                # サブタイプの判定
+                job_type = "注文"
+                for key, val in order_types_mapping.items():
+                    if key in filename:
+                        job_type = val
+                        break
+                job_id = f"{code}_order"
+                doc_type_name = "注文明細書"
+
+            # 送信リストへのマージ
+            if job_id not in company_jobs:
+                master_key = name if doc_type == "paper" else code
+                master_info = companies_master.get(master_key, {})
+                
+                company_jobs[job_id] = {
+                    "id": job_id,
                     "code": code,
-                    "name": m_name or name,
-                    "email": companies_master.get(code, {}).get("email") or "",
+                    "name": master_info.get("name") or name,
+                    "email": master_info.get("email") or "",
+                    "doc_type": doc_type,
+                    "doc_type_name": doc_type_name,
+                    "source_pdf_ids": [],
+                    "source_pdf_names": [],
+                    "sent": job_id in sent_job_ids,
                     "jobs": {}
                 }
 
-            if job_type not in company_jobs[code]["jobs"]:
-                company_jobs[code]["jobs"][job_type] = {
+            if pdf["id"] not in company_jobs[job_id]["source_pdf_ids"]:
+                company_jobs[job_id]["source_pdf_ids"].append(pdf["id"])
+                company_jobs[job_id]["source_pdf_names"].append(filename)
+
+            if job_type not in company_jobs[job_id]["jobs"]:
+                company_jobs[job_id]["jobs"][job_type] = {
                     "source_path": str(local_path),
                     "pages": []
                 }
-            company_jobs[code]["jobs"][job_type]["pages"].append(page_idx)
+            company_jobs[job_id]["jobs"][job_type]["pages"].append(page_idx)
+            
         doc.close()
 
     return company_jobs, prefix
 
-def create_split_pdfs_for_company(code, info, output_dir, prefix):
-    """特定の会社向けに、仕分けられたページを結合して分割PDFファイルを作成する"""
+def create_split_pdfs_for_company(job_id, info, output_dir, prefix):
+    """特定の送信ジョブ向けに、仕分けられたページを結合して分割PDFファイルを作成する"""
     attachments = []
     
     reverse_types_mapping = {
         "印刷": "（印刷）注文明細書_製作管理課",
         "加工": "（加工）注文明細書_製作管理課",
         "製本": "（製本）注文明細書_製作管理課",
-        "単独改装": "（印刷）注文明細書【単・宣・映・事】_製作管理課"
+        "単独改装": "（印刷）注文明細書【単・宣・映・事】_製作管理課",
+        "用紙": "用紙納入月報",
+        "付合わせ": "付合わせ明細書"
     }
+    
+    display_key = info["code"] if info["code"] and info["code"] != "unknown" else info["name"]
     
     for job_type, job_info in info["jobs"].items():
         src_path = Path(job_info["source_path"])
@@ -334,7 +524,7 @@ def create_split_pdfs_for_company(code, info, output_dir, prefix):
             writer.add_page(reader.pages[p])
             
         detail_name = reverse_types_mapping.get(job_type, job_type)
-        out_filename = f"{prefix}_{detail_name}({code}).pdf"
+        out_filename = f"{prefix}_{detail_name}({display_key}).pdf"
         out_path = Path(output_dir) / out_filename
         
         with open(out_path, "wb") as out_f:
@@ -399,7 +589,11 @@ def index():
     
     # Google Drive 側の永続ファイルからデータを取得
     companies = load_companies_gdrive(folder_id)
-    mail_template = load_mail_template_gdrive(folder_id)
+    
+    # 3つのテンプレートをそれぞれ取得
+    mail_template_order = load_mail_template_gdrive(folder_id, doc_type="order")
+    mail_template_paper = load_mail_template_gdrive(folder_id, doc_type="paper")
+    mail_template_matching = load_mail_template_gdrive(folder_id, doc_type="matching")
     
     preview_data = None
     prefix = ""
@@ -416,7 +610,7 @@ def index():
                 logger.exception("PDF解析エラー")
                 flash(f"PDFの解析中にエラーが発生しました: {str(e)}", "danger")
                 
-    # マスタ表示用の会社リストを作成 (未登録優先でソート)
+    # 宛先マスタ一覧テーブル表示用の会社リストを作成 (未登録優先でソート)
     display_companies = []
     for code, info in companies.items():
         display_companies.append({
@@ -427,17 +621,28 @@ def index():
             "detected": False
         })
         
+    # スキャンで検出された宛先をマスタテーブルにマージ表示
+    # (ただし、今回はキーが name である用紙納入月報と、code である注文/付合わせが混在する)
     if preview_data:
-        for code, info in preview_data.items():
+        for job_id, info in preview_data.items():
+            doc_type = info["doc_type"]
+            master_key = info["name"] if doc_type == "paper" else info["code"]
+            
             found = False
             for c in display_companies:
-                if c["code"] == code:
+                # マスタキーが一致するかチェック
+                if doc_type == "paper" and c["name"] == master_key:
                     c["detected"] = True
                     found = True
                     break
+                elif doc_type != "paper" and c["code"] == master_key:
+                    c["detected"] = True
+                    found = True
+                    break
+                    
             if not found:
                 display_companies.append({
-                    "code": code,
+                    "code": info["code"],
                     "name": info["name"],
                     "email": "",
                     "in_master": False,
@@ -456,11 +661,13 @@ def index():
     return render_template(
         "index.html",
         folder_url=folder_url,
-        preview_data=preview_data,
+        preview_data=preview_data, # 送信ジョブの一覧
         prefix=prefix,
         companies=companies,
         display_companies=display_companies,
-        mail_template=mail_template
+        mail_template_order=mail_template_order,
+        mail_template_paper=mail_template_paper,
+        mail_template_matching=mail_template_matching
     )
 
 @app.route("/api/save_master", methods=["POST"])
@@ -509,6 +716,7 @@ def api_save_template():
     """メールテンプレートを保存するAPI"""
     req_data = request.get_json() or {}
     folder_url = req_data.get("folder_url", "").strip()
+    doc_type = req_data.get("doc_type", "order").strip()
     
     if not folder_url:
         return jsonify({"success": False, "error": "フォルダURLが必要です"}), 400
@@ -521,15 +729,21 @@ def api_save_template():
         return jsonify({"success": False, "error": "件名と本文が必要です"}), 400
         
     template = {"subject": subject, "body": body}
+    filename = "dms_mail_template.json"
+    if doc_type == "paper":
+        filename = "dms_mail_template_paper.json"
+    elif doc_type == "matching":
+        filename = "dms_mail_template_matching.json"
+
     try:
-        if save_mail_template_gdrive(folder_id, template):
+        if save_mail_template_gdrive(folder_id, template, doc_type=doc_type):
             return jsonify({"success": True})
     except Exception as e:
         error_msg = str(e)
         if "storageQuotaExceeded" in error_msg or "storage quota" in error_msg:
             return jsonify({
                 "success": False,
-                "error": "Google Driveの制限により、新規ファイルを作成できませんでした。\n\n対象のGoogle Driveフォルダ内に、ご自身のアカウントで空のテキストファイル「dms_mail_template.json」を新規作成（中身に {} とだけ入力して保存）してから、もう一度テンプレート保存を実行してください。"
+                "error": f"Google Driveの制限により、新規ファイルを作成できませんでした。\n\n対象のGoogle Driveフォルダ内に、ご自身のアカウントで空のテキストファイル「{filename}」を新規作成（中身に {{}} とだけ入力して保存）してから、もう一度テンプレート保存を実行してください。"
             }), 403
         return jsonify({"success": False, "error": f"保存に失敗しました: {error_msg}"}), 500
     return jsonify({"success": False, "error": "Google Driveテンプレートの保存に失敗しました"}), 500
@@ -540,7 +754,7 @@ def api_send_emails():
     """選択された会社宛てにメールを一括送信するAPI"""
     req_data = request.get_json() or {}
     folder_url = req_data.get("folder_url", "").strip()
-    selected_codes = req_data.get("codes", [])
+    selected_codes = req_data.get("codes", []) # 送信対象の job_id リリスト
     
     from_email = "ookubo@shodensha.co.jp"
     smtp_username = "ookubo.shodensha@gmail.com"
@@ -583,41 +797,111 @@ def api_send_emails():
             if not output_folder_id:
                 raise RuntimeError(f"Google Drive上にフォルダ '送信済み明細_{prefix}' を作成できませんでした。")
 
-            mail_template = load_mail_template_gdrive(folder_id)
+            # 送信ステータスのロード
+            sent_status = load_sent_status_gdrive(folder_id)
+            sent_job_ids = {job["job_id"] for job in sent_status.get("sent_jobs", [])}
+            
             success_count = 0
             errors = []
 
-            for code in selected_codes:
-                if code not in company_jobs:
-                    logger.warning(f"会社コード {code} は解析結果に存在しないため送信をスキップします。")
+            for job_id in selected_codes:
+                if job_id not in company_jobs:
+                    logger.warning(f"ジョブID {job_id} は解析結果に存在しないため送信をスキップします。")
                     continue
                     
-                info = company_jobs[code]
+                info = company_jobs[job_id]
                 to_email = info["email"]
+                doc_type = info["doc_type"]
                 
                 if not to_email:
-                    logger.warning(f"会社 {info['name']} ({code}) はメールアドレスが未設定のため送信をスキップします。")
-                    errors.append(f"{info['name']} ({code}): メールアドレスが登録されていません。")
+                    logger.warning(f"会社 {info['name']} ({job_id}) はメールアドレスが未設定のため送信をスキップします。")
+                    errors.append(f"{info['name']} ({info['doc_type_name']}): メールアドレスが登録されていません。")
                     continue
                     
                 try:
-                    logger.info(f"メール送信処理開始: {info['name']} ({code}) -> 宛先: {to_email}")
-                    attachments = create_split_pdfs_for_company(code, info, temp_dir, prefix)
+                    logger.info(f"メール送信処理開始: {info['name']} ({job_id}) -> 宛先: {to_email}")
+                    attachments = create_split_pdfs_for_company(job_id, info, temp_dir, prefix)
                     
-                    subject = mail_template["subject"].format(company_name=info["name"], company_code=code)
-                    body = mail_template["body"].format(company_name=info["name"], company_code=code)
+                    # 書類種別ごとのテンプレート読み込み
+                    mail_template = load_mail_template_gdrive(folder_id, doc_type=doc_type)
                     
+                    display_key = info["code"] if info["code"] and info["code"] != "unknown" else info["name"]
+                    subject = mail_template["subject"].format(company_name=info["name"], company_code=display_key)
+                    body = mail_template["body"].format(company_name=info["name"], company_code=display_key)
+                    
+                    # SMTPメール送信
                     send_smtp_email(to_email, subject, body, attachments, from_email, smtp_username, smtp_password)
-                    logger.info(f"メール送信成功: {info['name']} ({code})")
+                    logger.info(f"メール送信成功: {job_id}")
                     
+                    # 切り出されたPDFパーツを「送信済み明細」サブフォルダへアップロード
                     for att in attachments:
                         drive.upload_file_from_path(att, folder_id=output_folder_id)
                                 
+                    # 送信ステータスに記録
+                    if job_id not in sent_job_ids:
+                        sent_status["sent_jobs"].append({
+                            "job_id": job_id,
+                            "source_pdf_ids": info["source_pdf_ids"],
+                            "sent_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                        })
+                        sent_job_ids.add(job_id)
+                        
                     success_count += 1
                     
                 except Exception as e:
-                    logger.exception(f"メール送信エラー: {code}")
-                    errors.append(f"{info['name']} ({code}): {str(e)}")
+                    logger.exception(f"メール送信エラー: {job_id}")
+                    errors.append(f"{info['name']} ({info['doc_type_name']}): {str(e)}")
+
+            # 送信ステータスを保存
+            save_sent_status_gdrive(folder_id, sent_status)
+
+            # --- PDFファイルの自動アーカイブ移動判定 ---
+            # 各PDFファイルに含まれるジョブ一覧を整理
+            pdf_id_to_jobs = {}
+            for j_id, j_info in company_jobs.items():
+                for pdf_id in j_info["source_pdf_ids"]:
+                    if pdf_id not in pdf_id_to_jobs:
+                        pdf_id_to_jobs[pdf_id] = []
+                    pdf_id_to_jobs[pdf_id].append(j_id)
+
+            moved_pdfs = []
+            for pdf_id, related_jobs in pdf_id_to_jobs.items():
+                # このPDFに関連するジョブが全て送信済み（sent_job_idsに含まれている）か判定
+                all_sent = all(j_id in sent_job_ids for j_id in related_jobs)
+                if all_sent:
+                    try:
+                        # Google Drive上でファイルを「送信済み明細_...」フォルダへ移動する（親フォルダの付け替え）
+                        file_info = drive.service.files().get(
+                            fileId=pdf_id,
+                            fields='name, parents',
+                            supportsAllDrives=True
+                        ).execute()
+                        
+                        previous_parents = ",".join(file_info.get('parents', []))
+                        
+                        drive.service.files().update(
+                            fileId=pdf_id,
+                            addParents=output_folder_id,
+                            removeParents=previous_parents,
+                            fields='id, parents',
+                            supportsAllDrives=True
+                        ).execute()
+                        
+                        logger.info(f"PDFファイルを移動しました: {file_info.get('name')} (ID: {pdf_id})")
+                        moved_pdfs.append(pdf_id)
+                    except Exception as move_err:
+                        logger.exception(f"PDFファイルの移動エラー (ID: {pdf_id}): {move_err}")
+
+            # 移動完了したPDFのステータス履歴をクリーンアップ
+            if moved_pdfs:
+                new_sent_jobs = []
+                for job in sent_status.get("sent_jobs", []):
+                    remaining_pdfs = [pid for pid in job.get("source_pdf_ids", []) if pid not in moved_pdfs]
+                    if remaining_pdfs:
+                        job["source_pdf_ids"] = remaining_pdfs
+                        new_sent_jobs.append(job)
+                sent_status["sent_jobs"] = new_sent_jobs
+                save_sent_status_gdrive(folder_id, sent_status)
 
         return jsonify({
             "success": len(errors) == 0,

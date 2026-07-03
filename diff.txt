@@ -1,0 +1,541 @@
+﻿diff --git a/services/drive-duplicate-checker/templates/index.html b/services/drive-duplicate-checker/templates/index.html
+index df9c77ba..e4505d35 100644
+--- a/services/drive-duplicate-checker/templates/index.html
++++ b/services/drive-duplicate-checker/templates/index.html
+@@ -44,20 +44,31 @@
+                             <button @click="scanType = 'drive'" :class="{ 'btn-primary': scanType === 'drive' }" class="btn">Drive</button>
+                         </div>
+                         <label style="cursor:pointer;"><input type="checkbox" v-model="sameParentOnly"> 蜷御ｸ繝輔か繝ｫ繝蜀・・縺ｿ</label>
++                        <div v-if="scanType === 'drive' && duplicateSets.length > 0" class="flex-row" style="border:1px solid #ccc; border-radius:2px; overflow:hidden;">
++                            <button @click="driveMatchFilter = 'all'" :class="{ 'btn-primary': driveMatchFilter === 'all' }" class="btn">縺吶∋縺ｦ</button>
++                            <button @click="driveMatchFilter = 'full'" :class="{ 'btn-primary': driveMatchFilter === 'full' }" class="btn">螳悟・荳閾ｴ</button>
++                            <button @click="driveMatchFilter = 'first_sheet'" :class="{ 'btn-primary': driveMatchFilter === 'first_sheet' }" class="btn">1譫夂岼縺ｮ縺ｿ</button>
++                        </div>
++                        <div v-if="scanType === 'drive'" class="flex-row" style="gap:4px;">
++                            <span v-for="acc in driveAccounts" :key="acc.email" style="background:#e8f0fe; border:1px solid #c5d3f0; border-radius:2px; padding:1px 5px; font-size:10px; display:flex; align-items:center; gap:3px;">
++                                [[ acc.email ]]
++                                <button @click="removeAccount(acc.email)" style="border:none; background:none; color:#d93025; cursor:pointer; font-size:11px; line-height:1; padding:0;">&times;</button>
++                            </span>
++                            <button @click="addAccount" class="btn" :disabled="isAddingAccount" style="background:#e6f4ea; border-color:#ceead6;">
++                                [[ isAddingAccount ? '隱崎ｨｼ荳ｭ...' : '・・繧｢繧ｫ繧ｦ繝ｳ繝郁ｿｽ蜉' ]]
++                            </button>
++                        </div>
+                     </div>
+                     <div class="agent-status" :class="isAgentOnline ? 'status-online' : 'status-offline'" @click="checkAgent">
+                         [[ isAgentOnline ? 'OK (' + agentPC + ')' : '蠕・ｩ滉ｸｭ' ]]
+                     </div>
+                 </div>
+                 <div class="flex-row">
+-                    <div v-if="duplicateSets.length > 0" style="font-size:10px; background:#fff; border:1px solid #94a3b8; padding:2px 8px; border-radius:3px; color:#1e293b;">
+-                        <b>[[ duplicateSets.length ]] 繧ｻ繝・ヨ</b> (險・[[ totalFileCount ]] 繝輔ぃ繧､繝ｫ) 陦ｨ遉ｺ荳ｭ
++                    <div v-if="filteredDuplicateSets.length > 0" style="font-size:10px; background:#fff; border:1px solid #94a3b8; padding:2px 8px; border-radius:3px; color:#1e293b;">
++                        <b>[[ filteredDuplicateSets.length ]] 繧ｻ繝・ヨ</b> (險・[[ totalFileCount ]] 繝輔ぃ繧､繝ｫ) 陦ｨ遉ｺ荳ｭ
+                     </div>
+-                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketed(false)" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fffbe6', fontWeight: 'bold' }">
+-                        [[ isMarking ? '莉募・縺台ｸｭ...' : '繧ｫ繝・さ莉倥″繝槭・繧ｯ' ]]
+-                    </button>
+                     <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketed(true)" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#e6f7ff', fontWeight: 'bold' }">
+-                        [[ isMarking ? '莉募・縺台ｸｭ...' : '繧ｫ繝・さ(譛蟆乗ｮ九＠)' ]]
++                        [[ isMarking ? '莉募・縺台ｸｭ...' : '繧ｫ繝・さ莉倥″繝槭・繧ｯ' ]]
+                     </button>
+                     <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markParentFolders()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#f0fdf4', fontWeight: 'bold' }">
+                         [[ isMarking ? '莉募・縺台ｸｭ...' : '豬・＞髫主ｱ､繧偵・繝ｼ繧ｯ' ]]
+@@ -65,6 +76,15 @@
+                     <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markOlderFiles()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fce8e6', fontWeight: 'bold', color: '#d93025' }">
+                         [[ isMarking ? '莉募・縺台ｸｭ...' : '蜿､縺・黄繧偵・繝ｼ繧ｯ' ]]
+                     </button>
++                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markNFD()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fff7ed', fontWeight: 'bold', color: '#c2410c' }">
++                        [[ isMarking ? '莉募・縺台ｸｭ...' : '豼∫せ蛻・ｧ｣(NFD)繧偵・繝ｼ繧ｯ' ]]
++                    </button>
++                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markSpecificFolder()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#f3e5f5', fontWeight: 'bold', color: '#6a1b9a' }">
++                        [[ isMarking ? '莉募・縺台ｸｭ...' : '迚ｹ螳壹ヵ繧ｩ繝ｫ繝繧偵・繝ｼ繧ｯ' ]]
++                    </button>
++                    <button v-if="mode === 'file' && duplicateSets.length > 0" class="btn" @click="markBracketedFolders()" :disabled="isMarking" :style="{ background: isMarking ? '#f5f5f5' : '#fff0f6', color: '#c41d7f', fontWeight: 'bold' }">
++                        [[ isMarking ? '莉募・縺台ｸｭ...' : '繧ｫ繝・さ莉倥″繝輔か繝ｫ繝繧偵・繝ｼ繧ｯ' ]]
++                    </button>
+                     <button class="btn btn-primary" @click="startSearch" :disabled="isScanning || scanTargets.length === 0" style="padding:0 15px;">
+                         [[ isScanning ? '螳溯｡御ｸｭ...' : '讀懃ｴ｢髢句ｧ・ ]]
+                     </button>
+@@ -91,14 +111,18 @@
+                     </tr>
+                 </thead>
+                 <tbody>
+-                    <template v-for="(set, sIdx) in duplicateSets" :key="sIdx">
++                    <template v-for="(set, sIdx) in filteredDuplicateSets" :key="sIdx">
+                         <tr v-for="(f, fIdx) in set.files" :key="f.id" v-memo="[f.id, selectedSet.has(f.id)]" :class="[sIdx % 2 === 0 ? 'set-even' : 'set-odd', fIdx === 0 ? 'set-group-top' : '']">
+                             <td style="text-align:center;"><input type="checkbox" :checked="selectedSet.has(f.id)" @change="e => toggleSelect(f.id, e.target.checked)"></td>
+-                            <td style="font-weight:bold;"><span v-if="fIdx === 0" class="stats-badge">#[[ sIdx + 1 ]]</span>[[ f.name ]]</td>
+-                            <td style="text-align:right; font-family: monospace;">[[ formatSize(f.size) ]]</td>
+-                            <td style="color:#222; font-size:10px;">[[ f.path ]]</td>
++                            <td style="font-weight:bold;">
++                                <span v-if="fIdx === 0" class="stats-badge">#[[ sIdx + 1 ]]</span>
++                                <span v-if="fIdx === 0 && set.match_type" :style="{ background: set.match_type === 'full' ? '#e6f4ea' : '#fef9c3', color: set.match_type === 'full' ? '#1e8e3e' : '#854d0e', fontSize: '9px', padding: '0 3px', borderRadius: '2px', marginRight: '3px', border: '1px solid', borderColor: set.match_type === 'full' ? '#ceead6' : '#fde047' }">[[ set.match_type === 'full' ? '螳悟・荳閾ｴ' : '1譫夂岼縺ｮ縺ｿ' ]]</span>
++                                [[ f.name ]]
++                            </td>
++                            <td style="text-align:right; font-family: monospace;">[[ formatSize(parseInt(f.size) || 0) ]]</td>
++                            <td style="color:#222; font-size:10px;">[[ f.path || f.webViewLink || '' ]]<br v-if="f.account"><span v-if="f.account" style="background:#e8f0fe; border:1px solid #c5d3f0; border-radius:2px; padding:0 3px; font-size:9px; color:#174ea6;">[[ f.account ]]</span></td>
+                             <td style="color:#666; font-size:10px; text-align:center;">[[ formatDate(f.createdTime) ]]</td>
+-                            <td style="text-align:center;"><button @click="openInExplorer(f.path)" class="btn">唐</button></td>
++                            <td style="text-align:center;"><button v-if="f.path" @click="openInExplorer(f.path)" class="btn">唐</button><a v-if="f.webViewLink" :href="f.webViewLink" target="_blank" class="btn">迫</a></td>
+                         </tr>
+                     </template>
+                 </tbody>
+@@ -123,10 +147,10 @@
+ 
+         <div style="background:#333; color:#ccc; padding:2px 10px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+             <div class="flex-row">
+-                <button class="btn" @click="openCleanupFolder" style="background:#444; color:#fff; border-color:#666; font-size:9px;">刀 蜑企勁蛟呵｣懊ヵ繧ｩ繝ｫ繝繧帝幕縺・/button>
++                <button class="btn" @click="openCleanupFolder" style="background:#444; color:#fff; border-color:#666; font-size:9px;">刀 PC縺ｮ縺斐∩邂ｱ繧帝幕縺・/button>
+                 <span v-if="mode === 'file' && selectedSet.size > 0" style="color:#fff; font-weight:bold; margin-left:10px;">[[ selectedSet.size ]] 莉ｶ 驕ｸ謚樔ｸｭ</span>
+             </div>
+-            <button v-if="mode === 'file' && selectedSet.size > 0" class="btn btn-danger" @click="deleteSelected" style="height:20px; padding:0 15px; font-weight:bold;">蜑企勁蛟呵｣懊∈遘ｻ蜍包ｼ亥ｮ溯｡鯉ｼ・/button>
++            <button v-if="mode === 'file' && selectedSet.size > 0" class="btn btn-danger" @click="deleteSelected" style="height:20px; padding:0 15px; font-weight:bold;">縺斐∩邂ｱ縺ｸ遘ｻ蜍包ｼ亥ｮ溯｡鯉ｼ・/button>
+         </div>
+     </div>
+ 
+@@ -139,7 +163,13 @@
+                 const scanType = ref('local');
+                 const scanTargets = ref([]);
+                 const sameParentOnly = ref(false);
++                const fastMode = ref(false);
+                 const duplicateSets = ref([]);
++                const driveMatchFilter = ref('all');
++                const filteredDuplicateSets = computed(() => {
++                    if (scanType.value !== 'drive' || driveMatchFilter.value === 'all') return duplicateSets.value;
++                    return duplicateSets.value.filter(s => s.match_type === driveMatchFilter.value);
++                });
+                 const folderCandidates = ref([]);
+                 const isScanning = ref(false);
+                 const isMarking = ref(false);
+@@ -148,6 +178,29 @@
+                 const agentPC = ref('');
+                 const isAgentOnline = ref(false);
+                 const agentBase = 'http://localhost:8082';
++                const driveAccounts = ref([]);
++                const isAddingAccount = ref(false);
++
++                const loadDriveAccounts = async () => {
++                    try {
++                        const res = await (await fetch(getApiUrl('/api/drive/accounts'))).json();
++                        driveAccounts.value = res.accounts || [];
++                    } catch {}
++                };
++                const addAccount = async () => {
++                    isAddingAccount.value = true;
++                    try {
++                        const res = await (await fetch(getApiUrl('/api/drive/add_account'), { method: 'POST' })).json();
++                        if (res.success) await loadDriveAccounts();
++                        else alert('霑ｽ蜉螟ｱ謨・ ' + res.error);
++                    } catch (e) { alert('繧ｨ繝ｩ繝ｼ: ' + e); }
++                    finally { isAddingAccount.value = false; }
++                };
++                const removeAccount = async (email) => {
++                    if (!confirm(`${email} 繧貞炎髯､縺励∪縺吶°・歔)) return;
++                    await fetch(getApiUrl('/api/drive/remove_account'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
++                    await loadDriveAccounts();
++                };
+ 
+                 const checkAgent = async () => {
+                     try {
+@@ -155,7 +208,7 @@
+                         isAgentOnline.value = !!res.success; agentPC.value = res.pc || '';
+                     } catch { isAgentOnline.value = false; }
+                 };
+-                onMounted(() => { checkAgent(); setInterval(checkAgent, 5000); });
++                onMounted(() => { checkAgent(); setInterval(checkAgent, 5000); loadDriveAccounts(); });
+ 
+                 const getApiUrl = (path) => (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' ? `${agentBase}${path}` : path);
+ 
+@@ -169,7 +222,7 @@
+ 
+                 const startSearch = () => {
+                     isScanning.value = true; scanLog.value = '...'; duplicateSets.value = []; folderCandidates.value = []; selectedSet.value = new Set();
+-                    const url = `${getApiUrl(mode.value==='file'?'/api/scan_stream?type='+scanType.value+'&same_parent_only='+sameParentOnly.value:'/api/analyze_folders?')}&targets=${encodeURIComponent(JSON.stringify(scanTargets.value))}`;
++                    const url = `${getApiUrl(mode.value==='file'?'/api/scan_stream?type='+scanType.value+'&same_parent_only='+sameParentOnly.value+'&fast_mode='+fastMode.value:'/api/analyze_folders?')}&targets=${encodeURIComponent(JSON.stringify(scanTargets.value))}`;
+                     const es = new EventSource(url);
+                     es.onmessage = (e) => {
+                         const d = JSON.parse(e.data); if (d.log) scanLog.value = d.log;
+@@ -180,7 +233,19 @@
+ 
+                 const deleteSelected = async () => {
+                     if(selectedSet.value.size===0 || !confirm('蜑企勁蛟呵｣懊∈・・)) return;
+-                    const res = await (await fetch(getApiUrl('/api/move_to_cleanup'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_ids: Array.from(selectedSet.value) }) })).json();
++                    const files = [];
++                    for (const id of selectedSet.value) {
++                        let account = null;
++                        for (const s of duplicateSets.value) {
++                            const found = s.files.find(f => f.id === id);
++                            if (found) {
++                                account = found.account || null;
++                                break;
++                            }
++                        }
++                        files.push({ id, account });
++                    }
++                    const res = await (await fetch(getApiUrl('/api/move_to_cleanup'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ files }) })).json();
+                     if (res.success) { duplicateSets.value = duplicateSets.value.map(s => ({...s, files: s.files.filter(f => !selectedSet.value.has(f.id))})).filter(s => s.files.length > 1); selectedSet.value = new Set(); }
+                 };
+ 
+@@ -192,38 +257,98 @@
+                     const sets = duplicateSets.value;
+                     const total = sets.length;
+ 
++                    // 繝輔ぃ繧､繝ｫ蜷崎ｧ｣譫宣未謨ｰ
++                    const parseFileName = (name) => {
++                        const lastDot = name.lastIndexOf('.');
++                        const base = lastDot !== -1 ? name.substring(0, lastDot) : name;
++                        const ext = lastDot !== -1 ? name.substring(lastDot) : '';
++
++                        // 繧ｫ繝・さ・亥・隗貞濠隗偵√ヴ繝ｪ繧ｪ繝牙燕繧ｫ繝・さ・・ 荳ｭ霄ｫ縺ｯ謨ｰ蛟､繧・律莉倥√い繝ｳ繝繝ｼ繝舌・縺ｪ縺ｩ菴輔〒繧ゅ≠繧翫→縺吶ｋ
++                        const bracketRegex = /[\(・・.][^\)・云+[\)・云/g;
++                        // 騾｣逡ｪ: _1, -1 (譛ｫ蟆ｾ縲√さ繝斐・騾｣逡ｪ縺ｯ1縲・譯√・縺ｿ縺ｨ縺吶ｋ)
++                        const serialRegex = /[\s_-]+\d{1,2}$/;
++                        // 繧ｳ繝斐・陦ｨ險・ 縲後・繧ｳ繝斐・縲・ 縲後さ繝斐・縲・ 縲・- 繧ｳ繝斐・縲・+                        const copyRegex = /[\s_-]*縺ｮ?繧ｳ繝斐・/g;
++
++                        // 譌･莉倥ヱ繧ｿ繝ｼ繝ｳ菫晁ｭｷ縺ｮ縺溘ａ縺ｮ豁｣隕剰｡ｨ迴ｾ (蟷ｴ_譛・譌･ 縺ｾ縺溘・ 蟷ｴ_譛・
++                        const dateRegex1 = /\d{4}[_\s-]\d{2}[_\s-]\d{2}$/;
++                        const dateRegex2 = /\d{4}[_\s-]\d{2}$/;
++
++                        // 1. 繧ｳ繝斐・陦ｨ險倥・謚ｽ蜃ｺ縺ｨ髯､蜴ｻ
++                        let copyMatches = base.match(copyRegex) || [];
++                        let cleanBase = base.replace(copyRegex, '');
++
++                        // 2. 繧ｫ繝・さ縺ｮ謚ｽ蜃ｺ縺ｨ髯､蜴ｻ
++                        let bracketMatches = cleanBase.match(bracketRegex) || [];
++                        cleanBase = cleanBase.replace(bracketRegex, '');
++
++                        // 繧ｫ繝・さ髯､蜴ｻ蠕後・譛ｫ蟆ｾ繧ｹ繝壹・繧ｹ繧偵ヨ繝ｪ繝
++                        cleanBase = cleanBase.trim();
++
++                        // 3. 譛ｫ蟆ｾ騾｣逡ｪ縺ｮ謚ｽ蜃ｺ縺ｨ髯､蜴ｻ (譌･莉倥ヱ繧ｿ繝ｼ繝ｳ縺ｮ蝣ｴ蜷医・菫晁ｭｷ縺励※髯､蜴ｻ縺励↑縺・
++                        let serialNum = null;
++                        if (!dateRegex1.test(cleanBase) && !dateRegex2.test(cleanBase)) {
++                            let serialMatch = cleanBase.match(serialRegex);
++                            if (serialMatch) {
++                                const numD = serialMatch[0].match(/\d+/);
++                                if (numD) {
++                                    serialNum = parseInt(numD[0], 10);
++                                }
++                                cleanBase = cleanBase.replace(serialRegex, '');
++                            }
++                        }
++
++                        // 繧ｫ繝・さ蜀・・謨ｰ蟄玲歓蜃ｺ (譌･莉倥↑縺ｩ縺ｮ隍・焚謨ｰ蛟､縺ｫ繧ょｯｾ蠢・
++                        let bracketNums = [];
++                        bracketMatches.forEach(m => {
++                            const digits = m.match(/\d+/g);
++                            if (digits) {
++                                digits.forEach(d => bracketNums.push(parseInt(d, 10)));
++                            }
++                        });
++
++                        // 繝ｫ繝ｼ繝亥錐: 繧ｹ繝壹・繧ｹ螳悟・謗帝勁縺励※蟆乗枚蟄怜喧
++                        const root = (cleanBase + ext).replace(/\s+/g, '').trim().toLowerCase();
++
++                        const hasCopy = copyMatches.length > 0;
++                        const hasPeriodBracket = bracketMatches.some(m => m.startsWith('.'));
++
++                        return {
++                            root,
++                            hasPeriodBracket,
++                            generation: bracketMatches.length + (serialNum !== null ? 1 : 0) + (hasCopy ? 1 : 0),
++                            nums: [...bracketNums, ...(serialNum !== null ? [serialNum] : []), ...(hasCopy ? [1] : [])]
++                        };
++                    };
++
+                     for (let i = 0; i < total; i++) {
+                         const set = sets[i];
+                         const files = set.files; if (files.length < 2) continue;
+ 
+-                        // 繧ｹ繝壹・繧ｹ縺ｮ驕輔＞繧・・隗偵き繝・さ縺ｫ蟾ｦ蜿ｳ縺輔ｌ縺ｪ縺・瑚ｶ・・蝣・欧縲阪Ο繧ｸ繝・け
+-                        const bracketRegex = /[\(・・[\s\d]+[\)・云/g;
+-                        // 蛻､螳夂畑繝ｫ繝ｼ繝亥錐縺ｮ菴懈・・医き繝・さ髯､蜴ｻ + 繧ｹ繝壹・繧ｹ螳悟・謗帝勁・・-                        const getRoot = (name) => name.replace(bracketRegex, '').replace(/\s+/g, '').trim();
+-                        // 荳紋ｻ｣・医き繝・さ縺ｮ謨ｰ・峨・繧ｫ繧ｦ繝ｳ繝・-                        const countBrackets = (name) => (name.match(bracketRegex) || []).length;
+-                        // 繧ｫ繝・さ蜀・・謨ｰ蟄鈴・蛻励ｒ蜿門ｾ・-                        const getBracketNums = (name) => {
+-                            const matches = name.match(bracketRegex);
+-                            if (!matches) return [];
+-                            return matches.map(m => {
+-                                const d = m.match(/\d+/);
+-                                return d ? parseInt(d[0], 10) : 0;
+-                            });
+-                        };
++                        const parsedFiles = files.map(f => ({ id: f.id, parsed: parseFileName(f.name) }));
+ 
+-                        files.forEach(fA => {
++                        parsedFiles.forEach(fA => {
+                             if (next.has(fA.id)) return;
+-                            const rootA = getRoot(fA.name);
+-                            const genA = countBrackets(fA.name);
+-                            const numsA = getBracketNums(fA.name);
++                            const rootA = fA.parsed.root;
++                            const genA = fA.parsed.generation;
++                            const numsA = fA.parsed.nums;
++                            const pA = fA.parsed;
+ 
+-                            const hasParent = files.some(fB => {
++                            const hasParent = parsedFiles.some(fB => {
+                                 if (fA.id === fB.id) return false;
+-                                if (rootA !== getRoot(fB.name)) return false;
+-                                
++                                if (rootA !== fB.parsed.root) return false;
++                                const pB = fB.parsed;
++
++                                // 蜆ｪ蜈亥愛螳夲ｼ夊・蛻・・繝斐Μ繧ｪ繝牙喧縺代き繝・さ繧呈戟縺｡縲∫嶌謇九・謖√▲縺ｦ縺・↑縺・ｼ茨ｼ晉嶌謇九′豁｣縺励＞繧ｫ繝・さ・峨↑繧峨∬・蛻・・繧ｳ繝斐・
++                                if (pA.hasPeriodBracket && !pB.hasPeriodBracket) {
++                                    return true;
++                                }
++                                if (!pA.hasPeriodBracket && pB.hasPeriodBracket) {
++                                    return false;
++                                }
++
+                                 if (useMinNumber) {
+-                                    const numsB = getBracketNums(fB.name);
++                                    const numsB = fB.parsed.nums;
+                                     if (numsB.length < numsA.length) return true;
+                                     if (numsB.length > numsA.length) return false;
+                                     for (let j = 0; j < numsA.length; j++) {
+@@ -232,8 +357,7 @@
+                                     }
+                                     return false;
+                                 } else {
+-                                    // 隕ｪ・医ｈ繧贋ｸ紋ｻ｣縺悟商縺・ｂ縺ｮ・峨′縺・ｌ縺ｰ縲∬・蛻・・繧ｳ繝斐・
+-                                    return countBrackets(fB.name) < genA;
++                                    return fB.parsed.generation < genA;
+                                 }
+                             });
+ 
+@@ -254,6 +378,57 @@
+                     scanLog.value = `螳御ｺ・ ${added}莉ｶ繧呈眠縺励￥繝槭・繧ｯ縺励∪縺励◆`;
+                 };
+ 
++                const markNFD = async () => {
++                    if (isMarking.value) return;
++                    isMarking.value = true;
++                    scanLog.value = '隗｣譫蝉ｸｭ...';
++                    const next = new Set(selectedSet.value);
++                    let added = 0;
++                    const sets = duplicateSets.value;
++                    const total = sets.length;
++
++                    for (let i = 0; i < total; i++) {
++                        const set = sets[i];
++                        const files = set.files; if (files.length < 2) continue;
++
++                        const fileInfos = files.map(f => {
++                            const normalized = f.name.normalize('NFC');
++                            const isNFC = (f.name === normalized);
++                            return {
++                                id: f.id,
++                                name: f.name,
++                                normalized,
++                                isNFC
++                            };
++                        });
++
++                        const hasNfcMap = {};
++                        fileInfos.forEach(info => {
++                            if (info.isNFC) {
++                                hasNfcMap[info.normalized] = true;
++                            }
++                        });
++
++                        fileInfos.forEach(info => {
++                            if (next.has(info.id)) return;
++
++                            if (!info.isNFC && hasNfcMap[info.normalized]) {
++                                next.add(info.id);
++                                added++;
++                            }
++                        });
++
++                        if (i % 50 === 0 && i > 0) {
++                            scanLog.value = `隗｣譫蝉ｸｭ... ${Math.round((i/total)*100)}%`;
++                            await new Promise(r => setTimeout(r, 0));
++                        }
++                    }
++
++                    selectedSet.value = next;
++                    isMarking.value = false;
++                    scanLog.value = `螳御ｺ・ NFD蠖｢蠑上・繝輔ぃ繧､繝ｫ ${added}莉ｶ 繧偵・繝ｼ繧ｯ縺励∪縺励◆`;
++                };
++
+                 const markOlderFiles = () => {
+                     if (isMarking.value) return;
+                     isMarking.value = true;
+@@ -298,6 +473,11 @@
+                     const sets = duplicateSets.value;
+                     const total = sets.length;
+ 
++                    const getDepth = (filePath) => {
++                        if (!filePath) return 999;
++                        return filePath.replace(/\\/g, '/').split('/').length;
++                    };
++
+                     for (let i = 0; i < total; i++) {
+                         const set = sets[i];
+                         const files = set.files; if (files.length < 2) continue;
+@@ -305,19 +485,17 @@
+                         files.forEach(fA => {
+                             if (next.has(fA.id) || !fA.path) return;
+                             
+-                            // fA縺ｮ繝・ぅ繝ｬ繧ｯ繝医Μ繝代せ繧貞叙蠕・(Windows縺ｮ繝舌ャ繧ｯ繧ｹ繝ｩ繝・す繝･繧ゅせ繝ｩ繝・す繝･縺ｫ邨ｱ荳縺励∵忰蟆ｾ縺ｫ蠢・★繧ｹ繝ｩ繝・す繝･繧剃ｻ倥￠繧・
+-                            const dirA = (fA.path.replace(/\\/g, '/').substring(0, fA.path.replace(/\\/g, '/').lastIndexOf('/')) + '/').toLowerCase();
+-                            
+-                            const hasChild = files.some(fB => {
++                            const depthA = getDepth(fA.path);
++
++                            const hasDeeper = files.some(fB => {
+                                 if (fA.id === fB.id || !fB.path) return false;
+-                                const dirB = (fB.path.replace(/\\/g, '/').substring(0, fB.path.replace(/\\/g, '/').lastIndexOf('/')) + '/').toLowerCase();
++                                const depthB = getDepth(fB.path);
+                                 
+-                                // dirB 縺・dirA 繧医ｊ髟ｷ縺上√°縺､ dirA 縺ｧ蟋九∪縺｣縺ｦ縺・ｌ縺ｰ縲‥irB縺ｯdirA縺ｮ繧ｵ繝悶ョ繧｣繝ｬ繧ｯ繝医Μ (蟄舌ヵ繧ｩ繝ｫ繝) 縺ｫ縺・ｋ縺ｨ險縺医ｋ
+-                                return dirB.length > dirA.length && dirB.startsWith(dirA);
++                                // 閾ｪ蛻・ｈ繧企嚴螻､縺梧ｷｱ縺・ヵ繧｡繧､繝ｫ縺悟酔縺倥げ繝ｫ繝ｼ繝励↓縺ゅｌ縺ｰ縲∬・蛻・ｼ域ｵ・＞譁ｹ・峨ｒ繝槭・繧ｯ
++                                return depthB > depthA;
+                             });
+ 
+-                            // 蟄舌ヵ繧ｩ繝ｫ繝縺ｫ蜷後§繝輔ぃ繧､繝ｫ縺後≠繧九↑繧峨∬ｦｪ繝輔か繝ｫ繝(豬・＞髫主ｱ､)縺ｮ閾ｪ蛻・・繧ｳ繝斐・繝ｻ荳崎ｦ√→縺ｿ縺ｪ縺励※繝√ぉ繝・け
+-                            if (hasChild) {
++                            if (hasDeeper) {
+                                 next.add(fA.id);
+                                 added++;
+                             }
+@@ -334,21 +512,133 @@
+                     scanLog.value = `螳御ｺ・ ${added}莉ｶ縺ｮ豬・＞髫主ｱ､縺ｮ繝輔ぃ繧､繝ｫ繧偵・繝ｼ繧ｯ縺励∪縺励◆`;
+                 };
+ 
++                const markSpecificFolder = async () => {
++                    const keyword = prompt("繝槭・繧ｯ・亥炎髯､蛟呵｣懊↓・峨＠縺溘＞繝輔か繝ｫ繝蜷阪ｄ繝代せ縺ｮ荳驛ｨ繧貞・蜉帙＠縺ｦ縺上□縺輔＞\n(萓・ 'Backup' 繧・'繧ｳ繝斐・')");
++                    if (!keyword) return;
++
++                    if (isMarking.value) return;
++                    isMarking.value = true;
++                    scanLog.value = '隗｣譫蝉ｸｭ...';
++                    const next = new Set(selectedSet.value);
++                    let added = 0;
++                    const sets = duplicateSets.value;
++                    const total = sets.length;
++
++                    for (let i = 0; i < total; i++) {
++                        const set = sets[i];
++                        const files = set.files;
++                        if (files.length < 2) continue;
++
++                        const matchedIndices = [];
++                        files.forEach((f, idx) => {
++                            const path = f.path || f.webViewLink || '';
++                            if (path.toLowerCase().includes(keyword.toLowerCase())) {
++                                matchedIndices.push(idx);
++                            }
++                        });
++
++                        // 螳牙・蠑・ 驥崎､・げ繝ｫ繝ｼ繝怜・縺ｮ縺吶∋縺ｦ縺ｮ繝輔ぃ繧､繝ｫ縺後く繝ｼ繝ｯ繝ｼ繝峨↓蜷郁・縺励◆蝣ｴ蜷医・+                        // 譛蛻昴・1縺､・医う繝ｳ繝・ャ繧ｯ繧ｹ0・峨・繝槭・繧ｯ縺帙★谿九☆
++                        if (matchedIndices.length === files.length) {
++                            matchedIndices.shift();
++                        }
++
++                        matchedIndices.forEach(idx => {
++                            const f = files[idx];
++                            if (!next.has(f.id)) {
++                                next.add(f.id);
++                                added++;
++                            }
++                        });
++
++                        if (i % 50 === 0 && i > 0) {
++                            scanLog.value = `隗｣譫蝉ｸｭ... ${Math.round((i/total)*100)}%`;
++                            await new Promise(r => setTimeout(r, 0));
++                        }
++                    }
++
++                    selectedSet.value = next;
++                    isMarking.value = false;
++                    scanLog.value = `螳御ｺ・ 繝代せ縺ｫ縲・{keyword}縲阪ｒ蜷ｫ繧繝輔ぃ繧､繝ｫ ${added}莉ｶ 繧偵・繝ｼ繧ｯ縺励∪縺励◆`;
++                };
++
++                const markBracketedFolders = async () => {
++                    if (isMarking.value) return;
++                    isMarking.value = true;
++                    scanLog.value = '隗｣譫蝉ｸｭ...';
++                    const next = new Set(selectedSet.value);
++                    let added = 0;
++                    const sets = duplicateSets.value;
++                    const total = sets.length;
++
++                    const folderBracketRegex = /([\(・・.].*?[\)・云|[_-]\d+|[\s_-]*縺ｮ?繧ｳ繝斐・)/;
++                    const folderBracketGlobalRegex = /([\(・・.].*?[\)・云|[_-]\d+|[\s_-]*縺ｮ?繧ｳ繝斐・)/g;
++
++                    const getBaseParentPath = (filePath) => {
++                        if (!filePath) return '';
++                        const parts = filePath.replace(/\\/g, '/').split('/');
++                        const parentPath = parts.slice(0, -1).join('/');
++                        return parentPath.replace(folderBracketGlobalRegex, '').replace(/\s+/g, '').toLowerCase();
++                    };
++
++                    const hasBracketInParent = (filePath) => {
++                        if (!filePath) return false;
++                        const parts = filePath.replace(/\\/g, '/').split('/');
++                        const folderParts = parts.slice(0, -1);
++                        return folderParts.some(part => folderBracketRegex.test(part));
++                    };
++
++                    for (let i = 0; i < total; i++) {
++                        const set = sets[i];
++                        const files = set.files;
++                        if (files.length < 2) continue;
++
++                        files.forEach(fA => {
++                            if (next.has(fA.id) || !fA.path) return;
++
++                            if (!hasBracketInParent(fA.path)) return;
++
++                            const baseParentA = getBaseParentPath(fA.path);
++
++                            const hasOriginal = files.some(fB => {
++                                if (fA.id === fB.id || !fB.path) return false;
++                                if (hasBracketInParent(fB.path)) return false;
++                                return getBaseParentPath(fB.path) === baseParentA;
++                            });
++
++                            if (hasOriginal) {
++                                next.add(fA.id);
++                                added++;
++                            }
++                        });
++
++                        if (i % 50 === 0 && i > 0) {
++                            scanLog.value = `隗｣譫蝉ｸｭ... ${Math.round((i/total)*100)}%`;
++                            await new Promise(r => setTimeout(r, 0));
++                        }
++                    }
++
++                    selectedSet.value = next;
++                    isMarking.value = false;
++                    scanLog.value = `螳御ｺ・ 繧ｫ繝・さ莉倥″繝輔か繝ｫ繝縺ｮ繝輔ぃ繧､繝ｫ ${added}莉ｶ 繧偵・繝ｼ繧ｯ縺励∪縺励◆`;
++                };
++
+                 const totalFileCount = computed(() => {
+-                    let t = 0; duplicateSets.value.forEach(s => t += s.files.length);
++                    let t = 0; filteredDuplicateSets.value.forEach(s => t += s.files.length);
+                     return t;
+                 });
+ 
+                 return {
+-                    mode, scanType, scanTargets, sameParentOnly, duplicateSets, folderCandidates, isScanning, isMarking, scanLog, selectedSet, isAgentOnline, agentPC,
++                    mode, scanType, scanTargets, sameParentOnly, fastMode, duplicateSets, driveMatchFilter, filteredDuplicateSets, folderCandidates, isScanning, isMarking, scanLog, selectedSet, isAgentOnline, agentPC,
+                     startSearch, deleteSelected, totalFileCount, openCleanupFolder, addFolder: async () => { if(scanType.value==='drive'){const id=prompt('ID'); if(id)scanTargets.value.push(id);}else{const res=await(await fetch(getApiUrl('/api/select_folder'))).json(); if(res.success)scanTargets.value.push(res.path);} },
+                     removeTarget: (i) => scanTargets.value.splice(i, 1), formatSize: (b) => { if(!b) return '0 B'; const k=1024, i=Math.floor(Math.log(b)/Math.log(k)); return (b/Math.pow(k, i)).toFixed(2) + ' ' + ['B','KB','MB','GB'][i]; },
+                     formatDate: (v) => { if (!v) return ''; const d = typeof v === 'number' ? new Date(v*1000) : new Date(v); if (isNaN(d.getTime())) return v; return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); },
+                     openInExplorer: (path) => fetch(`${getApiUrl('/api/open_explorer')}?path=${encodeURIComponent(path)}`),
+-                    toggleAllFiles: () => { if (selectedSet.value.size > 0) selectedSet.value = new Set(); else { const n = new Set(); duplicateSets.value.forEach(s => s.files.forEach(f => n.add(f.id))); selectedSet.value = n; } },
+-                    isAllSelected: computed(() => { let t = 0; duplicateSets.value.forEach(s => t += s.files.length); return t > 0 && selectedSet.value.size === t; }),
++                    toggleAllFiles: () => { if (selectedSet.value.size > 0) selectedSet.value = new Set(); else { const n = new Set(); filteredDuplicateSets.value.forEach(s => s.files.forEach(f => n.add(f.id))); selectedSet.value = n; } },
++                    isAllSelected: computed(() => { let t = 0; filteredDuplicateSets.value.forEach(s => t += s.files.length); return t > 0 && selectedSet.value.size === t; }),
+                     toggleSelect, mergeFolders: async (src, dst) => { const res = await (await fetch(getApiUrl('/api/merge_folders'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ src, dst }) })).json(); if(res.success) folderCandidates.value = folderCandidates.value.filter(c => c.path_a !== src && c.path_b !== src); },
+-                    markBracketed, markParentFolders, markOlderFiles
++                    markBracketed, markParentFolders, markOlderFiles, markSpecificFolder, markBracketedFolders, markNFD,
++                    driveAccounts, isAddingAccount, addAccount, removeAccount
+                 };
+             }
+         }).mount('#app');

@@ -282,6 +282,33 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+
+    /* タブ切り替えのスタイル */
+    .template-tabs {
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 8px 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background-color: var(--primary-soft);
+      color: var(--primary);
+      border-bottom: 2px solid var(--primary);
+    }
+    .tab-btn:not(.active) {
+      color: var(--text-muted);
+    }
+    .tab-btn:hover:not(.active) {
+      background-color: #f1f5f9;
+      color: var(--text-main);
+    }
   </style>
 </head>
 <body>
@@ -328,13 +355,21 @@
     <!-- 2. メールテンプレート設定 -->
     <div class="card">
       <div class="card-title">✉️ メール件名・本文テンプレート</div>
+      
+      <!-- タブボタン -->
+      <div class="template-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+        <button type="button" class="tab-btn active" onclick="switchTemplateTab('order')" id="tabBtn_order">注文明細書</button>
+        <button type="button" class="tab-btn" onclick="switchTemplateTab('paper')" id="tabBtn_paper">用紙納入月報</button>
+        <button type="button" class="tab-btn" onclick="switchTemplateTab('matching')" id="tabBtn_matching">付合わせ明細書</button>
+      </div>
+
       <div class="form-group">
         <label for="mail_subject">件名テンプレート</label>
-        <input type="text" id="mail_subject" value="{{ mail_template.subject }}">
+        <input type="text" id="mail_subject" value="{{ mail_template_order.subject }}">
       </div>
       <div class="form-group">
         <label for="mail_body">本文テンプレート</label>
-        <textarea id="mail_body" rows="8">{{ mail_template.body }}</textarea>
+        <textarea id="mail_body" rows="8">{{ mail_template_order.body }}</textarea>
       </div>
       <button type="button" class="btn btn-secondary" onclick="saveTemplate()">💾 テンプレート保存</button>
       <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
@@ -405,31 +440,60 @@
       <thead>
         <tr>
           <th style="width: 50px;">選択</th>
-          <th style="width: 100px;">コード</th>
-          <th style="width: 250px;">会社名 (マスタ適用)</th>
-          <th style="width: 200px;">送信先メールアドレス</th>
-          <th>添付される明細書の種類</th>
+          <th style="width: 130px;">書類の種類</th>
+          <th style="width: 250px;">宛先会社名</th>
+          <th style="width: 220px;">送信先メールアドレス</th>
+          <th>添付ファイルの内訳</th>
+          <th style="width: 100px;">送信状態</th>
         </tr>
       </thead>
       <tbody>
-        {% for code, info in preview_data.items() %}
-        <tr>
+        {% for job_id, info in preview_data.items() %}
+        <tr id="preview-row-{{ job_id }}" data-code="{{ info.code }}" data-name="{{ info.name }}" {% if info.sent %}style="background-color: #f8fafc;"{% endif %}>
           <td>
-            <input type="checkbox" id="checkbox-{{ code }}" name="selected_companies" value="{{ code }}" class="company-checkbox" {% if info.email %}checked{% else %}disabled{% endif %}>
+            <input type="checkbox" id="checkbox-{{ job_id }}" name="selected_companies" value="{{ job_id }}" class="company-checkbox" 
+                   {% if not info.email %}disabled{% elif info.sent %}{% else %}checked{% endif %}>
           </td>
-          <td><strong>{{ code }}</strong></td>
-          <td>{{ info.name }}</td>
-          <td id="preview-email-container-{{ code }}">
+          <td>
+            {% if info.doc_type == 'order' %}
+              <span class="badge" style="background-color: #e0e7ff; color: #3730a3;">注文明細書</span>
+            {% elif info.doc_type == 'paper' %}
+              <span class="badge" style="background-color: #fef3c7; color: #92400e;">用紙納入月報</span>
+            {% elif info.doc_type == 'matching' %}
+              <span class="badge" style="background-color: #d1fae5; color: #065f46;">付合わせ明細書</span>
+            {% else %}
+              <span class="badge" style="background-color: #f1f5f9; color: #475569;">{{ info.doc_type_name }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ info.name }}</strong>
+            {% if info.code and info.code != 'unknown' %}
+              <span style="font-size: 11px; color: var(--text-muted); display: block;">コード: {{ info.code }}</span>
+            {% endif %}
+          </td>
+          <td id="preview-email-container-{{ job_id }}">
             {% if info.email %}
-              <span class="badge badge-success">{{ info.email }}</span>
+              <span style="font-size: 13px; font-family: monospace; color: var(--text-main);">{{ info.email }}</span>
             {% else %}
               <span class="badge badge-danger">宛先アドレス未設定</span>
             {% endif %}
           </td>
           <td>
-            {% for job_type in info.jobs.keys() %}
-              <span class="badge badge-info">{{ job_type }} ({{ info.jobs[job_type].pages|length }}ページ)</span>
-            {% endfor %}
+            <div style="font-size: 12px; color: var(--text-main);">
+              {% for job_type, job_info in info.jobs.items() %}
+                <div style="margin-bottom: 2px;">
+                  <span class="badge badge-info">{{ job_type }}</span>
+                  <span style="color: var(--text-muted);">{{ job_info.pages|length }}ページ</span>
+                </div>
+              {% endfor %}
+            </div>
+          </td>
+          <td id="status-container-{{ job_id }}">
+            {% if info.sent %}
+              <span class="badge badge-success" style="padding: 4px 8px;">✅ 送信済み</span>
+            {% else %}
+              <span class="badge" style="background-color: #f1f5f9; color: #475569; padding: 4px 8px;">未送信</span>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -438,7 +502,7 @@
 
     <div style="margin-top: 24px; display: flex; justify-content: space-between; align-items: center;">
       <p style="font-size: 13px; color: var(--text-muted);">
-        ※ 送信が成功したファイルは、対象フォルダ直下の `送信済み明細_{{ prefix }}` フォルダにコピーバックアップされます。
+        ※ 送信が成功したファイルは、すべての宛先の送信が完了した時点で自動的に送信済みフォルダへ移動（アーカイブ）されます。
       </p>
       <button type="button" class="btn btn-success" style="font-size: 16px; padding: 12px 24px;" onclick="sendEmails()">✉️ 選択した宛先にメールを一括送信</button>
     </div>
@@ -483,6 +547,39 @@
     document.getElementById('loadingOverlay').style.display = 'none';
   }
 
+  // テンプレート情報のローカル保持
+  const templates = {
+    order: {
+      subject: {{ mail_template_order.subject | tojson }},
+      body: {{ mail_template_order.body | tojson }}
+    },
+    paper: {
+      subject: {{ mail_template_paper.subject | tojson }},
+      body: {{ mail_template_paper.body | tojson }}
+    },
+    matching: {
+      subject: {{ mail_template_matching.subject | tojson }},
+      body: {{ mail_template_matching.body | tojson }}
+    }
+  };
+  let currentDocType = 'order';
+
+  function switchTemplateTab(docType) {
+    // 編集中の内容を一時保存
+    templates[currentDocType].subject = document.getElementById('mail_subject').value;
+    templates[currentDocType].body = document.getElementById('mail_body').value;
+
+    currentDocType = docType;
+
+    // アクティブクラスの切り替え
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById(`tabBtn_${docType}`).classList.add('active');
+
+    // フィールド値のリロード
+    document.getElementById('mail_subject').value = templates[docType].subject;
+    document.getElementById('mail_body').value = templates[docType].body;
+  }
+
   function openEditModal(code, name, email, isNew = false) {
     document.getElementById('modalTitle').innerText = isNew ? '宛先マスタの新規登録' : '宛先メールアドレスの編集';
     
@@ -513,10 +610,13 @@
     const email = document.getElementById('edit_email').value.trim();
     const folderUrl = document.getElementById('folder_url').value;
 
-    if (!code || !name) {
-      alert('会社コードと会社名は必須項目です。');
+    if (!name) {
+      alert('会社名は必須項目です。');
       return;
     }
+
+    // コードが空の場合は会社名そのものをキーとする（用紙納入月報用）
+    const finalCode = code || name;
 
     showLoading('マスタを保存中...');
     fetch('/api/save_master', {
@@ -525,7 +625,7 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': '{{ csrf_token() }}'
       },
-      body: JSON.stringify({ code, name, email, folder_url: folderUrl })
+      body: JSON.stringify({ code: finalCode, name, email, folder_url: folderUrl })
     })
     .then(res => res.json())
     .then(data => {
@@ -533,32 +633,41 @@
       if (data.success) {
         closeModal();
         // 1. 宛先マスタ一覧テーブルのメールアドレス表示を更新
-        if (document.getElementById(`display-email-${code}`)) {
-          document.getElementById(`display-email-${code}`).innerText = email || '未設定';
+        if (document.getElementById(`display-email-${finalCode}`)) {
+          document.getElementById(`display-email-${finalCode}`).innerText = email || '未設定';
         }
         
         // 2. 送信プレビューテーブルの表示とチェックボックス状態を同期 (リロードなし)
-        const previewEmailContainer = document.getElementById(`preview-email-container-${code}`);
-        const checkbox = document.getElementById(`checkbox-${code}`);
-        
-        if (previewEmailContainer) {
-          if (email) {
-            previewEmailContainer.innerHTML = `<span class="badge badge-success">${email}</span>`;
-            if (checkbox) {
-              checkbox.disabled = false;
-              checkbox.checked = true; // 自動でチェックを入れる
-            }
-          } else {
-            previewEmailContainer.innerHTML = `<span class="badge badge-danger">宛先アドレス未設定</span>`;
-            if (checkbox) {
-              checkbox.disabled = true;
-              checkbox.checked = false;
+        document.querySelectorAll('tr[id^="preview-row-"]').forEach(row => {
+          const rowJobId = row.id.replace('preview-row-', '');
+          const rowCode = row.getAttribute('data-code');
+          const rowName = row.getAttribute('data-name');
+          
+          // 用紙納入月報（コードなし）の場合は会社名一致、それ以外はコード一致
+          const isMatch = (rowCode && rowCode === finalCode) || (!rowCode && rowName === name);
+          if (isMatch) {
+            const emailContainer = document.getElementById(`preview-email-container-${rowJobId}`);
+            const checkbox = document.getElementById(`checkbox-${rowJobId}`);
+            if (emailContainer) {
+              if (email) {
+                emailContainer.innerHTML = `<span style="font-size: 13px; font-family: monospace; color: var(--text-main);">${email}</span>`;
+                if (checkbox) {
+                  checkbox.disabled = false;
+                  checkbox.checked = true; // 自動でチェックを入れる
+                }
+              } else {
+                emailContainer.innerHTML = `<span class="badge badge-danger">宛先アドレス未設定</span>`;
+                if (checkbox) {
+                  checkbox.disabled = true;
+                  checkbox.checked = false;
+                }
+              }
             }
           }
-        }
+        });
         
         // 3. マスタテーブル側の「未登録(今回検出)」バッジを消して、ボタンを「編集」に切り替える
-        const row = document.getElementById(`master-row-${code}`);
+        const row = document.getElementById(`master-row-${finalCode}`);
         if (row) {
           const badge = row.querySelector('.badge-danger');
           if (badge) {
@@ -574,7 +683,7 @@
           
           const btnCell = row.cells[3];
           if (btnCell) {
-            btnCell.innerHTML = `<button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('${code}', '${name}', '${email}')">編集</button>`;
+            btnCell.innerHTML = `<button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size:12px;" onclick="openEditModal('${finalCode}', '${name}', '${email}')">編集</button>`;
           }
         }
       } else {
@@ -599,12 +708,15 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': '{{ csrf_token() }}'
       },
-      body: JSON.stringify({ subject, body, folder_url: folderUrl })
+      body: JSON.stringify({ subject, body, doc_type: currentDocType, folder_url: folderUrl })
     })
     .then(res => res.json())
     .then(data => {
       hideLoading();
       if (data.success) {
+        // 保存成功したらローカルのオブジェクト値も更新
+        templates[currentDocType].subject = subject;
+        templates[currentDocType].body = body;
         alert('メールテンプレートを保存しました。');
       } else {
         alert('保存に失敗しました: ' + data.error);
@@ -617,32 +729,27 @@
   }
 
   function toggleSelectAll(checked) {
-    const checkboxes = document.querySelectorAll('.company-checkbox');
+    const checkboxes = document.querySelectorAll('.company-checkbox:not(:disabled)');
     checkboxes.forEach(cb => {
-      // メールアドレスが未設定の場合は選択させない
-      const row = cb.closest('tr');
-      const hasEmail = row.querySelector('.badge-success') !== null;
-      if (hasEmail || !checked) {
-        cb.checked = checked;
-      }
+      cb.checked = checked;
     });
   }
 
   function sendEmails() {
     const checkboxes = document.querySelectorAll('.company-checkbox:checked');
-    const codes = Array.from(checkboxes).map(cb => cb.value);
+    const codes = Array.from(checkboxes).map(cb => cb.value); // job_id リスト
     const folderUrl = document.getElementById('folder_url').value;
 
     if (codes.length === 0) {
-      alert('送信対象の会社を1社以上選択してください。');
+      alert('送信対象の宛先を1行以上選択してください。');
       return;
     }
 
-    if (!confirm(`${codes.length}社宛てにメールを一括送信します。よろしいですか？`)) {
+    if (!confirm(`${codes.length}通のメールを一括送信します。よろしいですか？`)) {
       return;
     }
 
-    showLoading('注文明細書を分割し、メールを送信中...\n(送信後、Google Driveにバックアップ保存します)');
+    showLoading('明細書を分割し、メールを送信中...\n(完了したPDFは自動で送信済みフォルダへアーカイブ移動されます)');
     
     fetch('/api/send_emails', {
       method: 'POST',
@@ -656,8 +763,9 @@
     .then(data => {
       hideLoading();
       if (data.success) {
-        alert(`一括送信が完了しました！\n送信成功: ${data.success_count} 社`);
-        window.location.reload();
+        alert(`一括送信が完了しました！\n送信成功: ${data.success_count} 件`);
+        // フォームを送信して再解析を走らせることで、移動済みのファイルをリストから消す
+        document.getElementById('analyzeForm').submit();
       } else {
         let msg = '一部の送信でエラーが発生しました:\n\n';
         if (data.errors && data.errors.length > 0) {
@@ -666,7 +774,7 @@
           msg += data.error || '不明なエラー';
         }
         alert(msg);
-        window.location.reload();
+        document.getElementById('analyzeForm').submit();
       }
     })
     .catch(err => {

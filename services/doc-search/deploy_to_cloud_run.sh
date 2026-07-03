@@ -48,12 +48,12 @@ gcloud run deploy mail-doc-search-system \
   --timeout 3600 \
   --memory 4Gi \
   --cpu 2 \
-  --update-env-vars "SUPABASE_URL=$SUPABASE_URL" \
-  --update-env-vars "SUPABASE_KEY=$SUPABASE_KEY" \
-  --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
-  --update-env-vars "GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY" \
-  --update-env-vars "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
-  --update-env-vars "OPENAI_API_KEY=$OPENAI_API_KEY" \
+  --set-secrets "SUPABASE_URL=SUPABASE_URL:latest" \
+  --set-secrets "SUPABASE_KEY=SUPABASE_KEY:latest" \
+  --set-secrets "SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest" \
+  --set-secrets "GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest" \
+  --set-secrets "ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest" \
+  --set-secrets "OPENAI_API_KEY=OPENAI_API_KEY:latest" \
   --update-env-vars "LOG_LEVEL=${LOG_LEVEL:-INFO}" \
   --update-env-vars "RERANK_ENABLED=${RERANK_ENABLED:-true}"
 

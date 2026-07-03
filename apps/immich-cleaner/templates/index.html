@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Immich 写真・動画整理ダッシュボード</title>
+    <!-- Bootstrap CSS (ライトテーマ) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Google Fonts (Outfit & Noto Sans JP) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+        
+        .premium-card {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+            background-color: #ffffff;
+            transition: all 0.3s ease;
+        }
+        
+        .premium-card:hover {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 1.5rem;
+        }
+        
+        .btn-premium-primary {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 24px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-premium-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+            color: white;
+        }
+        
+        .btn-premium-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 24px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .btn-premium-success:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);
+            color: white;
+        }
+        
+        .device-card {
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        
+        .device-card.active {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+        
+        .group-card {
+            border-left: 5px solid #cbd5e1;
+        }
+        
+        .group-card.assigned-papa {
+            border-left-color: #3b82f6;
+            background-color: #f0f7ff;
+        }
+        
+        .group-card.assigned-mama {
+            border-left-color: #ec4899;
+            background-color: #fdf2f8;
+        }
+        
+        .group-card.assigned-child {
+            border-left-color: #10b981;
+            background-color: #f0fdf4;
+        }
+        
+        .group-card.assigned-keep {
+            border-left-color: #64748b;
+            background-color: #f8fafc;
+        }
+        
+        .thumbnail-container img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-right: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        /* スクリーンショット個別仕分けのカード */
+        .screenshot-item {
+            position: relative;
+            transition: all 0.2s ease;
+        }
+        
+        .screenshot-item img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .screenshot-action-overlay {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 6px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-action-sm {
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            border: none;
+            font-weight: 500;
+        }
+        
+        .btn-papa { background-color: #dbeafe; color: #1e40af; }
+        .btn-mama { background-color: #fce7f3; color: #9d174d; }
+        .btn-child { background-color: #d1fae5; color: #065f46; }
+        .btn-keep { background-color: #f1f5f9; color: #334155; }
+        
+        /* フェードアウトアニメーション */
+        .fade-out {
+            opacity: 0;
+            transform: scale(0.9);
+            transition: all 0.3s ease;
+        }
+
+        /* 画像拡大モーダル */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .modal-overlay.show {
+            opacity: 1;
+        }
+        .modal-content-wrapper {
+            position: relative;
+            max-width: 90%;
+            max-height: 90%;
+        }
+        .modal-content-wrapper img {
+            max-width: 100%;
+            max-height: 90vh;
+            border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            transform: scale(0.95);
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .modal-overlay.show img {
+            transform: scale(1);
+        }
+        .close-btn {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            font-size: 2.5rem;
+            color: rgba(255, 255, 255, 0.8);
+            cursor: pointer;
+            transition: color 0.2s;
+            line-height: 1;
+        }
+        .close-btn:hover {
+            color: #ef4444;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ヘッダー -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-3">
+        <div class="container">
+            <span class="navbar-brand">📸 Immich 写真・動画整理ツール</span>
+            <div class="d-flex align-items-center gap-3">
+                <!-- アカウント切り替えエリア -->
+                <div class="d-flex align-items-center gap-2 bg-light border rounded px-3 py-1.5" style="border-radius: 12px !important;">
+                    <span class="text-muted small fw-bold">👤 アカウント:</span>
+                    <select class="form-select form-select-sm border-0 bg-transparent fw-bold p-0 pe-4" id="account-selector" onchange="changeAccount()" style="min-width: 140px; cursor: pointer; box-shadow: none; font-size: 0.9rem;">
+                        <option value="">接続アカウント未選択</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary border-0 p-0 fs-5" onclick="openAccountModal()" title="アカウント管理" style="background: none; box-shadow: none; outline: none;">⚙️</button>
+                </div>
+                <span class="badge bg-light text-dark border px-3 py-2" id="conn-badge">接続確認中...</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        
+        <!-- ステータス・スキャンセクション -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-12">
+                <div class="premium-card p-4">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                        <div>
+                            <h5 class="fw-bold mb-1">ステップ 1: アセットのスキャンとキャッシュ</h5>
+                            <p class="text-muted mb-0" id="scan-message">開始ボタンを押すと、Immichの写真を解析してスキャンを開始します。</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn-premium-primary" id="btn-scan" onclick="startScan()">フルスキャン開始</button>
+                            <button class="btn-premium-secondary" id="btn-rebuild" onclick="rebuildGroups()" style="background: linear-gradient(135deg, #64748b 0%, #475569 100%); color: white; border: none; padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 15px rgba(100, 116, 139, 0.2);">グループ再構築 (1秒)</button>
+                        </div>
+                    </div>
+                    
+                    <!-- 進捗バー (スキャン) -->
+                    <div class="progress mt-3 d-none" id="scan-progress-container" style="height: 10px; border-radius: 5px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="scan-progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- メイン仕分け画面 (スキャン後に表示) -->
+        <div class="row g-4">
+            
+            <!-- 左カラム: デバイス一覧 -->
+            <div class="col-lg-4">
+                <div class="premium-card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h5 class="fw-bold mb-0">📂 カメラ機種</h5>
+                    </div>
+                    
+                    <!-- 完了デバイスの非表示トグル -->
+                    <div class="form-check form-switch mb-3 px-1">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" id="filter-hide-completed-devices" checked onchange="loadDevices()">
+                        <label class="form-check-label text-muted fw-bold" for="filter-hide-completed-devices">整理完了した機種を隠す</label>
+                    </div>
+
+                    <div class="list-group gap-2 border-0" id="device-list">
+                        <!-- デバイスがJSで動的に追加されます -->
+                        <div class="text-center text-muted py-4">スキャンを実行してください</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右カラム: 仕分けエリア -->
+            <div class="col-lg-8">
+                <div class="premium-card p-4" id="work-area">
+                    <h5 class="fw-bold mb-3" id="work-title">仕分けウィザード</h5>
+                    <p class="text-muted" id="work-description">左側のカメラ機種を選択して、仕分けを設定してください。</p>
+                    
+                    <!-- グループ仕分け用のコンテナ (iPhone用) -->
+                    <div id="group-sorting-container" class="d-none">
+                        <!-- 一括仕分けコントロール -->
+                        <div class="premium-card p-3 mb-3 bg-light border-0">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <div>
+                                    <h6 class="fw-bold mb-1">⚡ 機種全体の一括仕分け</h6>
+                                    <small class="text-muted">この機種に属するすべての写真を一括で割り当てます。</small>
+                                </div>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-outline-primary btn-sm" onclick="setDeviceAction('papa', 'download')">父へ全てDL</button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="setDeviceAction('mama', 'download')">母へ全てDL</button>
+                                    <button class="btn btn-outline-success btn-sm" onclick="setDeviceAction('child', 'download')">子へ全てDL</button>
+                                    <button class="btn btn-outline-dark btn-sm" onclick="setDeviceAction(null, 'keep')">全て残す</button>
+                                    <button class="btn btn-outline-secondary btn-sm" onclick="setDeviceAction(null, 'unselected')">リセット</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 表示フィルター -->
+                        <div class="d-flex gap-3 mb-3 px-1 flex-wrap">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="filter-hide-processed" checked onchange="applyFilters()">
+                                <label class="form-check-label text-muted fw-bold" for="filter-hide-processed">仕分け済み（父/母/子）を隠す</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="filter-hide-keep" checked onchange="applyFilters()">
+                                <label class="form-check-label text-muted fw-bold" for="filter-hide-keep">「残す」を隠す</label>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info border-0 py-2 mb-3" style="background-color: #eff6ff; color: #1e40af;">
+                            <small>ℹ️ 同一時間帯に撮影された写真も、ファイル名連番の連続性によって別グループに分離されています。</small>
+                        </div>
+                        <div id="groups-list" class="d-flex flex-column gap-3">
+                            <!-- グループカードがJSで挿入されます -->
+                        </div>
+                    </div>
+                    
+                    <!-- 個別仕分け用のコンテナ (スクリーンショット用) -->
+                    <div id="individual-sorting-container" class="d-none">
+                        <div class="alert alert-info border-0" style="background-color: #f0fdf4; color: #065f46;">
+                            ℹ️ EXIFデータがない写真です。画像を見ながら、1クリックで所有者を割り当ててください。
+                        </div>
+                        <div class="row row-cols-2 row-cols-md-3 g-3" id="screenshot-grid">
+                            <!-- スクリーンショットがJSで挿入されます -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- アクション実行セクション -->
+        <div class="row g-4 mt-4 mb-5">
+            <div class="col-md-12">
+                <div class="premium-card p-4 border-top border-5 border-success">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                        <div>
+                            <h5 class="fw-bold text-success mb-1">ステップ 2: 仕分けの実行（ダウンロード＆削除）</h5>
+                            <p class="text-muted mb-0" id="sync-message">「実行」を押すと、設定したルールに従って M:\Photo_seiri にダウンロードし、完了後に安全に削除します。</p>
+                        </div>
+                        <button class="btn-premium-success px-5" id="btn-sync" onclick="startSync()">実行する</button>
+                    </div>
+                    
+                    <!-- 進捗バー (同期) -->
+                    <div class="progress mt-3 d-none" id="sync-progress-container" style="height: 10px; border-radius: 5px;">
+                        <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="sync-progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- JS & logic -->
+    <script>
+        let currentModel = "";
+        let selectedDeviceElement = null;
+
+        // ページロード時に接続確認とステータス取得、およびキャッシュからのデバイス一覧の自動読み込み
+        window.addEventListener('DOMContentLoaded', () => {
+            loadAccounts(); // アカウント一覧をロード
+            checkStatus();
+            loadDevices(); // 既存のキャッシュからデバイス一覧を即座に表示
+            setInterval(checkStatus, 3000); // 3秒おきにステータス監視
+        });
+
+        // 接続確認とスキャン・同期状況
+        function checkStatus() {
+            fetch('/api/status')
+                .then(res => res.json())
+                .then(data => {
+                    // スキャンステータス
+                    const scan = data.scan;
+                    const btnScan = document.getElementById('btn-scan');
+                    const scanMsg = document.getElementById('scan-message');
+                    const scanBarContainer = document.getElementById('scan-progress-container');
+                    const scanBar = document.getElementById('scan-progress-bar');
+                    
+                    if (scan.running) {
+                        btnScan.disabled = true;
+                        btnScan.textContent = "スキャン中...";
+                        scanMsg.textContent = scan.message;
+                        scanBarContainer.classList.remove('d-none');
+                        const pct = scan.total > 0 ? (scan.progress / scan.total) * 100 : 0;
+                        scanBar.style.width = `${pct}%`;
+                    } else {
+                        btnScan.disabled = false;
+                        btnScan.textContent = "スキャン開始";
+                        scanMsg.textContent = scan.message;
+                        if (scan.progress > 0 && scan.progress === scan.total) {
+                            scanBarContainer.classList.add('d-none');
+                            // スキャン完了時に自動でデバイス一覧をロード
+                            loadDevices();
+                        }
+                    }
+
+                    // 同期ステータス
+                    const sync = data.sync;
+                    const btnSync = document.getElementById('btn-sync');
+                    const syncMsg = document.getElementById('sync-message');
+                    const syncBarContainer = document.getElementById('sync-progress-container');
+                    const syncBar = document.getElementById('sync-progress-bar');
+
+                    if (sync.running) {
+                        btnSync.disabled = true;
+                        btnSync.textContent = "実行中...";
+                        syncMsg.textContent = sync.message;
+                        syncBarContainer.classList.remove('d-none');
+                        const pct = sync.total > 0 ? (sync.progress / sync.total) * 100 : 0;
+                        syncBar.style.width = `${pct}%`;
+                    } else {
+                        btnSync.disabled = false;
+                        btnSync.textContent = "実行する";
+                        syncMsg.textContent = sync.message;
+                        if (sync.progress > 0 && sync.progress === sync.total) {
+                            syncBarContainer.classList.add('d-none');
+                            loadDevices(); // 再度ロード
+                        }
+                    }
+
+                    // ヘッダー接続状態バッジ
+                    const badge = document.getElementById('conn-badge');
+                    if (scan.message.includes("Error") || sync.message.includes("Error")) {
+                        badge.className = "badge bg-danger text-white px-3 py-2";
+                        badge.textContent = "エラー発生";
+                    } else {
+                        badge.className = "badge bg-success text-white px-3 py-2";
+                        badge.textContent = "接続OK (サーバー稼働中)";
+                    }
+                });
+        }
+
+        function startScan() {
+            fetch('/api/scan', { method: 'POST' })
+                .then(res => res.json())
+                .then(() => checkStatus());
+        }
+
+        function rebuildGroups() {
+            const btn = document.getElementById('btn-rebuild');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = "再構築中...";
+            }
+            fetch('/api/rebuild-groups', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = "グループ再構築 (1秒)";
+                    }
+                    if (data.status === "success") {
+                        loadDevices();
+                        if (currentModel) {
+                            loadGroups(currentModel);
+                        }
+                    } else {
+                        alert("エラー: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = "グループ再構築 (1秒)";
+                    }
+                    console.error(err);
+                });
+        }
+
+        function startSync() {
+            if (confirm("選択したフォルダへのダウンロードと、Immichからの削除を実行します。本当によろしいですか？")) {
+                fetch('/api/sync', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(() => checkStatus());
+            }
+        }
+
+        function loadDevices() {
+            const hideCompleted = document.getElementById('filter-hide-completed-devices')?.checked ?? true;
+            
+            // まずデバイスマッピングの設定を取得
+            fetch('/api/settings/device-mapping')
+                .then(res => res.json())
+                .then(mappings => {
+                    // デバイス一覧を取得
+                    return fetch('/api/devices')
+                        .then(res => res.json())
+                        .then(devices => {
+                            const container = document.getElementById('device-list');
+                            container.innerHTML = "";
+                            
+                            if (devices.length === 0) {
+                                container.innerHTML = `<div class="text-center text-muted py-4">写真が見つかりません。</div>`;
+                                return;
+                            }
+
+                            let visibleCount = 0;
+                            devices.forEach(dev => {
+                                const isCompleted = dev.unselected_count === 0;
+                                
+                                // 完了した機種を隠す設定が有効な場合、リストから除外
+                                if (hideCompleted && isCompleted) {
+                                    return;
+                                }
+                                
+                                visibleCount++;
+                                const card = document.createElement('div');
+                                const isScreenshot = dev.model.includes("EXIFなし");
+                                
+                                card.className = `list-group-item list-group-item-action premium-card device-card p-3 mb-2 d-flex justify-content-between align-items-center ${currentModel === dev.model ? 'active' : ''}`;
+                                card.onclick = () => selectDevice(dev.model, card);
+                                
+                                let badgeHtml = "";
+                                if (isCompleted) {
+                                    badgeHtml = `<span class="badge bg-success rounded-pill">整理完了 ✓</span>`;
+                                } else {
+                                    badgeHtml = `<span class="badge ${isScreenshot || dev.requires_split ? 'bg-warning text-dark' : 'bg-primary'} rounded-pill">
+                                        ${dev.unselected_count.toLocaleString()} 枚未整理
+                                    </span>`;
+                                }
+                                
+                                card.innerHTML = `
+                                    <div>
+                                        <h6 class="fw-bold mb-1">${dev.model}</h6>
+                                        <small class="text-muted">総数: ${dev.count.toLocaleString()} 枚</small>
+                                    </div>
+                                    ${badgeHtml}
+                                `;
+                                container.appendChild(card);
+                                
+                                if (currentModel === dev.model) {
+                                    selectedDeviceElement = card;
+                                }
+                            });
+                            
+                            if (visibleCount === 0 && devices.length > 0) {
+                                container.innerHTML = `<div class="text-center text-success py-4 fw-bold">🎉 すべての機種の仕分けが完了しました！</div>`;
+                            }
+                        });
+                })
+                .catch(err => console.error("Error loading devices & mappings:", err));
+        }
+
+        function updateDeviceMapping(model, owner) {
+            fetch('/api/settings/device-mapping', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: model, owner: owner || null })
+            }).then(() => {
+                loadDevices();
+                if (currentModel === model) {
+                    loadGroups(model);
+                }
+            });
+        }
+
+        function selectDevice(model, element) {
+            currentModel = model;
+            if (selectedDeviceElement) {
+                selectedDeviceElement.classList.remove('active');
+            }
+            selectedDeviceElement = element;
+            element.classList.add('active');
+
+            const title = document.getElementById('work-title');
+            const desc = document.getElementById('work-description');
+            
+            title.textContent = model;
+            
+            const groupContainer = document.getElementById('group-sorting-container');
+            const individualContainer = document.getElementById('individual-sorting-container');
+            
+            groupContainer.classList.add('d-none');
+            individualContainer.classList.add('d-none');
+
+            if (model.includes("EXIFなし")) {
+                desc.textContent = "撮影・保存日時（前後5分以内）の近さで自動グループ化されています。グループ単位でフォルダ割り当てを選択してください。";
+            } else {
+                desc.textContent = "撮影日時とファイル名連番の連続性でグループ化されたリストです。グループ単位でフォルダ割り当てを選択してください。";
+            }
+            groupContainer.classList.remove('d-none');
+            loadGroups(model);
+        }
+
+        // iPhone等のグループ仕分けの読み込み
+        function loadGroups(model) {
+            const list = document.getElementById('groups-list');
+            list.innerHTML = `<div class="text-center text-muted py-4">グループを読み込み中...</div>`;
+            
+            fetch(`/api/groups/${encodeURIComponent(model)}`)
+                .then(res => res.json())
+                .then(groups => {
+                    list.innerHTML = "";
+                    if (groups.length === 0) {
+                        list.innerHTML = `<div class="text-center text-muted py-4">グループがありません。再スキャンしてください。</div>`;
+                        return;
+                    }
+
+                    groups.forEach((g, gIdx) => {
+                        const card = document.createElement('div');
+                        const assignedClass = g.status === 'keep' ? 'assigned-keep' : (g.assigned_owner ? `assigned-${g.assigned_owner}` : '');
+                        card.className = `card premium-card p-3 group-card ${assignedClass}`;
+                        card.id = `group-card-${g.id}`;
+                        card.setAttribute('data-status', g.status);
+                        card.setAttribute('data-owner', g.assigned_owner);
+                        
+                        // 時間表示の整形
+                        const formatTime = (tStr) => {
+                            if (!tStr) return "不明";
+                            const d = new Date(tStr);
+                            return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+                        };
+                        
+                        const timeSpan = g.start_time ? `${formatTime(g.start_time)} 〜 ${formatTime(g.end_time)}` : "日時不明";
+                        const seqSpan = g.seq_start ? ` | 連番: ${g.seq_start}番 〜 ${g.seq_end}番台` : "";
+                        
+                        const titleText = g.name || (g.seq_start ? `📷 個体スレッド #${g.id} (${g.asset_count}枚)` : `📷 その他・端数写真スレッド #${g.id} (${g.asset_count}枚)`);
+                        
+                        // 結合ボタン（最後のグループ以外に表示）
+                        const mergeBtnHtml = gIdx < groups.length - 1 ? `
+                            <button class="btn btn-xs btn-outline-primary ms-2 py-0 px-1 border-1" 
+                                    style="font-size:10px; line-height:1.2; vertical-align:middle;" 
+                                    onclick="mergeNextGroup(${g.id})" 
+                                    title="このグループを時系列で次のグループと1つに結合します">
+                                🔗 下と結合
+                            </button>
+                        ` : "";
+                        
+                        card.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                <div>
+                                    <h6 class="fw-bold mb-1" style="display:inline-block;">${titleText}</h6>${mergeBtnHtml}
+                                    <div><small class="text-muted">期間: ${timeSpan}${seqSpan}</small></div>
+                                </div>
+                                <div class="btn-group border rounded" role="group">
+                                    <input type="radio" class="btn-check" name="act-${g.id}" id="act-un-${g.id}" value="unselected" ${g.status === 'unselected' ? 'checked' : ''} onchange="setGroupAction(${g.id}, null, 'unselected')">
+                                    <label class="btn btn-outline-secondary btn-sm border-0" for="act-un-${g.id}">未選択</label>
+                                    
+                                    <input type="radio" class="btn-check" name="act-${g.id}" id="act-pa-${g.id}" value="papa" ${g.status === 'download' && g.assigned_owner === 'papa' ? 'checked' : ''} onchange="setGroupAction(${g.id}, 'papa', 'download')">
+                                    <label class="btn btn-outline-primary btn-sm border-0" for="act-pa-${g.id}">お父さん</label>
+                                    
+                                    <input type="radio" class="btn-check" name="act-${g.id}" id="act-ma-${g.id}" value="mama" ${g.status === 'download' && g.assigned_owner === 'mama' ? 'checked' : ''} onchange="setGroupAction(${g.id}, 'mama', 'download')">
+                                    <label class="btn btn-outline-danger btn-sm border-0" for="act-ma-${g.id}">お母さん</label>
+                                    
+                                    <input type="radio" class="btn-check" name="act-${g.id}" id="act-ch-${g.id}" value="child" ${g.status === 'download' && g.assigned_owner === 'child' ? 'checked' : ''} onchange="setGroupAction(${g.id}, 'child', 'download')">
+                                    <label class="btn btn-outline-success btn-sm border-0" for="act-ch-${g.id}">子供</label>
+                                    
+                                    <input type="radio" class="btn-check" name="act-${g.id}" id="act-ke-${g.id}" value="keep" ${g.status === 'keep' ? 'checked' : ''} onchange="setGroupAction(${g.id}, null, 'keep')">
+                                    <label class="btn btn-outline-dark btn-sm border-0" for="act-ke-${g.id}">残す</label>
+                                </div>
+                            </div>
+                            <div class="thumbnail-container d-flex flex-wrap" id="samples-${g.id}">
+                                <!-- サンプル画像が非同期で読み込まれます -->
+                            </div>
+                            ${g.asset_count > 40 ? `
+                            <div class="mt-2 text-end">
+                                <button class="btn btn-link btn-sm text-decoration-none p-0 fw-bold" id="btn-show-all-${g.id}" onclick="toggleAllSamples(${g.id}, ${g.asset_count})" data-showing-all="false">
+                                    ✨ すべての写真を表示 (${g.asset_count}枚)
+                                </button>
+                            </div>
+                            ` : ''}
+                        `;
+                        list.appendChild(card);
+                        
+                        // サンプル画像の読み込み
+                        loadGroupSamples(g.id, 40);
+                    });
+                    
+                    // フィルターを適用
+                    setTimeout(applyFilters, 50);
+                });
+        }
+        function loadGroupSamples(groupId, limit = 40) {
+            fetch(`/api/groups/${groupId}/samples?limit=${limit}`)
+                .then(res => res.json())
+                .then(samples => {
+                    const container = document.getElementById(`samples-${groupId}`);
+                    container.innerHTML = "";
+                    samples.forEach((s, idx) => {
+                        const wrap = document.createElement('div');
+                        wrap.style.cssText = "display:inline-block; text-align:center; vertical-align:top; margin:2px; position:relative;";
+                        
+                        const img = document.createElement('img');
+                        img.src = s.url;
+                        img.loading = "lazy";
+                        img.style.cssText = "display:block; cursor:zoom-in; width:80px; height:80px; object-fit:cover; border-radius:6px;";
+                        img.onclick = () => openImageModal(s.url);
+                        
+                        const label = document.createElement('div');
+                        label.style.cssText = "font-size:9px; color:#555; line-height:1.3; margin-top:2px; max-width:80px; word-break:break-all;";
+                        
+                        // 日時整形
+                        let dateStr = "";
+                        if (s.created_at) {
+                            const d = new Date(s.created_at);
+                            dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                        }
+                        // 連番
+                        const seqStr = s.sequence_num != null ? `#${s.sequence_num}` : "";
+                        
+                        // 逆行している場合は日時を赤字にして警告表示
+                        const dateColor = s.is_backward ? "color:#e74c3c; font-weight:bold;" : "color:#555;";
+                        const warningIcon = s.is_backward ? "⚠️ " : "";
+                        
+                        label.innerHTML = `
+                            <span style="color:#e67e22; font-weight:bold;">${seqStr}</span>
+                            ${seqStr && dateStr ? '<br>' : ''}
+                            <span style="${dateColor}">${warningIcon}${dateStr}</span>
+                        `;
+                        
+                        wrap.appendChild(img);
+                        wrap.appendChild(label);
+                        
+                        // 先頭以外の写真には「✂️ 分割」ボタンを表示
+                        if (idx > 0) {
+                            const splitBtn = document.createElement('button');
+                            splitBtn.innerHTML = "✂️ 分割";
+                            splitBtn.title = "この写真から後ろを別グループに分割します";
+                            splitBtn.style.cssText = "display:block; width:100%; font-size:8px; margin-top:2px; padding:1px; background:#fff; border:1px solid #ddd; border-radius:3px; cursor:pointer;";
+                            splitBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                if (confirm("この写真の前でグループを分割しますか？")) {
+                                    splitGroup(groupId, s.id);
+                                }
+                            };
+                            wrap.appendChild(splitBtn);
+                        }
+                        
+                        container.appendChild(wrap);
+                    });
+                });
+        }
+
+        function splitGroup(groupId, assetId) {
+            fetch(`/api/groups/${groupId}/split`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asset_id: assetId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadGroups(currentModel);
+                } else {
+                    alert("分割に失敗しました: " + data.message);
+                }
+            });
+        }
+
+        function mergeNextGroup(groupId) {
+            fetch(`/api/groups/${groupId}/merge-next`, {
+                method: 'POST'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadGroups(currentModel);
+                } else {
+                    alert("結合に失敗しました: " + data.message);
+                }
+            });
+        }
+        function toggleAllSamples(groupId, totalCount) {
+            const btn = document.getElementById(`btn-show-all-${groupId}`);
+            const isShowingAll = btn.getAttribute('data-showing-all') === 'true';
+            
+            if (isShowingAll) {
+                // 一部のみ表示（40枚）に戻す
+                loadGroupSamples(groupId, 40);
+                btn.innerHTML = `✨ すべての写真を表示 (${totalCount}枚)`;
+                btn.setAttribute('data-showing-all', 'false');
+            } else {
+                // 全件ロード（limit=0）
+                loadGroupSamples(groupId, 0);
+                btn.innerHTML = `🔼 一部のみ表示 (40枚に戻す)`;
+                btn.setAttribute('data-showing-all', 'true');
+            }
+        }
+
+        // 表示フィルターの適用 (仕分け済み・残すの非表示化)
+        function applyFilters() {
+            const hideProcessed = document.getElementById('filter-hide-processed').checked;
+            const hideKeep = document.getElementById('filter-hide-keep').checked;
+            
+            const cards = document.querySelectorAll('#groups-list .group-card');
+            cards.forEach(card => {
+                const status = card.getAttribute('data-status');
+                let shouldHide = false;
+                
+                if (hideProcessed && status === 'download') {
+                    shouldHide = true;
+                }
+                if (hideKeep && status === 'keep') {
+                    shouldHide = true;
+                }
+                
+                if (shouldHide) {
+                    card.classList.add('d-none');
+                } else {
+                    card.classList.remove('d-none');
+                }
+            });
+        }
+
+        function setGroupAction(groupId, owner, status) {
+            fetch('/api/groups/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ group_id: groupId, owner: owner, status: status })
+            })
+            .then(res => res.json())
+            .then(data => {
+                // 1. クリックされたグループカードの更新
+                updateCardDOM(groupId, owner, status);
+                
+                // 2. 自動連動で更新された他のすべてのグループカードも更新
+                if (data.updated_groups && data.updated_groups.length > 0) {
+                    data.updated_groups.forEach(id => {
+                        updateCardDOM(id, owner, status);
+                    });
+                }
+                
+                // 3. フィルターを適用して非表示にする (アニメーション効果用に一瞬遅らせる)
+                setTimeout(applyFilters, 300);
+                
+                // デバイスの未整理数も更新するため、デバイス一覧をリロード
+                loadDevices();
+            });
+        }
+
+        // カードの表示状態とラジオボタン状態を更新するヘルパー関数
+        function updateCardDOM(id, owner, status) {
+            const card = document.getElementById(`group-card-${id}`);
+            if (!card) return;
+            
+            card.className = "card premium-card p-3 group-card";
+            card.setAttribute('data-status', status);
+            card.setAttribute('data-owner', owner);
+            
+            if (status === 'keep') {
+                card.classList.add('assigned-keep');
+            } else if (owner) {
+                card.classList.add(`assigned-${owner}`);
+            }
+            
+            // ラジオボタンのチェック状態も自動追従
+            const radioType = owner === 'papa' ? 'pa' : owner === 'mama' ? 'ma' : owner === 'child' ? 'ch' : status === 'keep' ? 'ke' : 'un';
+            const radio = document.getElementById(`act-${radioType}-${id}`);
+            if (radio) {
+                radio.checked = true;
+            }
+        }
+
+        function setDeviceAction(owner, status) {
+            if (!currentModel) return;
+            let actionText = status === 'keep' ? '「残す」' : (owner ? `「${owner === 'papa' ? 'お父さん' : owner === 'mama' ? 'お母さん' : '子供'}へダウンロード」` : '「未選択」');
+            if (confirm(`本当に「${currentModel}」のすべての写真を一括で ${actionText} に設定しますか？`)) {
+                fetch('/api/devices/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: currentModel, owner: owner, status: status })
+                }).then(() => {
+                    loadDevices();
+                    loadGroups(currentModel);
+                });
+            }
+        }
+
+        // スクリーンショット（EXIFなし）個別仕分けの読み込み
+        function loadScreenshots() {
+            const grid = document.getElementById('screenshot-grid');
+            grid.innerHTML = `<div class="w-100 text-center text-muted py-4">読み込み中...</div>`;
+            
+            fetch('/api/screenshots')
+                .then(res => res.json())
+                .then(items => {
+                    grid.innerHTML = "";
+                    if (items.length === 0) {
+                        grid.innerHTML = `<div class="w-100 text-center text-success py-4 fw-bold">🎉 すべてのスクリーンショットの仕分けが完了しました！</div>`;
+                        return;
+                    }
+
+                    items.forEach(item => {
+                        const col = document.createElement('div');
+                        col.className = "col screenshot-item";
+                        col.id = `shot-${item.id}`;
+                        
+                        col.innerHTML = `
+                            <div class="card premium-card p-1">
+                                <img src="${item.url}" class="card-img-top" loading="lazy" style="cursor: zoom-in;" onclick="openImageModal('${item.url}')">
+                                <div class="screenshot-action-overlay">
+                                    <button class="btn-action-sm btn-papa" onclick="setScreenshotAction('${item.id}', 'papa', 'download')">父</button>
+                                    <button class="btn-action-sm btn-mama" onclick="setScreenshotAction('${item.id}', 'mama', 'download')">母</button>
+                                    <button class="btn-action-sm btn-child" onclick="setScreenshotAction('${item.id}', 'child', 'download')">子</button>
+                                    <button class="btn-action-sm btn-keep" onclick="setScreenshotAction('${item.id}', null, 'keep')">残</button>
+                                </div>
+                            </div>
+                        `;
+                        grid.appendChild(col);
+                    });
+                });
+        }
+
+        function setScreenshotAction(assetId, owner, status) {
+            fetch(`/api/screenshots/${assetId}/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asset_id: assetId, owner: owner, status: status })
+            }).then(() => {
+                const element = document.getElementById(`shot-${assetId}`);
+                // フェードアウトアニメーションを適用して削除
+                element.classList.add('fade-out');
+                setTimeout(() => {
+                    element.remove();
+                    // グリッドが空になったら再読み込み (追加の100件を表示するため)
+                    const grid = document.getElementById('screenshot-grid');
+                    if (grid.children.length === 0) {
+                        loadScreenshots();
+                    }
+                }, 300);
+                
+                // デバイスの未整理数も更新するため、デバイス一覧をリロード
+                loadDevices();
+            });
+        }
+
+        function openImageModal(url) {
+            const modal = document.getElementById('image-modal');
+            const modalImg = document.getElementById('modal-image');
+            
+            // サムネイル解像度だと粗いため、プレビューサイズ(?size=preview)で表示
+            const previewUrl = url.replace('size=thumbnail', 'size=preview');
+            modalImg.src = previewUrl;
+            
+            modal.classList.remove('d-none');
+            setTimeout(() => modal.classList.add('show'), 10);
+        }
+
+        function closeImageModal() {
+            const modal = document.getElementById('image-modal');
+            modal.classList.remove('show');
+            setTimeout(() => {
+                modal.classList.add('d-none');
+                document.getElementById('modal-image').src = "";
+            }, 200);
+        }
+
+        // アカウント管理ロジック
+        let accountModalInstance = null;
+
+        function openAccountModal() {
+            if (!accountModalInstance) {
+                accountModalInstance = new bootstrap.Modal(document.getElementById('account-modal'));
+            }
+            accountModalInstance.show();
+        }
+
+        function loadAccounts() {
+            fetch('/api/accounts')
+                .then(res => res.json())
+                .then(data => {
+                    const selector = document.getElementById('account-selector');
+                    const modalList = document.getElementById('account-list-modal');
+                    
+                    // セレクトボックスの再構築
+                    selector.innerHTML = '<option value="">接続アカウント未選択</option>';
+                    
+                    // モーダル内リストの再構築
+                    modalList.innerHTML = '';
+                    
+                    if (data.accounts.length === 0) {
+                        modalList.innerHTML = '<div class="text-center text-muted py-4">登録されたアカウントはありません。左のフォームから追加してください。</div>';
+                    }
+                    
+                    data.accounts.forEach(acc => {
+                        // セレクトボックス追加
+                        const opt = document.createElement('option');
+                        opt.value = acc.id;
+                        opt.textContent = acc.name;
+                        if (data.active_account === acc.id) {
+                            opt.selected = true;
+                        }
+                        selector.appendChild(opt);
+                        
+                        // モーダル内リスト追加
+                        const item = document.createElement('div');
+                        item.className = `list-group-item d-flex justify-content-between align-items-center p-3 border rounded ${data.active_account === acc.id ? 'border-primary bg-light' : ''}`;
+                        item.innerHTML = `
+                            <div>
+                                <h6 class="fw-bold mb-1">${acc.name} <small class="text-muted">(${acc.id})</small></h6>
+                                <small class="text-muted d-block">${acc.url}</small>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-primary" onclick="switchAccountDirect('${acc.id}')" ${data.active_account === acc.id ? 'disabled' : ''}>切り替え</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteAccount('${acc.id}')">削除</button>
+                            </div>
+                        `;
+                        modalList.appendChild(item);
+                    });
+                });
+        }
+
+        function switchAccountDirect(accId) {
+            fetch('/api/accounts/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: accId })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadAccounts();
+                    loadDevices();
+                    currentModel = "";
+                    const workArea = document.getElementById('work-area');
+                    document.getElementById('work-title').textContent = "仕分けウィザード";
+                    document.getElementById('work-description').textContent = "左側のカメラ機種を選択して、仕分けを設定してください。";
+                    document.getElementById('group-sorting-container').classList.add('d-none');
+                    document.getElementById('individual-sorting-container').classList.add('d-none');
+                    
+                    if (accountModalInstance) {
+                        accountModalInstance.hide();
+                    }
+                    alert("アカウントを切り替えました。");
+                    checkStatus();
+                } else {
+                    alert("エラー: " + data.message);
+                }
+            });
+        }
+
+        function changeAccount() {
+            const selector = document.getElementById('account-selector');
+            const accId = selector.value;
+            if (!accId) return;
+            switchAccountDirect(accId);
+        }
+
+        function saveAccount(e) {
+            e.preventDefault();
+            const id = document.getElementById('acc-id').value.trim();
+            const name = document.getElementById('acc-name').value.trim();
+            const url = document.getElementById('acc-url').value.trim();
+            const api_key = document.getElementById('acc-api-key').value.trim();
+            
+            fetch('/api/accounts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, name, url, api_key })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('account-form').reset();
+                    loadAccounts();
+                    loadDevices();
+                    alert("アカウントを保存しました。");
+                } else {
+                    alert("エラー: " + data.message);
+                }
+            });
+        }
+
+        function deleteAccount(accId) {
+            if (confirm("このアカウント設定を削除しますか？ (キャッシュデータベースもリセットされます)")) {
+                fetch(`/api/accounts/${accId}`, { method: 'DELETE' })
+                    .then(res => res.json())
+                    .then(() => {
+                        loadAccounts();
+                        loadDevices();
+                    });
+            }
+        }
+    </script>
+    
+    <!-- 画像拡大モーダル -->
+    <div id="image-modal" class="modal-overlay d-none" onclick="closeImageModal()">
+        <div class="modal-content-wrapper" onclick="event.stopPropagation();">
+            <span class="close-btn" onclick="closeImageModal()">&times;</span>
+            <img id="modal-image" src="" alt="拡大画像">
+        </div>
+    </div>
+
+    <!-- アカウント管理モーダル -->
+    <div class="modal fade" id="account-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0" style="border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold">👤 Immich 接続アカウント管理</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-4">
+                        <!-- アカウント追加フォーム -->
+                        <div class="col-md-5 border-end">
+                            <h6 class="fw-bold mb-3">➕ アカウントの追加/編集</h6>
+                            <form id="account-form" onsubmit="saveAccount(event)">
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold text-muted">アカウントID (半角英数)</label>
+                                    <input type="text" class="form-control" id="acc-id" placeholder="papa" required style="border-radius: 8px;">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold text-muted">表示名</label>
+                                    <input type="text" class="form-control" id="acc-name" placeholder="お父さん" required style="border-radius: 8px;">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold text-muted">Immich URL</label>
+                                    <input type="url" class="form-control" id="acc-url" placeholder="http://192.168.12.31:3001" required style="border-radius: 8px;">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold text-muted">API キー</label>
+                                    <input type="text" class="form-control" id="acc-api-key" placeholder="APIキーを入力" required style="border-radius: 8px;">
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100 btn-premium-primary py-2" style="border-radius: 8px;">保存する</button>
+                            </form>
+                        </div>
+                        
+                        <!-- 登録済みアカウント一覧 -->
+                        <div class="col-md-7">
+                            <h6 class="fw-bold mb-3">📋 登録済みアカウント一覧</h6>
+                            <div class="list-group gap-2 border-0" id="account-list-modal">
+                                <!-- JSで動的生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

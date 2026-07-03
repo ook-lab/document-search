@@ -51,7 +51,7 @@ gcloud run deploy $SERVICE_NAME `
     --update-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
     --update-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
     --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
-    --update-env-vars "GEMINI_AI_API_KEY=$env:GEMINI_AI_API_KEY" `
+    --set-secrets "GEMINI_AI_API_KEY=GEMINI_AI_API_KEY:latest" `
     --update-env-vars "PASSWORD=$env:PASSWORD" `
     --update-env-vars "LOG_LEVEL=INFO"
 

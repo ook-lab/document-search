@@ -1,0 +1,11 @@
+{
+    "active_account": "papa",
+    "accounts": [
+        {
+            "id": "papa",
+            "name": "father",
+            "url": "http://192.168.12.31:3001",
+            "api_key": "3dNDjQFHMo8dnhM7I6YlZEDRLs3CpZMqTELxtPk9R7E"
+        }
+    ]
+}

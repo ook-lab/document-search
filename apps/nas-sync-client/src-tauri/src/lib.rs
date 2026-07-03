@@ -1,0 +1,459 @@
+mod sync;
+
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use std::fs;
+use std::path::Path;
+use std::io;
+use tauri::{AppHandle, Manager, State, Emitter};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tokio::sync::mpsc;
+
+
+
+// --- Tauri Commands ---
+
+#[tauri::command]
+fn get_config(state: State<'_, Arc<sync::AppState>>) -> sync::Config {
+	state.config.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_status(state: State<'_, Arc<sync::AppState>>) -> sync::SyncStatus {
+	state.status.lock().unwrap().clone()
+}
+
+#[tauri::command]
+async fn save_settings(
+	state: State<'_, Arc<sync::AppState>>,
+	app: AppHandle,
+	nas_url: String,
+	device_name: String,
+) -> Result<sync::Config, String> {
+	let mut config = state.config.lock().unwrap().clone();
+	// Always enforce the static NAS URL for connection requests
+	config.nas_url = "http://100.82.85.101:8080".to_string();
+
+	// If device is not registered yet, register it
+	if config.device_id == 0 {
+		let (device_id, token) = sync::api_register_device(&config.nas_url, &device_name).await?;
+		config.device_id = device_id;
+		config.api_token = token;
+	}
+
+	// Save to state and disk
+	*state.config.lock().unwrap() = config.clone();
+	sync::save_config_file(&app, &config).map_err(|e| e.to_string())?;
+
+	// Trigger initial sync
+	let _ = state.sync_trigger.send(()).await;
+
+	Ok(config)
+}
+
+
+#[tauri::command]
+async fn add_folder(
+	state: State<'_, Arc<sync::AppState>>,
+	app: AppHandle,
+	local_path: String,
+	virtual_name: String,
+) -> Result<sync::Config, String> {
+	let mut config = state.config.lock().unwrap().clone();
+
+	if config.device_id == 0 || config.api_token.is_empty() {
+		return Err("先にNAS接続設定を保存してください。".to_string());
+	}
+
+	// Check if already registered locally
+	if config.sync_folders.iter().any(|f| f.local_path == local_path) {
+		return Err("このフォルダは既に同期対象に設定されています。".to_string());
+	}
+
+	// Register on server
+	let folder_id = sync::api_register_folder(
+		&config.nas_url,
+		&config.api_token,
+		&local_path,
+		&virtual_name,
+	).await?;
+
+	let new_folder = sync::SyncFolder {
+		folder_id,
+		local_path,
+		virtual_name,
+	};
+
+	config.sync_folders.push(new_folder);
+
+	// Save config
+	*state.config.lock().unwrap() = config.clone();
+	sync::save_config_file(&app, &config).map_err(|e| e.to_string())?;
+
+	// Restart file system watcher with new paths
+	restart_watcher_service(&app, &config, &state)?;
+
+	// Trigger sync
+	let _ = state.sync_trigger.send(()).await;
+
+	Ok(config)
+}
+
+#[tauri::command]
+async fn force_sync(state: State<'_, Arc<sync::AppState>>) -> Result<(), String> {
+	state.sync_trigger.send(()).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn select_folder() -> Option<String> {
+	let folder = rfd::FileDialog::new().pick_folder();
+	folder.map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn open_in_explorer(path: String) -> Result<(), String> {
+	#[cfg(target_os = "windows")]
+	{
+		std::process::Command::new("explorer")
+			.arg(&path)
+			.spawn()
+			.map_err(|e| e.to_string())?;
+	}
+	#[cfg(target_os = "macos")]
+	{
+		std::process::Command::new("open")
+			.arg(&path)
+			.spawn()
+			.map_err(|e| e.to_string())?;
+	}
+	Ok(())
+}
+
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct LocalFileInfo {
+	name: String,
+	virtual_name: String,
+	date: String,
+}
+
+#[tauri::command]
+fn get_all_synced_files(state: State<'_, Arc<sync::AppState>>) -> Vec<LocalFileInfo> {
+	let config = state.config.lock().unwrap().clone();
+	let mut files = Vec::new();
+
+	for folder in config.sync_folders {
+		let path = Path::new(&folder.local_path);
+		if !path.exists() {
+			continue;
+		}
+		// 階層の深さ最大4まで再帰的にスキャン
+		scan_dir_for_files(path, &folder.virtual_name, &mut files, 0);
+	}
+	files
+}
+
+fn scan_dir_for_files(dir: &Path, virtual_name: &str, files: &mut Vec<LocalFileInfo>, depth: usize) {
+	if depth > 4 {
+		return;
+	}
+	if let Ok(entries) = fs::read_dir(dir) {
+		for entry in entries.flatten() {
+			let path = entry.path();
+			if path.is_file() {
+				let name = path.file_name()
+					.map(|n| n.to_string_lossy().to_string())
+					.unwrap_or_default();
+				
+				let metadata = entry.metadata().ok();
+				let date_str = metadata.and_then(|m| m.modified().ok())
+					.map(|time| {
+						let datetime: chrono::DateTime<chrono::Local> = time.into();
+						datetime.format("%Y-%m-%d %H:%M").to_string()
+					})
+					.unwrap_or_else(|| "不明".to_string());
+
+				files.push(LocalFileInfo {
+					name,
+					virtual_name: virtual_name.to_string(),
+					date: date_str,
+				});
+			} else if path.is_dir() {
+				scan_dir_for_files(&path, virtual_name, files, depth + 1);
+			}
+		}
+	}
+}
+
+
+
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct DeviceInfo {
+	device_id: i32,
+	device_name: String,
+	os_type: String,
+}
+
+#[tauri::command]
+async fn get_nas_devices(
+	state: State<'_, Arc<sync::AppState>>,
+) -> Result<Vec<DeviceInfo>, String> {
+	let config = state.config.lock().unwrap().clone();
+	if config.nas_url.is_empty() {
+		return Ok(Vec::new());
+	}
+	let client = reqwest::Client::new();
+	let url = format!("{}/api/web/devices", config.nas_url);
+	let res = client.get(&url)
+		.send()
+		.await
+		.map_err(|e| format!("デバイス一覧取得エラー: {}", e))?;
+
+	if !res.status().is_success() {
+		return Err(format!("NASサーバーがエラーを返しました: HTTP {}", res.status()));
+	}
+
+	let devices: Vec<DeviceInfo> = res.json().await
+		.map_err(|e| format!("デバイスデータ解析エラー: {}", e))?;
+	Ok(devices)
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct WebFolderInfo {
+	folder_id: i32,
+	device_id: i32,
+	device_name: String,
+	virtual_name: String,
+	local_path: String,
+}
+
+#[tauri::command]
+async fn get_nas_folders(
+	state: State<'_, Arc<sync::AppState>>,
+) -> Result<Vec<WebFolderInfo>, String> {
+	let config = state.config.lock().unwrap().clone();
+	if config.nas_url.is_empty() {
+		return Ok(Vec::new());
+	}
+	let client = reqwest::Client::new();
+	let url = format!("{}/api/web/folders", config.nas_url);
+	let res = client.get(&url)
+		.send()
+		.await
+		.map_err(|e| format!("同期フォルダ一覧取得エラー: {}", e))?;
+
+	if !res.status().is_success() {
+		return Err(format!("NASサーバーがエラーを返しました: HTTP {}", res.status()));
+	}
+
+	let folders: Vec<WebFolderInfo> = res.json().await
+		.map_err(|e| format!("フォルダデータ解析エラー: {}", e))?;
+	Ok(folders)
+}
+
+#[tauri::command]
+async fn update_exclude_patterns(
+	state: State<'_, Arc<sync::AppState>>,
+	app: AppHandle,
+	patterns: Vec<String>,
+) -> Result<sync::Config, String> {
+	let mut config = state.config.lock().unwrap().clone();
+	config.exclude_patterns = patterns;
+	*state.config.lock().unwrap() = config.clone();
+	sync::save_config_file(&app, &config).map_err(|e| e.to_string())?;
+	Ok(config)
+}
+
+#[tauri::command]
+fn get_local_subdirs(local_path: String) -> Result<Vec<String>, String> {
+	let base = Path::new(&local_path);
+	if !base.exists() {
+		return Err("フォルダが存在しません。".to_string());
+	}
+	let mut subdirs = Vec::new();
+
+	fn scan_dirs(base: &Path, current: &Path, list: &mut Vec<String>) -> io::Result<()> {
+		if current.is_dir() {
+			for entry in fs::read_dir(current)? {
+				let entry = entry?;
+				let path = entry.path();
+				if path.is_dir() {
+					let name = path.file_name().unwrap_or_default().to_string_lossy();
+					if name.starts_with('.') || name == "$RECYCLE.BIN" {
+						continue;
+					}
+					let rel = path.strip_prefix(base)
+						.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
+						.to_string_lossy()
+						.replace('\\', "/");
+					list.push(rel.clone());
+					let _ = scan_dirs(base, &path, list);
+				}
+			}
+		}
+		Ok(())
+	}
+
+	let _ = scan_dirs(base, base, &mut subdirs);
+	subdirs.sort();
+	Ok(subdirs)
+}
+
+
+
+// Helper to refresh the directory watcher
+fn restart_watcher_service(
+	app: &AppHandle,
+	config: &sync::Config,
+	state: &State<'_, Arc<sync::AppState>>,
+) -> Result<(), String> {
+	let paths: Vec<String> = config.sync_folders.iter().map(|f| f.local_path.clone()).collect();
+	
+	// Drop old watcher
+	let mut old_watcher = state.watcher.lock().unwrap();
+	*old_watcher = None;
+
+	if !paths.is_empty() {
+		let watcher = sync::start_watcher(app.clone(), paths)?;
+		*old_watcher = Some(watcher);
+	}
+	Ok(())
+}
+
+// --- App Entrypoint ---
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+	// Channels for sync triggering
+	let (tx, mut rx) = mpsc::channel::<()>(32);
+
+	tauri::Builder::default()
+		.plugin(tauri_plugin_opener::init())
+		.setup(move |app| {
+			// 1. Load configuration
+			let app_handle = app.handle().clone();
+			let config = sync::load_config_file(&app_handle);
+
+			// 2. Initialize App State
+			let state = Arc::new(sync::AppState {
+				config: Mutex::new(config.clone()),
+				status: Mutex::new(sync::SyncStatus {
+					is_syncing: false,
+					current_file: "".to_string(),
+					progress: 0.0,
+					message: "待機中".to_string(),
+				}),
+				sync_trigger: tx,
+				watcher: Mutex::new(None),
+			});
+			app.manage(state.clone());
+
+			// 3. Start filesystem watcher if folders are configured
+			let paths: Vec<String> = config.sync_folders.iter().map(|f| f.local_path.clone()).collect();
+			if !paths.is_empty() {
+				if let Ok(watcher) = sync::start_watcher(app_handle.clone(), paths) {
+					*state.watcher.lock().unwrap() = Some(watcher);
+				}
+			}
+
+			// 4. Spawn Background Sync Task Loop
+			let app_handle_for_loop = app_handle.clone();
+			tauri::async_runtime::spawn(async move {
+
+				// Initial sync on startup
+				let _ = sync::run_sync(app_handle_for_loop.clone()).await;
+
+				// Periodic sync timer (every 10 minutes)
+				let mut periodic_timer = tokio::time::interval(Duration::from_secs(600));
+				periodic_timer.tick().await; // first tick fires immediately
+
+				loop {
+					tokio::select! {
+						_ = rx.recv() => {
+							// Triggered by watcher or force sync command
+							// Add a small debounce delay to avoid immediate thrashing
+							tokio::time::sleep(Duration::from_secs(3)).await;
+							// Drain any pending trigger signals accumulated during the sleep
+							while rx.try_recv().is_ok() {}
+							
+							println!("Sync triggered dynamically");
+							let _ = sync::run_sync(app_handle_for_loop.clone()).await;
+						}
+						_ = periodic_timer.tick() => {
+							println!("Periodic sync scheduled");
+							let _ = sync::run_sync(app_handle_for_loop.clone()).await;
+						}
+
+					}
+				}
+			});
+
+			// 5. System Tray configuration
+			let quit_i = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
+			let show_i = MenuItem::with_id(app, "show", "設定を開く", true, None::<&str>)?;
+			let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+			let _tray = TrayIconBuilder::new()
+				.icon(app.default_window_icon().cloned().expect("Missing default window icon"))
+				.menu(&menu)
+				.on_menu_event(|app, event| match event.id.as_ref() {
+					"quit" => {
+						app.exit(0);
+					}
+					"show" => {
+						if let Some(window) = app.get_webview_window("main") {
+							let _ = window.show();
+							let _ = window.set_focus();
+						}
+					}
+					_ => {}
+				})
+				.on_tray_icon_event(|tray, event| {
+					if let TrayIconEvent::Click {
+						button: MouseButton::Left,
+						button_state: MouseButtonState::Up,
+						..
+					} = event
+					{
+						let app = tray.app_handle();
+						if let Some(window) = app.get_webview_window("main") {
+							let _ = window.show();
+							let _ = window.set_focus();
+						}
+					}
+				})
+				.build(app)?;
+
+			Ok(())
+		})
+		.on_window_event(|window, event| {
+			if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+				// Intercept close button and hide instead, enabling background run
+				window.hide().unwrap();
+				api.prevent_close();
+			}
+		})
+		.invoke_handler(tauri::generate_handler![
+			get_config,
+			get_status,
+			save_settings,
+			add_folder,
+			force_sync,
+			get_nas_devices,
+			get_nas_folders,
+			update_exclude_patterns,
+			get_local_subdirs,
+			select_folder,
+			open_in_explorer,
+			get_all_synced_files
+		])
+
+
+
+
+		.run(tauri::generate_context!())
+		.expect("error while running tauri application");
+}
+

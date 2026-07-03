@@ -57,7 +57,7 @@ gcloud run deploy $SERVICE_NAME `
   --memory 512Mi `
   --cpu 1 `
   --max-instances 10 `
-  --update-env-vars "SUPABASE_URL=$($env:SUPABASE_URL),SUPABASE_KEY=$($env:SUPABASE_KEY),SUPABASE_SERVICE_ROLE_KEY=$($env:SUPABASE_SERVICE_ROLE_KEY),OPENAI_API_KEY=$($env:OPENAI_API_KEY)"
+  --set-secrets "SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest"
 
 Write-Host ""
 Write-Host "==================================" -ForegroundColor Green

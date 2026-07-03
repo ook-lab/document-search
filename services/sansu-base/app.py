@@ -1122,18 +1122,20 @@ def ocr_read_problem():
    fig = plt.figure(figsize=(7, 6))
    ax = fig.add_subplot(111, projection='3d')
 2. 立体の全頂点座標を、問題文中の寸法・数値から数学的に計算して求める（目分量禁止）
-3. 【隠れ線の計算（必須）】頂点名や固定リストで決め打ちしてはならない。必ず以下の手順で計算すること:
-   a. コードの最初の方に `elev = 30` と `azim = -60` を変数として定義する（サーバーがこの値を書き換えて再計算する）
-   b. elev/azimからカメラ方向ベクトルを計算: camera = np.array([cos(elev_rad)*cos(azim_rad), cos(elev_rad)*sin(azim_rad), sin(elev_rad)])
-   c. 各面の外向き法線ベクトルを定義する
-   d. np.dot(camera, face_normal) > 0 なら表面（実線）、< 0 なら裏面（破線）と判定する
-   e. 辺の両側の面をすべて確認し、1つでも表面があれば実線、すべて裏面なら破線
-4. 見える辺は ax.plot() で実線（lw=1.5）、隠れ辺は linestyle='--', alpha=0.4, lw=1 の破線で描く
-4. 頂点ラベル（A, B, C...）や辺の長さを ax.text() で付ける
-5. 必ず ax.view_init(elev=30, azim=-60) を記述する（視点スライダー用）
-6. plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight") で保存する
-【3D絶対禁止】plt.subplots() を使った2D等角投影（isometric）での立体描画は絶対に禁止。
-必ず projection='3d' の本物の3Dプロットを使うこと。
+3. 【隠れ線の計算（必須・絶対厳守）】
+   頂点名や固定の辺リストで実線/破線を決め打ちしてはならない。必ず視点角度（elev/azim）から動的に表面・裏面を判定する以下の「隠れ線の計算コード」をPythonコード内に直接記述すること:
+   a. コードの最初の方に `elev = 30` と `azim = -60` を変数として定義する。
+   b. elev/azim からラジアンを求め、カメラ方向ベクトルを計算する:
+      elev_rad = np.radians(elev)
+      azim_rad = np.radians(azim)
+      camera = np.array([np.cos(elev_rad)*np.cos(azim_rad), np.cos(elev_rad)*np.sin(azim_rad), np.sin(elev_rad)])
+   c. 各面（polygon）の外向き法線ベクトル（normal）を定義する。
+   d. np.dot(camera, normal) > 0 なら表面（実線）、< 0 なら裏面（破線）と判定する。
+   e. 各辺について、その辺を共有する隣接面を定義し、少なくとも1つの隣接面が表面なら実線（linestyle='-', color='black', lw=1.5）、すべての隣接面が裏面なら破線（linestyle='--', color='gray', alpha=0.5, lw=1.0）で描画する。
+4. 頂点ラベル（A, B, C...）や辺の長さを ax.text() で付ける。
+5. 必ず ax.view_init(elev=elev, azim=azim) を記述する（視点スライダー用）。
+6. plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight") で保存する。
+【3D絶対禁止】plt.subplots() を使った2D等角投影（isometric）での立体描画は絶対に禁止。必ず projection='3d' の本物の3Dプロットを使うこと。
 
 ■ 図形が【2D平面図形】（三角形・四角形・円・多角形など）の場合:
 1. 問題文中の寸法・角度・比率から数学的に計算して各頂点の座標を求める
@@ -1163,10 +1165,18 @@ def ocr_read_problem():
 1. 問題文のテキストを正確に抽出してください（数式は LaTeX 形式の $...$ または $$...$$ で記述してください）。
 2. 画像の中に幾何学的な図やグラフなどの図形が含まれている場合、その図形を再現するための Python (Matplotlib) コードを生成してください。
    - 図形描画コードの絶対要件:
-     - GUIウインドウ（plt.show()など）は開かず、最後に `plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
+     - GUIウインドウは開かず、最後に `plt.savefig("problem_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
      - 図の中の文字や数値も、問題文と整合するように plt.text や plt.annotate で描画してください。
      - 図がつぶれないように、それなりの大きさ（例：figsize=(6, 5)など）で描画してください。
      - 余計な説明（「Matplotlibコードはこちらです」など）や ```python といったMarkdownのコードブロックタグは含めず、純粋なPythonスクリプトのみを出力内の `matplotlib_code` キーに格納してください。
+     - もし図形が【3D立体図形】の場合は、必ず以下の3D描画および隠れ線計算ルールを絶対厳守してコードを生成してください:
+       a. from mpl_toolkits.mplot3d import Axes3D と projection='3d' を使用して本物の3D描画を行うこと（等角投影2D描画は絶対禁止）。
+       b. 頂点名や固定の辺リストで実線/破線を決め打ちせず、必ず視点角度（elev/azim）から動的に表面・裏面を判定する「隠れ線の計算コード」をPythonコード内に直接記述すること。
+          - コードの最初に `elev = 30` と `azim = -60` を変数として定義する。
+          - elev_rad = np.radians(elev) と azim_rad = np.radians(azim) からカメラ方向ベクトル camera = np.array([np.cos(elev_rad)*np.cos(azim_rad), np.cos(elev_rad)*np.sin(azim_rad), np.sin(elev_rad)]) を求める。
+          - 各面（polygon）の外向き法線ベクトル（normal）との内積 np.dot(camera, normal) > 0 なら表面、< 0 なら裏面と判定する。
+          - 各辺について、隣接する面が1つでも表面なら実線（linestyle='-', color='black', lw=1.5）、すべて裏面なら破線（linestyle='--', color='gray', alpha=0.5, lw=1.0）で描画する。
+       c. 必ず ax.view_init(elev=elev, azim=azim) を記述すること。
 
 【出力フォーマット】:
 必ず以下の構造を持つJSON形式のみで出力してください（前置きの挨拶などは一切不要です）。
@@ -1317,14 +1327,22 @@ def ocr_read_explanation():
 
 【コード生成の絶対要件】:
 ■ 図形が【3D立体図形】（直方体・立方体・三角錐・円錐・角柱・球など）の場合:
-1. 必ず mpl_toolkits.mplot3d と projection='3d' を使って本物の3D描画をする
+1. 必ず mpl_toolkits.mplot3d と projection='3d' を使って本物の3D描画をする。
+   【3D絶対禁止】plt.subplots() を使った2D等角投影（isometric）での立体描画は絶対に禁止。
 2. 立体の全頂点座標を、問題文・解説の寸法から数学的に計算して求める（目分量禁止）
-3. コードの最初に elev = 30 と azim = -60 を変数として定義する
-4. elev/azim からカメラ方向ベクトルを計算し、各面の法線との内積で表面（実線）・裏面（破線）を判定する
-5. 見える辺は実線（lw=1.5）、隠れ辺は破線（linestyle='--', alpha=0.4, lw=1）で描く
-6. 頂点ラベル（A, B, C...）と辺の長さを ax.text() で付ける
-7. ax.view_init(elev=elev, azim=azim) を記述する
-8. plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight") で保存する
+3. 【隠れ線・面の表裏の数学的計算（必須・絶対厳守）】
+   頂点名や固定の辺リストで実線/破線を決め打ちしてはならない。必ず視点角度（elev/azim）から動的に表面・裏面を判定する以下の「隠れ線の計算コード」をPythonコード内に直接記述すること:
+   a. コードの最初の方に `elev = 30` と `azim = -60` を変数として定義する。
+   b. elev/azim からラジアンを求め、カメラ方向ベクトルを計算する:
+      elev_rad = np.radians(elev)
+      azim_rad = np.radians(azim)
+      camera = np.array([np.cos(elev_rad)*np.cos(azim_rad), np.cos(elev_rad)*np.sin(azim_rad), np.sin(elev_rad)])
+   c. 各面（polygon）の外向き法線ベクトル（normal）を定義する。
+   d. np.dot(camera, normal) > 0 なら表面（実線）、< 0 なら裏面（破線）と判定する。
+   e. 各辺について、その辺を共有する隣接面を定義し、少なくとも1つの隣接面が表面なら実線（linestyle='-', color='black', lw=1.5）、すべての隣接面が裏面なら破線（linestyle='--', color='gray', alpha=0.5, lw=1.0）で描画する。
+4. 頂点ラベル（A, B, C...）と辺の長さを ax.text() で付ける。
+5. 必ず ax.view_init(elev=elev, azim=azim) を記述する。
+6. plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight") で保存する。
 
 ■ 図形が【2D平面図形】（三角形・四角形・円・多角形など）の場合:
 1. 問題文・解説の寸法・角度・比率から数学的に頂点座標を計算する
@@ -1353,7 +1371,6 @@ def ocr_read_explanation():
 【ベースとなる問題文】:
 {problem_text}
 
-// ... 
 【ヒント】:
 {hint if hint else "なし"}
 
@@ -1367,6 +1384,14 @@ def ocr_read_explanation():
    - 図形描画コードの絶対要件:
      - 最後に `plt.savefig("explanation_diagram.png", dpi=150, bbox_inches="tight")` で保存するコードにしてください。
      - GUIウインドウは開かないでください。
+     - もし図形が【3D立体図形】の場合は、必ず以下の3D描画および隠れ線計算ルールを絶対厳守してコードを生成してください:
+       a. from mpl_toolkits.mplot3d import Axes3D と projection='3d' を使用して本物の3D描画を行うこと（等角投影2D描画は絶対禁止）。
+       b. 頂点名や固定の辺リストで実線/破線を決め打ちせず、必ず視点角度（elev/azim）から動的に表面・裏面を判定する「隠れ線の計算コード」をPythonコード内に直接記述すること。
+          - コードの最初に `elev = 30` と `azim = -60` を変数として定义する。
+          - elev_rad = np.radians(elev) と azim_rad = np.radians(azim) からカメラ方向ベクトル camera = np.array([np.cos(elev_rad)*np.cos(azim_rad), np.cos(elev_rad)*np.sin(azim_rad), np.sin(elev_rad)]) を求める。
+          - 各面（polygon）の外向き法線ベクトル（normal）との内積 np.dot(camera, normal) > 0 なら表面、< 0 なら裏面と判定する。
+          - 各辺について、隣接する面が1つでも表面なら実線（linestyle='-', color='black', lw=1.5）、すべて裏面なら破線（linestyle='--', color='gray', alpha=0.5, lw=1.0）で描画する。
+       c. 必ず ax.view_init(elev=elev, azim=azim) を記述すること。
 6. この問題に最もふさわしい「解法の核心（コア戦略）」を20〜30文字程度で要約し、`strategy_summary` に格納してください。
 7. この問題の単元や解法パターンに関連するタグ（例：面積比, 相似, 旅人算など）を3個程度抽出し、`tags` に格納してください。
 
@@ -1821,4 +1846,4 @@ def study_propose():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5058))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)

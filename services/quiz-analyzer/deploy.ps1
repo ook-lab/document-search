@@ -49,9 +49,9 @@ gcloud run deploy $SERVICE_NAME `
     --port 5001 `
     --allow-unauthenticated `
     --service-account "document-management-system@$PROJECT_ID.iam.gserviceaccount.com" `
-    --update-env-vars "SUPABASE_URL=$env:SUPABASE_URL" `
-    --update-env-vars "SUPABASE_KEY=$env:SUPABASE_KEY" `
-    --update-env-vars "SUPABASE_SERVICE_ROLE_KEY=$env:SUPABASE_SERVICE_ROLE_KEY" `
+    --set-secrets "SUPABASE_URL=SUPABASE_URL:latest" `
+    --set-secrets "SUPABASE_KEY=SUPABASE_KEY:latest" `
+    --set-secrets "SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest" `
     --update-env-vars "LOG_LEVEL=INFO"
 
 if ($LASTEXITCODE -eq 0) {

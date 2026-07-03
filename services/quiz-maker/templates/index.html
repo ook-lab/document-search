@@ -41,8 +41,13 @@
     .neon-border {
       box-shadow: 0 0 15px rgba(99, 102, 241, 0.1);
     }
-
-
+    @page { size: A4; margin: 10mm 12mm; }
+    #print-portal { display: none; }
+    @media print {
+      #root { display: none !important; }
+      #print-portal { display: block !important; }
+      .no-print { display: none !important; }
+    }
   </style>
   <script>
     tailwind.config = {
@@ -66,6 +71,7 @@
 
 
   <div id="root"></div>
+  <div id="print-portal"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
@@ -120,6 +126,7 @@
       const [score, setScore] = useState(0);
       const [answerHistory, setAnswerHistory] = useState([]);
       const [sheetAnswers, setSheetAnswers] = useState([]);
+      const [printOverlay, setPrintOverlay] = useState(null); // null | 'question' | 'answer'
 
       // トークン消費情報
       const [tokenUsage, setTokenUsage] = useState(null);
@@ -409,7 +416,7 @@
         if (window.lucide) {
           window.lucide.createIcons();
         }
-      }, [step, inputType, pdfFiles, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel, sheetAnswers, quizMode, printSaveStatus]);
+      }, [step, inputType, pdfFiles, showAnswer, showSettings, subjects, selectedEditSubjectId, saveStatus, tokenUsage, historyAnalysisLevel, sheetAnswers, quizMode, printSaveStatus, printOverlay]);
 
       const fetchSubjects = async () => {
         try {
@@ -807,46 +814,10 @@
         setError(null);
         setAnswerHistory([]);
         setSheetAnswers([]);
+        setPrintOverlay(null);
         setSaveStatus(null);
         setPrintSaveStatus(null);
         setTokenUsage(null);
-      };
-
-      const escHtml = (str) => String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-      const openPrintWindow = (mode) => {
-        const qs = questions.slice(0, 30);
-        const rows = qs.map((q, idx) => {
-          const num = idx + 1;
-          if (mode === 'question') {
-            return `<tr><td class="q"><span class="n">${num}.</span> ${escHtml(q.question)}</td><td class="a"></td></tr>`;
-          } else {
-            const opts = q.options.map((o, i) =>
-              `<div class="${o === q.correctAnswer ? 'cor' : 'opt'}">${['Ａ','Ｂ','Ｃ','Ｄ'][i]}．${escHtml(o)}</div>`
-            ).join('');
-            return `<tr><td class="q"><span class="n">${num}.</span> ${escHtml(q.question)}<div class="opts">${opts}</div></td><td class="a an"><strong>正解：</strong>${escHtml(q.correctAnswer)}<br><span class="ex">${escHtml(q.explanationDetailed)}</span></td></tr>`;
-          }
-        }).join('');
-        const css = mode === 'question' ? '.a{min-height:16mm;}' : '.an{font-size:8pt;} .ex{color:#444;font-size:7.5pt;}';
-        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-@page{size:A4;margin:10mm 12mm;}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-size:9pt;font-family:"Hiragino Kaku Gothic ProN",Arial,sans-serif;line-height:1.4;}
-table{width:100%;border-collapse:collapse;}
-td{border:0.5pt solid #aaa;padding:2mm 2.5mm;vertical-align:top;}
-.q{width:55%;}
-.a{width:45%;}
-.n{font-weight:bold;}
-.opts{margin-top:1.5mm;font-size:8pt;}
-.opt{margin:0.3mm 0;}
-.cor{margin:0.3mm 0;font-weight:bold;text-decoration:underline;}
-tr{page-break-inside:avoid;}
-${css}
-</style></head><body><table>${rows}</table>
-<script>window.addEventListener('load',function(){window.print();});<\/script>
-</body></html>`;
-        const w = window.open('', '_blank');
-        if (w) { w.document.write(html); w.document.close(); }
       };
 
       const getSourceName = () => {
@@ -895,7 +866,64 @@ ${css}
         setError(null);
       };
 
+      const printPortalEl = typeof document !== 'undefined' ? document.getElementById('print-portal') : null;
+
       return (
+        <>
+        {printPortalEl && printOverlay !== null && ReactDOM.createPortal(
+          <div style={{fontFamily:'"Hiragino Kaku Gothic ProN",Arial,sans-serif',fontSize:'9pt',lineHeight:'1.4',background:'white',minHeight:'100vh'}}>
+            <div className="no-print" style={{display:'flex',gap:'8px',alignItems:'center',padding:'12px 16px',background:'#f8fafc',borderBottom:'1px solid #e2e8f0',position:'sticky',top:0,zIndex:10,flexWrap:'wrap'}}>
+              <button
+                onClick={() => setPrintOverlay('question')}
+                style={{padding:'8px 18px',border:'1px solid',borderColor:printOverlay==='question'?'#4f46e5':'#cbd5e1',borderRadius:'10px',cursor:'pointer',fontWeight:'bold',fontSize:'13px',background:printOverlay==='question'?'#4f46e5':'#fff',color:printOverlay==='question'?'#fff':'#334155'}}
+              >問題用紙</button>
+              <button
+                onClick={() => setPrintOverlay('answer')}
+                style={{padding:'8px 18px',border:'1px solid',borderColor:printOverlay==='answer'?'#4f46e5':'#cbd5e1',borderRadius:'10px',cursor:'pointer',fontWeight:'bold',fontSize:'13px',background:printOverlay==='answer'?'#4f46e5':'#fff',color:printOverlay==='answer'?'#fff':'#334155'}}
+              >解答解説</button>
+              <button onClick={() => window.print()} style={{padding:'8px 22px',border:'1px solid #059669',borderRadius:'10px',cursor:'pointer',fontWeight:'bold',fontSize:'13px',background:'#059669',color:'#fff',marginLeft:'auto'}}>印刷する ▶</button>
+              <button onClick={() => setPrintOverlay(null)} style={{padding:'8px 16px',border:'1px solid #cbd5e1',borderRadius:'10px',cursor:'pointer',fontWeight:'bold',fontSize:'13px',background:'#fff',color:'#334155'}}>✕ 閉じる</button>
+            </div>
+            <div style={{padding:'4mm'}}>
+              {printOverlay === 'question' ? (
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <tbody>
+                    {questions.slice(0,30).map((q,idx) => (
+                      <tr key={idx} style={{pageBreakInside:'avoid'}}>
+                        <td style={{width:'55%',border:'0.5pt solid #aaa',padding:'2mm 2.5mm',verticalAlign:'top'}}><strong>{idx+1}.</strong> {q.question}</td>
+                        <td style={{width:'45%',border:'0.5pt solid #aaa',padding:'2mm 2.5mm',verticalAlign:'top',minHeight:'16mm'}}></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table style={{width:'100%',borderCollapse:'collapse'}}>
+                  <tbody>
+                    {questions.slice(0,30).map((q,idx) => (
+                      <tr key={idx} style={{pageBreakInside:'avoid'}}>
+                        <td style={{width:'55%',border:'0.5pt solid #aaa',padding:'2mm 2.5mm',verticalAlign:'top'}}>
+                          <strong>{idx+1}.</strong> {q.question}
+                          <div style={{marginTop:'1.5mm',fontSize:'8pt'}}>
+                            {q.options.map((o,i) => (
+                              <div key={i} style={{margin:'0.3mm 0',fontWeight:o===q.correctAnswer?'bold':'normal',textDecoration:o===q.correctAnswer?'underline':'none'}}>
+                                {['Ａ','Ｂ','Ｃ','Ｄ'][i]}．{o}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td style={{width:'45%',border:'0.5pt solid #aaa',padding:'2mm 2.5mm',verticalAlign:'top',fontSize:'8pt'}}>
+                          <strong>正解：</strong>{q.correctAnswer}<br/>
+                          <span style={{color:'#444',fontSize:'7.5pt'}}>{q.explanationDetailed}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>,
+          printPortalEl
+        )}
         <div className="min-h-screen pb-16 flex flex-col justify-between">
           <div>
             {/* ヘッダー */}
@@ -1579,13 +1607,13 @@ ${css}
 
                   <div className="flex flex-col gap-3">
                     <button
-                      onClick={() => openPrintWindow('question')}
+                      onClick={() => setPrintOverlay('question')}
                       className="w-full bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-sm"
                     >
                       <Icon name="printer" className="w-5 h-5" /> 問題出力（回答欄あり）
                     </button>
                     <button
-                      onClick={() => openPrintWindow('answer')}
+                      onClick={() => setPrintOverlay('answer')}
                       className="w-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-4 px-6 rounded-2xl transition-all flex items-center justify-center gap-2 text-base shadow-sm"
                     >
                       <Icon name="printer" className="w-5 h-5" /> 解答解説出力
@@ -1801,13 +1829,13 @@ ${css}
                     <p className="text-xs font-bold text-slate-500 mb-3 tracking-wider">問題用紙の出力</p>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <button
-                        onClick={() => openPrintWindow('question')}
+                        onClick={() => setPrintOverlay('question')}
                         className="flex-1 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
                       >
                         <Icon name="printer" className="w-4 h-4" /> 問題出力
                       </button>
                       <button
-                        onClick={() => openPrintWindow('answer')}
+                        onClick={() => setPrintOverlay('answer')}
                         className="flex-1 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-1.5 text-sm shadow-sm"
                       >
                         <Icon name="printer" className="w-4 h-4" /> 解答解説出力
@@ -1972,6 +2000,7 @@ ${css}
             <p>© 2026 AI Quiz Maker Premium. All Rights Reserved.</p>
           </footer>
         </div>
+        </>
       );
     }
 

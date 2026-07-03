@@ -49,6 +49,7 @@ _TRIGGER_SPECS: tuple[tuple[str, str, str], ...] = (
     ("my-calendar-app", "my-calendar-app/cloudbuild.yaml", "my-calendar-app/**"),
     ("pdf-toolbox", "services/pdf-toolbox/cloudbuild.yaml", "services/pdf-toolbox/**"),
     ("pdf-merger", "services/pdf-merger/cloudbuild.yaml", "services/pdf-merger/**"),
+    ("order-detail-sender", "services/order-detail-sender/cloudbuild.yaml", "services/order-detail-sender/**"),
     ("pipeline-lab", "services/pipeline-lab/cloudbuild.yaml", "services/pipeline-lab/**"),
     ("portal-deploy", "portal-app/cloudbuild.yaml", "portal-app/**"),
     ("quiz-maker", "services/quiz-maker/cloudbuild.yaml", "services/quiz-maker/**"),

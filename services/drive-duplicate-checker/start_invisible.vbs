@@ -5,4 +5,4 @@ currentPath = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WSc
 WshShell.CurrentDirectory = currentPath
 
 ' 0 はウィンドウを非表示にする設定
-WshShell.Run "python app.py", 0, False
+WshShell.Run """C:\Users\ookub\AppData\Local\Programs\Python\Python312\python.exe"" app.py", 0, False
