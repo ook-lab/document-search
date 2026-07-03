@@ -395,6 +395,8 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
     for pdf in pdf_files:
         filename = pdf["name"]
         base_name = Path(filename).stem
+        # 末尾の _20260630150605 のような14桁タイムスタンプを除去
+        base_name = re.sub(r'_\d{14}$', '', base_name)
         
         # ローカルにダウンロードして種類判定
         local_path = drive.download_file(pdf["id"], filename, temp_dir)
@@ -529,7 +531,14 @@ def create_split_pdfs_for_company(job_id, info, output_dir, prefix):
             writer.add_page(reader.pages[p])
             
         detail_name = reverse_types_mapping.get(job_type, job_type)
-        out_filename = f"{file_prefix}_{detail_name}({display_key}).pdf"
+        
+        # プレフィックスにすでに書類タイプ名が含まれている場合は重複させない
+        # 例: 1101_用紙納入月報 に "用紙納入月報" が含まれる場合
+        if detail_name in file_prefix or job_type in file_prefix:
+            out_filename = f"{file_prefix}({display_key}).pdf"
+        else:
+            out_filename = f"{file_prefix}_{detail_name}({display_key}).pdf"
+            
         out_path = Path(output_dir) / out_filename
         
         with open(out_path, "wb") as out_f:
