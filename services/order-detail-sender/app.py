@@ -64,8 +64,11 @@ def load_mail_template_local():
 # Google Drive 永続化ストレージ用ヘルパー関数
 # =============================================================================
 
-# 設定用JSONファイルの保存先フォルダID (デフォルトは大久保様が作成された専用フォルダ)
+# 設定用JSONファイルの保存先フォルダID
 SETTINGS_FOLDER_ID = os.getenv("GOOGLE_DRIVE_SETTINGS_FOLDER_ID", "1_Xb-hH41MsQfVcNcqAEuHfwhKo96sY6y").strip()
+
+# 送信済み原本PDFの移動先フォルダID（固定）
+ARCHIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_ARCHIVE_FOLDER_ID", "1o1XC76Icng5bEkdWBxrkjCjhCwiAARa7").strip()
 
 def get_gdrive_file_id(drive, filename, folder_id):
     """Google Drive上の特定のファイル名に対するファイルIDを取得する"""
@@ -89,7 +92,7 @@ def load_companies_gdrive(folder_id):
     """Google Driveから会社マスタを読み込む"""
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        target_folder_id = SETTINGS_FOLDER_ID
         file_id = get_gdrive_file_id(drive, "dms_companies_master.json", target_folder_id)
         
         if file_id:
@@ -107,7 +110,7 @@ def save_companies_gdrive(folder_id, data):
     """Google Driveへ会社マスタを保存する"""
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        target_folder_id = SETTINGS_FOLDER_ID
         file_id = get_gdrive_file_id(drive, "dms_companies_master.json", target_folder_id)
         
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -140,7 +143,7 @@ def load_mail_template_gdrive(folder_id, doc_type="order"):
         
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        target_folder_id = SETTINGS_FOLDER_ID
         file_id = get_gdrive_file_id(drive, filename, target_folder_id)
         
         if file_id:
@@ -174,7 +177,7 @@ def save_mail_template_gdrive(folder_id, data, doc_type="order"):
         
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        target_folder_id = SETTINGS_FOLDER_ID
         file_id = get_gdrive_file_id(drive, filename, target_folder_id)
         
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -304,7 +307,7 @@ def load_sent_status_gdrive(folder_id):
     filename = "dms_sent_status.json"
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        target_folder_id = SETTINGS_FOLDER_ID
         file_id = get_gdrive_file_id(drive, filename, target_folder_id)
         
         if file_id:
@@ -322,7 +325,7 @@ def save_sent_status_gdrive(folder_id, data):
     filename = "dms_sent_status.json"
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID or folder_id
+        target_folder_id = SETTINGS_FOLDER_ID
         file_id = get_gdrive_file_id(drive, filename, target_folder_id)
         
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -777,25 +780,7 @@ def api_send_emails():
             company_jobs, prefix = analyze_and_split_pdfs_gdrive(folder_id, temp_dir)
             
             drive = GoogleDriveConnector()
-            output_folder_id = None
-            
-            query = f"'{folder_id}' in parents and name = '送信済み明細_{prefix}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-            folders = drive.service.files().list(
-                q=query,
-                spaces='drive',
-                fields='files(id, name)',
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                corpora='allDrives'
-            ).execute().get('files', [])
-            
-            if folders:
-                output_folder_id = folders[0]['id']
-            else:
-                output_folder_id = drive.create_folder(f"送信済み明細_{prefix}", folder_id)
-                
-            if not output_folder_id:
-                raise RuntimeError(f"Google Drive上にフォルダ '送信済み明細_{prefix}' を作成できませんでした。")
+            archive_folder_id = ARCHIVE_FOLDER_ID  # 固定の送信済みアーカイブフォルダ
 
             # 送信ステータスのロード
             sent_status = load_sent_status_gdrive(folder_id)
@@ -832,10 +817,6 @@ def api_send_emails():
                     # SMTPメール送信
                     send_smtp_email(to_email, subject, body, attachments, from_email, smtp_username, smtp_password)
                     logger.info(f"メール送信成功: {job_id}")
-                    
-                    # 切り出されたPDFパーツを「送信済み明細」サブフォルダへアップロード
-                    for att in attachments:
-                        drive.upload_file_from_path(att, folder_id=output_folder_id)
                                 
                     # 送信ステータスに記録
                     if job_id not in sent_job_ids:
@@ -870,7 +851,7 @@ def api_send_emails():
                 all_sent = all(j_id in sent_job_ids for j_id in related_jobs)
                 if all_sent:
                     try:
-                        # Google Drive上でファイルを「送信済み明細_...」フォルダへ移動する（親フォルダの付け替え）
+                        # Google Drive上でファイルを固定の送信済みアーカイブフォルダへ移動
                         file_info = drive.service.files().get(
                             fileId=pdf_id,
                             fields='name, parents',
@@ -881,7 +862,7 @@ def api_send_emails():
                         
                         drive.service.files().update(
                             fileId=pdf_id,
-                            addParents=output_folder_id,
+                            addParents=archive_folder_id,
                             removeParents=previous_parents,
                             fields='id, parents',
                             supportsAllDrives=True
