@@ -178,7 +178,7 @@ def save_mail_template_gdrive(folder_id, data):
 
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 
-CSRFProtect(app)
+csrf = CSRFProtect(app)
 
 @app.context_processor
 def inject_csrf_token():
@@ -464,6 +464,7 @@ def index():
     )
 
 @app.route("/api/save_master", methods=["POST"])
+@csrf.exempt
 def api_save_master():
     """Webからマスタデータを保存するAPI"""
     req_data = request.get_json() or {}
@@ -503,6 +504,7 @@ def api_save_master():
     return jsonify({"success": False, "error": "Google Driveマスタの保存に失敗しました"}), 500
 
 @app.route("/api/save_template", methods=["POST"])
+@csrf.exempt
 def api_save_template():
     """メールテンプレートを保存するAPI"""
     req_data = request.get_json() or {}
@@ -533,6 +535,7 @@ def api_save_template():
     return jsonify({"success": False, "error": "Google Driveテンプレートの保存に失敗しました"}), 500
 
 @app.route("/api/send_emails", methods=["POST"])
+@csrf.exempt
 def api_send_emails():
     """選択された会社宛てにメールを一括送信するAPI"""
     req_data = request.get_json() or {}
