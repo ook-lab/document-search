@@ -358,9 +358,9 @@
       
       <!-- タブボタン -->
       <div class="template-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-        <button type="button" class="tab-btn active" onclick="switchTemplateTab('order')" id="tabBtn_order">注文明細書</button>
-        <button type="button" class="tab-btn" onclick="switchTemplateTab('paper')" id="tabBtn_paper">用紙納入月報</button>
-        <button type="button" class="tab-btn" onclick="switchTemplateTab('matching')" id="tabBtn_matching">付合わせ明細書</button>
+        <button type="button" class="tab-btn active" onclick="switchTab('order')" id="tabBtn_order">注文明細書</button>
+        <button type="button" class="tab-btn" onclick="switchTab('paper')" id="tabBtn_paper">用紙納入月報</button>
+        <button type="button" class="tab-btn" onclick="switchTab('matching')" id="tabBtn_matching">付合わせ明細書</button>
       </div>
 
       <div class="form-group">
@@ -373,7 +373,8 @@
       </div>
       <button type="button" class="btn btn-secondary" onclick="saveTemplate()">💾 テンプレート保存</button>
       <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">
-        ※ `{company_name}`, `{company_code}` プレースホルダーが会社情報に置換されます。
+        ※ <code>{company_name}</code>, <code>{company_code}</code> が会社情報に置換されます。<br>
+        ※ 月報のみ <code>{deadline_date}</code> が中1日平日の日付（赤太字）に自動置換されます。
       </p>
     </div>
 
@@ -429,7 +430,7 @@
   <!-- 4. 送信プレビュー・一括送信 -->
   <div class="card">
     <div class="card-title" style="justify-content: space-between;">
-      <span>📑 送信プレビュー (プレフィックス: {{ prefix }})</span>
+      <span id="previewTitle">📑 送信プレビュー (プレフィックス: {{ prefix }})</span>
       <div>
         <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="toggleSelectAll(true)">全て選択</button>
         <button type="button" class="btn btn-secondary" style="padding: 6px 12px;" onclick="toggleSelectAll(false)">選択解除</button>
@@ -449,7 +450,7 @@
       </thead>
       <tbody>
         {% for job_id, info in preview_data.items() %}
-        <tr id="preview-row-{{ job_id }}" data-code="{{ info.code }}" data-name="{{ info.name }}" {% if info.sent %}style="background-color: #f8fafc;"{% endif %}>
+        <tr id="preview-row-{{ job_id }}" data-code="{{ info.code }}" data-name="{{ info.name }}" data-doc-type="{{ info.doc_type }}" {% if info.sent %}style="background-color: #f8fafc;"{% endif %}>
           <td>
             <input type="checkbox" id="checkbox-{{ job_id }}" name="selected_companies" value="{{ job_id }}" class="company-checkbox" 
                    {% if not info.email %}disabled{% elif info.sent %}{% else %}checked{% endif %}>
@@ -564,21 +565,48 @@
   };
   let currentDocType = 'order';
 
-  function switchTemplateTab(docType) {
+  const docTypeLabels = {
+    order: '注文明細書',
+    paper: '用紙納入月報',
+    matching: '付合わせ明細書'
+  };
+
+  function switchTab(docType) {
+    // --- テンプレート切替 ---
     // 編集中の内容を一時保存
     templates[currentDocType].subject = document.getElementById('mail_subject').value;
     templates[currentDocType].body = document.getElementById('mail_body').value;
-
     currentDocType = docType;
 
-    // アクティブクラスの切り替え
+    // タブのアクティブ切り替え
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
     document.getElementById(`tabBtn_${docType}`).classList.add('active');
 
-    // フィールド値のリロード
+    // テンプレート内容を更新
     document.getElementById('mail_subject').value = templates[docType].subject;
     document.getElementById('mail_body').value = templates[docType].body;
+
+    // --- 送信リストの絞り込み ---
+    const allRows = document.querySelectorAll('#previewTable tbody tr');
+    let visibleCount = 0;
+    allRows.forEach(row => {
+      if (row.getAttribute('data-doc-type') === docType) {
+        row.style.display = '';
+        visibleCount++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    // タイトル更新
+    const prefix = document.getElementById('previewTitle').textContent.match(/\(.*\)/);
+    const prefixPart = prefix ? prefix[0] : '';
+    document.getElementById('previewTitle').textContent =
+      `\uD83D\uDCD1 ${docTypeLabels[docType]} 送信リスト ${prefixPart} — ${visibleCount}件`;
   }
+
+  // switchTemplateTabは互換性のため残す
+  function switchTemplateTab(docType) { switchTab(docType); }
 
   function openEditModal(code, name, email, isNew = false) {
     document.getElementById('modalTitle').innerText = isNew ? '宛先マスタの新規登録' : '宛先メールアドレスの編集';
@@ -729,9 +757,11 @@
   }
 
   function toggleSelectAll(checked) {
-    const checkboxes = document.querySelectorAll('.company-checkbox:not(:disabled)');
-    checkboxes.forEach(cb => {
-      cb.checked = checked;
+    // 表示中の行のチェックボックスのみ対象にする
+    const rows = document.querySelectorAll('#previewTable tbody tr:not([style*="display: none"])');
+    rows.forEach(row => {
+      const cb = row.querySelector('.company-checkbox:not(:disabled)');
+      if (cb) cb.checked = checked;
     });
   }
 
@@ -782,6 +812,19 @@
       alert('通信エラーが発生しました: ' + err);
     });
   }
+
+  // 初期読み込み時の初期化
+  window.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('previewTable')) {
+      const firstRow = document.querySelector('#previewTable tbody tr');
+      if (firstRow) {
+        const initialType = firstRow.getAttribute('data-doc-type') || 'order';
+        switchTab(initialType);
+      } else {
+        switchTab('order');
+      }
+    }
+  });
 </script>
 
 </body>
