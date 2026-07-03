@@ -6,6 +6,8 @@ import smtplib
 import tempfile
 import sys
 import time
+import datetime
+import html as html_module
 from pathlib import Path
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -146,8 +148,8 @@ def load_mail_template_gdrive(doc_type="order"):
         logger.warning(f"メールテンプレートのロード失敗 ({filename}): {e}")
     if doc_type == "paper":
         return {
-            "subject": "【用紙納入月報】ご送付の件",
-            "body": "各社担当者さま\n \nお世話になります。\n用紙納入月報をお送りします。\nよろしくお願いします。\n \n祥伝社　大久保"
+            "subject": "月報（祥伝社）",
+            "body": "各社担当者様\n\nお世話になります。\n納入月報を添付します。\nB４に 出力後、記入して{deadline_date}午前中までに提出をしてください。\n赤字記入後、スキャンしたものをメールで提出お願いいたします。\n\nよろしくお願いします。\n祥伝社　大久保"
         }
     elif doc_type == "matching":
         return {
@@ -185,6 +187,14 @@ def save_mail_template_gdrive(data, doc_type="order"):
         raise e
 
 # =============================================================================
+
+def get_next_business_day_str():
+    """中1日平日（翻日から最初の平日）の日付文字列を生成する"""
+    WEEKDAYS_JP = ['月', '火', '水', '木', '金', '土', '日']
+    candidate = datetime.date.today() + datetime.timedelta(days=1)
+    while candidate.weekday() >= 5:  # 土(5)・日(6)はスキップ
+        candidate += datetime.timedelta(days=1)
+    return f"{candidate.month}月{candidate.day}日({WEEKDAYS_JP[candidate.weekday()]})"
 
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 
@@ -515,12 +525,12 @@ def create_split_pdfs_for_company(job_id, info, output_dir, prefix):
         
     return attachments
 
-def send_smtp_email(to_email, subject, body, attachments, from_email, smtp_username, smtp_password):
-    """SMTPを使用して添付ファイル付きのメールを送信する"""
+def send_smtp_email(to_email, subject, body, attachments, from_email, smtp_username, smtp_password, html_body=None):
+    """SMTPを使用して添付ファイル付きのメールを送信する。html_bodyを指定するとHTMLメールになる"""
     if not to_email:
         raise ValueError("宛先メールアドレスが設定されていません。")
         
-    msg = MIMEMultipart()
+    msg = MIMEMultipart('mixed')
     msg["From"] = from_email
     
     to_email_clean = to_email.replace(";", ",").strip()
@@ -528,7 +538,14 @@ def send_smtp_email(to_email, subject, body, attachments, from_email, smtp_usern
     msg["Bcc"] = "ookubo.y@workspace-o.com"
     msg["Subject"] = subject
     
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    if html_body:
+        # テキストとHTMLの両方を含む alternative パート
+        alt = MIMEMultipart('alternative')
+        alt.attach(MIMEText(body, 'plain', 'utf-8'))
+        alt.attach(MIMEText(html_body, 'html', 'utf-8'))
+        msg.attach(alt)
+    else:
+        msg.attach(MIMEText(body, "plain", "utf-8"))
     
     for file_path in attachments:
         path = Path(file_path)
@@ -789,11 +806,31 @@ def api_send_emails():
                     mail_template = load_mail_template_gdrive(doc_type=doc_type)
                     
                     display_key = info["code"] if info["code"] and info["code"] != "unknown" else info["name"]
-                    subject = mail_template["subject"].format(company_name=info["name"], company_code=display_key)
-                    body = mail_template["body"].format(company_name=info["name"], company_code=display_key)
+                    
+                    # 用紙納入月報の場合、中1日平日の日付を自動生成してHTML本文を構築
+                    html_body = None
+                    if doc_type == "paper":
+                        deadline_date = get_next_business_day_str()
+                        plain_body_tpl = mail_template["body"].format(
+                            company_name=info["name"],
+                            company_code=display_key,
+                            deadline_date=deadline_date
+                        )
+                        # HTML版: deadline_date を赤太字に
+                        escaped = html_module.escape(plain_body_tpl)
+                        html_colored = escaped.replace(
+                            html_module.escape(deadline_date),
+                            f'<span style="color:red;font-weight:bold;">{html_module.escape(deadline_date)}</span>'
+                        ).replace('\n', '<br>')
+                        html_body = f"<html><body style='font-family:sans-serif;'>{html_colored}</body></html>"
+                        body = plain_body_tpl
+                        subject = mail_template["subject"].format(company_name=info["name"], company_code=display_key)
+                    else:
+                        subject = mail_template["subject"].format(company_name=info["name"], company_code=display_key)
+                        body = mail_template["body"].format(company_name=info["name"], company_code=display_key)
                     
                     # SMTPメール送信
-                    send_smtp_email(to_email, subject, body, attachments, from_email, smtp_username, smtp_password)
+                    send_smtp_email(to_email, subject, body, attachments, from_email, smtp_username, smtp_password, html_body=html_body)
                     logger.info(f"メール送信成功: {job_id}")
                                 
                     # 送信ステータスに記録
