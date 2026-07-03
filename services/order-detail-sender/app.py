@@ -394,6 +394,7 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
 
     for pdf in pdf_files:
         filename = pdf["name"]
+        base_name = Path(filename).stem
         
         # ローカルにダウンロードして種類判定
         local_path = drive.download_file(pdf["id"], filename, temp_dir)
@@ -492,6 +493,7 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
             if job_type not in company_jobs[job_id]["jobs"]:
                 company_jobs[job_id]["jobs"][job_type] = {
                     "source_path": str(local_path),
+                    "source_base_name": base_name,
                     "pages": []
                 }
             company_jobs[job_id]["jobs"][job_type]["pages"].append(page_idx)
@@ -518,6 +520,7 @@ def create_split_pdfs_for_company(job_id, info, output_dir, prefix):
     for job_type, job_info in info["jobs"].items():
         src_path = Path(job_info["source_path"])
         pages = job_info["pages"]
+        file_prefix = job_info.get("source_base_name", prefix)
         
         writer = PdfWriter()
         reader = PdfReader(src_path)
@@ -526,7 +529,7 @@ def create_split_pdfs_for_company(job_id, info, output_dir, prefix):
             writer.add_page(reader.pages[p])
             
         detail_name = reverse_types_mapping.get(job_type, job_type)
-        out_filename = f"{prefix}_{detail_name}({display_key}).pdf"
+        out_filename = f"{file_prefix}_{detail_name}({display_key}).pdf"
         out_path = Path(output_dir) / out_filename
         
         with open(out_path, "wb") as out_f:
@@ -666,7 +669,10 @@ def index():
         return 2
         
     display_companies.sort(key=sort_key)
-
+    
+    # 用紙納入月報向けの初期締切日
+    default_deadline_date = get_next_business_day_str()
+ 
     return render_template(
         "index.html",
         folder_url=folder_url,
@@ -676,7 +682,8 @@ def index():
         display_companies=display_companies,
         mail_template_order=mail_template_order,
         mail_template_paper=mail_template_paper,
-        mail_template_matching=mail_template_matching
+        mail_template_matching=mail_template_matching,
+        default_deadline_date=default_deadline_date
     )
 
 @app.route("/api/save_master", methods=["POST"])
@@ -764,6 +771,7 @@ def api_send_emails():
     req_data = request.get_json() or {}
     folder_url = req_data.get("folder_url", "").strip()
     selected_codes = req_data.get("codes", []) # 送信対象の job_id リリスト
+    req_deadline_date = req_data.get("deadline_date", "").strip()
     
     from_email = "ookubo@shodensha.co.jp"
     smtp_username = "ookubo.shodensha@gmail.com"
@@ -818,10 +826,10 @@ def api_send_emails():
                     
                     display_key = info["code"] if info["code"] and info["code"] != "unknown" else info["name"]
                     
-                    # 用紙納入月報の場合、中1日平日の日付を自動生成してHTML本文を構築
+                    # 用紙納入月報の場合、HTML本文を構築
                     html_body = None
                     if doc_type == "paper":
-                        deadline_date = get_next_business_day_str()
+                        deadline_date = req_deadline_date or get_next_business_day_str()
                         plain_body_tpl = mail_template["body"].format(
                             company_name=info["name"],
                             company_code=display_key,
