@@ -88,13 +88,11 @@ def get_gdrive_file_id(drive, filename, folder_id):
         logger.error(f"Google DriveファイルID取得失敗 ({filename}): {e}")
     return None
 
-def load_companies_gdrive(folder_id):
-    """Google Driveから会社マスタを読み込む"""
+def load_companies_gdrive():
+    """設定フォルダ(SETTINGS_FOLDER_ID)から会社マスタを読み込む"""
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID
-        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", target_folder_id)
-        
+        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", SETTINGS_FOLDER_ID)
         if file_id:
             with tempfile.TemporaryDirectory() as temp_dir:
                 local_path = drive.download_file(file_id, "dms_companies_master.json", temp_dir)
@@ -102,50 +100,42 @@ def load_companies_gdrive(folder_id):
                     with open(local_path, "r", encoding="utf-8") as f:
                         return json.load(f)
     except Exception as e:
-        logger.warning(f"Google Driveマスタのロード失敗 (ローカルにフォールバックします): {e}")
-        
+        logger.warning(f"会社マスタのロード失敗: {e}")
     return load_companies_local()
 
-def save_companies_gdrive(folder_id, data):
-    """Google Driveへ会社マスタを保存する"""
+def save_companies_gdrive(data):
+    """設定フォルダ(SETTINGS_FOLDER_ID)へ会社マスタを保存する"""
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID
-        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", target_folder_id)
-        
+        file_id = get_gdrive_file_id(drive, "dms_companies_master.json", SETTINGS_FOLDER_ID)
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / "dms_companies_master.json"
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-                
             if file_id:
-                # 既存ファイルがある場合は上書き更新 (これで容量制限403を回避！)
                 success = drive.update_file_content(file_id, str(temp_path))
                 if success:
                     return True
                 logger.warning("既存マスタの上書き失敗。新規作成を試みます。")
-                
-            new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=SETTINGS_FOLDER_ID)
             if not new_id:
-                raise RuntimeError("Google Driveへのマスタファイルの新規アップロードに失敗しました。")
+                raise RuntimeError("会社マスタファイルのアップロードに失敗しました。")
         return True
     except Exception as e:
-        logger.error(f"Google Driveへのマスタ保存失敗: {e}")
+        logger.error(f"会社マスタ保存失敗: {e}")
         raise e
 
-def load_mail_template_gdrive(folder_id, doc_type="order"):
-    """Google Driveからメールテンプレートを読み込む"""
-    filename = "dms_mail_template.json"
-    if doc_type == "paper":
-        filename = "dms_mail_template_paper.json"
-    elif doc_type == "matching":
-        filename = "dms_mail_template_matching.json"
-        
+def load_mail_template_gdrive(doc_type="order"):
+    """設定フォルダ(SETTINGS_FOLDER_ID)からメールテンプレートを読み込む"""
+    filename_map = {
+        "order": "dms_mail_template.json",
+        "paper": "dms_mail_template_paper.json",
+        "matching": "dms_mail_template_matching.json",
+    }
+    filename = filename_map.get(doc_type, "dms_mail_template.json")
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID
-        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
-        
+        file_id = get_gdrive_file_id(drive, filename, SETTINGS_FOLDER_ID)
         if file_id:
             with tempfile.TemporaryDirectory() as temp_dir:
                 local_path = drive.download_file(file_id, filename, temp_dir)
@@ -153,8 +143,7 @@ def load_mail_template_gdrive(folder_id, doc_type="order"):
                     with open(local_path, "r", encoding="utf-8") as f:
                         return json.load(f)
     except Exception as e:
-        logger.warning(f"Google Driveテンプレートのロード失敗 ({filename}) (ローカルにフォールバックします): {e}")
-        
+        logger.warning(f"メールテンプレートのロード失敗 ({filename}): {e}")
     if doc_type == "paper":
         return {
             "subject": "【用紙納入月報】ご送付の件",
@@ -167,37 +156,32 @@ def load_mail_template_gdrive(folder_id, doc_type="order"):
         }
     return load_mail_template_local()
 
-def save_mail_template_gdrive(folder_id, data, doc_type="order"):
-    """Google Driveへメールテンプレートを保存する"""
-    filename = "dms_mail_template.json"
-    if doc_type == "paper":
-        filename = "dms_mail_template_paper.json"
-    elif doc_type == "matching":
-        filename = "dms_mail_template_matching.json"
-        
+def save_mail_template_gdrive(data, doc_type="order"):
+    """設定フォルダ(SETTINGS_FOLDER_ID)へメールテンプレートを保存する"""
+    filename_map = {
+        "order": "dms_mail_template.json",
+        "paper": "dms_mail_template_paper.json",
+        "matching": "dms_mail_template_matching.json",
+    }
+    filename = filename_map.get(doc_type, "dms_mail_template.json")
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID
-        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
-        
+        file_id = get_gdrive_file_id(drive, filename, SETTINGS_FOLDER_ID)
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / filename
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-                
             if file_id:
-                # 既存ファイルがある場合は上書き更新 (これで容量制限403を回避！)
                 success = drive.update_file_content(file_id, str(temp_path))
                 if success:
                     return True
                 logger.warning(f"既存テンプレート({filename})の上書き失敗。新規作成を試みます。")
-                
-            new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=SETTINGS_FOLDER_ID)
             if not new_id:
-                raise RuntimeError(f"Google Driveへのテンプレートファイル({filename})の新規アップロードに失敗しました。")
+                raise RuntimeError(f"テンプレートファイル({filename})のアップロードに失敗しました。")
         return True
     except Exception as e:
-        logger.error(f"Google Driveへのテンプレート保存失敗 ({filename}): {e}")
+        logger.error(f"メールテンプレート保存失敗 ({filename}): {e}")
         raise e
 
 # =============================================================================
@@ -302,14 +286,12 @@ def extract_matching_header(page):
         return code, name, cur_p, tot_p
     return code, name, None, None
 
-def load_sent_status_gdrive(folder_id):
-    """Google Driveから送信ステータスを読み込む"""
+def load_sent_status_gdrive():
+    """設定フォルダ(SETTINGS_FOLDER_ID)から送信ステータスを読み込む"""
     filename = "dms_sent_status.json"
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID
-        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
-        
+        file_id = get_gdrive_file_id(drive, filename, SETTINGS_FOLDER_ID)
         if file_id:
             with tempfile.TemporaryDirectory() as temp_dir:
                 local_path = drive.download_file(file_id, filename, temp_dir)
@@ -317,34 +299,30 @@ def load_sent_status_gdrive(folder_id):
                     with open(local_path, "r", encoding="utf-8") as f:
                         return json.load(f)
     except Exception as e:
-        logger.warning(f"Google Drive送信ステータスのロード失敗 ({filename}): {e}")
+        logger.warning(f"送信ステータスのロード失敗 ({filename}): {e}")
     return {"sent_jobs": []}
 
-def save_sent_status_gdrive(folder_id, data):
-    """Google Driveへ送信ステータスを保存する"""
+def save_sent_status_gdrive(data):
+    """設定フォルダ(SETTINGS_FOLDER_ID)へ送信ステータスを保存する"""
     filename = "dms_sent_status.json"
     try:
         drive = GoogleDriveConnector()
-        target_folder_id = SETTINGS_FOLDER_ID
-        file_id = get_gdrive_file_id(drive, filename, target_folder_id)
-        
+        file_id = get_gdrive_file_id(drive, filename, SETTINGS_FOLDER_ID)
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir) / filename
             with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-                
             if file_id:
                 success = drive.update_file_content(file_id, str(temp_path))
                 if success:
                     return True
                 logger.warning(f"既存送信ステータス({filename})の上書き失敗。新規作成を試みます。")
-                
-            new_id = drive.upload_file_from_path(str(temp_path), folder_id=target_folder_id)
+            new_id = drive.upload_file_from_path(str(temp_path), folder_id=SETTINGS_FOLDER_ID)
             if not new_id:
-                raise RuntimeError(f"Google Driveへの送信ステータスファイル({filename})の新規アップロードに失敗しました。")
+                raise RuntimeError(f"送信ステータスファイル({filename})のアップロードに失敗しました。")
         return True
     except Exception as e:
-        logger.error(f"Google Driveへの送信ステータス保存失敗 ({filename}): {e}")
+        logger.error(f"送信ステータス保存失敗 ({filename}): {e}")
         return False
 
 def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
@@ -389,8 +367,8 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
     }
 
     company_jobs = {}
-    companies_master = load_companies_gdrive(folder_id)
-    sent_status = load_sent_status_gdrive(folder_id)
+    companies_master = load_companies_gdrive()
+    sent_status = load_sent_status_gdrive()
     sent_job_ids = {job["job_id"] for job in sent_status.get("sent_jobs", [])}
 
     for pdf in pdf_files:
@@ -591,12 +569,12 @@ def index():
     folder_id = extract_folder_id(folder_url)
     
     # Google Drive 側の永続ファイルからデータを取得
-    companies = load_companies_gdrive(folder_id)
+    companies = load_companies_gdrive()
     
     # 3つのテンプレートをそれぞれ取得
-    mail_template_order = load_mail_template_gdrive(folder_id, doc_type="order")
-    mail_template_paper = load_mail_template_gdrive(folder_id, doc_type="paper")
-    mail_template_matching = load_mail_template_gdrive(folder_id, doc_type="matching")
+    mail_template_order = load_mail_template_gdrive(doc_type="order")
+    mail_template_paper = load_mail_template_gdrive(doc_type="paper")
+    mail_template_matching = load_mail_template_gdrive(doc_type="matching")
     
     preview_data = None
     prefix = ""
@@ -684,7 +662,7 @@ def api_save_master():
         return jsonify({"success": False, "error": "フォルダURLが必要です"}), 400
         
     folder_id = extract_folder_id(folder_url)
-    companies = load_companies_gdrive(folder_id)
+    companies = load_companies_gdrive()
     
     code = req_data.get("code")
     email = req_data.get("email", "").strip()
@@ -701,7 +679,7 @@ def api_save_master():
     companies[code]["email"] = email
     
     try:
-        if save_companies_gdrive(folder_id, companies):
+        if save_companies_gdrive(companies):
             return jsonify({"success": True})
     except Exception as e:
         error_msg = str(e)
@@ -739,7 +717,7 @@ def api_save_template():
         filename = "dms_mail_template_matching.json"
 
     try:
-        if save_mail_template_gdrive(folder_id, template, doc_type=doc_type):
+        if save_mail_template_gdrive(template, doc_type=doc_type):
             return jsonify({"success": True})
     except Exception as e:
         error_msg = str(e)
@@ -783,7 +761,7 @@ def api_send_emails():
             archive_folder_id = ARCHIVE_FOLDER_ID  # 固定の送信済みアーカイブフォルダ
 
             # 送信ステータスのロード
-            sent_status = load_sent_status_gdrive(folder_id)
+            sent_status = load_sent_status_gdrive()
             sent_job_ids = {job["job_id"] for job in sent_status.get("sent_jobs", [])}
             
             success_count = 0
@@ -808,7 +786,7 @@ def api_send_emails():
                     attachments = create_split_pdfs_for_company(job_id, info, temp_dir, prefix)
                     
                     # 書類種別ごとのテンプレート読み込み
-                    mail_template = load_mail_template_gdrive(folder_id, doc_type=doc_type)
+                    mail_template = load_mail_template_gdrive(doc_type=doc_type)
                     
                     display_key = info["code"] if info["code"] and info["code"] != "unknown" else info["name"]
                     subject = mail_template["subject"].format(company_name=info["name"], company_code=display_key)
@@ -834,7 +812,7 @@ def api_send_emails():
                     errors.append(f"{info['name']} ({info['doc_type_name']}): {str(e)}")
 
             # 送信ステータスを保存
-            save_sent_status_gdrive(folder_id, sent_status)
+            save_sent_status_gdrive(sent_status)
 
             # --- PDFファイルの自動アーカイブ移動判定 ---
             # 各PDFファイルに含まれるジョブ一覧を整理
@@ -882,7 +860,7 @@ def api_send_emails():
                         job["source_pdf_ids"] = remaining_pdfs
                         new_sent_jobs.append(job)
                 sent_status["sent_jobs"] = new_sent_jobs
-                save_sent_status_gdrive(folder_id, sent_status)
+                save_sent_status_gdrive(sent_status)
 
         return jsonify({
             "success": len(errors) == 0,
