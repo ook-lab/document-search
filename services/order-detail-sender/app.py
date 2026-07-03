@@ -151,8 +151,8 @@ def load_mail_template_gdrive(doc_type="order"):
         }
     elif doc_type == "matching":
         return {
-            "subject": "【付合わせ明細書】ご送付の件",
-            "body": "各社担当者さま\n \nお世話になります。\n付合わせ明細書をお送りします。\nよろしくお願いします。\n \n祥伝社　大久保"
+            "subject": "付合せ明細書",
+            "body": "各社担当者さま\n\nお世話になります。\n付け合わせ内容を記入の上、スキャンPDFで戻してください。\nよろしくお願いします。\n\n祥伝社　大久保"
         }
     return load_mail_template_local()
 
