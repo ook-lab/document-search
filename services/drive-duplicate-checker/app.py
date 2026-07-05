@@ -203,8 +203,7 @@ def scan_local_duplicates_stream(root_paths, same_folder_only=False, fast_mode=F
                                     # entry.stat() は Windows では追加システムコールなしでキャッシュからサイズ取得可能
                                     stat = entry.stat()
                                     size = stat.st_size
-                                    if size == 0: continue
-                                    
+
                                     name = entry.name
                                     ext = os.path.splitext(name)[1].lower()
                                     

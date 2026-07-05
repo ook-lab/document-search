@@ -1,11 +1,10 @@
 mod sync;
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use std::fs;
 use std::path::Path;
 use std::io;
-use tauri::{AppHandle, Manager, State, Emitter};
+use tauri::{AppHandle, Manager, State};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
 use tokio::sync::mpsc;
@@ -28,26 +27,22 @@ fn get_status(state: State<'_, Arc<sync::AppState>>) -> sync::SyncStatus {
 async fn save_settings(
 	state: State<'_, Arc<sync::AppState>>,
 	app: AppHandle,
-	nas_url: String,
+	_nas_url: String,
 	device_name: String,
 ) -> Result<sync::Config, String> {
 	let mut config = state.config.lock().unwrap().clone();
-	// Always enforce the static NAS URL for connection requests
 	config.nas_url = "http://100.82.85.101:8080".to_string();
 
-	// If device is not registered yet, register it
 	if config.device_id == 0 {
 		let (device_id, token) = sync::api_register_device(&config.nas_url, &device_name).await?;
 		config.device_id = device_id;
 		config.api_token = token;
 	}
 
-	// Save to state and disk
 	*state.config.lock().unwrap() = config.clone();
 	sync::save_config_file(&app, &config).map_err(|e| e.to_string())?;
 
-	// Trigger initial sync
-	let _ = state.sync_trigger.send(()).await;
+	let _ = state.scan_tx.send(sync::ScanEvent::Full).await;
 
 	Ok(config)
 }
@@ -66,12 +61,10 @@ async fn add_folder(
 		return Err("先にNAS接続設定を保存してください。".to_string());
 	}
 
-	// Check if already registered locally
 	if config.sync_folders.iter().any(|f| f.local_path == local_path) {
 		return Err("このフォルダは既に同期対象に設定されています。".to_string());
 	}
 
-	// Register on server
 	let folder_id = sync::api_register_folder(
 		&config.nas_url,
 		&config.api_token,
@@ -79,30 +72,22 @@ async fn add_folder(
 		&virtual_name,
 	).await?;
 
-	let new_folder = sync::SyncFolder {
-		folder_id,
-		local_path,
-		virtual_name,
-	};
-
+	let new_folder = sync::SyncFolder { folder_id, local_path, virtual_name };
 	config.sync_folders.push(new_folder);
 
-	// Save config
 	*state.config.lock().unwrap() = config.clone();
 	sync::save_config_file(&app, &config).map_err(|e| e.to_string())?;
 
-	// Restart file system watcher with new paths
-	restart_watcher_service(&app, &config, &state)?;
+	restart_watcher_service(&config, &state)?;
 
-	// Trigger sync
-	let _ = state.sync_trigger.send(()).await;
+	let _ = state.scan_tx.send(sync::ScanEvent::Full).await;
 
 	Ok(config)
 }
 
 #[tauri::command]
 async fn force_sync(state: State<'_, Arc<sync::AppState>>) -> Result<(), String> {
-	state.sync_trigger.send(()).await.map_err(|e| e.to_string())
+	state.scan_tx.send(sync::ScanEvent::Full).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -145,19 +130,14 @@ fn get_all_synced_files(state: State<'_, Arc<sync::AppState>>) -> Vec<LocalFileI
 
 	for folder in config.sync_folders {
 		let path = Path::new(&folder.local_path);
-		if !path.exists() {
-			continue;
-		}
-		// 階層の深さ最大4まで再帰的にスキャン
+		if !path.exists() { continue; }
 		scan_dir_for_files(path, &folder.virtual_name, &mut files, 0);
 	}
 	files
 }
 
 fn scan_dir_for_files(dir: &Path, virtual_name: &str, files: &mut Vec<LocalFileInfo>, depth: usize) {
-	if depth > 4 {
-		return;
-	}
+	if depth > 4 { return; }
 	if let Ok(entries) = fs::read_dir(dir) {
 		for entry in entries.flatten() {
 			let path = entry.path();
@@ -165,7 +145,6 @@ fn scan_dir_for_files(dir: &Path, virtual_name: &str, files: &mut Vec<LocalFileI
 				let name = path.file_name()
 					.map(|n| n.to_string_lossy().to_string())
 					.unwrap_or_default();
-				
 				let metadata = entry.metadata().ok();
 				let date_str = metadata.and_then(|m| m.modified().ok())
 					.map(|time| {
@@ -173,20 +152,13 @@ fn scan_dir_for_files(dir: &Path, virtual_name: &str, files: &mut Vec<LocalFileI
 						datetime.format("%Y-%m-%d %H:%M").to_string()
 					})
 					.unwrap_or_else(|| "不明".to_string());
-
-				files.push(LocalFileInfo {
-					name,
-					virtual_name: virtual_name.to_string(),
-					date: date_str,
-				});
+				files.push(LocalFileInfo { name, virtual_name: virtual_name.to_string(), date: date_str });
 			} else if path.is_dir() {
 				scan_dir_for_files(&path, virtual_name, files, depth + 1);
 			}
 		}
 	}
 }
-
-
 
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -201,20 +173,14 @@ async fn get_nas_devices(
 	state: State<'_, Arc<sync::AppState>>,
 ) -> Result<Vec<DeviceInfo>, String> {
 	let config = state.config.lock().unwrap().clone();
-	if config.nas_url.is_empty() {
-		return Ok(Vec::new());
-	}
+	if config.nas_url.is_empty() { return Ok(Vec::new()); }
 	let client = reqwest::Client::new();
 	let url = format!("{}/api/web/devices", config.nas_url);
-	let res = client.get(&url)
-		.send()
-		.await
+	let res = client.get(&url).send().await
 		.map_err(|e| format!("デバイス一覧取得エラー: {}", e))?;
-
 	if !res.status().is_success() {
 		return Err(format!("NASサーバーがエラーを返しました: HTTP {}", res.status()));
 	}
-
 	let devices: Vec<DeviceInfo> = res.json().await
 		.map_err(|e| format!("デバイスデータ解析エラー: {}", e))?;
 	Ok(devices)
@@ -234,20 +200,14 @@ async fn get_nas_folders(
 	state: State<'_, Arc<sync::AppState>>,
 ) -> Result<Vec<WebFolderInfo>, String> {
 	let config = state.config.lock().unwrap().clone();
-	if config.nas_url.is_empty() {
-		return Ok(Vec::new());
-	}
+	if config.nas_url.is_empty() { return Ok(Vec::new()); }
 	let client = reqwest::Client::new();
 	let url = format!("{}/api/web/folders", config.nas_url);
-	let res = client.get(&url)
-		.send()
-		.await
+	let res = client.get(&url).send().await
 		.map_err(|e| format!("同期フォルダ一覧取得エラー: {}", e))?;
-
 	if !res.status().is_success() {
 		return Err(format!("NASサーバーがエラーを返しました: HTTP {}", res.status()));
 	}
-
 	let folders: Vec<WebFolderInfo> = res.json().await
 		.map_err(|e| format!("フォルダデータ解析エラー: {}", e))?;
 	Ok(folders)
@@ -281,9 +241,7 @@ fn get_local_subdirs(local_path: String) -> Result<Vec<String>, String> {
 				let path = entry.path();
 				if path.is_dir() {
 					let name = path.file_name().unwrap_or_default().to_string_lossy();
-					if name.starts_with('.') || name == "$RECYCLE.BIN" {
-						continue;
-					}
+					if name.starts_with('.') || name == "$RECYCLE.BIN" { continue; }
 					let rel = path.strip_prefix(base)
 						.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
 						.to_string_lossy()
@@ -302,106 +260,82 @@ fn get_local_subdirs(local_path: String) -> Result<Vec<String>, String> {
 }
 
 
+// --- Watcher Helper ---
 
-// Helper to refresh the directory watcher
 fn restart_watcher_service(
-	app: &AppHandle,
 	config: &sync::Config,
 	state: &State<'_, Arc<sync::AppState>>,
 ) -> Result<(), String> {
 	let paths: Vec<String> = config.sync_folders.iter().map(|f| f.local_path.clone()).collect();
-	
-	// Drop old watcher
 	let mut old_watcher = state.watcher.lock().unwrap();
 	*old_watcher = None;
-
 	if !paths.is_empty() {
-		let watcher = sync::start_watcher(app.clone(), paths)?;
+		let watcher = sync::start_watcher(paths, state.scan_tx.clone())?;
 		*old_watcher = Some(watcher);
 	}
 	Ok(())
 }
 
+
 // --- App Entrypoint ---
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-	// Channels for sync triggering
-	let (tx, mut rx) = mpsc::channel::<()>(32);
+	let (scan_tx, scan_rx) = mpsc::channel::<sync::ScanEvent>(256);
 
 	tauri::Builder::default()
+		.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+			// A second launch was attempted while an instance is already running
+			// (e.g. hidden in the tray) -> surface the existing window instead of
+			// starting a second process that would race the first one for sync.
+			if let Some(window) = app.get_webview_window("main") {
+				let _ = window.show();
+				let _ = window.set_focus();
+			}
+		}))
 		.plugin(tauri_plugin_opener::init())
 		.setup(move |app| {
-			// 1. Load configuration
 			let app_handle = app.handle().clone();
 			let config = sync::load_config_file(&app_handle);
 
-			// 2. Initialize App State
 			let state = Arc::new(sync::AppState {
 				config: Mutex::new(config.clone()),
 				status: Mutex::new(sync::SyncStatus {
 					is_syncing: false,
 					current_file: "".to_string(),
-					progress: 0.0,
+					pending_tasks: 0,
 					message: "待機中".to_string(),
 				}),
-				sync_trigger: tx,
+				scan_tx,
 				watcher: Mutex::new(None),
 			});
 			app.manage(state.clone());
 
-			// 3. Start filesystem watcher if folders are configured
+			// Start filesystem watcher
 			let paths: Vec<String> = config.sync_folders.iter().map(|f| f.local_path.clone()).collect();
 			if !paths.is_empty() {
-				if let Ok(watcher) = sync::start_watcher(app_handle.clone(), paths) {
+				if let Ok(watcher) = sync::start_watcher(paths, state.scan_tx.clone()) {
 					*state.watcher.lock().unwrap() = Some(watcher);
 				}
 			}
 
-			// 4. Spawn Background Sync Task Loop
-			let app_handle_for_loop = app_handle.clone();
-			tauri::async_runtime::spawn(async move {
+			// Spawn scan loop (handles full scans + watcher events)
+			let scan_app = app_handle.clone();
+			tauri::async_runtime::spawn(sync::run_scan_loop(scan_app, scan_rx));
 
-				// Initial sync on startup
-				let _ = sync::run_sync(app_handle_for_loop.clone()).await;
+			// Spawn execute loop (continuously fetches and executes tasks)
+			let exec_app = app_handle.clone();
+			tauri::async_runtime::spawn(sync::run_execute_loop(exec_app));
 
-				// Periodic sync timer (every 10 minutes)
-				let mut periodic_timer = tokio::time::interval(Duration::from_secs(600));
-				periodic_timer.tick().await; // first tick fires immediately
-
-				loop {
-					tokio::select! {
-						_ = rx.recv() => {
-							// Triggered by watcher or force sync command
-							// Add a small debounce delay to avoid immediate thrashing
-							tokio::time::sleep(Duration::from_secs(3)).await;
-							// Drain any pending trigger signals accumulated during the sleep
-							while rx.try_recv().is_ok() {}
-							
-							println!("Sync triggered dynamically");
-							let _ = sync::run_sync(app_handle_for_loop.clone()).await;
-						}
-						_ = periodic_timer.tick() => {
-							println!("Periodic sync scheduled");
-							let _ = sync::run_sync(app_handle_for_loop.clone()).await;
-						}
-
-					}
-				}
-			});
-
-			// 5. System Tray configuration
+			// System Tray
 			let quit_i = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
 			let show_i = MenuItem::with_id(app, "show", "設定を開く", true, None::<&str>)?;
 			let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
-
 			let _tray = TrayIconBuilder::new()
 				.icon(app.default_window_icon().cloned().expect("Missing default window icon"))
 				.menu(&menu)
 				.on_menu_event(|app, event| match event.id.as_ref() {
-					"quit" => {
-						app.exit(0);
-					}
+					"quit" => { app.exit(0); }
 					"show" => {
 						if let Some(window) = app.get_webview_window("main") {
 							let _ = window.show();
@@ -415,8 +349,7 @@ pub fn run() {
 						button: MouseButton::Left,
 						button_state: MouseButtonState::Up,
 						..
-					} = event
-					{
+					} = event {
 						let app = tray.app_handle();
 						if let Some(window) = app.get_webview_window("main") {
 							let _ = window.show();
@@ -430,7 +363,6 @@ pub fn run() {
 		})
 		.on_window_event(|window, event| {
 			if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-				// Intercept close button and hide instead, enabling background run
 				window.hide().unwrap();
 				api.prevent_close();
 			}
@@ -449,11 +381,6 @@ pub fn run() {
 			open_in_explorer,
 			get_all_synced_files
 		])
-
-
-
-
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
 }
-

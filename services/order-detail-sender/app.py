@@ -443,7 +443,12 @@ def analyze_and_split_pdfs_gdrive(folder_id, temp_dir):
                 name, cur_p, tot_p = extract_paper_header(page)
                 if not name:
                     name = "用紙代理店不明"
+                # マスタから名前でコードをリバース検索
                 code = ""
+                for mcode, mdata in companies_master.items():
+                    if isinstance(mdata, dict) and mdata.get("name") == name:
+                        code = mcode
+                        break
                 job_type = "用紙"
                 job_id = f"{name}_paper"
                 doc_type_name = "用紙納入月報"

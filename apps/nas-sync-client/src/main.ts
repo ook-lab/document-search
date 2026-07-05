@@ -25,7 +25,7 @@ interface Config {
 interface SyncStatus {
   is_syncing: boolean;
   current_file: string;
-  progress: number; // 0.0 to 1.0
+  pending_tasks: number; // -1: 不明, 0以上: 残件数
   message: string;
 }
 
@@ -74,8 +74,7 @@ let tabDeletedItemsEl: HTMLElement | null = null;
 // DOM Elements
 let statusMessageEl: HTMLElement | null = null;
 let progressContainerEl: HTMLElement | null = null;
-let progressPercentEl: HTMLElement | null = null;
-let progressBarEl: HTMLElement | null = null;
+let pendingCountEl: HTMLElement | null = null;
 let currentFileEl: HTMLElement | null = null;
 
 let deviceNameInputEl: HTMLInputElement | null = null;
@@ -467,20 +466,18 @@ let activeTransfers: TransferTask[] = [];
 function updateSyncUI(status: SyncStatus) {
   if (statusMessageEl) statusMessageEl.textContent = status.message;
 
-  if (progressContainerEl && progressPercentEl && progressBarEl && currentFileEl) {
+  if (progressContainerEl && pendingCountEl && currentFileEl) {
     if (status.is_syncing) {
       progressContainerEl.style.display = "block";
-      const pct = Math.round(status.progress * 100);
-      progressPercentEl.textContent = `${pct}%`;
-      progressBarEl.style.width = `${pct}%`;
+      if (status.pending_tasks >= 0) {
+        pendingCountEl.textContent = `残 ${status.pending_tasks} 件`;
+      }
       currentFileEl.textContent = status.current_file ? `処理中: ${status.current_file}` : "同期の準備中...";
     } else {
-      if (status.progress === 1.0) {
-        progressPercentEl.textContent = "100%";
-        progressBarEl.style.width = "100%";
+      if (status.pending_tasks === 0) {
+        pendingCountEl.textContent = "残 0 件";
         currentFileEl.textContent = "同期完了";
 
-        // Set all items in the current batch to completed
         activeTransfers.forEach(t => {
           t.status = "完了";
           t.progress = 100;
@@ -645,8 +642,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Status & Progress elements
   statusMessageEl = document.querySelector("#status-message");
   progressContainerEl = document.querySelector("#progress-container");
-  progressPercentEl = document.querySelector("#progress-percent");
-  progressBarEl = document.querySelector("#progress-bar");
+  pendingCountEl = document.querySelector("#pending-count");
   currentFileEl = document.querySelector("#current-file");
 
   // Settings
