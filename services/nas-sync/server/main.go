@@ -772,7 +772,7 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 			deviceName := "unknown"
 			_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
 
-			forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
+			_, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
 			if ferr != nil {
 				log.Printf("Failed to check for existing conflict fork: %v", ferr)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -780,12 +780,18 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 			}
 			if alreadyForked {
 				// Already recorded by an earlier scan/upload hitting this same
-				// still-unresolved conflict. Point this device's device_mapping row
-				// (written below) at the fork that actually represents its content --
-				// leaving fileID as the original, deleted path's ID here would record
-				// this device as having synced a file that master_mapping says is
-				// deleted, which it never physically un-deletes on its own.
-				fileID = forkFileID
+				// still-unresolved conflict -> nothing new to do this time.
+				//
+				// This deliberately leaves fileID as the original, deleted path's ID
+				// rather than pointing it at the fork (an earlier version of this fix
+				// tried that): the fork's relative_path is a server-synthesized name
+				// this device's own local scan will never actually report having, so
+				// device_mapping written against it gets treated as "gone locally" on
+				// the very next scan, which deletes the fork itself and forces a brand
+				// new one to be created next cycle -- an unbounded loop (observed
+				// reaching thousands of generations for one file in production before
+				// this was reverted). Recording this device against the deleted
+				// original's ID is a known-safe no-op instead.
 			} else {
 				newFileID, newRelPath, ferr := app.registerAsNewFile(tx, virtualName, relPath, deviceName, localFile.FileHash, localFile.FileSize, localFile.LastModifiedAt, localFile.IsDirectory)
 				if ferr != nil {
@@ -865,37 +871,41 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 				deviceName := "unknown"
 				_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
 
-				forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
+				_, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
 				if ferr != nil {
 					log.Printf("Failed to check for existing conflict fork: %v", ferr)
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 					return
 				}
-				var newRelPath string
 				if alreadyForked {
 					// Already recorded by an earlier scan hitting this same
-					// still-unresolved conflict. Point this device's device_mapping row
-					// (written below, after this switch) at the fork that actually
-					// represents its content -- a bare `continue` here would skip that
-					// write entirely, leaving this device's local copy permanently
-					// unacknowledged and its download task for the original path
-					// regenerated forever.
-					fileID = forkFileID
-				} else {
-					newFileID, genRelPath, ferr := app.registerAsNewFile(tx, virtualName, relPath, deviceName, localFile.FileHash, localFile.FileSize, localFile.LastModifiedAt, localFile.IsDirectory)
-					if ferr != nil {
-						log.Printf("Failed to register conflicting local file as new file: %v", ferr)
-						http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-						return
-					}
-					fileID = newFileID
-					newRelPath = genRelPath
-					_, _ = tx.Exec(`
-						INSERT INTO activity_logs (device_id, action_type, file_path, description)
-						VALUES ($1, 'CONFLICT', $2, $3)`,
-						deviceID, relPath, fmt.Sprintf("Local file %s conflicted with the current version; registered separately as %s", relPath, newRelPath),
-					)
+					// still-unresolved conflict -> nothing new to do this time.
+					//
+					// This deliberately does NOT write device_mapping against the
+					// fork's file_id (an earlier version of this fix tried that): the
+					// fork's relative_path is a server-synthesized name this device's
+					// own local scan will never actually report having, so on the very
+					// next scan the "Local Deletion" loop below sees that path as
+					// "not reported locally" and marks the fork itself deleted --
+					// which then makes this exact check find nothing next time,
+					// creating a brand new fork, forever incrementing its numeric
+					// suffix (observed reaching 2373 generations for one file in
+					// production before this was reverted). Leaving this device's
+					// fork-side acknowledgment unwritten is the safe state.
+					continue
 				}
+				newFileID, newRelPath, ferr := app.registerAsNewFile(tx, virtualName, relPath, deviceName, localFile.FileHash, localFile.FileSize, localFile.LastModifiedAt, localFile.IsDirectory)
+				if ferr != nil {
+					log.Printf("Failed to register conflicting local file as new file: %v", ferr)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				fileID = newFileID
+				_, _ = tx.Exec(`
+					INSERT INTO activity_logs (device_id, action_type, file_path, description)
+					VALUES ($1, 'CONFLICT', $2, $3)`,
+					deviceID, relPath, fmt.Sprintf("Local file %s conflicted with the current version; registered separately as %s", relPath, newRelPath),
+				)
 			}
 		}
 
@@ -1486,7 +1496,7 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		deviceName := "unknown"
 		_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
 
-		forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
+		_, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
 		if ferr != nil {
 			log.Printf("Failed to check for existing conflict fork: %v", ferr)
 			os.Remove(tempFilePath)
@@ -1494,28 +1504,22 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if alreadyForked {
-			// The fork this device's content already matches was fully registered
-			// (master_mapping + nas_mapping) by whoever created it. The only thing
-			// still missing is this device's own acknowledgment -- without it, this
-			// device's next scan still sees itself as not having any of the fork's
-			// content and keeps re-detecting this exact "arrived after delete" case
-			// indefinitely.
+			// Already recorded by an earlier scan/upload hitting this same
+			// still-unresolved conflict -> nothing new to do this time.
 			//
-			// This is deliberately its own outcome, not plain "no_change": fileID and
-			// targetFilePath here still refer to the *original* (deleted) path, not
-			// the fork's, so the physical-placement step below must discard the
-			// uploaded temp file outright rather than reusing "no_change"'s
-			// stat-and-repair logic, which would wrongly compare against and
-			// potentially overwrite the original path's file with this content.
+			// This deliberately does NOT write device_mapping against the fork's
+			// file_id (an earlier version of this fix tried that): the fork's
+			// relative_path is a server-synthesized name this device's own local
+			// scan will never actually report having, so on the next scan the
+			// "Local Deletion" loop sees that path as "not reported locally" and
+			// marks the fork itself deleted -- which then makes the next
+			// findExistingConflictFork check find nothing, creating a brand new
+			// fork, forever incrementing its numeric suffix (observed reaching
+			// thousands of generations for one file in production before this was
+			// reverted). Leaving this device's fork-side acknowledgment unwritten
+			// is the safe state; this "arrived after delete" check simply runs
+			// again next time, which is cheap.
 			outcome = "no_change_forked"
-			if _, derr := tx.Exec(`
-				INSERT INTO device_mapping (device_id, file_id, last_synced_mtime, last_synced_size, last_synced_hash)
-				VALUES ($1, $2, $3, $4, $5)
-				ON CONFLICT (device_id, file_id)
-				DO UPDATE SET last_synced_mtime = EXCLUDED.last_synced_mtime, last_synced_size = EXCLUDED.last_synced_size, last_synced_hash = EXCLUDED.last_synced_hash
-			`, deviceID, forkFileID, lastModifiedAt, fileSize, fileHash); derr != nil {
-				log.Printf("Failed to record device_mapping for existing fork (file_id %d): %v", forkFileID, derr)
-			}
 		} else {
 			outcome = "conflict"
 			newFileID, genRelPath, ferr := app.registerAsNewFile(tx, virtualName, relativePath, deviceName, fileHash, fileSize, lastModifiedAt, false)
@@ -1561,7 +1565,7 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			deviceName := "unknown"
 			_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
 
-			forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
+			_, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
 			if ferr != nil {
 				log.Printf("Failed to check for existing conflict fork: %v", ferr)
 				os.Remove(tempFilePath)
@@ -1570,28 +1574,21 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 			if alreadyForked {
 				// This exact content was already saved separately by an earlier attempt
-				// (e.g. a previous scan hitting the same still-unresolved conflict). The
-				// only thing still missing is this device's own acknowledgment of the
-				// fork it actually matches -- without it, this device's next scan still
-				// sees itself as not having any of the fork's content and keeps
-				// re-detecting this exact conflict indefinitely.
+				// (e.g. a previous scan hitting the same still-unresolved conflict) ->
+				// nothing new to do this time.
 				//
-				// This is deliberately its own outcome, not plain "no_change": fileID
-				// and targetFilePath here still refer to the *current active master*
-				// file this upload conflicted with, not the fork's, so the
-				// physical-placement step below must discard the uploaded temp file
-				// outright rather than reusing "no_change"'s stat-and-repair logic,
-				// which would wrongly compare against and potentially overwrite the
-				// active master file with this conflicting content.
+				// This deliberately does NOT write device_mapping against the fork's
+				// file_id (an earlier version of this fix tried that): the fork's
+				// relative_path is a server-synthesized name this device's own local
+				// scan will never actually report having, so on the next scan the
+				// "Local Deletion" loop sees that path as "not reported locally" and
+				// marks the fork itself deleted -- which then makes the next
+				// findExistingConflictFork check find nothing, creating a brand new
+				// fork, forever incrementing its numeric suffix (observed reaching
+				// thousands of generations for one file in production before this was
+				// reverted). Leaving this device's fork-side acknowledgment unwritten
+				// is the safe state.
 				outcome = "no_change_forked"
-				if _, derr := tx.Exec(`
-					INSERT INTO device_mapping (device_id, file_id, last_synced_mtime, last_synced_size, last_synced_hash)
-					VALUES ($1, $2, $3, $4, $5)
-					ON CONFLICT (device_id, file_id)
-					DO UPDATE SET last_synced_mtime = EXCLUDED.last_synced_mtime, last_synced_size = EXCLUDED.last_synced_size, last_synced_hash = EXCLUDED.last_synced_hash
-				`, deviceID, forkFileID, lastModifiedAt, fileSize, fileHash); derr != nil {
-					log.Printf("Failed to record device_mapping for existing fork (file_id %d): %v", forkFileID, derr)
-				}
 			} else {
 				outcome = "conflict"
 				newFileID, genRelPath, ferr := app.registerAsNewFile(tx, virtualName, relativePath, deviceName, fileHash, fileSize, lastModifiedAt, false)
