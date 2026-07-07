@@ -1,5 +1,6 @@
 mod sync;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::fs;
 use std::path::Path;
@@ -23,6 +24,14 @@ fn get_status(state: State<'_, Arc<sync::AppState>>) -> sync::SyncStatus {
 	state.status.lock().unwrap().clone()
 }
 
+// Pulled once by the frontend right after it registers its "sync-queue-init"
+// listener, so the initial transfer list is correct even when the backend's
+// first push happened before that listener was attached (see AppState::current_queue).
+#[tauri::command]
+fn get_current_queue(state: State<'_, Arc<sync::AppState>>) -> Vec<sync::SyncQueueItem> {
+	state.current_queue.lock().unwrap().clone()
+}
+
 #[tauri::command]
 async fn save_settings(
 	state: State<'_, Arc<sync::AppState>>,
@@ -31,7 +40,7 @@ async fn save_settings(
 	device_name: String,
 ) -> Result<sync::Config, String> {
 	let mut config = state.config.lock().unwrap().clone();
-	config.nas_url = "http://100.82.85.101:8080".to_string();
+	config.nas_url = "http://100.82.85.101:47291".to_string();
 
 	if config.device_id == 0 {
 		let (device_id, token) = sync::api_register_device(&config.nas_url, &device_name).await?;
@@ -91,9 +100,49 @@ async fn force_sync(state: State<'_, Arc<sync::AppState>>) -> Result<(), String>
 }
 
 #[tauri::command]
-fn select_folder() -> Option<String> {
-	let folder = rfd::FileDialog::new().pick_folder();
+fn select_folder(initial_dir: Option<String>) -> Option<String> {
+	// Without an explicit starting directory, Windows opens this dialog at
+	// whatever folder some app last left it at via the shared Common Item
+	// Dialog MRU -- unrelated to what this modal's path field shows or to
+	// Explorer's own "Downloads" shortcut. Always pin the start location to
+	// something we actually know is correct instead of letting Windows guess.
+	let mut dialog = rfd::FileDialog::new();
+	let hint = initial_dir.filter(|d| !d.is_empty() && Path::new(d).is_dir());
+	let start_dir = hint.or_else(|| dirs::home_dir().map(|p| p.to_string_lossy().to_string()));
+	if let Some(dir) = start_dir {
+		dialog = dialog.set_directory(dir);
+	}
+	let folder = dialog.pick_folder();
 	folder.map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn update_folder_path(
+	state: State<'_, Arc<sync::AppState>>,
+	app: AppHandle,
+	folder_id: i32,
+	local_path: String,
+) -> Result<sync::Config, String> {
+	let mut config = state.config.lock().unwrap().clone();
+
+	if config.sync_folders.iter().any(|f| f.folder_id != folder_id && f.local_path == local_path) {
+		return Err("このフォルダは既に同期対象に設定されています。".to_string());
+	}
+
+	sync::api_update_folder_path(&config.nas_url, &config.api_token, folder_id, &local_path).await?;
+
+	let target = config.sync_folders.iter_mut().find(|f| f.folder_id == folder_id)
+		.ok_or_else(|| "対象のフォルダが見つかりません。".to_string())?;
+	target.local_path = local_path;
+
+	*state.config.lock().unwrap() = config.clone();
+	sync::save_config_file(&app, &config).map_err(|e| e.to_string())?;
+
+	restart_watcher_service(&config, &state)?;
+
+	let _ = state.scan_tx.send(sync::ScanEvent::Full).await;
+
+	Ok(config)
 }
 
 #[tauri::command]
@@ -305,9 +354,12 @@ pub fn run() {
 					current_file: "".to_string(),
 					pending_tasks: 0,
 					message: "待機中".to_string(),
+					debug_emit_error_count: 0,
 				}),
 				scan_tx,
 				watcher: Mutex::new(None),
+				current_queue: Mutex::new(Vec::new()),
+				last_direct_upload: Mutex::new(HashMap::new()),
 			});
 			app.manage(state.clone());
 
@@ -326,6 +378,13 @@ pub fn run() {
 			// Spawn execute loop (continuously fetches and executes tasks)
 			let exec_app = app_handle.clone();
 			tauri::async_runtime::spawn(sync::run_execute_loop(exec_app));
+
+			// Spawn event listener (push notifications from the server so other
+			// devices' changes trigger an immediate scan instead of waiting for
+			// the periodic timer)
+			let events_app = app_handle.clone();
+			let events_tx = state.scan_tx.clone();
+			tauri::async_runtime::spawn(sync::run_event_listener(events_app, events_tx));
 
 			// System Tray
 			let quit_i = MenuItem::with_id(app, "quit", "終了", true, None::<&str>)?;
@@ -370,8 +429,10 @@ pub fn run() {
 		.invoke_handler(tauri::generate_handler![
 			get_config,
 			get_status,
+			get_current_queue,
 			save_settings,
 			add_folder,
+			update_folder_path,
 			force_sync,
 			get_nas_devices,
 			get_nas_folders,

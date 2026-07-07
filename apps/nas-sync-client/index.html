@@ -270,6 +270,13 @@
               <span>ファイル転送タスク</span>
             </h2>
             <p style="color: #6B7280; font-size: 12px; margin-bottom: 16px;">現在転送中、または直近で完了したファイルの進捗リストです。</p>
+            <div style="display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #E5E7EB;">
+              <button class="transfer-subtab" data-filter="all" style="padding: 8px 16px; font-size: 12px; font-weight: bold; border: none; background: none; cursor: pointer; color: #4B5A6A; border-bottom: 2px solid #4B5A6A;">すべて</button>
+              <button class="transfer-subtab" data-filter="upload" style="padding: 8px 16px; font-size: 12px; font-weight: bold; border: none; background: none; cursor: pointer; color: #9CA3AF; border-bottom: 2px solid transparent;">アップロード</button>
+              <button class="transfer-subtab" data-filter="download" style="padding: 8px 16px; font-size: 12px; font-weight: bold; border: none; background: none; cursor: pointer; color: #9CA3AF; border-bottom: 2px solid transparent;">ダウンロード</button>
+              <button class="transfer-subtab" data-filter="delete" style="padding: 8px 16px; font-size: 12px; font-weight: bold; border: none; background: none; cursor: pointer; color: #9CA3AF; border-bottom: 2px solid transparent;">デリート</button>
+              <button class="transfer-subtab" data-filter="move" style="padding: 8px 16px; font-size: 12px; font-weight: bold; border: none; background: none; cursor: pointer; color: #9CA3AF; border-bottom: 2px solid transparent;">ムーブ</button>
+            </div>
             <div style="flex: 1; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 4px;">
               <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
                 <thead>

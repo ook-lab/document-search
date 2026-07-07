@@ -51,6 +51,7 @@ pub struct SyncStatus {
     pub current_file: String,
     pub pending_tasks: i32,
     pub message: String,
+    pub debug_emit_error_count: i32,
 }
 
 pub struct AppState {
@@ -58,6 +59,22 @@ pub struct AppState {
     pub status: Mutex<SyncStatus>,
     pub scan_tx: mpsc::Sender<ScanEvent>,
     pub watcher: Mutex<Option<RecommendedWatcher>>,
+    // Mirrors the last "sync-queue-init" payload pushed to the frontend. The
+    // frontend's listen("sync-queue-init") registration races the backend's
+    // first emit at startup (Tauri drops events emitted before a listener is
+    // attached), so the frontend also pulls this directly once on init
+    // instead of relying solely on having caught the push.
+    pub current_queue: Mutex<Vec<SyncQueueItem>>,
+    // Content hash of the last watcher-triggered direct upload that the server
+    // accepted, keyed by "folder_id:relative_path". The OS file-watcher can
+    // report modify events for a path with no actual content change (observed
+    // running for days on an unrelated file, apparently re-notified by some
+    // other process, at ~1 event/sec) -- without this, every such event re-reads
+    // and re-uploads the full file, even though the server always discards it
+    // as a no-op. This makes that a same-process no-op instead of a network
+    // round-trip: if the freshly computed hash matches what we already know the
+    // server accepted, there is nothing new to report.
+    pub last_direct_upload: Mutex<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -71,7 +88,63 @@ pub struct SyncQueueItem {
 }
 
 
+// --- Helper: Windows extended-length path (\\?\) ---
+//
+// Win32's traditional path length limit is 260 characters (MAX_PATH). Nested
+// folders with Japanese file/folder names routinely exceed this once joined
+// with the sync root, causing fs:: calls to fail outright. The `\\?\` (or
+// `\\?\UNC\` for network shares) prefix switches the same underlying Win32
+// calls into "extended-length path" mode, raising the limit to ~32,767
+// characters, honored by std::fs with no OS-wide configuration change needed.
+// Applied only right before a filesystem syscall -- comparisons, hash cache
+// keys, and the relative paths sent to the server all keep using plain paths.
+#[cfg(windows)]
+pub fn to_extended_path<P: AsRef<Path>>(path: P) -> PathBuf {
+    let path = path.as_ref();
+    if !path.is_absolute() {
+        return path.to_path_buf();
+    }
+    // Verbatim (\\?\) paths are passed to the kernel nearly as-is, so unlike
+    // a normal Windows path, `/` is not accepted as a separator -- relative
+    // paths arriving from the server use `/` and must be normalized first.
+    let normalized = path.to_string_lossy().replace('/', "\\");
+    if normalized.starts_with(r"\\?\") {
+        return PathBuf::from(normalized);
+    }
+    if let Some(rest) = normalized.strip_prefix(r"\\") {
+        PathBuf::from(format!(r"\\?\UNC\{}", rest))
+    } else {
+        PathBuf::from(format!(r"\\?\{}", normalized))
+    }
+}
+
+#[cfg(not(windows))]
+pub fn to_extended_path<P: AsRef<Path>>(path: P) -> PathBuf {
+    path.as_ref().to_path_buf()
+}
+
+// --- Helper: Streamed Upload Body ---
+//
+// Builds a multipart Part that reads the file from disk as it's sent, instead
+// of buffering the whole thing into a Vec<u8> first. With PARALLEL_TASKS
+// concurrent uploads, buffering full file contents multiplies peak memory by
+// the concurrency count -- this was observed causing OOM-driven connection
+// resets ("unexpected EOF") for large files.
+async fn stream_file_part(path: &Path, file_name: String) -> io::Result<reqwest::multipart::Part> {
+    let file = tokio::fs::File::open(path).await?;
+    let len = file.metadata().await?.len();
+    let stream = tokio_util::codec::FramedRead::new(file, tokio_util::codec::BytesCodec::new());
+    let body = reqwest::Body::wrap_stream(stream);
+    Ok(reqwest::multipart::Part::stream_with_length(body, len).file_name(file_name))
+}
+
 // --- Helper: SHA-256 Hash ---
+
+fn sha256_hex(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    hex::encode(hasher.finalize())
+}
 
 pub fn calculate_hash(path: &Path) -> io::Result<String> {
     let mut file = File::open(path)?;
@@ -157,7 +230,7 @@ pub fn load_config_file(app: &AppHandle) -> Config {
         }
     }
     Config {
-        nas_url: "http://100.82.85.101:8080".to_string(),
+        nas_url: "http://100.82.85.101:47291".to_string(),
         exclude_patterns: default_exclude_patterns(),
         ..Config::default()
     }
@@ -172,6 +245,7 @@ fn default_exclude_patterns() -> Vec<String> {
         "*.log".to_string(),
         ".DS_Store".to_string(),
         "._*".to_string(),
+        "*.app".to_string(),
     ]
 }
 
@@ -270,6 +344,15 @@ fn update_status(app: &AppHandle, is_syncing: bool, current_file: String, pendin
     let _ = app.emit("sync-status", status.clone());
 }
 
+// Persistent counter (survives across status messages being overwritten) for
+// diagnosing whether sync-queue-init ever fails to emit.
+fn record_emit_error(app: &AppHandle) {
+    let state = app.state::<Arc<AppState>>();
+    let mut status = state.status.lock().unwrap();
+    status.debug_emit_error_count += 1;
+    let _ = app.emit("sync-status", status.clone());
+}
+
 fn emit_queue_update(app: &AppHandle, relative_path: &str, status: &str, progress: f32) {
     #[derive(serde::Serialize, Clone)]
     #[serde(rename_all = "snake_case")]
@@ -298,7 +381,13 @@ fn is_excluded(name: &str, relative_path: &str, patterns: &[String]) -> bool {
 
 fn scan_local_directory(_app: &AppHandle, dir: &Path, exclude_patterns: &[String], cache: &mut HashMap<String, CacheEntry>) -> io::Result<Vec<FileMetadata>> {
     let mut files = Vec::new();
-    scan_recursive(dir, dir, &mut files, exclude_patterns, cache)?;
+    // Extend once at the root: every path produced by walking down from here
+    // (via Path::join) keeps the \\?\ prefix, so nested Japanese folder names
+    // that push the accumulated length past MAX_PATH still resolve. base_dir
+    // and current_dir stay consistently extended together, so strip_prefix
+    // below keeps producing the same plain relative paths as before.
+    let dir = to_extended_path(dir);
+    scan_recursive(&dir, &dir, &mut files, exclude_patterns, cache)?;
     Ok(files)
 }
 
@@ -352,9 +441,23 @@ fn scan_recursive(base_dir: &Path, current_dir: &Path, list: &mut Vec<FileMetada
                 }
             }
             if !use_cache {
-                hash = calculate_hash(&path).unwrap_or_default();
-                if unique_id != 0 {
-                    cache.insert(cache_key, CacheEntry { mtime_ns, size, hash: hash.clone() });
+                match calculate_hash(&path) {
+                    Ok(h) => {
+                        hash = h;
+                        if unique_id != 0 {
+                            cache.insert(cache_key, CacheEntry { mtime_ns, size, hash: hash.clone() });
+                        }
+                    }
+                    Err(_) => {
+                        // Could not read this file right now (locked, permission error,
+                        // in-use, etc.). Reporting a fabricated hash would assert a false
+                        // fact about this file's content to the server, and caching it
+                        // would keep asserting that false fact on every future scan since
+                        // mtime/size alone can't tell it apart from a real reading. Skip
+                        // this file for this cycle entirely; it will be retried on the
+                        // next scan once it's readable again.
+                        continue;
+                    }
                 }
             }
             list.push(FileMetadata {
@@ -447,9 +550,10 @@ async fn handle_changed_paths(app: &AppHandle, paths: &[PathBuf]) {
 
             if is_excluded(&name, &rel_path, &config.exclude_patterns) { continue; }
 
-            if path.exists() && path.is_file() {
-                upload_file_direct(app, &client, &config, folder, path, &rel_path).await;
-            } else if !path.exists() {
+            let path_ext = to_extended_path(path);
+            if path_ext.exists() && path_ext.is_file() {
+                upload_file_direct(app, &client, &config, folder, &path_ext, &rel_path).await;
+            } else if !path_ext.exists() {
                 delete_remote_direct(&client, &config, folder, &rel_path).await;
             }
             // Directories and renames: handled by next periodic full scan
@@ -465,21 +569,48 @@ async fn upload_file_direct(
     path: &Path,
     rel_path: &str,
 ) {
-    let bytes = match fs::read(path) { Ok(b) => b, Err(_) => return };
     let metadata = match fs::metadata(path) { Ok(m) => m, Err(_) => return };
-    let hash = calculate_hash(path).unwrap_or_default();
-    let size = bytes.len() as i64;
+    // If this can't be hashed right now, don't upload it with a fabricated hash --
+    // that would let the server's dedup-by-hash logic substitute unrelated content
+    // for these genuinely-read bytes. Skip; the periodic scan will retry it later.
+    let hash = match calculate_hash(path) {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+
+    // The OS watcher can report a modify event with no actual content change
+    // underneath (observed happening continuously for days on one file, ~1
+    // event/sec, apparently re-notified by some unrelated process). The server
+    // always discards such a re-upload as a no-op once it arrives, but by then
+    // the full file has already been read and sent. If the content hash matches
+    // what we already know the server accepted for this exact path, there is
+    // nothing new to report -- skip before touching the network at all.
+    let dedup_key = format!("{}:{}", folder.folder_id, rel_path);
+    {
+        let state = app.state::<Arc<AppState>>();
+        let last_uploads = state.last_direct_upload.lock().unwrap();
+        if last_uploads.get(&dedup_key) == Some(&hash) {
+            return;
+        }
+    }
+
+    let size = metadata.len() as i64;
     let modified_time = metadata.modified().unwrap_or(SystemTime::now());
     let datetime: chrono::DateTime<chrono::Utc> = modified_time.into();
     let file_name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+
+    let part = match stream_file_part(path, file_name).await {
+        Ok(p) => p,
+        Err(_) => return,
+    };
 
     let form = reqwest::multipart::Form::new()
         .text("folder_id", folder.folder_id.to_string())
         .text("relative_path", rel_path.to_string())
         .text("file_size", size.to_string())
-        .text("file_hash", hash)
+        .text("file_hash", hash.clone())
         .text("last_modified_at", datetime.to_rfc3339())
-        .part("file", reqwest::multipart::Part::bytes(bytes).file_name(file_name));
+        .part("file", part);
 
     let upload_url = format!("{}/api/sync/upload", config.nas_url);
     match client.post(&upload_url)
@@ -489,6 +620,7 @@ async fn upload_file_direct(
         .await
     {
         Ok(res) if res.status().is_success() => {
+            app.state::<Arc<AppState>>().last_direct_upload.lock().unwrap().insert(dedup_key, hash);
             update_status(app, true, rel_path.to_string(), -1, format!("アップロード: {}", rel_path));
         }
         Ok(res) => {
@@ -566,6 +698,54 @@ pub async fn run_scan_loop(app: AppHandle, mut rx: mpsc::Receiver<ScanEvent>) {
 }
 
 
+// --- Event Listener (runs forever, parallel to scan/execute loops) ---
+//
+// Subscribes to the server's push notification stream (GET /api/sync/events,
+// Server-Sent Events). Any other device's action that changes shared sync
+// state makes the server emit a line here; receiving anything at all -- the
+// content doesn't matter -- means "something changed, scan now" instead of
+// waiting for the next periodic timer. The periodic scan (every 5 minutes)
+// remains as the correctness fallback if this connection is ever down.
+pub async fn run_event_listener(app: AppHandle, scan_tx: mpsc::Sender<ScanEvent>) {
+    loop {
+        let config = app.state::<Arc<AppState>>().config.lock().unwrap().clone();
+        if config.nas_url.is_empty() || config.api_token.is_empty() {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            continue;
+        }
+
+        let url = format!("{}/api/sync/events", config.nas_url);
+        let client = reqwest::Client::new();
+        let res = client.get(&url)
+            .header("Authorization", format!("Bearer {}", config.api_token))
+            .send()
+            .await;
+
+        let mut res = match res {
+            Ok(r) if r.status().is_success() => r,
+            _ => {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        loop {
+            match res.chunk().await {
+                Ok(Some(bytes)) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    if text.contains("data:") {
+                        let _ = scan_tx.send(ScanEvent::Full).await;
+                    }
+                }
+                Ok(None) => break, // stream ended -- reconnect
+                Err(_) => break,
+            }
+        }
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 // --- Execute Loop (runs forever, parallel to scan loop) ---
 
 pub async fn run_execute_loop(app: AppHandle) {
@@ -625,10 +805,14 @@ pub async fn run_execute_loop(app: AppHandle) {
                 progress: 0.0,
             }).collect();
 
+            *app.state::<Arc<AppState>>().current_queue.lock().unwrap() = queue.clone();
+
             #[derive(serde::Serialize, Clone)]
             #[serde(rename_all = "snake_case")]
             struct QueueInitPayload { items: Vec<SyncQueueItem> }
-            let _ = app.emit("sync-queue-init", QueueInitPayload { items: queue });
+            if app.emit("sync-queue-init", QueueInitPayload { items: queue }).is_err() {
+                record_emit_error(&app);
+            }
 
             let semaphore = Arc::new(Semaphore::new(PARALLEL_TASKS));
             let mut join_set = JoinSet::new();
@@ -694,7 +878,7 @@ async fn execute_single_task(
 
     match task.action_type.as_str() {
         "delete_local" => {
-            let local_path = local_dir.join(&task.relative_path);
+            let local_path = to_extended_path(local_dir.join(&task.relative_path));
             if local_path.exists() {
                 let rm_res = if local_path.is_dir() {
                     fs::remove_dir_all(&local_path)
@@ -719,8 +903,8 @@ async fn execute_single_task(
         }
 
         "move" => {
-            let local_src = local_dir.join(&task.relative_path);
-            let local_dst = local_dir.join(&task.to_path);
+            let local_src = to_extended_path(local_dir.join(&task.relative_path));
+            let local_dst = to_extended_path(local_dir.join(&task.to_path));
             if local_dst.exists() {
                 success = true;
             } else if local_src.exists() {
@@ -750,7 +934,7 @@ async fn execute_single_task(
                 .send().await
             {
                 Ok(res) if res.status().is_success() => {
-                    let local_path = local_dir.join(&task.relative_path);
+                    let local_path = to_extended_path(local_dir.join(&task.relative_path));
                     if let Some(parent) = local_path.parent() {
                         let _ = fs::create_dir_all(parent);
                     }
@@ -758,6 +942,13 @@ async fn execute_single_task(
                         if bytes.as_ref() == b"Directory synced" {
                             let _ = fs::create_dir_all(&local_path);
                             success = true;
+                        } else if !task.file_hash.is_empty() && sha256_hex(&bytes) != task.file_hash {
+                            // The bytes actually received don't match the hash the server
+                            // told us to expect for this task. Do not write them to disk --
+                            // that would silently replace local content with corrupt or
+                            // wrong-content bytes. Leave the task pending for retry.
+                            update_status(app, false, task.relative_path.clone(), -1,
+                                format!("ダウンロード内容がハッシュと一致しません: {}", task.relative_path));
                         } else {
                             // The client makes no decisions about conflicts at all -- that
                             // logic lives entirely server-side, in master_mapping. Just
@@ -780,22 +971,39 @@ async fn execute_single_task(
         }
 
         "upload_new" | "upload_overwrite" => {
-            let local_path = local_dir.join(&task.relative_path);
+            let local_path = to_extended_path(local_dir.join(&task.relative_path));
             if local_path.exists() {
                 if local_path.is_dir() {
                     success = true;
-                } else if let Ok(bytes) = fs::read(&local_path) {
-                    let metadata = fs::metadata(&local_path).unwrap();
+                } else if let Ok(metadata) = fs::metadata(&local_path) {
                     let modified_time = metadata.modified().unwrap_or(SystemTime::now());
                     let datetime: chrono::DateTime<chrono::Utc> = modified_time.into();
+
+                    // Compute this upload's own size/hash from the local file right now,
+                    // rather than trusting task.file_size/task.file_hash (the server's own
+                    // recorded values from when the task was created). Echoing those back
+                    // asserts nothing about what these bytes actually are -- the server's
+                    // "identical content re-uploaded" dedup check then always trivially
+                    // matches itself, so a genuinely different or since-changed local file
+                    // never gets a real integrity check at all.
+                    let size = metadata.len() as i64;
+                    let hash = match calculate_hash(&local_path) {
+                        Ok(h) => h,
+                        Err(_) => return false,
+                    };
+
+                    let part = match stream_file_part(&local_path, task.relative_path.clone()).await {
+                        Ok(p) => p,
+                        Err(_) => return false,
+                    };
 
                     let form = reqwest::multipart::Form::new()
                         .text("folder_id", folder.folder_id.to_string())
                         .text("relative_path", task.relative_path.clone())
-                        .text("file_size", task.file_size.to_string())
-                        .text("file_hash", task.file_hash.clone())
+                        .text("file_size", size.to_string())
+                        .text("file_hash", hash)
                         .text("last_modified_at", datetime.to_rfc3339())
-                        .part("file", reqwest::multipart::Part::bytes(bytes).file_name(task.relative_path.clone()));
+                        .part("file", part);
 
                     let upload_url = format!("{}/api/sync/upload", config.nas_url);
                     match client.post(&upload_url)
@@ -890,4 +1098,28 @@ pub async fn api_register_folder(nas_url: &str, token: &str, local_path: &str, v
     let data: RegisterFolderResponse = res.json().await
         .map_err(|e| format!("レスポンスの解析に失敗しました: {}", e))?;
     Ok(data.folder_id)
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct UpdateFolderPathRequest {
+    folder_id: i32,
+    local_path: String,
+}
+
+pub async fn api_update_folder_path(nas_url: &str, token: &str, folder_id: i32, local_path: &str) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/sync/folders", nas_url);
+    let req = UpdateFolderPathRequest {
+        folder_id,
+        local_path: local_path.to_string(),
+    };
+    let res = client.put(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&req)
+        .send().await
+        .map_err(|e| format!("ネットワーク接続エラー: {}", e))?;
+    if !res.status().is_success() {
+        return Err(format!("フォルダーパスの更新に失敗しました: ステータス {}", res.status()));
+    }
+    Ok(())
 }

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -24,6 +25,49 @@ import (
 type App struct {
 	db          *sql.DB
 	storagePath string
+	broadcaster *Broadcaster
+}
+
+// Broadcaster fans out "something changed" notifications to every connected
+// client, so other devices can react immediately instead of waiting for their
+// own periodic poll timer. It carries no per-device targeting or content --
+// any subscriber that receives a signal simply re-scans itself and figures out
+// from its own diff-against-master_mapping comparison what (if anything)
+// changed for it. Slow/blocked subscribers are dropped rather than blocking
+// publishers, since the periodic scan remains the correctness fallback.
+type Broadcaster struct {
+	mu   sync.Mutex
+	subs map[chan string]bool
+}
+
+func NewBroadcaster() *Broadcaster {
+	return &Broadcaster{subs: make(map[chan string]bool)}
+}
+
+func (b *Broadcaster) Subscribe() chan string {
+	ch := make(chan string, 8)
+	b.mu.Lock()
+	b.subs[ch] = true
+	b.mu.Unlock()
+	return ch
+}
+
+func (b *Broadcaster) Unsubscribe(ch chan string) {
+	b.mu.Lock()
+	delete(b.subs, ch)
+	b.mu.Unlock()
+	close(ch)
+}
+
+func (b *Broadcaster) Publish(virtualName string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ch := range b.subs {
+		select {
+		case ch <- virtualName:
+		default:
+		}
+	}
 }
 
 //go:embed dist/*
@@ -210,6 +254,7 @@ func main() {
 	app := &App{
 		db:          db,
 		storagePath: storagePath,
+		broadcaster: NewBroadcaster(),
 	}
 
 	// 4. Set up routes
@@ -225,6 +270,7 @@ func main() {
 	mux.Handle("/api/sync/move", app.authMiddleware(http.HandlerFunc(app.handleMove)))
 	mux.Handle("/api/sync/tasks", app.authMiddleware(http.HandlerFunc(app.handleGetTasks)))
 	mux.Handle("/api/sync/tasks/complete", app.authMiddleware(http.HandlerFunc(app.handleCompleteTask)))
+	mux.Handle("/api/sync/events", app.authMiddleware(http.HandlerFunc(app.handleEvents)))
 
 
 	// Web UI APIs (Read-only / Delete via web browser client)
@@ -266,6 +312,19 @@ func hashToken(token string) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
+func hashFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func securePath(storagePath string, virtualName string, relativePath string) (string, error) {
 	cleanRelPath := filepath.Clean(relativePath)
 	if strings.HasPrefix(cleanRelPath, "..") || strings.HasPrefix(cleanRelPath, "/") || strings.Contains(cleanRelPath, "../") {
@@ -298,14 +357,32 @@ func copyFile(src, dst string) error {
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst)
+	// Never truncate dst in place. This system's dedup mechanism hard-links
+	// many different relative_path entries to a single shared inode -- an
+	// in-place os.Create(dst) truncates every one of them simultaneously,
+	// since they all share the same underlying data on disk. Writing to a
+	// fresh temp file and atomically renaming over dst instead replaces
+	// dst's directory entry with a new inode, leaving every other hard-linked
+	// name (and its data) completely untouched.
+	tmp := dst + ".copytmp"
+	out, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 
@@ -415,6 +492,10 @@ func (app *App) handleRegisterDevice(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/sync/folders
 func (app *App) handleRegisterFolder(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPut {
+		app.handleUpdateFolderPath(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
@@ -465,6 +546,93 @@ func (app *App) handleRegisterFolder(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RegisterFolderResponse{FolderID: folderID})
+}
+
+type UpdateFolderPathRequest struct {
+	FolderID  int    `json:"folder_id"`
+	LocalPath string `json:"local_path"`
+}
+
+// PUT /api/sync/folders -- rebind an existing folder_id (owned by the
+// authenticated device) to a different local_path on that same device.
+func (app *App) handleUpdateFolderPath(w http.ResponseWriter, r *http.Request) {
+	deviceID, err := getDeviceID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	var req UpdateFolderPathRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+	if req.LocalPath == "" {
+		http.Error(w, "local_path is required", http.StatusBadRequest)
+		return
+	}
+
+	var ownerDeviceID int
+	var virtualName string
+	err = app.db.QueryRow(
+		"SELECT device_id, virtual_name FROM sync_folders WHERE folder_id = $1",
+		req.FolderID,
+	).Scan(&ownerDeviceID, &virtualName)
+	if err == sql.ErrNoRows {
+		http.Error(w, "Folder not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		log.Printf("Failed to look up folder: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if ownerDeviceID != deviceID {
+		http.Error(w, "この端末が登録したフォルダではありません", http.StatusForbidden)
+		return
+	}
+
+	tx, err := app.db.Begin()
+	if err != nil {
+		log.Printf("Failed to begin transaction: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(
+		"UPDATE sync_folders SET local_path = $1 WHERE folder_id = $2",
+		req.LocalPath, req.FolderID,
+	); err != nil {
+		log.Printf("Failed to update folder path: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// This device's local_path for this virtual folder now points at a
+	// different physical directory, so its device_mapping rows describe a
+	// location that's no longer in use -- not "what this device currently
+	// has." Left in place, the next scan would read every path that's
+	// simply absent from the new location as a local deletion (see the
+	// "Local Deletion" loop in handleScan) and propagate that deletion to
+	// every other device. Clearing them makes the next scan treat the new
+	// location's contents as this device's fresh starting state instead.
+	if _, err := tx.Exec(`
+		DELETE FROM device_mapping
+		WHERE device_id = $1 AND file_id IN (SELECT file_id FROM master_mapping WHERE virtual_name = $2)
+	`, deviceID, virtualName); err != nil {
+		log.Printf("Failed to reset device_mapping for folder path change: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit folder path update: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(RegisterFolderResponse{FolderID: req.FolderID})
 }
 
 // POST /api/sync/scan
@@ -595,9 +763,46 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Failed to lock master_mapping during scan: %v", lookupErr)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
-		case existingIsDeleted || existingHash == localFile.FileHash:
-			// A deleted slot being reoccupied, or this device's content already matches
-			// the current master -- neither case is a conflict, just apply normally.
+		case existingIsDeleted:
+			// This path was deleted -- somewhere else, possibly by another device's
+			// explicit action. This device still physically having a copy locally
+			// does not un-delete it: whether this device "has the file" is irrelevant
+			// to a deletion that already happened elsewhere. Same policy as upload:
+			// never silently resurrect, save this device's content separately instead.
+			deviceName := "unknown"
+			_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
+
+			forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
+			if ferr != nil {
+				log.Printf("Failed to check for existing conflict fork: %v", ferr)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			if alreadyForked {
+				// Already recorded by an earlier scan/upload hitting this same
+				// still-unresolved conflict. Point this device's device_mapping row
+				// (written below) at the fork that actually represents its content --
+				// leaving fileID as the original, deleted path's ID here would record
+				// this device as having synced a file that master_mapping says is
+				// deleted, which it never physically un-deletes on its own.
+				fileID = forkFileID
+			} else {
+				newFileID, newRelPath, ferr := app.registerAsNewFile(tx, virtualName, relPath, deviceName, localFile.FileHash, localFile.FileSize, localFile.LastModifiedAt, localFile.IsDirectory)
+				if ferr != nil {
+					log.Printf("Failed to register post-deletion local file as new file: %v", ferr)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+				fileID = newFileID
+				_, _ = tx.Exec(`
+					INSERT INTO activity_logs (device_id, action_type, file_path, description)
+					VALUES ($1, 'CONFLICT', $2, $3)`,
+					deviceID, relPath, fmt.Sprintf("Local file %s still present after the path was deleted elsewhere; saved separately as %s", relPath, newRelPath),
+				)
+			}
+		case existingHash == localFile.FileHash:
+			// This device's content already matches the current (non-deleted) master
+			// exactly -- not a conflict, just apply normally.
 			_, err = tx.Exec(`
 				UPDATE master_mapping SET file_size=$1, file_hash=$2, last_modified_at=$3, is_deleted=FALSE, updated_at=CURRENT_TIMESTAMP
 				WHERE file_id=$4
@@ -606,6 +811,34 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to update master_mapping: %v", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
+			}
+
+			// A scan only compares metadata; it never touches physical NAS storage, so
+			// it must not claim NAS has this file on faith. But if nas_mapping is
+			// already missing a row for this path (seen after the pre-3-tier-mapping
+			// migration missed some rows -- confirmed 527 such orphans in production),
+			// this "content matches, nothing to do" branch is exactly the one place
+			// that can never repair it on its own: every future scan re-detects "NAS
+			// doesn't have this", regenerating an upload task forever even though
+			// nothing is actually wrong. Stat the real on-disk file (the physical
+			// confirmation the design requires) and backfill only if it's genuinely
+			// there with the expected size.
+			if !localFile.IsDirectory {
+				var nasHasRow bool
+				_ = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM nas_mapping WHERE file_id = $1)", fileID).Scan(&nasHasRow)
+				if !nasHasRow {
+					if physPath, perr := securePath(app.storagePath, virtualName, relPath); perr == nil {
+						if info, statErr := os.Stat(physPath); statErr == nil && !info.IsDir() && info.Size() == localFile.FileSize {
+							if _, ierr := tx.Exec(`
+								INSERT INTO nas_mapping (file_id, file_size, file_hash, last_modified_at)
+								VALUES ($1, $2, $3, $4)
+								ON CONFLICT (file_id) DO NOTHING
+							`, fileID, localFile.FileSize, localFile.FileHash, localFile.LastModifiedAt); ierr != nil {
+								log.Printf("Failed to backfill nas_mapping for file_id %d: %v", fileID, ierr)
+							}
+						}
+					}
+				}
 			}
 		default:
 			// Master already holds different, active content. Only an edit built on
@@ -623,35 +856,46 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 					return
 				}
-				_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id != $2", fileID, deviceID)
+				// Other devices' device_mapping rows are left untouched -- each
+				// device's row is written only by that device's own report. Their
+				// next scan naturally detects the new master hash differs from their
+				// last-known hash and generates its own download task; nothing here
+				// needs to reach into their row on their behalf.
 			} else {
 				deviceName := "unknown"
 				_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
 
-				alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
+				forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relPath, deviceName, localFile.FileHash)
 				if ferr != nil {
 					log.Printf("Failed to check for existing conflict fork: %v", ferr)
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 					return
 				}
+				var newRelPath string
 				if alreadyForked {
 					// Already recorded by an earlier scan hitting this same
-					// still-unresolved conflict -> nothing new to do this time.
-					continue
+					// still-unresolved conflict. Point this device's device_mapping row
+					// (written below, after this switch) at the fork that actually
+					// represents its content -- a bare `continue` here would skip that
+					// write entirely, leaving this device's local copy permanently
+					// unacknowledged and its download task for the original path
+					// regenerated forever.
+					fileID = forkFileID
+				} else {
+					newFileID, genRelPath, ferr := app.registerAsNewFile(tx, virtualName, relPath, deviceName, localFile.FileHash, localFile.FileSize, localFile.LastModifiedAt, localFile.IsDirectory)
+					if ferr != nil {
+						log.Printf("Failed to register conflicting local file as new file: %v", ferr)
+						http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+						return
+					}
+					fileID = newFileID
+					newRelPath = genRelPath
+					_, _ = tx.Exec(`
+						INSERT INTO activity_logs (device_id, action_type, file_path, description)
+						VALUES ($1, 'CONFLICT', $2, $3)`,
+						deviceID, relPath, fmt.Sprintf("Local file %s conflicted with the current version; registered separately as %s", relPath, newRelPath),
+					)
 				}
-
-				newFileID, newRelPath, ferr := app.registerAsNewFile(tx, virtualName, relPath, deviceName, localFile.FileHash, localFile.FileSize, localFile.LastModifiedAt, localFile.IsDirectory)
-				if ferr != nil {
-					log.Printf("Failed to register conflicting local file as new file: %v", ferr)
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-					return
-				}
-				fileID = newFileID
-				_, _ = tx.Exec(`
-					INSERT INTO activity_logs (device_id, action_type, file_path, description)
-					VALUES ($1, 'CONFLICT', $2, $3)`,
-					deviceID, relPath, fmt.Sprintf("Local file %s conflicted with the current version; registered separately as %s", relPath, newRelPath),
-				)
 			}
 		}
 
@@ -683,10 +927,20 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// Remove from PC Mapping
+			// Remove from PC Mapping for this device only. Other devices' device_mapping
+			// rows are deliberately left in place: that's the only record left of "this
+			// other device still physically has a local copy," which is exactly what
+			// the diff step below needs to generate a delete_local task for them. Each
+			// of those devices clears its own row itself, when it either confirms
+			// (via its own scan) that the file is gone locally, or completes its own
+			// delete_local task by calling this same endpoint with its own device ID.
 			_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id = $2", devFile.FileID, deviceID)
-			// Invalidate other devices
-			_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id != $2", devFile.FileID, deviceID)
+			// nas_mapping is deliberately NOT touched here: this loop only knows that
+			// one device's local copy is gone, reported by that device. It performs no
+			// physical action on the NAS's own storage, so it has no basis to assert
+			// what the NAS physically has. Only code that actually performs (and
+			// confirms) a physical operation on NAS storage -- handleDelete's
+			// os.RemoveAll, or handleUpload's confirmed write -- may write nas_mapping.
 
 			// This path no longer exists anywhere master-side, so any queued
 			// download/upload/move for it (on this device or any sibling device
@@ -706,6 +960,7 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	app.broadcaster.Publish(virtualName)
 
 	// 3. [Cycle Step 3] Compute Diffs: master vs nas_mapping vs device_mapping
 
@@ -1030,7 +1285,13 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = r.ParseMultipartForm(50 << 20) // 50MB
+	// Memory threshold before ParseMultipartForm spills further data to a disk
+	// temp file, not a cap on upload size. With PARALLEL_TASKS (16) concurrent
+	// uploads, a 50MB threshold let per-request memory usage multiply into the
+	// hundreds of MB, which was observed causing the server process to be
+	// killed under memory pressure mid-upload (surfacing to the client as
+	// "unexpected EOF"). 4MB keeps worst-case concurrent buffering bounded.
+	err = r.ParseMultipartForm(4 << 20) // 4MB
 	if err != nil {
 		log.Printf("Parse multipart form error: %v", err)
 		http.Error(w, "Bad Request: upload too large or malformed", http.StatusBadRequest)
@@ -1114,11 +1375,25 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if fileHash != "" {
 		var srcRelPath string
 		var srcVirtualName string
-		err = app.db.QueryRow("SELECT relative_path, virtual_name FROM master_mapping WHERE file_hash = $1 AND is_deleted = FALSE LIMIT 1", fileHash).Scan(&srcRelPath, &srcVirtualName)
+		// Exclude this exact path from the dedup source search. Without this, a
+		// re-upload of a path whose own on-disk file is missing or corrupt (while
+		// master_mapping still records its old, correct hash) matches itself,
+		// hard-links tempFilePath back to that same broken file, and the genuinely
+		// re-uploaded bytes are silently discarded without ever being written.
+		err = app.db.QueryRow(`
+			SELECT relative_path, virtual_name FROM master_mapping
+			WHERE file_hash = $1 AND is_deleted = FALSE
+			  AND NOT (virtual_name = $2 AND relative_path = $3)
+			LIMIT 1
+		`, fileHash, virtualName, relativePath).Scan(&srcRelPath, &srcVirtualName)
 		if err == nil {
 			srcFilePath, err := securePath(app.storagePath, srcVirtualName, srcRelPath)
 			if err == nil {
-				if _, err := os.Stat(srcFilePath); err == nil {
+				// Also verify the dedup source's actual on-disk size matches what
+				// this upload claims -- otherwise a different path that happens to
+				// share this hash in the database but is itself missing/corrupt
+				// would be trusted as a valid source too.
+				if info, err := os.Stat(srcFilePath); err == nil && !info.IsDir() && info.Size() == fileSize {
 					if err := os.MkdirAll(filepath.Dir(tempFilePath), 0755); err == nil {
 						// Try hard link first (instant, 0-space)
 						if err := os.Link(srcFilePath, tempFilePath); err == nil {
@@ -1171,12 +1446,13 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	// same file from another device can't be decided from a stale snapshot.
 	var fileID int
 	var existingHash string
+	var existingIsDeleted bool
 	lookupErr := tx.QueryRow(`
-		SELECT file_id, file_hash
+		SELECT file_id, file_hash, is_deleted
 		FROM master_mapping
 		WHERE virtual_name = $1 AND relative_path = $2
 		FOR UPDATE
-	`, virtualName, relativePath).Scan(&fileID, &existingHash)
+	`, virtualName, relativePath).Scan(&fileID, &existingHash, &existingIsDeleted)
 
 	outcome := "normal" // normal | no_change | conflict
 	newRelPath := ""    // only set when outcome == "conflict"
@@ -1200,6 +1476,63 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		os.Remove(tempFilePath)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	case existingIsDeleted:
+		// The path was deleted -- possibly moments ago, racing this very upload,
+		// by a device that had every right to delete it. Silently resurrecting
+		// the path here would let a stale, unaware upload overrule someone
+		// else's deletion. Same policy as a genuine conflict: never overwrite,
+		// never decide a winner -- save this device's content separately and
+		// leave the deletion exactly as it was.
+		deviceName := "unknown"
+		_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
+
+		forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
+		if ferr != nil {
+			log.Printf("Failed to check for existing conflict fork: %v", ferr)
+			os.Remove(tempFilePath)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if alreadyForked {
+			// The fork this device's content already matches was fully registered
+			// (master_mapping + nas_mapping) by whoever created it. The only thing
+			// still missing is this device's own acknowledgment -- without it, this
+			// device's next scan still sees itself as not having any of the fork's
+			// content and keeps re-detecting this exact "arrived after delete" case
+			// indefinitely.
+			//
+			// This is deliberately its own outcome, not plain "no_change": fileID and
+			// targetFilePath here still refer to the *original* (deleted) path, not
+			// the fork's, so the physical-placement step below must discard the
+			// uploaded temp file outright rather than reusing "no_change"'s
+			// stat-and-repair logic, which would wrongly compare against and
+			// potentially overwrite the original path's file with this content.
+			outcome = "no_change_forked"
+			if _, derr := tx.Exec(`
+				INSERT INTO device_mapping (device_id, file_id, last_synced_mtime, last_synced_size, last_synced_hash)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (device_id, file_id)
+				DO UPDATE SET last_synced_mtime = EXCLUDED.last_synced_mtime, last_synced_size = EXCLUDED.last_synced_size, last_synced_hash = EXCLUDED.last_synced_hash
+			`, deviceID, forkFileID, lastModifiedAt, fileSize, fileHash); derr != nil {
+				log.Printf("Failed to record device_mapping for existing fork (file_id %d): %v", forkFileID, derr)
+			}
+		} else {
+			outcome = "conflict"
+			newFileID, genRelPath, ferr := app.registerAsNewFile(tx, virtualName, relativePath, deviceName, fileHash, fileSize, lastModifiedAt, false)
+			if ferr != nil {
+				log.Printf("Failed to register post-deletion upload as new file: %v", ferr)
+				os.Remove(tempFilePath)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			fileID = newFileID
+			newRelPath = genRelPath
+			_, _ = tx.Exec(`
+				INSERT INTO activity_logs (device_id, action_type, file_path, description)
+				VALUES ($1, 'CONFLICT', $2, $3)`,
+				deviceID, relativePath, fmt.Sprintf("Upload of %s arrived after the path was deleted; saved separately as %s", relativePath, genRelPath),
+			)
+		}
 	case existingHash == fileHash:
 		// Identical content re-uploaded (e.g. a retry) -> nothing to change.
 		outcome = "no_change"
@@ -1228,7 +1561,7 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			deviceName := "unknown"
 			_ = tx.QueryRow("SELECT device_name FROM devices WHERE device_id = $1", deviceID).Scan(&deviceName)
 
-			alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
+			forkFileID, alreadyForked, ferr := app.findExistingConflictFork(tx, virtualName, relativePath, deviceName, fileHash)
 			if ferr != nil {
 				log.Printf("Failed to check for existing conflict fork: %v", ferr)
 				os.Remove(tempFilePath)
@@ -1237,9 +1570,28 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 			if alreadyForked {
 				// This exact content was already saved separately by an earlier attempt
-				// (e.g. a previous scan hitting the same still-unresolved conflict) ->
-				// nothing new to do this time.
-				outcome = "no_change"
+				// (e.g. a previous scan hitting the same still-unresolved conflict). The
+				// only thing still missing is this device's own acknowledgment of the
+				// fork it actually matches -- without it, this device's next scan still
+				// sees itself as not having any of the fork's content and keeps
+				// re-detecting this exact conflict indefinitely.
+				//
+				// This is deliberately its own outcome, not plain "no_change": fileID
+				// and targetFilePath here still refer to the *current active master*
+				// file this upload conflicted with, not the fork's, so the
+				// physical-placement step below must discard the uploaded temp file
+				// outright rather than reusing "no_change"'s stat-and-repair logic,
+				// which would wrongly compare against and potentially overwrite the
+				// active master file with this conflicting content.
+				outcome = "no_change_forked"
+				if _, derr := tx.Exec(`
+					INSERT INTO device_mapping (device_id, file_id, last_synced_mtime, last_synced_size, last_synced_hash)
+					VALUES ($1, $2, $3, $4, $5)
+					ON CONFLICT (device_id, file_id)
+					DO UPDATE SET last_synced_mtime = EXCLUDED.last_synced_mtime, last_synced_size = EXCLUDED.last_synced_size, last_synced_hash = EXCLUDED.last_synced_hash
+				`, deviceID, forkFileID, lastModifiedAt, fileSize, fileHash); derr != nil {
+					log.Printf("Failed to record device_mapping for existing fork (file_id %d): %v", forkFileID, derr)
+				}
 			} else {
 				outcome = "conflict"
 				newFileID, genRelPath, ferr := app.registerAsNewFile(tx, virtualName, relativePath, deviceName, fileHash, fileSize, lastModifiedAt, false)
@@ -1290,68 +1642,123 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// D. Delete device_mapping for ALL OTHER devices (they need to download the new version)
-		_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id != $2", fileID, deviceID)
+		// Other devices' device_mapping rows are left untouched -- same reasoning
+		// as the scan path: each device's row reflects only that device's own
+		// report, and their own next scan will detect the new master hash on its
+		// own via the normal diff comparison.
 	}
 
-	// E. Delete corresponding upload tasks from sync_tasks (handled either way: normal
-	// update, or registered separately as a conflict).
-	_, err = tx.Exec(`
-		DELETE FROM sync_tasks
-		WHERE device_id = $1 AND relative_path = $2 AND action_type IN ('upload_new', 'upload_overwrite')
-	`, deviceID, relativePath)
-	if err != nil {
-		log.Printf("Failed to delete upload task from sync_tasks: %v", err)
-	}
+	// Task cleanup for this upload is NOT done here by guessing which sync_tasks
+	// rows it must have satisfied. The queued-task-execution path already gets
+	// precise cleanup via POST /api/sync/tasks/complete?task_id=X (exact identity,
+	// no guessing); a direct real-time upload with no task behind it has nothing
+	// to clean up here in the first place. Either way, the next scan's diff
+	// against the now-updated master_mapping is the sole authority that decides
+	// which sync_tasks rows are still needed.
 
-	// F. This device just asserted its own state for this path, so any download task
-	// still queued for it here is now stale (based on a snapshot from before this
-	// upload) -> drop it.
-	_, err = tx.Exec(`
-		DELETE FROM sync_tasks
-		WHERE device_id = $1 AND relative_path = $2 AND action_type IN ('download_new', 'download_overwrite')
-	`, deviceID, relativePath)
-	if err != nil {
-		log.Printf("Failed to delete stale download task from sync_tasks: %v", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("Failed to commit upload transaction: %v", err)
-		os.Remove(tempFilePath)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	// Finalize physical placement of the uploaded bytes now that the outcome is committed.
+	// Finalize physical placement of the uploaded bytes BEFORE committing the
+	// transaction. master_mapping/nas_mapping must never claim NAS holds content
+	// that isn't actually on disk -- if placement fails, abort the whole request
+	// (defer tx.Rollback() handles it) so no metadata is left lying about bytes
+	// that were never written. The client will simply retry the upload.
 	switch outcome {
 	case "normal":
 		if err := os.Rename(tempFilePath, targetFilePath); err != nil {
 			if err := copyFile(tempFilePath, targetFilePath); err != nil {
 				log.Printf("Failed to place uploaded file at %s: %v", targetFilePath, err)
-			} else {
 				os.Remove(tempFilePath)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
 			}
+			os.Remove(tempFilePath)
 		}
 	case "conflict":
 		conflictFilePath, perr := securePath(app.storagePath, virtualName, newRelPath)
 		if perr != nil {
 			log.Printf("Failed to resolve conflict file path: %v", perr)
 			os.Remove(tempFilePath)
-		} else {
-			if err := os.MkdirAll(filepath.Dir(conflictFilePath), 0755); err != nil {
-				log.Printf("Failed to create parent directory for conflict file: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(conflictFilePath), 0755); err != nil {
+			log.Printf("Failed to create parent directory for conflict file: %v", err)
+			os.Remove(tempFilePath)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err := os.Rename(tempFilePath, conflictFilePath); err != nil {
+			if err := copyFile(tempFilePath, conflictFilePath); err != nil {
+				log.Printf("Failed to place conflicting file at %s: %v", conflictFilePath, err)
+				os.Remove(tempFilePath)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
 			}
-			if err := os.Rename(tempFilePath, conflictFilePath); err != nil {
-				if err := copyFile(tempFilePath, conflictFilePath); err != nil {
-					log.Printf("Failed to place conflicting file at %s: %v", conflictFilePath, err)
-				} else {
-					os.Remove(tempFilePath)
+			os.Remove(tempFilePath)
+		}
+	case "no_change_forked":
+		// fileID/targetFilePath here refer to the *other* path this upload conflicted
+		// with (the original deleted path, or the current active master), never to
+		// the fork itself -- the fork's own registration already placed its physical
+		// bytes when it was first created. Nothing here belongs at targetFilePath;
+		// just discard the redundant upload.
+		os.Remove(tempFilePath)
+	case "no_change":
+		// The uploaded content's hash already matches master_mapping, which normally
+		// means NAS's own physical copy is already correct and this upload has
+		// nothing to add. But that's only true if the on-disk file at targetFilePath
+		// genuinely matches -- if it doesn't (missing, or wrong size: seen in
+		// production as a 0-byte file left behind by some earlier failure, while
+		// master_mapping still recorded the real hash from the device that reported
+		// it), discarding these freshly-uploaded, already-hash-verified bytes would
+		// destroy the one copy that could repair it. Place them instead.
+		if info, statErr := os.Stat(targetFilePath); statErr == nil && !info.IsDir() && info.Size() == fileSize {
+			os.Remove(tempFilePath)
+		} else if err := os.Rename(tempFilePath, targetFilePath); err != nil {
+			if err := copyFile(tempFilePath, targetFilePath); err != nil {
+				// The repair genuinely failed -- master_mapping/nas_mapping must not
+				// be confirmed (via the commit below) as matching a file that was
+				// never actually placed. Aborting here (tx.Rollback() is deferred)
+				// leaves the task pending so the client retries, instead of the
+				// server silently reporting success while the physical file stays
+				// missing/corrupt.
+				log.Printf("Failed to repair missing/corrupt physical file at %s: %v", targetFilePath, err)
+				os.Remove(tempFilePath)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			os.Remove(tempFilePath)
+		}
+
+		// nas_mapping was supposed to be written whenever this path was first placed
+		// on disk. If it's missing anyway (seen after the pre-3-tier-mapping
+		// migration missed some rows -- confirmed 527 such orphans in production),
+		// this is exactly the one branch that could otherwise never repair it: every
+		// scan re-detects "NAS doesn't have this" and regenerates an upload_new task
+		// forever, and every retry landed right back here as another no-op. Stat the
+		// real on-disk file (the physical confirmation the design requires, now
+		// backed by the repair above if one was needed) and backfill only if it's
+		// genuinely there with the expected size.
+		var nasHasRow bool
+		_ = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM nas_mapping WHERE file_id = $1)", fileID).Scan(&nasHasRow)
+		if !nasHasRow {
+			if info, statErr := os.Stat(targetFilePath); statErr == nil && !info.IsDir() && info.Size() == fileSize {
+				if _, ierr := tx.Exec(`
+					INSERT INTO nas_mapping (file_id, file_size, file_hash, last_modified_at)
+					VALUES ($1, $2, $3, $4)
+					ON CONFLICT (file_id) DO NOTHING
+				`, fileID, fileSize, fileHash, lastModifiedAt); ierr != nil {
+					log.Printf("Failed to backfill nas_mapping for file_id %d: %v", fileID, ierr)
 				}
 			}
 		}
-	case "no_change":
-		os.Remove(tempFilePath)
 	}
+
+	if err := tx.Commit(); err != nil {
+		log.Printf("Failed to commit upload transaction: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	app.broadcaster.Publish(virtualName)
 
 	actionType := "CREATE"
 	if isUpdate {
@@ -1373,19 +1780,45 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 // clients never rename anything locally) -- without this check, each detection would
 // otherwise create yet another fork file, reproducing the same runaway growth this whole
 // redesign exists to prevent.
-func (app *App) findExistingConflictFork(tx *sql.Tx, virtualName, originalRelPath, deviceName, hash string) (bool, error) {
+// stripOwnForkSuffix removes a trailing " (from <deviceName>)" or
+// " (from <deviceName>) (<N>)" that this exact device already appended in a
+// previous fork registration. Without this, forking a path that is itself
+// already this device's own fork compounds the suffix indefinitely (e.g.
+// "file (from MacBook Air) (from MacBook Air) (3).py") instead of branching
+// from the true original name.
+func stripOwnForkSuffix(stem string, deviceName string) string {
+	ownSuffix := " (from " + deviceName + ")"
+	if idx := strings.LastIndex(stem, ownSuffix); idx != -1 && idx+len(ownSuffix) <= len(stem) {
+		rest := stem[idx+len(ownSuffix):]
+		if rest == "" || (strings.HasPrefix(rest, " (") && strings.HasSuffix(rest, ")")) {
+			return stem[:idx]
+		}
+	}
+	return stem
+}
+
+// Returns the fork's file_id when found (0 otherwise) -- callers need this to
+// point device_mapping/nas_mapping at the fork that actually represents this
+// device's content, instead of leaving them pointed at (or silently skipping)
+// the original, differently-owned path.
+func (app *App) findExistingConflictFork(tx *sql.Tx, virtualName, originalRelPath, deviceName, hash string) (int, bool, error) {
 	ext := filepath.Ext(originalRelPath)
 	stem := strings.TrimSuffix(originalRelPath, ext)
+	stem = stripOwnForkSuffix(stem, deviceName)
 	pattern := stem + " (from " + deviceName + "%" + ext
-	var count int
+	var forkFileID int
 	err := tx.QueryRow(`
-		SELECT count(*) FROM master_mapping
-		WHERE virtual_name = $1 AND relative_path LIKE $2 AND file_hash = $3
-	`, virtualName, pattern, hash).Scan(&count)
-	if err != nil {
-		return false, err
+		SELECT file_id FROM master_mapping
+		WHERE virtual_name = $1 AND relative_path LIKE $2 AND file_hash = $3 AND is_deleted = FALSE
+		LIMIT 1
+	`, virtualName, pattern, hash).Scan(&forkFileID)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
 	}
-	return count > 0, nil
+	if err != nil {
+		return 0, false, err
+	}
+	return forkFileID, true, nil
 }
 
 // registerAsNewFile records content that genuinely conflicted with the current state of
@@ -1396,6 +1829,7 @@ func (app *App) findExistingConflictFork(tx *sql.Tx, virtualName, originalRelPat
 func (app *App) registerAsNewFile(tx *sql.Tx, virtualName, originalRelPath string, deviceName string, hash string, size int64, mtime time.Time, isDir bool) (int, string, error) {
 	ext := filepath.Ext(originalRelPath)
 	stem := strings.TrimSuffix(originalRelPath, ext)
+	stem = stripOwnForkSuffix(stem, deviceName)
 
 	newRelPath := ""
 	for n := 0; ; n++ {
@@ -1519,14 +1953,10 @@ func (app *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to record device_mapping in handleDownload: %v", err)
 			}
 
-			// Delete corresponding download tasks from sync_tasks
-			_, err = tx.Exec(`
-				DELETE FROM sync_tasks 
-				WHERE device_id = $1 AND relative_path = $2 AND action_type IN ('download_new', 'download_overwrite')
-			`, deviceID, relativePath)
-			if err != nil {
-				log.Printf("Failed to delete download task from sync_tasks: %v", err)
-			}
+			// No pattern-matched sync_tasks cleanup here -- the client calls
+			// POST /api/sync/tasks/complete?task_id=X after a successful download,
+			// which removes exactly that task by its real identity. The next
+			// scan's diff against master_mapping is the fallback authority.
 
 			_ = tx.Commit()
 		}
@@ -1602,15 +2032,17 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 			// Device deleted local file -> Remove from device_mapping (synced)
 			_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id = $2", fileID, deviceID)
 
-			// Delete corresponding delete_local task
-			_, _ = tx.Exec(`
-				DELETE FROM sync_tasks
-				WHERE device_id = $1 AND relative_path = $2 AND action_type = 'delete_local'
-			`, deviceID, req.RelativePath)
-		} else {
-			// Web client logical delete -> Remove sync status for all devices to trigger sync
-			_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1", fileID)
+			// No pattern-matched delete_local cleanup here -- if this call came
+			// from executing a queued delete_local task, the client's own
+			// subsequent POST /api/sync/tasks/complete?task_id=X removes exactly
+			// that task. If it came from a real-time watcher notification with no
+			// task behind it, there's nothing to clean up. Either way, this
+			// device's device_mapping row for the path is already gone (just
+			// above), so the next scan's diff won't recreate the task.
 		}
+		// deviceID == 0 (web UI delete): no device_mapping rows to clear here --
+		// leaving every device's row in place is what lets the diff step generate
+		// a delete_local task for each device that still has a local copy.
 
 		// This path no longer exists anywhere master-side, so any queued
 		// download/upload/move for it (on this device or any sibling device
@@ -1623,12 +2055,8 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 			  AND folder_id IN (SELECT folder_id FROM sync_folders WHERE virtual_name = $2)
 		`, req.RelativePath, virtualName)
 	} else if err == sql.ErrNoRows {
-		if deviceID != 0 {
-			_, _ = tx.Exec(`
-				DELETE FROM sync_tasks 
-				WHERE device_id = $1 AND relative_path = $2 AND action_type = 'delete_local'
-			`, deviceID, req.RelativePath)
-		}
+		// Already gone from master_mapping entirely. No pattern-matched cleanup
+		// here either, for the same reason as above.
 		http.Error(w, "File not found or already deleted", http.StatusNotFound)
 		return
 	} else {
@@ -1637,21 +2065,27 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Physically remove the file (or directory and its contents) from NAS disk
+	// BEFORE committing. nas_mapping/master_mapping must never assert "NAS no
+	// longer has this" unless that's actually confirmed true on disk -- if the
+	// physical removal fails, abort the whole request so nothing is committed;
+	// the client will retry.
+	targetFilePath, perr := securePath(app.storagePath, virtualName, req.RelativePath)
+	if perr == nil {
+		if err := os.RemoveAll(targetFilePath); err != nil {
+			log.Printf("Failed to physically remove %s: %v", targetFilePath, err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit delete transaction: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
-	// Physically remove the file from NAS disk to free up space (or un-link hard link)
-	targetFilePath, err := securePath(app.storagePath, virtualName, req.RelativePath)
-	if err == nil {
-		if err := os.Remove(targetFilePath); err != nil && !os.IsNotExist(err) {
-			log.Printf("Failed to physically remove file %s: %v", targetFilePath, err)
-		} else {
-			log.Printf("[DELETE] Physically removed file from NAS: %s", targetFilePath)
-		}
-	}
+	app.broadcaster.Publish(virtualName)
+	log.Printf("[DELETE] Physically removed from NAS: %s", targetFilePath)
 
 	_, _ = app.db.Exec(`
 		INSERT INTO activity_logs (device_id, action_type, file_path, description)
@@ -1740,26 +2174,62 @@ func (app *App) handleMove(w http.ResponseWriter, r *http.Request) {
 
 	fileName := filepath.Base(req.ToPath)
 
+	// Only rename a row that's still active. If FromPath was deleted by something
+	// else in the meantime, this device's move has no live row to rename -- fall
+	// through to the ErrNoRows branch below, which creates a fresh row at ToPath
+	// instead of reviving whatever was deleted at FromPath.
 	err = tx.QueryRow(`
 		UPDATE master_mapping
 		SET relative_path = $1, file_name = $2, is_deleted = FALSE, updated_at = CURRENT_TIMESTAMP
-		WHERE virtual_name = $3 AND relative_path = $4
+		WHERE virtual_name = $3 AND relative_path = $4 AND is_deleted = FALSE
 		RETURNING file_id, file_size, file_hash, last_modified_at
 	`, req.ToPath, fileName, virtualName, req.FromPath).Scan(&fileID, &fileSize, &fileHash, &mtime)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// If not found in master, insert as new
-			// (Should not happen normally, but provides self-healing)
+			// If not found in master, insert as new (should not happen normally, but
+			// provides self-healing). The physical bytes should already be at
+			// targetFilePath from the rename/copy above -- verify what's actually
+			// there instead of trusting that assumption. Inserting size=0/hash=''
+			// placeholders here would assert wrong metadata about a file that may
+			// genuinely have real content, which is exactly the mismatch confirmed
+			// elsewhere in this codebase to cause an indefinite upload-retry loop
+			// once master_mapping and the real on-disk file disagree.
+			info, statErr := os.Stat(targetFilePath)
+			if statErr != nil || info.IsDir() {
+				log.Printf("Move self-heal found no physical file at %s: %v", targetFilePath, statErr)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			realHash, hashErr := hashFile(targetFilePath)
+			if hashErr != nil {
+				log.Printf("Failed to hash file during move self-heal at %s: %v", targetFilePath, hashErr)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 			err = tx.QueryRow(`
 				INSERT INTO master_mapping (virtual_name, relative_path, file_name, is_directory, file_size, file_hash, last_modified_at, is_deleted)
-				VALUES ($1, $2, $3, FALSE, 0, '', CURRENT_TIMESTAMP, FALSE)
+				VALUES ($1, $2, $3, FALSE, $4, $5, CURRENT_TIMESTAMP, FALSE)
 				ON CONFLICT (virtual_name, relative_path)
-				DO UPDATE SET is_deleted = FALSE, updated_at = CURRENT_TIMESTAMP
+				DO UPDATE SET is_deleted = FALSE, file_size = EXCLUDED.file_size, file_hash = EXCLUDED.file_hash, updated_at = CURRENT_TIMESTAMP
 				RETURNING file_id, file_size, file_hash, last_modified_at
-			`, virtualName, req.ToPath, fileName).Scan(&fileID, &fileSize, &fileHash, &mtime)
+			`, virtualName, req.ToPath, fileName, info.Size(), realHash).Scan(&fileID, &fileSize, &fileHash, &mtime)
+
+			if err == nil {
+				// This branch is the one place that inserts a fresh master_mapping row
+				// outside handleUpload/handleScan's own nas_mapping writes, so it must
+				// take responsibility for nas_mapping here too -- now genuinely backed
+				// by the stat+hash confirmation above, not a guess.
+				if _, nerr := tx.Exec(`
+					INSERT INTO nas_mapping (file_id, file_size, file_hash, last_modified_at)
+					VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+					ON CONFLICT (file_id) DO UPDATE SET file_size = EXCLUDED.file_size, file_hash = EXCLUDED.file_hash, last_modified_at = EXCLUDED.last_modified_at
+				`, fileID, info.Size(), realHash); nerr != nil {
+					log.Printf("Failed to write nas_mapping during move self-heal for file_id %d: %v", fileID, nerr)
+				}
+			}
 		}
-		
+
 		if err != nil {
 			log.Printf("DB error in handleMove mapping update: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -1780,23 +2250,20 @@ func (app *App) handleMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reset sync mappings for all other devices so they detect the rename/move
-	_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id != $2", fileID, deviceID)
+	// Other devices' device_mapping rows are left untouched -- same reasoning as
+	// the scan and upload paths: their own next scan detects the path/hash change
+	// on its own via the normal diff comparison.
 
-	// Delete corresponding move task from sync_tasks
-	_, err = tx.Exec(`
-		DELETE FROM sync_tasks 
-		WHERE device_id = $1 AND relative_path = $2 AND action_type = 'move'
-	`, deviceID, req.FromPath)
-	if err != nil {
-		log.Printf("Failed to delete move task from sync_tasks: %v", err)
-	}
+	// No pattern-matched move-task cleanup here -- the client's own
+	// POST /api/sync/tasks/complete?task_id=X removes exactly the task it just
+	// executed.
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit move transaction: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	app.broadcaster.Publish(virtualName)
 
 	_, _ = app.db.Exec(`
 		INSERT INTO activity_logs (device_id, action_type, file_path, description)
@@ -2093,6 +2560,48 @@ func (app *App) handleCompleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// GET /api/sync/events (Server-Sent Events)
+// Long-lived stream: whenever any device's action changes shared sync state,
+// every connected device receives a signal here and immediately re-scans,
+// instead of waiting for its own periodic poll timer. This is push
+// notification, not data transport -- the message content is unused by the
+// client; receiving anything at all just means "go scan now." The periodic
+// timer remains as a correctness fallback if this connection is ever down.
+func (app *App) handleEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	ch := app.broadcaster.Subscribe()
+	defer app.broadcaster.Unsubscribe(ch)
+
+	ctx := r.Context()
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case vn, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", vn)
+			flusher.Flush()
+		case <-ticker.C:
+			fmt.Fprintf(w, ": keepalive\n\n")
+			flusher.Flush()
+		}
+	}
 }
 
 // GET /api/sync/tasks?folder_id=X

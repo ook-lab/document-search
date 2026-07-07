@@ -27,6 +27,7 @@ interface SyncStatus {
   current_file: string;
   pending_tasks: number; // -1: 不明, 0以上: 残件数
   message: string;
+  debug_emit_error_count: number;
 }
 
 interface DeviceInfo {
@@ -121,6 +122,7 @@ let transfersListBodyEl: HTMLElement | null = null;
 
 // State Variables
 let appConfig: Config | null = null;
+let cachedNasFolders: WebFolderInfo[] = [];
 
 // SPA Tab Switching Logic
 function switchTab(activeTabId: string) {
@@ -296,6 +298,7 @@ async function renderMatrix() {
   try {
     const devices = await invoke<DeviceInfo[]>("get_nas_devices");
     const allFolders = await invoke<WebFolderInfo[]>("get_nas_folders");
+    cachedNasFolders = allFolders;
 
     // 1. Render Header (Devices)
     let headerHtml = `<th class="py-3 px-3 matrix-th text-xs w-1/3">Folders in SugarSync</th>`;
@@ -343,10 +346,11 @@ async function renderMatrix() {
             // Synced (Self) -> Bordered dropdown button [ 📁 ▽ ]
             bodyHtml += `
               <div class="flex items-center justify-center">
-                <div class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded sync-btn-self transition-all select-none">
+                <button onclick="window.openChangeFolderModal(${mapping.folder_id})"
+                  class="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded sync-btn-self transition-all select-none" title="同期フォルダを変更 (${escapeHtml(mapping.local_path)})">
                   <svg class="w-3.5 h-3.5 text-gray-500" width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
                   <span class="text-[8px] text-gray-400 font-bold">▼</span>
-                </div>
+                </button>
               </div>
             `;
           } else {
@@ -459,12 +463,29 @@ interface TransferTask {
   relative_path: string;
   status: string;
   progress: number;
+  direction: string;
 }
 
 let activeTransfers: TransferTask[] = [];
+let transferFilter: string = "all";
+let debugQueueInitCount: number = 0;
+let debugLastRawItemCount: number = 0;
+let debugEmitErrorCount: number = 0;
+
+function directionCategory(direction: string): string {
+  if (direction === "upload_new" || direction === "upload_overwrite") return "upload";
+  if (direction === "download_new" || direction === "download_overwrite") return "download";
+  if (direction === "delete_local" || direction === "delete_remote") return "delete";
+  if (direction === "move") return "move";
+  return "all";
+}
 
 function updateSyncUI(status: SyncStatus) {
   if (statusMessageEl) statusMessageEl.textContent = status.message;
+  if (typeof status.debug_emit_error_count === "number" && status.debug_emit_error_count !== debugEmitErrorCount) {
+    debugEmitErrorCount = status.debug_emit_error_count;
+    renderTransfersTable();
+  }
 
   if (progressContainerEl && pendingCountEl && currentFileEl) {
     if (status.is_syncing) {
@@ -496,11 +517,16 @@ function updateSyncUI(status: SyncStatus) {
 
 function renderTransfersTable() {
   if (!transfersListBodyEl) return;
-  if (activeTransfers.length === 0) {
+  const filtered = transferFilter === "all"
+    ? activeTransfers
+    : activeTransfers.filter(t => directionCategory(t.direction) === transferFilter);
+
+  if (filtered.length === 0) {
     transfersListBodyEl.innerHTML = `
       <tr>
         <td colspan="3" style="padding: 24px; text-align: center; color: #9CA3AF; font-style: italic;">
           現在アクティブなファイル転送はありません。
+          <br/>[debug] queue-init received: ${debugQueueInitCount} times / activeTransfers total: ${activeTransfers.length} / last raw items: ${debugLastRawItemCount} / emit errors: ${debugEmitErrorCount}
         </td>
       </tr>
     `;
@@ -508,7 +534,7 @@ function renderTransfersTable() {
   }
 
   // Draw in the natural queue order (so we see tasks pending and being consumed sequentially)
-  const html = activeTransfers.map(t => {
+  const html = filtered.map(t => {
     let statusColor = "#9CA3AF"; // default grey for Pending
     if (t.status === "完了") {
       statusColor = "#10B981"; // green
@@ -605,6 +631,31 @@ function handleConfigLoaded(config: Config) {
   }
 };
 
+(window as any).openChangeFolderModal = async (folderId: number) => {
+  const folder = cachedNasFolders.find(f => f.folder_id === folderId);
+  if (!folder) return;
+  const virtualName = folder.virtual_name;
+  const currentLocalPath = folder.local_path;
+
+  try {
+    const selected = await invoke<string | null>("select_folder", { initialDir: currentLocalPath });
+    if (!selected || selected === currentLocalPath) return;
+
+    const ok = confirm(
+      `仮想フォルダ「${virtualName}」の同期先フォルダを変更します。\n\n` +
+      `変更前: ${currentLocalPath}\n変更後: ${selected}\n\n` +
+      `このPCでの同期履歴はリセットされ、変更後のフォルダの中身を基準に同期し直します。よろしいですか？`
+    );
+    if (!ok) return;
+
+    const config = await invoke<Config>("update_folder_path", { folderId, localPath: selected });
+    handleConfigLoaded(config);
+    alert(`同期フォルダを変更しました。`);
+  } catch (err: any) {
+    alert(`フォルダの変更に失敗しました: ${err}`);
+  }
+};
+
 // Escape HTML Helper
 function escapeHtml(str: string): string {
   return str
@@ -697,6 +748,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   tabSharedByMeEl?.addEventListener("click", (e) => { e.preventDefault(); switchTab("tab-shared-by-me"); });
   tabFileTransfersEl?.addEventListener("click", (e) => { e.preventDefault(); switchTab("tab-file-transfers"); });
   tabDeletedItemsEl?.addEventListener("click", (e) => { e.preventDefault(); switchTab("tab-deleted-items"); });
+
+  document.querySelectorAll<HTMLButtonElement>(".transfer-subtab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      transferFilter = btn.dataset.filter || "all";
+      document.querySelectorAll<HTMLButtonElement>(".transfer-subtab").forEach(b => {
+        const active = b === btn;
+        b.style.color = active ? "#4B5A6A" : "#9CA3AF";
+        b.style.borderBottomColor = active ? "#4B5A6A" : "transparent";
+      });
+      renderTransfersTable();
+    });
+  });
 
   // 2. Inner Search Listeners
   searchBtnEl?.addEventListener("click", executeSearch);
@@ -812,7 +875,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   modalBrowseBtnEl?.addEventListener("click", async () => {
     if (!modalLocalPathEl) return;
     try {
-      const selected = await invoke<string | null>("select_folder");
+      const selected = await invoke<string | null>("select_folder", { initialDir: modalLocalPathEl.value.trim() });
       if (selected) {
         modalLocalPathEl.value = selected;
       }
@@ -857,7 +920,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   newLocalBrowseBtnEl?.addEventListener("click", async () => {
     if (!newLocalPathEl) return;
     try {
-      const selected = await invoke<string | null>("select_folder");
+      const selected = await invoke<string | null>("select_folder", { initialDir: newLocalPathEl.value.trim() });
       if (selected) {
         newLocalPathEl.value = selected;
       }
@@ -926,24 +989,48 @@ window.addEventListener("DOMContentLoaded", async () => {
     items: QueueItem[];
   }
 
-  await listen<QueueInitPayload>("sync-queue-init", (event) => {
-    console.log("sync-queue-init received payload:", event.payload);
-    if (!event || !event.payload || !Array.isArray(event.payload.items)) {
-      console.warn("sync-queue-init received invalid payload:", event);
-      return;
-    }
-    activeTransfers = event.payload.items.map(item => {
+  function mapQueueItems(items: QueueItem[]): TransferTask[] {
+    return items.map(item => {
       if (!item) return null;
       const relPath = item.relative_path || "";
       return {
         fileName: item.file_name || relPath.split('/').pop() || "Unknown",
         relative_path: relPath,
         status: translateDirection(item.direction || ""),
-        progress: 0
+        progress: 0,
+        direction: item.direction || ""
       };
     }).filter((x): x is TransferTask => x !== null);
+  }
+
+  await listen<QueueInitPayload>("sync-queue-init", (event) => {
+    console.log("sync-queue-init received payload:", event.payload);
+    debugQueueInitCount++;
+    debugLastRawItemCount = (event && event.payload && Array.isArray(event.payload.items)) ? event.payload.items.length : -1;
+    if (!event || !event.payload || !Array.isArray(event.payload.items)) {
+      console.warn("sync-queue-init received invalid payload:", event);
+      renderTransfersTable();
+      return;
+    }
+    activeTransfers = mapQueueItems(event.payload.items);
     renderTransfersTable();
   });
+
+  // The backend may have already emitted "sync-queue-init" before the listener
+  // above finished registering (Tauri drops events emitted with no listener
+  // attached yet), which left the transfer list empty forever even though
+  // pending_tasks kept changing. Pulling the current queue directly here is
+  // race-free: by this point in the script, listeners are already registered,
+  // so any push that arrives after this call is layered on top correctly.
+  try {
+    const currentQueue = await invoke<QueueItem[]>("get_current_queue");
+    if (Array.isArray(currentQueue) && currentQueue.length > 0) {
+      activeTransfers = mapQueueItems(currentQueue);
+      renderTransfersTable();
+    }
+  } catch (e) {
+    console.error("get_current_queue failed:", e);
+  }
 
 
   await listen<QueueUpdate>("sync-queue-update", (event) => {
