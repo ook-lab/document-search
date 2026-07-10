@@ -72,7 +72,9 @@ class StageKEmbedding:
                 self.db.client.table('10_ix_search_index').delete().eq('doc_id', doc_id).execute()
                 logger.info(f"[Embedding] 既存チャンク削除: doc_id={doc_id}")
             except Exception as e:
-                logger.warning(f"[Embedding] 既存チャンク削除エラー（継続）: {e}")
+                # 削除失敗を無視して進むと重複や不整合の原因になるためフォールバック禁止
+                logger.error(f"[Embedding] 既存チャンク削除エラー: {e}")
+                raise RuntimeError(f"Stage K chunk deletion failed: {e}") from e
 
         saved_count  = 0
         failed_count = 0

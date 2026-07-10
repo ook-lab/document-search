@@ -209,8 +209,11 @@ class B90ResultMerger:
             return str(merged_path)
 
         except Exception as e:
+            # マージ失敗を握り潰して（最初のファイルのパスだけを返す等で）成功を
+            # 偽装することは禁止（フォールバック絶対禁止）。
+            # 不完全な結果が後続のステージに流れるのを防ぐため、例外を再送出する。
             logger.error(f"[B-90] purged PDF マージ失敗: {e}", exc_info=True)
-            return purged_sources[0]['path'] if purged_sources else ''
+            raise RuntimeError(f"B90 PDF merge failed: {e}") from e
 
     # ------------------------------------------------------------------
     # 正規化ヘルパー

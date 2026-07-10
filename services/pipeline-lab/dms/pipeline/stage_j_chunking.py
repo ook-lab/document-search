@@ -76,8 +76,9 @@ class StageJChunking:
             return chunks
 
         except Exception as e:
+            # チャンク化失敗を空リストで握り潰すのはフォールバック絶対禁止に違反
             logger.error(f"[Chunking エラー] チャンク化失敗: {e}", exc_info=True)
-            return []
+            raise RuntimeError(f"Stage J chunking failed: {e}") from e
 
     def process(
         self,

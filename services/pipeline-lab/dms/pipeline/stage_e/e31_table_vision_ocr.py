@@ -246,15 +246,10 @@ class E31TableVisionOcr:
             return ocr_result
 
         except Exception as e:
-            logger.error(f"[E-31] セル OCR 失敗 → 空テキストで続行: {e}", exc_info=True)
-            fallback = self._fallback_result(cells)
-
-            # ★チェーン: エラー時もE-32を呼ぶ
-            if self.next_stage and struct_result:
-                logger.info("[E-31] → エラー後もE-32を呼び出します")
-                return self.next_stage.merge(struct_result, fallback)
-
-            return fallback
+            # エラー時に空テキストを詰めて success=True で返す（偽装 success）のは
+            # フォールバック絶対禁止ルールに違反するため、例外を再送出する。
+            logger.error(f"[E-31] セル OCR 失敗: {e}", exc_info=True)
+            raise RuntimeError(f"E31 Cell OCR failed: {e}") from e
 
     def _fallback_result(
         self,
