@@ -80,3 +80,13 @@ services/gmail-service/auth/gmail_cleaner_token.json
 
 # Scratch work directory (contains API keys, conversation logs, etc.)
 scratch/
+
+# 一時作業ディレクトリ（2026-07整理で追跡解除）
+.tmp-di*/
+.tmp-gcloud/
+.tmp-venv-di/
+debug_output/
+diff.txt
+output.txt
+pdf_text_utf8.txt
+recovered_history.md
