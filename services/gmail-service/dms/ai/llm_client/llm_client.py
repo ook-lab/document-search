@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 import mimetypes
 
+import httpx
 import google.generativeai as genai
 from anthropic import Anthropic, RateLimitError
 from openai import OpenAI
@@ -42,7 +43,10 @@ class LLMClient:
 
         # OpenAI設定
         if self.openai_api_key:
-            self.openai_client = OpenAI(api_key=self.openai_api_key)
+            self.openai_client = OpenAI(
+                api_key=self.openai_api_key,
+                http_client=httpx.Client(timeout=60.0),
+            )
         else:
             self.openai_client = None
     
@@ -106,7 +110,8 @@ class LLMClient:
                     max_output_tokens=max_tokens,
                     temperature=temperature
                 ),
-                safety_settings=safety_settings
+                safety_settings=safety_settings,
+                request_options={"timeout": 120},
             )
 
             # レスポンスの検証
@@ -254,7 +259,8 @@ class LLMClient:
             response = model.generate_content(
                 content_parts,
                 generation_config=generation_config,
-                safety_settings=safety_settings
+                safety_settings=safety_settings,
+                request_options={"timeout": 120},
             )
 
             # レスポンスの検証

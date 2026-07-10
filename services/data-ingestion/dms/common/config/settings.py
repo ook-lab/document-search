@@ -81,14 +81,14 @@ class Settings:
     UNIFIED_SEARCH_RPC_MATCH_COUNT: int = int(os.getenv("UNIFIED_SEARCH_RPC_MATCH_COUNT", "80"))
 
     # データディレクトリ
-    DATA_DIR: Path = Path("/tmp/data")
-    TEMP_DIR: Path = Path("/tmp/temp")
+    DATA_DIR: Path = Path("/tmp/data") if os.name != 'nt' else (PROJECT_ROOT / "tmp" / "data")
+    TEMP_DIR: Path = Path("/tmp/temp") if os.name != 'nt' else (PROJECT_ROOT / "tmp" / "temp")
     SCHEMAS_DIR: Path = PROJECT_ROOT / "frontend" / "schemas"
     
     def __init__(self):
         """初期化時にディレクトリを作成"""
         self.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.TEMP_DIR.mkdir(exist_ok=True)
+        self.TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # シングルトンインスタンス

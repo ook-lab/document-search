@@ -38,16 +38,41 @@ class GoogleDriveConnector:
     def __init__(self):
         self.service = self._authenticate()
         # logger.info("Google Driveコネクタ初期化完了")
-    
+
+    def _apply_delegation(self, creds):
+        """GMAIL_USER_EMAIL が設定されていれば domain-wide delegation でユーザーを impersonate。"""
+        delegated_user = (os.environ.get('GMAIL_USER_EMAIL') or '').strip()
+        if not delegated_user:
+            return creds
+        if hasattr(creds, 'with_subject'):
+            logger.info(f"Domain-wide delegation enabled for: {delegated_user}")
+            return creds.with_subject(delegated_user)
+        logger.warning('GMAIL_USER_EMAIL is set but credentials do not support with_subject().')
+        return creds
+
+    def _credentials_from_env_value(self):
+        """CREDENTIALS_PATH がファイルパスまたはJSON文字列（Secret Manager由来）の両方に対応。"""
+        if not CREDENTIALS_PATH:
+            return None
+        import json as _json
+        raw = CREDENTIALS_PATH.strip()
+        if os.path.exists(raw):
+            return service_account.Credentials.from_service_account_file(raw, scopes=SCOPES)
+        if raw.startswith('{'):
+            info = _json.loads(raw)
+            return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        return None
+
     def _authenticate(self):
-        """サービスアカウント認証（環境変数ファイル -> ADC -> Streamlit Secrets の順で試行）"""
-        # 1. 環境変数 (ローカル開発用: JSONファイルパス指定)
-        if CREDENTIALS_PATH and os.path.exists(CREDENTIALS_PATH):
+        """サービスアカウント認証（環境変数ファイル/JSON -> ADC -> Streamlit Secrets の順で試行）"""
+        # 1. 環境変数 (ローカル: JSONファイルパス / Cloud Run: Secret Manager JSON本文)
+        if CREDENTIALS_PATH:
             try:
-                creds = service_account.Credentials.from_service_account_file(
-                    CREDENTIALS_PATH, scopes=SCOPES
-                )
-                logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH}")
+                creds = self._credentials_from_env_value()
+                if creds is None:
+                    raise FileNotFoundError(f"GOOGLE_APPLICATION_CREDENTIALS が有効なファイルパスまたはJSON文字列ではありません: {CREDENTIALS_PATH[:80]}")
+                creds = self._apply_delegation(creds)
+                logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH[:80]}")
                 return build('drive', 'v3', credentials=creds)
             except Exception as e:
                 logger.warning(f"環境変数からの認証失敗: {e}")
@@ -55,8 +80,8 @@ class GoogleDriveConnector:
         # 2. Application Default Credentials (ADC) (★Cloud Run用: これを追加！★)
         try:
             import google.auth
-            # Cloud Run等の環境では自動的に認証情報を取得（ファイル不要）
             creds, project = google.auth.default(scopes=SCOPES)
+            creds = self._apply_delegation(creds)
             logger.info("ADC (Application Default Credentials) で認証成功")
             return build('drive', 'v3', credentials=creds)
         except Exception as e:
