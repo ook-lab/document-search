@@ -869,7 +869,12 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 			// there with the expected size.
 			if !localFile.IsDirectory {
 				var nasHasRow bool
-				_ = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM nas_mapping WHERE file_id = $1)", fileID).Scan(&nasHasRow)
+				if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM nas_mapping WHERE file_id = $1)", fileID).Scan(&nasHasRow); err != nil {
+					// A failed EXISTS check must not be silently treated as 'row is missing' (which forces a conflict or backfill).
+					log.Printf("Failed to check nas_mapping existence: %v", err)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
 				if !nasHasRow {
 					if physPath, perr := securePath(app.storagePath, virtualName, relPath); perr == nil {
 						if info, statErr := os.Stat(physPath); statErr == nil && !info.IsDir() && info.Size() == localFile.FileSize {
@@ -982,7 +987,12 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 			// of those devices clears its own row itself, when it either confirms
 			// (via its own scan) that the file is gone locally, or completes its own
 			// delete_local task by calling this same endpoint with its own device ID.
-			_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id = $2", devFile.FileID, deviceID)
+			if _, err := tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id = $2", devFile.FileID, deviceID); err != nil {
+				// Failing to delete leaves a doomed transaction; committing it later will fail.
+				log.Printf("Failed to delete from device_mapping: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 			// nas_mapping is deliberately NOT touched here: this loop only knows that
 			// one device's local copy is gone, reported by that device. It performs no
 			// physical action on the NAS's own storage, so it has no basis to assert
@@ -994,12 +1004,17 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 			// download/upload/move for it (on this device or any sibling device
 			// sharing this virtual folder) is now stale -- drop it immediately
 			// rather than waiting for some future scan to notice.
-			_, _ = tx.Exec(`
+			if _, err := tx.Exec(`
 				DELETE FROM sync_tasks
 				WHERE action_type IN ('download_new', 'download_overwrite', 'upload_new', 'upload_overwrite', 'move')
 				  AND (relative_path = $1 OR to_path = $1)
 				  AND folder_id IN (SELECT folder_id FROM sync_folders WHERE virtual_name = $2)
-			`, relPath, virtualName)
+			`, relPath, virtualName); err != nil {
+				// Failing to delete leaves a doomed transaction; committing it later will fail.
+				log.Printf("Failed to delete stale sync_tasks: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
@@ -1299,7 +1314,12 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 		rowsTasks.Close()
 
 		for _, ot := range obsoleteTasks {
-			_, _ = txTasks.Exec("DELETE FROM sync_tasks WHERE task_id = $1", ot.taskID)
+			if _, err := txTasks.Exec("DELETE FROM sync_tasks WHERE task_id = $1", ot.taskID); err != nil {
+				// Failing to delete leaves a doomed transaction; committing it later will fail.
+				log.Printf("Failed to delete obsolete sync_task (task_id: %d): %v", ot.taskID, err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 		}
 	}
 
@@ -1600,7 +1620,13 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		outcome = "no_change"
 	default:
 		var deviceKnownHash string
-		_ = tx.QueryRow(`SELECT last_synced_hash FROM device_mapping WHERE device_id = $1 AND file_id = $2`, deviceID, fileID).Scan(&deviceKnownHash)
+		if err := tx.QueryRow(`SELECT last_synced_hash FROM device_mapping WHERE device_id = $1 AND file_id = $2`, deviceID, fileID).Scan(&deviceKnownHash); err != nil && err != sql.ErrNoRows {
+			// A real DB error shouldn't be silently treated as "device doesn't know this file" (which forces a conflict branch).
+			log.Printf("Failed to look up device's last synced hash: %v", err)
+			os.Remove(tempFilePath)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 
 		if deviceKnownHash == existingHash {
 			// This device's edit is a direct descendant of the current master -> normal update.
@@ -1794,7 +1820,12 @@ func (app *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		// backed by the repair above if one was needed) and backfill only if it's
 		// genuinely there with the expected size.
 		var nasHasRow bool
-		_ = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM nas_mapping WHERE file_id = $1)", fileID).Scan(&nasHasRow)
+		if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM nas_mapping WHERE file_id = $1)", fileID).Scan(&nasHasRow); err != nil {
+			// A failed EXISTS check must not be silently treated as 'row is missing' (which forces a conflict or backfill).
+			log.Printf("Failed to check nas_mapping existence: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 		if !nasHasRow {
 			if info, statErr := os.Stat(targetFilePath); statErr == nil && !info.IsDir() && info.Size() == fileSize {
 				if _, ierr := tx.Exec(`
@@ -1894,7 +1925,10 @@ func (app *App) registerAsNewFile(tx *sql.Tx, virtualName, originalRelPath strin
 		}
 		candidate := stem + suffix + ext
 		var exists int
-		_ = tx.QueryRow("SELECT 1 FROM master_mapping WHERE virtual_name = $1 AND relative_path = $2", virtualName, candidate).Scan(&exists)
+		if err := tx.QueryRow("SELECT 1 FROM master_mapping WHERE virtual_name = $1 AND relative_path = $2", virtualName, candidate).Scan(&exists); err != nil && err != sql.ErrNoRows {
+			// A real DB error shouldn't be silently treated as "fork name is available".
+			return 0, "", fmt.Errorf("failed to check fork name availability: %w", err)
+		}
 		if exists == 0 {
 			newRelPath = candidate
 			break
@@ -2118,11 +2152,20 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 	if err == nil {
 		// Remove from nas_mapping (NAS no longer physically has it)
-		_, _ = tx.Exec("DELETE FROM nas_mapping WHERE file_id = $1", fileID)
+		if _, err := tx.Exec("DELETE FROM nas_mapping WHERE file_id = $1", fileID); err != nil {
+			// Failing to delete leaves a doomed transaction; committing it later will fail.
+			log.Printf("Failed to delete from nas_mapping: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 
 		if deviceID != 0 {
 			// Device deleted local file -> Remove from device_mapping (synced)
-			_, _ = tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id = $2", fileID, deviceID)
+			if _, err := tx.Exec("DELETE FROM device_mapping WHERE file_id = $1 AND device_id = $2", fileID, deviceID); err != nil {
+				log.Printf("Failed to delete from device_mapping: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
 
 			// No pattern-matched delete_local cleanup here -- if this call came
 			// from executing a queued delete_local task, the client's own
@@ -2140,12 +2183,16 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		// download/upload/move for it (on this device or any sibling device
 		// sharing this virtual folder) is now stale -- drop it immediately
 		// rather than waiting for some future scan to notice.
-		_, _ = tx.Exec(`
+		if _, err := tx.Exec(`
 			DELETE FROM sync_tasks
 			WHERE action_type IN ('download_new', 'download_overwrite', 'upload_new', 'upload_overwrite', 'move')
 			  AND (relative_path = $1 OR to_path = $1)
 			  AND folder_id IN (SELECT folder_id FROM sync_folders WHERE virtual_name = $2)
-		`, req.RelativePath, virtualName)
+		`, req.RelativePath, virtualName); err != nil {
+			log.Printf("Failed to delete stale sync_tasks: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 	} else if err == sql.ErrNoRows {
 		// Already gone from master_mapping entirely. No pattern-matched cleanup
 		// here either, for the same reason as above.
@@ -2330,6 +2377,8 @@ func (app *App) handleMove(w http.ResponseWriter, r *http.Request) {
 					ON CONFLICT (file_id) DO UPDATE SET file_size = EXCLUDED.file_size, file_hash = EXCLUDED.file_hash, last_modified_at = EXCLUDED.last_modified_at
 				`, fileID, info.Size(), realHash); nerr != nil {
 					log.Printf("Failed to write nas_mapping during move self-heal for file_id %d: %v", fileID, nerr)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
 				}
 			}
 		}
