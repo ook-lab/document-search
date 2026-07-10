@@ -1,4 +1,0 @@
-playwright
-supabase
-python-dotenv
-google-generativeai
