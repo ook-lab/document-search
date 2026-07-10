@@ -138,6 +138,29 @@ async fn stream_file_part(path: &Path, file_name: String) -> io::Result<reqwest:
     Ok(reqwest::multipart::Part::stream_with_length(body, len).file_name(file_name))
 }
 
+// --- Helper: Local Quarantine (soft delete) ---
+//
+// Moves a local file or directory into a per-deletion, timestamped folder
+// under <local_dir>/.sugarsync-trash instead of permanently removing it, so a
+// local deletion -- whether genuinely intended or triggered by a bug in the
+// sync logic (as happened once already in this system, destroying tens of
+// thousands of files with no way back) -- stays recoverable instead of
+// vanishing instantly. ".sugarsync-trash" is in default_exclude_patterns so
+// it's never itself picked up as sync content.
+fn quarantine_local_path(local_dir: &Path, relative_path: &str, source: &Path) -> io::Result<()> {
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let trash_path = to_extended_path(
+        local_dir.join(".sugarsync-trash").join(nanos.to_string()).join(relative_path)
+    );
+    if let Some(parent) = trash_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::rename(source, &trash_path)
+}
+
 // --- Helper: SHA-256 Hash ---
 
 fn sha256_hex(data: &[u8]) -> String {
@@ -198,11 +221,23 @@ pub fn load_hash_cache(app: &AppHandle) -> HashMap<String, CacheEntry> {
 }
 
 pub fn save_hash_cache(app: &AppHandle, cache: &HashMap<String, CacheEntry>) {
+    // This cache is purely a hashing-cost optimization -- if it fails to
+    // persist, correctness is unaffected (every file's hash just gets
+    // recomputed from scratch next scan instead of read from cache), so this
+    // deliberately doesn't propagate the error to callers. Logged so a
+    // persistently-failing cache write (which would mean every scan pays full
+    // rehashing cost) is at least diagnosable instead of invisible.
     let path = get_cache_path(app);
-    if let Ok(content) = serde_json::to_string(cache) {
-        if let Ok(mut file) = File::create(path) {
-            let _ = file.write_all(content.as_bytes());
-        }
+    match serde_json::to_string(cache) {
+        Ok(content) => match File::create(&path) {
+            Ok(mut file) => {
+                if let Err(e) = file.write_all(content.as_bytes()) {
+                    eprintln!("Failed to write hash cache to {:?}: {}", path, e);
+                }
+            }
+            Err(e) => eprintln!("Failed to create hash cache file {:?}: {}", path, e),
+        },
+        Err(e) => eprintln!("Failed to serialize hash cache: {}", e),
     }
 }
 
@@ -387,12 +422,36 @@ fn scan_local_directory(_app: &AppHandle, dir: &Path, exclude_patterns: &[String
     // and current_dir stay consistently extended together, so strip_prefix
     // below keeps producing the same plain relative paths as before.
     let dir = to_extended_path(dir);
+    // The sync root itself must be positively confirmed as an accessible
+    // directory before walking it -- Path::is_dir() swallows any error from
+    // fs::metadata (locked, transient AV/OneDrive interference, some quirk of
+    // the \\?\-prefixed path) and returns `false` indistinguishably from
+    // "genuinely not a directory". That silently produced an empty file list
+    // that looked like a normal, successful scan of zero files: the server took
+    // it at face value and marked everything previously known for this device
+    // as locally deleted, propagating that deletion to every other synced
+    // device. An error here instead lands in do_full_scan_all's existing
+    // "skip this cycle" path, which sends nothing rather than a false report.
+    match fs::metadata(&dir) {
+        Ok(m) if m.is_dir() => {}
+        Ok(_) => return Err(io::Error::new(io::ErrorKind::Other, "sync root exists but is not a directory")),
+        Err(e) => return Err(e),
+    }
     scan_recursive(&dir, &dir, &mut files, exclude_patterns, cache)?;
     Ok(files)
 }
 
 fn scan_recursive(base_dir: &Path, current_dir: &Path, list: &mut Vec<FileMetadata>, exclude_patterns: &[String], cache: &mut HashMap<String, CacheEntry>) -> io::Result<()> {
-    if !current_dir.is_dir() { return Ok(()); }
+    // Subdirectories encountered mid-walk are different from the sync root
+    // above: we already saw this one via the parent's read_dir, so by the time
+    // we get here it either still exists (normal) or was legitimately removed
+    // concurrently (a narrow, safe "nothing to do here" -- unlike the root,
+    // skipping one already-enumerated subdirectory can't fabricate a false
+    // "everything is gone" report for the whole scan).
+    match fs::metadata(current_dir) {
+        Ok(m) if m.is_dir() => {}
+        _ => return Ok(()),
+    }
     for entry in fs::read_dir(current_dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -408,7 +467,14 @@ fn scan_recursive(base_dir: &Path, current_dir: &Path, list: &mut Vec<FileMetada
 
         if path.is_dir() {
             let metadata = entry.metadata()?;
-            let modified_time = metadata.modified().unwrap_or(SystemTime::now());
+            // If the real mtime can't be read, don't substitute "now" -- that
+            // fabricates a fact about this entry (used in conflict-resolution
+            // comparisons server-side) instead of reporting what's actually known.
+            // Skip it this cycle; the next scan retries once it's readable.
+            let modified_time = match metadata.modified() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
             let datetime: chrono::DateTime<chrono::Utc> = modified_time.into();
             list.push(FileMetadata {
                 relative_path: relative_path.clone(),
@@ -422,7 +488,14 @@ fn scan_recursive(base_dir: &Path, current_dir: &Path, list: &mut Vec<FileMetada
         } else {
             let metadata = entry.metadata()?;
             let size = metadata.len() as i64;
-            let modified_time = metadata.modified().unwrap_or(SystemTime::now());
+            // Same reasoning as the directory case above: a fabricated "now" mtime
+            // could make stale content look like the newest version in a
+            // hash-mismatch conflict, silently letting stale bytes win over
+            // genuinely newer content from another device. Skip rather than guess.
+            let modified_time = match metadata.modified() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
             let datetime: chrono::DateTime<chrono::Utc> = modified_time.into();
             let mtime_ns = match modified_time.duration_since(SystemTime::UNIX_EPOCH) {
                 Ok(d) => d.as_nanos() as i64,
@@ -550,13 +623,38 @@ async fn handle_changed_paths(app: &AppHandle, paths: &[PathBuf]) {
 
             if is_excluded(&name, &rel_path, &config.exclude_patterns) { continue; }
 
+            // path.exists()/is_file() swallow any underlying error into `false`,
+            // indistinguishable from "genuinely gone" -- treating "couldn't confirm"
+            // as "confirmed deleted" here would report a real deletion to the server
+            // on the strength of a transient lock or access error, exactly the
+            // mistake that caused mass data loss elsewhere in this codebase. Only
+            // fs::metadata's explicit NotFound counts as "gone"; anything else
+            // (locked, permission error, or some other transient failure) is left
+            // for the next periodic full scan to resolve once it's actually
+            // resolvable, not guessed at now.
             let path_ext = to_extended_path(path);
-            if path_ext.exists() && path_ext.is_file() {
-                upload_file_direct(app, &client, &config, folder, &path_ext, &rel_path).await;
-            } else if !path_ext.exists() {
-                delete_remote_direct(&client, &config, folder, &rel_path).await;
+            match fs::metadata(&path_ext) {
+                Ok(meta) if meta.is_file() => {
+                    upload_file_direct(app, &client, &config, folder, &path_ext, &rel_path).await;
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    // A single NotFound from one watcher event isn't necessarily a
+                    // real, lasting deletion -- many editors save by deleting and
+                    // immediately recreating the file (or writing to a temp name and
+                    // renaming over it), which produces a genuine, momentary NotFound
+                    // with no intent to delete anything. Re-confirm after a brief
+                    // pause before reporting a deletion that propagates to every
+                    // other synced device.
+                    tokio::time::sleep(Duration::from_millis(750)).await;
+                    if fs::metadata(&path_ext).is_err() {
+                        delete_remote_direct(&client, &config, folder, &rel_path).await;
+                    }
+                }
+                _ => {
+                    // Directory (handled by the next full scan), or metadata
+                    // couldn't be confirmed for some other reason -- do nothing.
+                }
             }
-            // Directories and renames: handled by next periodic full scan
         }
     }
 }
@@ -595,7 +693,13 @@ async fn upload_file_direct(
     }
 
     let size = metadata.len() as i64;
-    let modified_time = metadata.modified().unwrap_or(SystemTime::now());
+    // Don't substitute "now" if the real mtime can't be read -- that fabricates a
+    // fact used in server-side conflict resolution instead of reporting what's
+    // actually known. Skip; the next scan or watcher event retries it.
+    let modified_time = match metadata.modified() {
+        Ok(t) => t,
+        Err(_) => return,
+    };
     let datetime: chrono::DateTime<chrono::Utc> = modified_time.into();
     let file_name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
 
@@ -879,15 +983,23 @@ async fn execute_single_task(
     match task.action_type.as_str() {
         "delete_local" => {
             let local_path = to_extended_path(local_dir.join(&task.relative_path));
-            if local_path.exists() {
-                let rm_res = if local_path.is_dir() {
-                    fs::remove_dir_all(&local_path)
-                } else {
-                    fs::remove_file(&local_path)
-                };
-                success = rm_res.is_ok();
-            } else {
-                success = true;
+            // exists() swallows any error into `false`, indistinguishable from
+            // "genuinely gone" -- treating "couldn't confirm" as "already deleted"
+            // here would report a successful local deletion to the server, which
+            // then physically deletes NAS's own copy and propagates the deletion
+            // to every other synced device, while the real local file might still
+            // be sitting right there untouched. Only a confirmed NotFound counts
+            // as "nothing to remove"; any other error leaves the task pending.
+            match fs::metadata(&local_path) {
+                Ok(_) => {
+                    success = quarantine_local_path(local_dir, &task.relative_path, &local_path).is_ok();
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    success = true;
+                }
+                Err(_) => {
+                    success = false;
+                }
             }
             if success {
                 let delete_url = format!("{}/api/sync/delete", config.nas_url);
@@ -905,7 +1017,17 @@ async fn execute_single_task(
         "move" => {
             let local_src = to_extended_path(local_dir.join(&task.relative_path));
             let local_dst = to_extended_path(local_dir.join(&task.to_path));
-            if local_dst.exists() {
+            // A file already sitting at the destination isn't automatically "this
+            // move already happened" -- it could be unrelated content that just
+            // happens to share the target name. Verify its hash actually matches
+            // what this move is supposed to produce before claiming success on
+            // that basis; a mismatch is left pending rather than silently
+            // reported as done (which would tell the server this device is
+            // synced when it may still be holding stale or wrong content).
+            let dst_already_correct = !task.file_hash.is_empty()
+                && local_dst.is_file()
+                && calculate_hash(&local_dst).map(|h| h == task.file_hash).unwrap_or(false);
+            if dst_already_correct {
                 success = true;
             } else if local_src.exists() {
                 if let Some(parent) = local_dst.parent() {
@@ -974,9 +1096,23 @@ async fn execute_single_task(
             let local_path = to_extended_path(local_dir.join(&task.relative_path));
             if local_path.exists() {
                 if local_path.is_dir() {
-                    success = true;
+                    // This task was generated when master_mapping still thought this
+                    // path was a file; it's since become a directory locally. Silently
+                    // claiming success here would report "uploaded" to the server while
+                    // nothing was actually sent, leaving master_mapping's stale
+                    // file-type/hash uncorrected. Leave it pending instead -- the next
+                    // scan (periodic, or watcher-triggered) reports the real current
+                    // type and prunes this now-obsolete task on its own.
+                    success = false;
                 } else if let Ok(metadata) = fs::metadata(&local_path) {
-                    let modified_time = metadata.modified().unwrap_or(SystemTime::now());
+                    // Don't substitute "now" if the real mtime can't be read -- that
+                    // fabricates a fact used in server-side conflict resolution instead
+                    // of reporting what's actually known. Leave the task pending;
+                    // the next cycle retries it.
+                    let modified_time = match metadata.modified() {
+                        Ok(t) => t,
+                        Err(_) => return false,
+                    };
                     let datetime: chrono::DateTime<chrono::Utc> = modified_time.into();
 
                     // Compute this upload's own size/hash from the local file right now,
@@ -1045,16 +1181,39 @@ pub fn start_watcher(paths: Vec<String>, scan_tx: mpsc::Sender<ScanEvent>) -> Re
                 })
                 .collect();
             if !changed.is_empty() {
-                let _ = scan_tx.blocking_send(ScanEvent::Paths(changed));
+                // A failed send here almost always means the scan loop's receiver
+                // is gone (that whole background task has died), which silently
+                // stops ALL future real-time sync -- not just this one event. The
+                // periodic full scan is the correctness fallback for individually
+                // missed events, but if the scan loop itself is dead, that
+                // fallback is dead too. Surface it rather than losing it silently.
+                if let Err(e) = scan_tx.blocking_send(ScanEvent::Paths(changed)) {
+                    eprintln!("Failed to forward watcher event to scan loop (scan loop may have died): {}", e);
+                }
             }
         }
     }).map_err(|e| e.to_string())?;
 
+    // A path that fails to register isn't covered by the "no real-time
+    // watching, periodic scan is the fallback" reasoning elsewhere in this
+    // file with the same margin: the user gets zero indication that this
+    // specific folder silently degraded to 5-minute-latency sync instead of
+    // real-time. Collect failures and report them so this is diagnosable.
+    let mut failed_paths = Vec::new();
     for path_str in paths {
         let path = Path::new(&path_str);
         if path.exists() {
-            let _ = watcher.watch(path, RecursiveMode::Recursive);
+            if let Err(e) = watcher.watch(path, RecursiveMode::Recursive) {
+                eprintln!("Failed to watch path {:?}: {}", path, e);
+                failed_paths.push(path_str);
+            }
         }
+    }
+    if !failed_paths.is_empty() {
+        eprintln!(
+            "Watcher registration failed for {} path(s); these folders will only sync via the periodic full scan (up to 5 min latency), not in real time: {:?}",
+            failed_paths.len(), failed_paths
+        );
     }
 
     Ok(watcher)

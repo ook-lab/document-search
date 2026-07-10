@@ -143,7 +143,14 @@ func main() {
 	dbHost := getEnv("DB_HOST", "localhost")
 	dbPort := getEnv("DB_PORT", "5432")
 	dbUser := getEnv("DB_USER", "sync_user")
-	dbPass := getEnv("DB_PASSWORD", "sync_secure_password_2026")
+	// No hardcoded fallback for the DB password -- a guessable default baked
+	// into the source is a credential leak waiting for whatever future
+	// deployment forgets to set the real one. docker-compose.yml already sets
+	// this explicitly; failing loudly here if it's ever missing is the point.
+	dbPass, dbPassSet := os.LookupEnv("DB_PASSWORD")
+	if !dbPassSet || dbPass == "" {
+		log.Fatal("DB_PASSWORD environment variable is required and must not be empty")
+	}
 	dbName := getEnv("DB_NAME", "sync_metadata")
 	storagePath := getEnv("STORAGE_PATH", "./storage")
 
@@ -235,7 +242,11 @@ func main() {
 		ALTER TABLE sync_tasks DROP COLUMN IF EXISTS file_modified_at;
 	`)
 	if err != nil {
-		log.Printf("Failed to create mapping tables: %v", err)
+		// Everything downstream depends on this schema existing. Logging and
+		// continuing to serve requests against tables/columns that may not
+		// actually be there would fail unpredictably later instead of failing
+		// clearly now, at the one point where the real cause is obvious.
+		log.Fatalf("Failed to create mapping tables: %v", err)
 	}
 
 	// Migrate: populate nas_mapping from is_uploaded=TRUE rows (one-time, idempotent)
@@ -348,6 +359,33 @@ func securePath(storagePath string, virtualName string, relativePath string) (st
 	}
 
 	return fullPath, nil
+}
+
+// quarantineFile moves the file or directory at virtualName/relativePath into
+// a timestamped area under storagePath/.trash instead of permanently removing
+// it, so any deletion -- whether genuinely user-intended or triggered by a
+// bug elsewhere in the sync logic (as happened once already in this system)
+// -- can be recovered from instead of being unrecoverable the instant it
+// happens. Safe to call on a path that doesn't exist (no-op, not an error).
+func quarantineFile(storagePath, virtualName, relativePath string) error {
+	srcPath, err := securePath(storagePath, virtualName, relativePath)
+	if err != nil {
+		return err
+	}
+	if _, statErr := os.Lstat(srcPath); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return nil
+		}
+		return statErr
+	}
+	trashPath := filepath.Join(storagePath, ".trash", virtualName, fmt.Sprintf("%d", time.Now().UnixNano()), relativePath)
+	if err := os.MkdirAll(filepath.Dir(trashPath), 0755); err != nil {
+		return fmt.Errorf("failed to create trash directory: %w", err)
+	}
+	if err := os.Rename(srcPath, trashPath); err != nil {
+		return fmt.Errorf("failed to move to trash: %w", err)
+	}
+	return nil
 }
 
 func copyFile(src, dst string) error {
@@ -1015,12 +1053,24 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 	nasMap := make(map[string]nasMeta)
 
-	rowsNas, _ := app.db.Query(`
+	// A failed Query here must not be treated as "nas_mapping is empty" -- the
+	// diff step below decides upload/download tasks (and, via the caller's
+	// broader flow, deletion propagation) based on what nasMap contains. An
+	// error swallowed into an empty map here would assert "NAS has nothing"
+	// on the strength of a DB hiccup, not a genuine, confirmed state -- the
+	// exact class of mistake that caused mass data loss elsewhere in this
+	// codebase.
+	rowsNas, err := app.db.Query(`
 		SELECT m.relative_path, n.file_size, n.file_hash, n.last_modified_at
 		FROM nas_mapping n
 		JOIN master_mapping m ON n.file_id = m.file_id
 		WHERE m.virtual_name = $1
 	`, virtualName)
+	if err != nil {
+		log.Printf("Failed to load nas_mapping during scan: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	for rowsNas.Next() {
 		var path string
 		var nm nasMeta
@@ -1030,14 +1080,22 @@ func (app *App) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 	rowsNas.Close()
 
-	// 3c. Refresh device_mapping cache to reflect step-2 changes
+	// 3c. Refresh device_mapping cache to reflect step-2 changes. Same
+	// reasoning as nas_mapping above: an error here must not silently become
+	// "this device has nothing", which the diff step would read as needing to
+	// download everything (wasteful) or, combined with other state, worse.
 	dbDeviceFiles = make(map[string]deviceMeta)
-	rowsRefresh, _ := app.db.Query(`
+	rowsRefresh, err := app.db.Query(`
 		SELECT m.file_id, m.relative_path, d.last_synced_size, d.last_synced_hash, d.last_synced_mtime, m.is_directory
 		FROM device_mapping d
 		JOIN master_mapping m ON d.file_id = m.file_id
 		WHERE d.device_id = $1 AND m.virtual_name = $2
 	`, deviceID, virtualName)
+	if err != nil {
+		log.Printf("Failed to refresh device_mapping during scan: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	for rowsRefresh.Next() {
 		var dm deviceMeta
 		if rowsRefresh.Scan(&dm.FileID, &dm.Path, &dm.Size, &dm.Hash, &dm.Mtime, &dm.IsDir) == nil {
@@ -1873,7 +1931,22 @@ func (app *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		tokenHash := hashToken(token)
-		_ = app.db.QueryRow("SELECT device_id FROM api_tokens WHERE token_hash = $1", tokenHash).Scan(&deviceID)
+		// A token was actually presented -- its lookup failing (invalid,
+		// expired, or a DB error) must not be silently treated the same as "no
+		// token was presented at all" (deviceID left at its zero-value, which
+		// has its own special "web UI" meaning in this handler -- e.g. in
+		// handleDelete it means "propagate this deletion to every device").
+		// Discarding this error let a wrong or expired token masquerade as a
+		// legitimate anonymous web request.
+		if err := app.db.QueryRow("SELECT device_id FROM api_tokens WHERE token_hash = $1", tokenHash).Scan(&deviceID); err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Unauthorized: invalid or expired token", http.StatusUnauthorized)
+			} else {
+				log.Printf("Token lookup error: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+			return
+		}
 	}
 
 	folderIDStr := r.URL.Query().Get("folder_id")
@@ -1955,7 +2028,14 @@ func (app *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 			// which removes exactly that task by its real identity. The next
 			// scan's diff against master_mapping is the fallback authority.
 
-			_ = tx.Commit()
+			// Best-effort: the file has already been served (or is about to be)
+			// regardless of this bookkeeping, so a failed commit here shouldn't
+			// abort the download. But it should be diagnosable rather than silent --
+			// this device's synced-state record for this file may now be stale,
+			// which just costs a redundant re-download on the next scan, not data loss.
+			if err := tx.Commit(); err != nil {
+				log.Printf("Failed to commit device_mapping update in handleDownload: %v", err)
+			}
 		}
 	}
 
@@ -1988,7 +2068,22 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		tokenHash := hashToken(token)
-		_ = app.db.QueryRow("SELECT device_id FROM api_tokens WHERE token_hash = $1", tokenHash).Scan(&deviceID)
+		// A token was actually presented -- its lookup failing (invalid,
+		// expired, or a DB error) must not be silently treated the same as "no
+		// token was presented at all" (deviceID left at its zero-value, which
+		// has its own special "web UI" meaning in this handler -- e.g. in
+		// handleDelete it means "propagate this deletion to every device").
+		// Discarding this error let a wrong or expired token masquerade as a
+		// legitimate anonymous web request.
+		if err := app.db.QueryRow("SELECT device_id FROM api_tokens WHERE token_hash = $1", tokenHash).Scan(&deviceID); err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Unauthorized: invalid or expired token", http.StatusUnauthorized)
+			} else {
+				log.Printf("Token lookup error: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+			return
+		}
 	}
 
 	if req.FolderID == 0 || req.RelativePath == "" {
@@ -2062,19 +2157,19 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Physically remove the file (or directory and its contents) from NAS disk
-	// BEFORE committing. nas_mapping/master_mapping must never assert "NAS no
-	// longer has this" unless that's actually confirmed true on disk -- if the
-	// physical removal fails, abort the whole request so nothing is committed;
-	// the client will retry.
-	targetFilePath, perr := securePath(app.storagePath, virtualName, req.RelativePath)
-	if perr == nil {
-		if err := os.RemoveAll(targetFilePath); err != nil {
-			log.Printf("Failed to physically remove %s: %v", targetFilePath, err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
+	// Move the file (or directory and its contents) to quarantine BEFORE
+	// committing, rather than permanently removing it. nas_mapping/master_mapping
+	// must never assert "NAS no longer has this" unless that's actually
+	// confirmed true on disk -- if the move fails, abort the whole request so
+	// nothing is committed; the client will retry. Quarantining instead of
+	// os.RemoveAll means a deletion -- intended or triggered by a bug -- stays
+	// recoverable under storagePath/.trash instead of vanishing instantly.
+	if err := quarantineFile(app.storagePath, virtualName, req.RelativePath); err != nil {
+		log.Printf("Failed to quarantine %s/%s: %v", virtualName, req.RelativePath, err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
+	targetFilePath, _ := securePath(app.storagePath, virtualName, req.RelativePath)
 
 	if err := tx.Commit(); err != nil {
 		log.Printf("Failed to commit delete transaction: %v", err)
@@ -2082,7 +2177,7 @@ func (app *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	app.broadcaster.Publish(virtualName)
-	log.Printf("[DELETE] Physically removed from NAS: %s", targetFilePath)
+	log.Printf("[DELETE] Quarantined from NAS (recoverable under .trash): %s", targetFilePath)
 
 	_, _ = app.db.Exec(`
 		INSERT INTO activity_logs (device_id, action_type, file_path, description)
@@ -2153,7 +2248,19 @@ func (app *App) handleMove(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	} else if !os.IsNotExist(err) {
+		// Some error other than "genuinely doesn't exist" (permission, transient
+		// I/O) -- we can't actually confirm whether the source is there. Falling
+		// through to update master_mapping below as if the move had succeeded
+		// would assert the file is now at the new path while the real bytes might
+		// still be sitting at the old one, unfindable. Abort instead of guessing.
+		log.Printf("Failed to stat source file for move %s: %v", srcFilePath, err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
+	// os.IsNotExist(err): genuinely nothing physical to move (e.g. this exact
+	// move was already completed by an earlier retry) -- fall through to the
+	// mapping-table update below.
 
 	// Update mapping tables inside a transaction
 	tx, err := app.db.Begin()
@@ -2649,7 +2756,16 @@ func (app *App) handleGetTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var totalPending int
-	app.db.QueryRow(`SELECT COUNT(*) FROM sync_tasks WHERE device_id = $1 AND folder_id = $2 AND status != 'completed'`, deviceID, folderID).Scan(&totalPending)
+	if err := app.db.QueryRow(`SELECT COUNT(*) FROM sync_tasks WHERE device_id = $1 AND folder_id = $2 AND status != 'completed'`, deviceID, folderID).Scan(&totalPending); err != nil {
+		// A failed count must not silently read as "zero pending" -- the client
+		// shows this as the remaining-work counter, and reads zero as "sync
+		// complete". Reporting a fabricated zero here would tell the user
+		// everything finished when the server actually couldn't even confirm
+		// how much work is left.
+		log.Printf("Failed to count pending tasks: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ScanResponse{Tasks: finalTasks, TotalPending: totalPending})

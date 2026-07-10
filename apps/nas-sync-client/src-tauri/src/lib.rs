@@ -366,8 +366,17 @@ pub fn run() {
 			// Start filesystem watcher
 			let paths: Vec<String> = config.sync_folders.iter().map(|f| f.local_path.clone()).collect();
 			if !paths.is_empty() {
-				if let Ok(watcher) = sync::start_watcher(paths, state.scan_tx.clone()) {
-					*state.watcher.lock().unwrap() = Some(watcher);
+				match sync::start_watcher(paths, state.scan_tx.clone()) {
+					Ok(watcher) => {
+						*state.watcher.lock().unwrap() = Some(watcher);
+					}
+					Err(e) => {
+						// The periodic full scan (started separately below) is the
+						// correctness fallback when there's no watcher at all, but
+						// silently having none is still worth knowing about instead
+						// of a user wondering why nothing syncs in real time.
+						eprintln!("Failed to start filesystem watcher: {}", e);
+					}
 				}
 			}
 
