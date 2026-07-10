@@ -1,9 +1,20 @@
-# 完全版：CLAUDE.md（agy連携対応）
-
-```markdown
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## リポジトリの位置づけ（2026-07-11 整理済み）
+
+このリポジトリは `C:\Users\ookub\dev\document-management-system` にあります。かつては文書管理と無関係な個人用サービス（家計簿・クイズ作成・転職ツール・PDF雑多ツール等、30個以上）を`services/`・`apps/`配下に大量に抱えていましたが、2026-07-11に整理し、**文書管理パイプラインに直結するサービスのみ**が残っています。
+
+* 残っているのは6サービス: `pipeline-lab`（本体パイプライン）, `data-ingestion`, `doc-search`, `rag-prepare`, `reading-context-editor`, `gmail-service`
+* 切り出した他のプロジェクトは兄弟フォルダとして `C:\Users\ookub\dev\` 配下に独立している:
+  * `kakeibo`（家計簿、単独）
+  * `life-tools`（生活・個人タスク自動化: calendar-register, daily-report, ai-cost-tracker, order-detail-sender, print-run-calculator, my-calendar-app, portal-app, nas-sync, nas-sync-client, immich-cleaner, file-flattener）
+  * `pdf-drive-tools`（PDF・Drive操作: pdf-toolbox, pdf-merger, pdf-splitter, html-to-a4, drive-manager-flask, drive-duplicate-checker）
+  * `learning-tools`（教育・学習: kanji-tester, quiz-maker, quiz-maker-ema, quiz-analyzer）
+  * `search-tools`（検索・スクレイピング: doda-scraper, tenshoku-tool, netsuper-search, youtube-search-links-web, youtube-search-links-local）
+  * `math-geo`（算数・立体幾何。旧`services/sansu-base`/`sansu-drawing`はこちらに統合済みのため削除済み）
+* 各切り出し先は独自の`.env`を持つ完全独立プロジェクト（本リポジトリのルート`.env`やdms/には依存しない）。一部のキー（Supabase URL/Key、Gemini/OpenAI APIキー等）は移行時点でルート`.env`に値が見当たらなかったため空欄になっている。使う際は各プロジェクトの`.env`を手動で埋めること。
 
 ## 禁止事項
 
@@ -22,6 +33,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **Claudeによる最終確認（レビュー）**: agyから出力された「チェック結果・診断報告書」を読み込み、見落としがないか、アプローチが正しいかをClaudeの知性で最終確認する。
 3. **極上の仕上げと修正**: agyの診断に基づき、最も効果的で安全な修正プランを確定させ、実際のコードの書き換えや厳密なリファクタリングはClaudeの知性で実行する。
 4. **検証とコミット**: 修正後、対応するテストを実行して問題がないことを確認し、最後にGitにコミットして人間へ報告する。
+
+> **「上司モードで、Stage E の文字密度分岐のロジックに潜むバグを調査して修正して」** のように呼びかけると、Claudeが自動で裏で `agy` を走らせて全体のコードベースをGeminiの広大なコンテキストでスキャンさせ、その報告書をもとにClaude（Sonnet）がピンポイントで修正する。既存の「禁止事項」や「アーキテクチャの絶対ルール」も同時にClaudeが守り続ける。
 
 ## コマンド
 
@@ -56,7 +69,6 @@ python -m pytest tests/ -v
 
 # GCPデプロイ
 .\scripts\deploy\run_build.ps1
-
 ```
 
 ### Cloud Run / Docker ビルド
@@ -74,6 +86,7 @@ Cloud Build トリガーに **ビルド用カスタムサービスアカウン�
 * **Web API = enqueue/search のみ**。処理は一切しない
 * **Worker CLI = 処理専用**。`process_queued_documents.py` のみがパイプラインを実行
 * **`dms/` は services/ をインポートしない**（逆方向の依存禁止）
+* 注: `dms/`はリポジトリルート直下ではなく、`pipeline-lab`/`data-ingestion`/`gmail-service`それぞれの配下に個別コピーとして存在する（共有パッケージ化はされていない）。コピー間で内容が乖離している場合があるため、`dms/`配下を修正する際はどのサービスの話をしているか明示すること。
 
 ### スタック
 
@@ -85,7 +98,6 @@ Cloud Build トリガーに **ビルド用カスタムサービスアカウン�
 
 ```
 A(書類種別判定) → B(物理構造抽出) → D(視覚構造解析) → E(AI抽出) → F(統合・正規化・レビュー用 ui_data・09 反映) → G(UI最適化構造化)
-
 ```
 
 * 検索用チャンク化・ベクトル埋め込み（`10_ix`）は **本 Worker パイプライン外**（検索データ準備 / 別ジョブ）
@@ -101,7 +113,6 @@ A(書類種別判定) → B(物理構造抽出) → D(視覚構造解析) → E(
 ```python
 DatabaseClient(use_service_role=True)  # Worker（RLS bypass）
 DatabaseClient(use_service_role=False) # Web API（RLS enforced）
-
 ```
 
 owner_id は secured テーブルで必須。
@@ -111,26 +122,9 @@ owner_id は secured テーブルで必須。
 ```python
 from dms.common.config.settings import settings  # .env 自動読み込み
 from dms.common.path_setup import setup_paths     # PYTHONPATH 設定
-
 ```
 
 ## Windows 注意
 
 * パスは raw string: `r'C:\Users\...'`
 * `python -c "..."` でパス引数を渡す場合も raw string 使用
-
-```
-
----
-
-## 🚀 マージ後の使い方はこれだけ
-
-これを保存したら、次から `claude` (または `claude-yolo`) を起動して、こう呼びかけるだけです。
-
-> **「上司モードで、Stage E の文字密度分岐のロジックに潜むバグを調査して修正して」**
-
-これだけで、Claudeが「あ、ルールに書いてあるやつだ」と理解し、**自動で裏で `agy` を走らせて全体のコードベースを Gemni の広大なコンテキストでスキャンさせ、その報告書をもとに Sonnet（Claude）がピンポイントで修正する**という超効率的な動きをしてくれます。
-
-既存の「禁止事項」や「アーキテクチャの絶対ルール」も同時にClaudeが守り続けてくれるので、品質も担保されたままノンストップで開発が進みます。最強の環境、これで完成ですね！
-
-```
