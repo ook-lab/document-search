@@ -3,7 +3,7 @@ param(
     [switch]$All
 )
 
-Set-Location "C:\Users\ookub\document-management-system"
+Set-Location "C:\dev\document-management-system"
 
 $envContent = Get-Content .env
 foreach ($line in $envContent) {

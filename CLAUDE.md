@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## リポジトリの位置づけ（2026-07-11 整理済み）
 
-このリポジトリは `C:\Users\ookub\dev\document-management-system` にあります。かつては文書管理と無関係な個人用サービス（家計簿・クイズ作成・転職ツール・PDF雑多ツール等、30個以上）を`services/`・`apps/`配下に大量に抱えていましたが、2026-07-11に整理し、**文書管理パイプラインに直結するサービスのみ**が残っています。
+このリポジトリは `C:\dev\document-management-system` にあります。かつては文書管理と無関係な個人用サービス（家計簿・クイズ作成・転職ツール・PDF雑多ツール等、30個以上）を`services/`・`apps/`配下に大量に抱えていましたが、2026-07-11に整理し、**文書管理パイプラインに直結するサービスのみ**が残っています。
 
 * 残っているのは6サービス: `pipeline-lab`（本体パイプライン）, `data-ingestion`, `doc-search`, `rag-prepare`, `reading-context-editor`, `gmail-service`
-* 切り出した他のプロジェクトは兄弟フォルダとして `C:\Users\ookub\dev\` 配下に独立している:
+* 切り出した他のプロジェクトは兄弟フォルダとして `C:\dev\` 配下に独立している:
   * `kakeibo`（家計簿、単独）
   * `life-tools`（生活・個人タスク自動化: calendar-register, daily-report, ai-cost-tracker, order-detail-sender, print-run-calculator, my-calendar-app, portal-app, nas-sync, nas-sync-client, immich-cleaner, file-flattener）
   * `pdf-drive-tools`（PDF・Drive操作: pdf-toolbox, pdf-merger, pdf-splitter, html-to-a4, drive-manager-flask, drive-duplicate-checker）

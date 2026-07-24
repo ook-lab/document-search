@@ -11,7 +11,7 @@
     & .\scripts\deploy\create_schedulers.ps1
 #>
 
-Set-Location "C:\Users\ookub\document-management-system"
+Set-Location "C:\dev\document-management-system"
 
 # ===== 設定 =====
 $PROJECT_ID    = "consummate-yew-479020-u2"

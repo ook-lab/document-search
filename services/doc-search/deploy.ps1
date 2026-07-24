@@ -1,4 +1,4 @@
-Set-Location "C:\Users\ookub\document-management-system"
+Set-Location "C:\dev\document-management-system"
 
 if (Test-Path ".env") {
     Get-Content ".env" | Where-Object { $_ -match '^[A-Z_]+=.+' } | ForEach-Object {
