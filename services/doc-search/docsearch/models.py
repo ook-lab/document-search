@@ -14,7 +14,7 @@ class AIProvider(Enum):
 class ModelTier:
     UI_RESPONSE_GENERATOR = {
         "provider": AIProvider.GEMINI,
-        "model": "gemini-2.5-flash-lite",
+        "model": "gemini-3.5-flash-lite",
         "description": "高速対話",
         "temperature": 0.7,
         "max_tokens": 65536,
@@ -44,7 +44,7 @@ def get_model_config(tier: str) -> Dict[str, Any]:
 class ResearchFlow:
     FLOWS = {
         "single-25-lite": {
-            "steps": ["gemini-2.5-flash-lite"],
+            "steps": ["gemini-3.5-flash-lite"],
             "description": "1段: Gemini 2.5 Flash-Lite単独",
             "rounds": 1,
         },

@@ -24,7 +24,7 @@ CHUNK_SIZE_PAGES = 1
 # ============================================
 
 # F2: 構造解析 - Gemini 2.5 Flash
-F2_MODEL = "gemini-2.5-flash-lite"
+F2_MODEL = "gemini-3.5-flash-lite"
 F2_MAX_TOKENS = 65536
 F2_TEMPERATURE = 0.0
 
@@ -45,4 +45,4 @@ F1_QUALITY_THRESHOLD = 0.5
 # ============================================
 
 # E7: 文字結合
-E7_MODEL = "gemini-2.5-flash-lite"
+E7_MODEL = "gemini-3.5-flash-lite"

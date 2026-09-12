@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 G36_CELL_INTERIOR_AI_CONTRACT = "g36_cell_interior_split_v1"
-G36_CELL_INTERIOR_AI_MODEL = "gemini-2.5-flash-lite"
+G36_CELL_INTERIOR_AI_MODEL = "gemini-3.5-flash-lite"
 
 
 class G36CellInteriorAIError(RuntimeError):

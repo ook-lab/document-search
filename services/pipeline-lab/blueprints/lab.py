@@ -41,6 +41,7 @@ _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 _GEMINI_PRICING: Dict[str, Dict[str, float]] = {
     'gemini-3.1-flash-lite': {'input': 0.25, 'output': 1.50},
     'gemini-2.5-flash-lite': {'input': 0.10, 'output': 0.40},
+    'deepseek-flash': {'input': 0.14, 'output': 0.28},
 }
 
 
@@ -1617,7 +1618,7 @@ def _direct_extract_build_structured_md(ai_text: str) -> str:
 
 @lab_bp.route('/api/extract_direct/<session_id>/<int:page_index>', methods=['POST'])
 def api_extract_direct(session_id: str, page_index: int):
-    """AI直接抽出: ページ画像を Gemini に直接送って MD を返す。パイプライン（A→G）は実行しない。"""
+    """AI直接抽出: ページ画像を Gemini または DeepSeek に直接送って MD を返す。パイプライン（A→G）は実行しない。"""
     base = _safe_session_dir(session_id)
     if not base:
         return jsonify({'success': False, 'error': 'セッション不明'}), 404
@@ -1630,37 +1631,77 @@ def api_extract_direct(session_id: str, page_index: int):
     model_name = (body.get('model') or 'gemini-2.5-flash-lite').strip()
 
     try:
-        import google.generativeai as genai
-        import os as _os
-        api_key = _os.environ.get('GOOGLE_AI_API_KEY')
-        if not api_key:
-            return jsonify({'success': False, 'error': 'GOOGLE_AI_API_KEY が未設定です'}), 500
-
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
-
         img_bytes = img_path.read_bytes()
         import base64 as _b64
-        img_part = {
-            'inline_data': {
-                'mime_type': 'image/png',
-                'data': _b64.b64encode(img_bytes).decode('utf-8'),
-            }
-        }
+        import os as _os
 
         from dms.common.ai_cost_logger import start_cost_accumulation, stop_cost_accumulation, log_ai_usage
         start_cost_accumulation()
 
-        response = model.generate_content(
-            [_DIRECT_EXTRACT_PROMPT, img_part], request_options={"timeout": 120}
-        )
-        
-        usage_meta = getattr(response, "usage_metadata", None)
-        pt = getattr(usage_meta, "prompt_token_count", 0) or 0 if usage_meta else 0
-        ct = getattr(usage_meta, "candidates_token_count", 0) or 0 if usage_meta else 0
-        tt = getattr(usage_meta, "thoughts_token_count", 0) or 0 if usage_meta else 0
-        tot = getattr(usage_meta, "total_token_count", 0) or 0 if usage_meta else 0
-        tokens = int(tot or (pt + ct + tt) or 1)
+        if model_name == 'deepseek-flash':
+            api_key = _os.environ.get('DEEPSEEK_API_KEY')
+            if not api_key:
+                return jsonify({'success': False, 'error': 'DEEPSEEK_API_KEY が未設定です'}), 500
+
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key, base_url='https://api.deepseek.com')
+
+            img_b64 = _b64.b64encode(img_bytes).decode('utf-8')
+            response = client.chat.completions.create(
+                model='deepseek-flash',
+                messages=[
+                    {
+                        'role': 'user',
+                        'content': [
+                            {'type': 'text', 'text': _DIRECT_EXTRACT_PROMPT},
+                            {
+                                'type': 'image_url',
+                                'image_url': {'url': f'data:image/png;base64,{img_b64}'},
+                            },
+                        ],
+                    }
+                ],
+            )
+
+            raw_response_text = response.choices[0].message.content
+            if not raw_response_text:
+                return jsonify({'success': False, 'error': 'DeepSeekからのレスポンス本文が空です'}), 500
+            usage = getattr(response, "usage", None)
+            pt = getattr(usage, "prompt_tokens", 0) or 0 if usage else 0
+            ct = getattr(usage, "completion_tokens", 0) or 0 if usage else 0
+            tt = 0
+            tot = getattr(usage, "total_tokens", 0) or 0 if usage else 0
+            tokens = int(tot or (pt + ct + tt))
+            service_name = 'DeepSeek'
+
+        else:
+            import google.generativeai as genai
+            api_key = _os.environ.get('GOOGLE_AI_API_KEY')
+            if not api_key:
+                return jsonify({'success': False, 'error': 'GOOGLE_AI_API_KEY が未設定です'}), 500
+
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(model_name)
+
+            img_part = {
+                'inline_data': {
+                    'mime_type': 'image/png',
+                    'data': _b64.b64encode(img_bytes).decode('utf-8'),
+                }
+            }
+
+            response = model.generate_content(
+                [_DIRECT_EXTRACT_PROMPT, img_part], request_options={"timeout": 120}
+            )
+
+            raw_response_text = getattr(response, "text", "") or ""
+            usage_meta = getattr(response, "usage_metadata", None)
+            pt = getattr(usage_meta, "prompt_token_count", 0) or 0 if usage_meta else 0
+            ct = getattr(usage_meta, "candidates_token_count", 0) or 0 if usage_meta else 0
+            tt = getattr(usage_meta, "thoughts_token_count", 0) or 0 if usage_meta else 0
+            tot = getattr(usage_meta, "total_token_count", 0) or 0 if usage_meta else 0
+            tokens = int(tot or (pt + ct + tt) or 1)
+            service_name = 'Gemini'
 
         try:
             log_ai_usage(
@@ -1688,7 +1729,7 @@ def api_extract_direct(session_id: str, page_index: int):
 
         ai_cost = _calc_ai_cost(accumulated)
 
-        structured_md = _direct_extract_build_structured_md(response.text or '')
+        structured_md = _direct_extract_build_structured_md(raw_response_text)
 
         # 構造化された Markdown から ui_data 用の yaml tables メタデータを取り込むための summary
         ui_data_summary = {
@@ -1720,8 +1761,8 @@ def api_extract_direct(session_id: str, page_index: int):
 
         direct_log_lines = []
         direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1631 - [Direct] AI直接抽出開始 (ページ={page_index}, モデル={model_name})")
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1636 - [Direct] Gemini 送信中... (画像のバイト数: {len(img_bytes)} bytes)")
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1640 - [Direct] Gemini レスポンス受信成功。トークンカウント: Prompt={pt}, Candidates={ct}, Total={tokens}")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1636 - [Direct] {service_name} 送信中... (画像のバイト数: {len(img_bytes)} bytes)")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1640 - [Direct] {service_name} レスポンス受信成功。トークンカウント: Prompt={pt}, Candidates={ct}, Total={tokens}")
         direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1666 - [Direct] 料金計算結果: TotalCost={ai_cost.get('total_cost_usd', 0.0):.6f} USD")
         direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1688 - [Direct] 表データ抽出結果: 検出表数={ui_data_summary['tables_count']} (YAML文字数={ui_data_summary['tables_md_embed_chars']})")
 

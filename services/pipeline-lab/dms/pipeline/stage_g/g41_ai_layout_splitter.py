@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-G41_AI_LAYOUT_MODEL = "gemini-2.5-flash-lite"
+G41_AI_LAYOUT_MODEL = "gemini-3.5-flash-lite"
 G41_LAYOUT_AI_CONTRACT = "g41_layout_ai_v1"
 # 初回 + 再生成1回のみ（JSON 壊れ・境界ミスなど修正指示が意味を持つときだけ）
 G41_AI_MAX_ATTEMPTS = 2

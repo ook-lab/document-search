@@ -448,7 +448,7 @@ def _assemble_search_query_with_llm(
     response = llm_client.call_model(
         tier="ui_response",
         prompt=prompt,
-        model_name="gemini-2.5-flash-lite",
+        model_name="gemini-3.5-flash-lite",
         log_context=ctx,
     )
     text = ""
@@ -1452,7 +1452,7 @@ def _regenerate_step0_dates_after_failure(
     response = llm_client.call_model(
         tier="ui_response",
         prompt=prompt,
-        model_name="gemini-2.5-flash-lite",
+        model_name="gemini-3.5-flash-lite",
         log_context=ctx,
     )
     if not response.get("success"):
@@ -1557,7 +1557,7 @@ def _refine_query(
     response = llm_client.call_model(
         tier="ui_response",
         prompt=prompt,
-        model_name="gemini-2.5-flash-lite",
+        model_name="gemini-3.5-flash-lite",
         log_context=log_context,
     )
     if response.get('success'):

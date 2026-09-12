@@ -71,7 +71,7 @@ def _f58_multi_section_display_table_id(base_table_id: str, section: Dict[str, A
 class G62TableLayoutProcessor:
     """F58: 表の配置（ヘッダー・col_map・結合セル補完）。意味推定は F57。"""
 
-    def __init__(self, document_id=None, model_name: str = "gemini-2.5-flash-lite"):
+    def __init__(self, document_id=None, model_name: str = "gemini-3.5-flash-lite"):
         self.document_id = document_id
         self.model_name = model_name
         # 配置専用のため LLM は未使用。将来オプションで使う場合に備えキーのみ保持。

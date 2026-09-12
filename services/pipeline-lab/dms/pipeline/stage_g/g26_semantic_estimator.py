@@ -1077,16 +1077,26 @@ def _validate_table_understanding_entry(
 class G26SemanticEstimator:
     """D 罫線 + 表セル内容から行・列の意味と分割方針を推定（配置・colspan は出さない）。"""
 
-    def __init__(self, document_id: Optional[str] = None, model_name: str = "gemini-2.5-flash-lite"):
+    def __init__(self, document_id: Optional[str] = None, model_name: str = "gemini-3.5-flash-lite"):
         self.document_id = document_id
         self.model_name = model_name
-        import google.generativeai as genai
+        if model_name == "deepseek-flash":
+            from openai import OpenAI
 
-        api_key = os.environ.get("GOOGLE_AI_API_KEY")
-        if not api_key:
-            raise RuntimeError("GOOGLE_AI_API_KEY is not set (G26 意味推定に必須)")
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+            api_key = os.environ.get("DEEPSEEK_API_KEY")
+            if not api_key:
+                raise RuntimeError("DEEPSEEK_API_KEY is not set (G26 意味推定 DeepSeek 呼び出しに必須)")
+            self.client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+            self.model = None
+        else:
+            import google.generativeai as genai
+
+            api_key = os.environ.get("GOOGLE_AI_API_KEY")
+            if not api_key:
+                raise RuntimeError("GOOGLE_AI_API_KEY is not set (G26 意味推定に必須)")
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel(model_name)
+            self.client = None
         self._last_raw_text = ""
         logger.info(f"[G26] 意味推定モデル初期化: {model_name}")
 
@@ -1161,27 +1171,99 @@ class G26SemanticEstimator:
             )
         return "\n\n".join(parts)
 
-    def _call_and_log_llm(self, prompt: str, *, stage_label: str) -> Tuple[int, Dict[str, int]]:
-        gen_cfg: Dict[str, Any] = {"response_mime_type": "application/json"}
-        try:
-            response = self.model.generate_content(
-                prompt, generation_config=gen_cfg, request_options={"timeout": 120}
-            )
-        except TypeError:
-            response = self.model.generate_content(prompt, request_options={"timeout": 120})
-        raw = getattr(response, "text", None) or ""
-        self._last_raw_text = raw
-        body = raw
-        if len(body) > _GEN_LOG_MAX:
-            body = body[:_GEN_LOG_MAX] + f"\n... [{stage_label}] truncated ...\n"
-        logger.info(f"[G26] GENERATION | {stage_label}\n{body}")
+    @staticmethod
+    def _build_openai_messages(prompt: Any) -> List[Dict[str, Any]]:
+        if isinstance(prompt, str):
+            return [{"role": "user", "content": prompt}]
 
-        usage_meta = getattr(response, "usage_metadata", None)
-        pt = getattr(usage_meta, "prompt_token_count", 0) or 0 if usage_meta else 0
-        ct = getattr(usage_meta, "candidates_token_count", 0) or 0 if usage_meta else 0
-        tt = getattr(usage_meta, "thoughts_token_count", 0) or 0 if usage_meta else 0
-        tot = getattr(usage_meta, "total_token_count", 0) or 0 if usage_meta else 0
-        tokens = int(tot or (pt + ct + tt) or (max(len(prompt) + len(raw), 1) // 4))
+        if isinstance(prompt, list):
+            content_items: List[Dict[str, Any]] = []
+            for item in prompt:
+                if isinstance(item, str):
+                    content_items.append({"type": "text", "text": item})
+                elif isinstance(item, dict):
+                    if item.get("type") in ("text", "image_url") or "image_url" in item:
+                        content_items.append(item)
+                    elif "url" in item:
+                        content_items.append({"type": "image_url", "image_url": {"url": str(item["url"])}})
+                    elif "base64" in item or "data" in item:
+                        b64 = str(item.get("base64") or item.get("data"))
+                        url = b64 if b64.startswith("data:") else f"data:image/png;base64,{b64}"
+                        content_items.append({"type": "image_url", "image_url": {"url": url}})
+                    else:
+                        content_items.append({"type": "text", "text": json.dumps(item, ensure_ascii=False)})
+                else:
+                    try:
+                        import base64
+                        import io
+
+                        if hasattr(item, "save"):
+                            buf = io.BytesIO()
+                            item.save(buf, format="PNG")
+                            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+                            content_items.append(
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_str}"}}
+                            )
+                        elif isinstance(item, bytes):
+                            b64_str = base64.b64encode(item).decode("utf-8")
+                            content_items.append(
+                                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_str}"}}
+                            )
+                        else:
+                            content_items.append({"type": "text", "text": str(item)})
+                    except Exception:
+                        content_items.append({"type": "text", "text": str(item)})
+            return [{"role": "user", "content": content_items}]
+
+        return [{"role": "user", "content": str(prompt)}]
+
+    def _call_and_log_llm(self, prompt: Any, *, stage_label: str) -> Tuple[int, Dict[str, int]]:
+        if self.model_name == "deepseek-flash":
+            messages = self._build_openai_messages(prompt)
+            response = self.client.chat.completions.create(
+                model="deepseek-flash",
+                messages=messages,
+                response_format={"type": "json_object"},
+                timeout=120,
+            )
+            raw = response.choices[0].message.content or ""
+            self._last_raw_text = raw
+            body = raw
+            if len(body) > _GEN_LOG_MAX:
+                body = body[:_GEN_LOG_MAX] + f"\n... [{stage_label}] truncated ...\n"
+            logger.info(f"[G26] GENERATION | {stage_label}\n{body}")
+
+            usage = getattr(response, "usage", None)
+            pt = getattr(usage, "prompt_tokens", 0) or 0 if usage else 0
+            ct = getattr(usage, "completion_tokens", 0) or 0 if usage else 0
+            tt = 0
+            if usage and hasattr(usage, "completion_tokens_details") and usage.completion_tokens_details:
+                tt = getattr(usage.completion_tokens_details, "reasoning_tokens", 0) or 0
+            tot = getattr(usage, "total_tokens", 0) or 0 if usage else 0
+            prompt_len = len(prompt) if isinstance(prompt, str) else len(json.dumps(prompt, ensure_ascii=False))
+            tokens = int(tot or (pt + ct + tt) or (max(prompt_len + len(raw), 1) // 4))
+        else:
+            gen_cfg: Dict[str, Any] = {"response_mime_type": "application/json"}
+            try:
+                response = self.model.generate_content(
+                    prompt, generation_config=gen_cfg, request_options={"timeout": 120}
+                )
+            except TypeError:
+                response = self.model.generate_content(prompt, request_options={"timeout": 120})
+            raw = getattr(response, "text", None) or ""
+            self._last_raw_text = raw
+            body = raw
+            if len(body) > _GEN_LOG_MAX:
+                body = body[:_GEN_LOG_MAX] + f"\n... [{stage_label}] truncated ...\n"
+            logger.info(f"[G26] GENERATION | {stage_label}\n{body}")
+
+            usage_meta = getattr(response, "usage_metadata", None)
+            pt = getattr(usage_meta, "prompt_token_count", 0) or 0 if usage_meta else 0
+            ct = getattr(usage_meta, "candidates_token_count", 0) or 0 if usage_meta else 0
+            tt = getattr(usage_meta, "thoughts_token_count", 0) or 0 if usage_meta else 0
+            tot = getattr(usage_meta, "total_token_count", 0) or 0 if usage_meta else 0
+            prompt_len = len(prompt) if isinstance(prompt, str) else len(json.dumps(prompt, ensure_ascii=False))
+            tokens = int(tot or (pt + ct + tt) or (max(prompt_len + len(raw), 1) // 4))
 
         try:
             from dms.common.ai_cost_logger import log_ai_usage

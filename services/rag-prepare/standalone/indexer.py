@@ -643,7 +643,7 @@ class RagPrepareSearchIndexer:
             )
 
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash-lite")
+            model = genai.GenerativeModel("gemini-3.5-flash-lite")
             resp = model.generate_content(
                 prompt,
                 generation_config=genai.types.GenerationConfig(

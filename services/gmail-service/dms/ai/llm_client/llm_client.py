@@ -54,7 +54,7 @@ class LLMClient:
         self,
         prompt: str,
         image_data: Union[str, List[str]],
-        model: str = "gemini-2.5-flash-lite",
+        model: str = "gemini-3.5-flash-lite",
         temperature: float = 0.0,
         max_tokens: int = 8192
     ) -> str:
@@ -561,7 +561,7 @@ class LLMClient:
         self,
         prompt: str,
         image_path: str,
-        model: str = "gemini-2.0-flash-exp",
+        model: str = "gemini-3.5-flash-lite",
         temperature: float = 0.0,
         max_tokens: int = 65536,
         response_format: Optional[str] = None,
@@ -751,7 +751,7 @@ class LLMClient:
         self,
         image_path: Path,
         prompt: str = "この画像内の表組みやリストを、Markdown形式で正確に書き起こしてください。",
-        model: str = "gemini-2.5-flash-lite"
+        model: str = "gemini-3.5-flash-lite"
     ) -> Dict[str, Any]:
         """
         画像ファイルをGemini Visionで文字起こし
@@ -759,13 +759,13 @@ class LLMClient:
         Args:
             image_path: 画像ファイルのパス（PNG, JPEG等）
             prompt: Geminiに送るプロンプト
-            model: 使用するGeminiモデル（デフォルト: gemini-2.5-flash-lite）
+            model: 使用するGeminiモデル（デフォルト: gemini-3.5-flash-lite）
 
         Returns:
             {"success": bool, "content": str, "model": str, "provider": str}
         """
         if not self.gemini_api_key:
-            return {"success": False, "error": "Gemini API key is missing", "model": "gemini-2.5-flash-lite"}
+            return {"success": False, "error": "Gemini API key is missing", "model": "gemini-3.5-flash-lite"}
 
         # 指定されたGeminiモデルを使用
         return self._call_gemini(
