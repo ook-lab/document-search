@@ -17,7 +17,7 @@ from dms.pipeline.stage_f.merged_cell_grid import RowMergeMeta
 
 F51_LR_VERTICAL_AI_CONTRACT = "f51_merged_cell_correspondence_v3"
 F51_MERGED_CELL_AI_CONTRACT = F51_LR_VERTICAL_AI_CONTRACT
-F51_LR_VERTICAL_AI_MODEL = "gemini-2.5-flash-lite"
+F51_LR_VERTICAL_AI_MODEL = "gemini-3.5-flash-lite"
 
 LayoutKind = Literal[
     "row_aligned",

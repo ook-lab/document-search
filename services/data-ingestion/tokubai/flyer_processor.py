@@ -164,7 +164,7 @@ class FlyerProcessor:
             result = await self.llm_client.generate_with_vision(
                 prompt=prompt,
                 image_path=image_path,
-                model="gemini-2.0-flash-exp",  # Gemini 2.5 Pro Vision
+                model="gemini-3.5-flash-lite",  # Gemini Vision
                 response_format="json",
                 log_context={'app': 'tokubai', 'stage': 'flyer-extract'}
             )
@@ -241,7 +241,7 @@ class FlyerProcessor:
                     'confidence': product.get('confidence', 0.5),
                     'metadata': {
                         'extraction_date': datetime.now().isoformat(),
-                        'extraction_model': 'gemini-2.5-flash-lite-vision'
+                        'extraction_model': 'gemini-3.5-flash-lite'
                     }
                 }
 

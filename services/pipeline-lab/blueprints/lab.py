@@ -23,7 +23,8 @@ import shutil
 import uuid
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from pydantic import BaseModel, Field, ValidationError
 
 import fitz  # PyMuPDF
 from flask import Blueprint, current_app, jsonify, render_template, request, send_from_directory
@@ -38,9 +39,14 @@ lab_bp = Blueprint('pipeline_lab', __name__, template_folder='../templates')
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 
 # 料金表（USD / 100万トークン）。出力料金は思考トークンを含む。
+# Google公式料金表の2026年12月31日までの価格。
+# ※ gemini-3.8-flash は 2027-01-01 から input 1.50 / output 7.50 に改定予定。
 _GEMINI_PRICING: Dict[str, Dict[str, float]] = {
+    'gemini-3.8-flash': {'input': 0.75, 'output': 3.75},  # 2027-01-01から input 1.50 / output 7.50
+    'gemini-3.5-flash-lite': {'input': 0.30, 'output': 2.50},
     'gemini-3.1-flash-lite': {'input': 0.25, 'output': 1.50},
     'gemini-2.5-flash-lite': {'input': 0.10, 'output': 0.40},
+    'deepseek-flash': {'input': 0.14, 'output': 0.28},
 }
 
 
@@ -58,8 +64,24 @@ def _calc_ai_cost(raw_entries: List[Dict]) -> Dict:
 
     breakdown = []
     total = 0.0
+    has_unknown = False
     for model, tok in by_model.items():
-        p = _GEMINI_PRICING.get(model) or {'input': 0.0, 'output': 0.0}
+        if model not in _GEMINI_PRICING:
+            has_unknown = True
+            breakdown.append({
+                'model': model,
+                'calls': tok['calls'],
+                'prompt_tokens': tok['prompt_tokens'],
+                'completion_tokens': tok['completion_tokens'],
+                'thinking_tokens': tok['thinking_tokens'],
+                'error': f'料金表に無いモデル: {model}',
+                'input_cost_usd': None,
+                'output_cost_usd': None,
+                'total_cost_usd': None,
+            })
+            continue
+
+        p = _GEMINI_PRICING[model]
         in_cost = tok['prompt_tokens'] / 1_000_000 * p['input']
         out_cost = (tok['completion_tokens'] + tok['thinking_tokens']) / 1_000_000 * p['output']
         cost = in_cost + out_cost
@@ -74,8 +96,14 @@ def _calc_ai_cost(raw_entries: List[Dict]) -> Dict:
             'output_cost_usd': round(out_cost, 6),
             'total_cost_usd': round(cost, 6),
         })
-    breakdown.sort(key=lambda x: x['total_cost_usd'], reverse=True)
-    return {'breakdown': breakdown, 'total_cost_usd': round(total, 6)}
+    breakdown.sort(key=lambda x: (x['total_cost_usd'] is None, -(x['total_cost_usd'] or 0.0)))
+    result: Dict[str, Any] = {'breakdown': breakdown}
+    if has_unknown:
+        result['total_cost_usd'] = None
+        result['error'] = '料金表に無いモデルが含まれています'
+    else:
+        result['total_cost_usd'] = round(total, 6)
+    return result
 
 
 def _is_image(name: str) -> bool:
@@ -1014,6 +1042,7 @@ def _run_pdf_pipeline_stages(pdf_path: Path, work_dir: Path, session_id: str, pa
         'success': True,
         'session_id': session_id,
         'page_index': page_num,
+        'mode': 'pipeline',
         'stage_a': {
             'origin_app': stage_a_result.get('origin_app'),
             'layout_profile': stage_a_result.get('layout_profile'),
@@ -1153,6 +1182,7 @@ def _run_pdf_pipeline(pdf_path: Path, work_dir: Path, session_id: str, page_num:
     if not isinstance(result, dict):
         result = {'success': False, 'error': str(result), 'stage': 'unknown'}
 
+    result.setdefault('mode', 'pipeline')
     result['pipeline_log'] = full_log
     if len(full_log) > _PIPELINE_LOG_MAX_RESPONSE_CHARS:
         result['pipeline_log_truncated'] = True
@@ -1352,54 +1382,238 @@ def api_full_result(session_id: str):
 
 
 # ---------------------------------------------------------------------------
-# AI直接抽出（Gemini に画像を渡して MD を得る）
+# AI直接抽出（Gemini に画像を渡してブロック構造化 JSON を取得・検証・合成）
 # ---------------------------------------------------------------------------
 
-_DIRECT_EXTRACT_PROMPT = """
-あなたは高度なOCRおよびデータ抽出システムです。
-提供された画像からすべての情報を抽出し、**以下の厳密な出力形式**で返してください。
-「一列のズレ、一行の結合も許さない」という極めて厳格な姿勢で臨んでください。
+class ContainerInfo(BaseModel):
+    id: str = Field(description="コンテナ識別子（例: 'page_main', 'box_notice', 'col_left', 'col_right'）")
+    type: Literal["page_body", "callout_box", "column_left", "column_right", "header", "footer"] = Field(
+        description="コンテナ種別。枠線で囲まれた領域は 'callout_box'、段組みは 'column_*'"
+    )
+    title: Optional[str] = Field(None, description="枠線の上や内部に書かれた枠タイトル（例: '4月の予定', '持ち物'）")
+    bbox: Optional[List[int]] = Field(None, description="枠線・段組み全体の [ymin, xmin, ymax, xmax] (0〜1000 整数)")
 
-【思考プロセス（重要）】
-正確な抽出のために、以下の手順を厳守してください。
 
-1. **垂直境界（列のコンテナ）の定義**:
-   まずヘッダー行を精査し、各列の水平方向の開始位置と終了位置を確定させてください。これを「列のコンテナ」と呼びます。
-2. **座標ベースの列割り当て**:
-   すべてのテキストブロックについて、その水平方向の中心座標を計算し、それがどの「列のコンテナ」に属するかを物理的に判定してください。
-   **重要：データがない列を飛ばして左に詰めることは「データ改ざん」とみなし、絶対に禁止します。**
-3. **垂直スキャンによる検算**:
-   各列のヘッダーから下方向へ垂直に視線を走らせ、その「コンテナ」の中にデータが正しく縦一列に並んでいるかを確認してください。
-4. **行の解体（結合セルの排除）**:
-   画像上で上下に並んでいるデータは、一つのセルにまとめず、必ず**独立した複数の行**として書き出してください。結合セルによって省略されている情報は、すべての行に繰り返し入力してください。
+class TableRelationInfo(BaseModel):
+    role: Literal[
+        "table_body",              # 表本体そのもの
+        "pre_table_description",   # 表の直前にある導入・説明文（例: '以下の通り集金を...'）
+        "table_heading",           # 表のタイトル・セクション見出し
+        "table_footnote",          # 表の直後にある注記・脚注（例: '※日程は変更の可能性があります'）
+        "none"                     # 表とは無関係な一般的な地の文
+    ] = Field(description="表との文脈的関係")
+    target_table_id: Optional[str] = Field(None, description="関連する表ID（例: 'T1'）。none の場合は null")
 
-【抽出ルール】
-1. **1データ1行の徹底**: セル内で改行して複数のクラスや時間を詰め込まないでください。行を分けて出力してください。
-2. **空セルの厳格維持**: データが存在しない列は、必ず `| |` （半角スペース一つ）を入れて列のカウントを維持してください。
-3. **結合セルの完全展開**: 縦または横に結合されたセル（学年、校舎など）は、その範囲に含まれる**すべての行・列にその値をコピー**して出力してください。
-4. **言語**: 日本語のまま抽出してください。
-5. **AI の説明不要**: 「抽出しました」等の説明文は一切省いてください。
-6. **第1列ヘッダーは必ず `header` と記述**: 表の第1列のヘッダーセルは、画像上の表ラベルや列名に関わらず、必ず `header` と書いてください。`【小学校】` などのシート名を第1列ヘッダーにしてはいけません。
-7. **表の外にある見出し・シート名は非表テキストに記述**: 表本体の外側に書かれたシート名・セクション見出しは表のヘッダーセルにしないで、`## 非表（F 地の文）` セクションに記述してください。
-8. **縦結合された行カテゴリラベルは第1列に展開**: 縦方向に結合されているカテゴリ・分類セル（行グループの親ラベル）は、その列のすべての対象行に繰り返しコピーしてください。列の位置をずらして隣の列に書いてはいけません。
-9. **各表の直後に説明を1行**: `## T1` の次の行に `> （この表が何のための表かを20〜40文字で説明）` を必ず書いてください。表全体を見渡した上で「何の表か」を端的に記述してください。
-10. **非表テキストの構造化と段落分割**: 表の外にあるタイトル、見出し、箇条書き、地の文などは、論理的なブロック（段落・セクション）ごとに改行で適切に分割してください。また、見出しには `#` や `##`、箇条書きには `-`、注記等には `>` などのマークダウン構造化記号を適切に付与してください。単に平文テキストをベタ書きするのではなく、構造化されたマークダウンとして記述してください。
-11. **ふりがな（ルビ）の除去**: 漢字の上や横に書かれている小さなふりがな（ルビ）は、地の文や表のテキストを抽出する際に完全に無視（削除）してください。「わかば」「きせつ」などのふりがなだけが独立した行やテキストとして並んだ余計な記述を出力に含めないでください。
 
-【出力形式（必須・厳守）】
-以下の2セクション構成で出力してください。セクション名は一字一句変えないでください。
+class TableData(BaseModel):
+    table_id: str = Field(description="表ID（例: 'T1', 'T2'）")
+    caption: str = Field(description="表のタイトル（画像上のタイトルまたは端的な名称）")
+    description: str = Field(description="何の表かを端的に説明した要約（20〜40文字）")
+    row_label_column_count: int = Field(
+        description="左端から何列が行見出し（行ラベル・インデックス列）かを表す列数（0以上の整数。行見出しが無い場合は0、通常の表で第1列が日付や項目の場合は1）"
+    )
+    header_axes: List[str] = Field(
+        description="見出しの各段が何を表すかの名前の配列（例: ['クラス', '時限']）。header_rows の段数と同数で空文字禁止"
+    )
+    header_rows: List[List[str]] = Field(
+        description="見出し行の配列（上の段から順に1段以上）。横結合や縦結合された見出しセルはその範囲の全列・全段に値を完全展開する"
+    )
+    data_rows: List[List[str]] = Field(
+        description="データ行（セル内改行は解体し1データ1行、空セルは空文字、結合セルは完全展開）"
+    )
 
----
 
-## 非表（F 地の文）
+class PageBlock(BaseModel):
+    order: int = Field(description="ページ内での自然な読み順（1から始まる連番）")
+    block_type: Literal[
+        "heading",          # 大見出し・中見出し・小見出し
+        "paragraph",        # 一般の地の文・段落
+        "bullet_list",      # 箇条書き
+        "table",            # 表本体
+        "figure_caption",   # 写真・イラスト・図のキャプション
+        "footnote"          # ページ下部の脚注・注釈
+    ] = Field(description="ブロックの種別。『枠』はブロックではなく container で表す")
+    bbox: List[int] = Field(
+        description="ブロックの正規化座標 [ymin, xmin, ymax, xmax] (0〜1000 の整数。ymin < ymax, xmin < xmax)"
+    )
+    container: ContainerInfo = Field(description="このブロックが所属する枠や段の情報")
+    table_relation: TableRelationInfo = Field(description="表との文脈的関係")
+    text_content: Optional[str] = Field(
+        default=None, description="Markdownテキスト（見出しの#や箇条書きの-を含む）。table の場合は null"
+    )
+    table_data: Optional[TableData] = Field(
+        default=None, description="表の詳細構造データ。table 以外の場合は null"
+    )
 
-（表以外のタイトル・見出し・注釈・フッター・地の文を、論理的なブロックや段落ごとに適切に分割し、見出しには「#」や「##」、箇条書きには「-」、注記等には「>」などのマークダウン構造化記号を付与して記述。表の外にあるすべてのテキストを漏らさず含める。）
 
-## 表（ui_data.tables）
+class DirectExtractPageResult(BaseModel):
+    page_index: int = Field(description="ページ番号（0始まり）")
+    blocks: List[PageBlock] = Field(description="読み順に並んだ全ブロックの配列")
 
-（表ごとに `## T1`, `## T2`, ... と見出しを付け、その直後に `> 説明` を1行書いてからマークダウン表を記述。表が複数ある場合は順番に並める。表がない場合はこのセクションごと省略。）
 
----"""
+class DirectExtractValidationError(Exception):
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+
+
+def validate_direct_extract_result(data: DirectExtractPageResult) -> None:
+    """スキーマ違反、order の欠番・重複、bbox の矛盾、表の列数不一致、block_type 不整合を厳格に検査。フォールバック絶対禁止。"""
+    blocks = data.blocks
+    if not blocks:
+        raise DirectExtractValidationError("ブロック配列 (blocks) が空です。")
+
+    orders = [b.order for b in blocks]
+    expected_orders = list(range(1, len(blocks) + 1))
+    if orders != expected_orders:
+        raise DirectExtractValidationError(
+            f"order の連番不正: 期待値={expected_orders[:10]}... 実際={orders[:10]}... (欠番または重複があります)"
+        )
+
+    for b in blocks:
+        bb = b.bbox
+        if not isinstance(bb, (list, tuple)) or len(bb) != 4:
+            raise DirectExtractValidationError(f"ブロック #{b.order} の bbox 要素数不正 (4要素必要): {bb}")
+        for coord in bb:
+            if not isinstance(coord, int) or coord < 0 or coord > 1000:
+                raise DirectExtractValidationError(
+                    f"ブロック #{b.order} の bbox 座標が 0〜1000 の整数ではありません: {bb}"
+                )
+        ymin, xmin, ymax, xmax = bb
+        if ymin >= ymax:
+            raise DirectExtractValidationError(f"ブロック #{b.order} の bbox 座標矛盾 (ymin >= ymax): {bb}")
+        if xmin >= xmax:
+            raise DirectExtractValidationError(f"ブロック #{b.order} の bbox 座標矛盾 (xmin >= xmax): {bb}")
+
+        if b.container and b.container.bbox is not None:
+            cbb = b.container.bbox
+            if not isinstance(cbb, (list, tuple)) or len(cbb) != 4:
+                raise DirectExtractValidationError(f"ブロック #{b.order} の container.bbox 要素数不正: {cbb}")
+            for coord in cbb:
+                if not isinstance(coord, int) or coord < 0 or coord > 1000:
+                    raise DirectExtractValidationError(f"ブロック #{b.order} の container.bbox 範囲不正: {cbb}")
+            if cbb[0] >= cbb[2] or cbb[1] >= cbb[3]:
+                raise DirectExtractValidationError(f"ブロック #{b.order} の container.bbox 座標矛盾: {cbb}")
+
+        if b.block_type == "table":
+            if not b.table_data:
+                raise DirectExtractValidationError(
+                    f"ブロック #{b.order} は block_type='table' ですが table_data がありません。"
+                )
+            if b.text_content:
+                raise DirectExtractValidationError(
+                    f"ブロック #{b.order} は block_type='table' ですが text_content が設定されています (null であるべきです)。"
+                )
+            td = b.table_data
+            if not td.header_rows or not isinstance(td.header_rows, list) or len(td.header_rows) == 0:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の header_rows が空です。"
+                )
+            num_header_rows = len(td.header_rows)
+            if not td.header_axes or not isinstance(td.header_axes, list) or len(td.header_axes) != num_header_rows:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の header_axes の数 ({len(td.header_axes) if isinstance(td.header_axes, list) else '非配列'}) が段数 ({num_header_rows}) と不一致です。"
+                )
+            for axis_idx, axis in enumerate(td.header_axes):
+                if axis is None or not str(axis).strip():
+                    raise DirectExtractValidationError(
+                        f"表ブロック #{b.order} (table_id='{td.table_id}') の header_axes[{axis_idx}] が空文字です（空文字禁止）。"
+                    )
+
+            first_header_row = td.header_rows[0]
+            if not isinstance(first_header_row, list) or len(first_header_row) == 0:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の header_rows[0] が空または配列ではありません。"
+                )
+            header_col_count = len(first_header_row)
+            for h_idx, h_row in enumerate(td.header_rows):
+                if not isinstance(h_row, list) or len(h_row) != header_col_count:
+                    raise DirectExtractValidationError(
+                        f"表ブロック #{b.order} (table_id='{td.table_id}') の header_rows[{h_idx}] の列数 ({len(h_row) if isinstance(h_row, list) else '非配列'}) が段 #0 の列数 ({header_col_count}) と不一致です。"
+                    )
+
+            if type(td.row_label_column_count) is not int or td.row_label_column_count < 0 or td.row_label_column_count >= header_col_count:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の row_label_column_count ({td.row_label_column_count}) は 0 以上かつ列数 ({header_col_count}) 未満でなければなりません。"
+                )
+
+            for row_idx, row in enumerate(td.data_rows):
+                if not isinstance(row, list) or len(row) != header_col_count:
+                    raise DirectExtractValidationError(
+                        f"表ブロック #{b.order} (table_id='{td.table_id}') の行 #{row_idx + 1} の列数 ({len(row) if isinstance(row, list) else '非配列'}) が header_rows の列数 ({header_col_count}) と不一致です。"
+                    )
+            if not td.description or not str(td.description).strip():
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の description が空です（スキーマ上必須です）。"
+                )
+        else:
+            if not b.text_content or not str(b.text_content).strip():
+                raise DirectExtractValidationError(
+                    f"ブロック #{b.order} は block_type='{b.block_type}' ですが text_content が空です。"
+                )
+            if b.table_data is not None:
+                raise DirectExtractValidationError(
+                    f"ブロック #{b.order} は block_type='{b.block_type}' ですが table_data が設定されています (null であるべきです)。"
+                )
+
+
+_DIRECT_EXTRACT_PROMPT = """あなたは極めて精密なOCRおよび文書構造化システムです。
+提供された画像（ページ画像）からすべてのブロックを印刷物の自然な読み順（Reading Order）の1本の配列（blocks）として抽出し、JSONスキーマに従って出力してください。
+「順番は崩さず、テキストブロックはテキストブロック、表は表としてちゃんと読み取る」ことを絶対条件とします。
+
+【最重要ルール】
+1. **読み順の維持（Reading Order）**:
+   - ページ全体を上から下、左から右（段組みや囲み枠の文脈を考慮）へ、人間が読む本来の順序でブロックを並べてください。
+   - 決して「文章」と「表」でページを2つに分割してはいけません。表の直前の説明文、表、表の直後の注記、次のセクションの見出しの順序をそのまま保持してください。
+   - `order` は 1 から始まる連番（1, 2, 3, ...）で重複や欠番を絶対に作らないでください。
+
+2. **ブロック種別（block_type）**:
+   - `heading`: 見出し（大・中・小見出し）
+   - `paragraph`: 一般の地の文・段落
+   - `bullet_list`: 箇条書きリスト
+   - `table`: 表本体
+   - `figure_caption`: 図・写真・イラストのキャプション
+   - `footnote`: ページ下部の注釈・脚注
+   - ※枠線（囲み枠・コラム）自体はブロックにせず、`container` 属性で表現してください。
+
+3. **正規化座標（bbox）**:
+   - 0〜1000の整数で [ymin, xmin, ymax, xmax] を指定してください。
+   - 必ず ymin < ymax かつ xmin < xmax を満たす必要があります。
+
+4. **コンテナ情報（container）**:
+   - `id`: 固有のコンテナ識別子（例: 'page_main', 'box_notice', 'col_left', 'col_right'）
+   - `type`: 'page_body', 'callout_box'（囲み枠）, 'column_left'（左段）, 'column_right'（右段）, 'header', 'footer'
+   - `title`: 枠線の内外に書かれた枠タイトル（例: '4月の予定', 'PTAからのお知らせ'）
+   - `bbox`: 枠線全体の [ymin, xmin, ymax, xmax]（0〜1000整数、なければ null）
+
+5. **表との文脈的関係（table_relation）**:
+   - `role`:
+     - 'table_body': 表本体そのもの
+     - 'pre_table_description': 表の直前にある導入文・説明（例: '以下の通り集金を...'）
+     - 'table_heading': 表の見出し・タイトル
+     - 'table_footnote': 表の直後にある注記・脚注（例: '※日程は変更の可能性があります'）
+     - 'none': 表とは無関係な一般テキスト
+   - `target_table_id`: 対象の表ID（例: 'T1'）。none の場合は null。
+
+6. **テキストブロック（text_content）**:
+   - `block_type` が `table` 以外の場合、Markdownテキスト（見出しの#や箇条書きの-を含む）を `text_content` に記述し、`table_data` は null にしてください。
+   - 漢字のふりがな（ルビ）は完全に除去してください。
+
+7. **表ブロック（table_data）**:
+   - `block_type` が `table` の場合、詳細構造を `table_data` に記述し、`text_content` は null にしてください。
+   - `row_label_column_count`: 左端から何列が行見出し（行ラベル・インデックス列、例: 時間割の第1列「日付」や項目の列）かを表す列数（0以上の整数）。行見出しの列がない場合は 0、第1列が行見出しの場合は 1 を指定してください。全列数未満でなければなりません。
+   - `header_axes`: 見出しの各段が何を表すかの名前の配列（例: ['クラス', '時限']、1段見出しなら ['項目'] など）。`header_rows` の段数と同数の要素を持ち、空文字は絶対に含めないでください。これはデータ列の各軸の名前です（行見出し列のための名前ではありません）。
+   - `header_rows`: 見出し行の配列（上の段から順に1段以上）。
+     - 時間割のような多段見出し（例: 1段目「6A」「6B」が横結合、2段目「朝」「1」〜「6」）の場合、上の段から順に各段を行配列として出力してください。
+     - 横結合された見出しセルは、その結合範囲のすべての列に値を展開（コピー）してください（例: 「6A」が6A朝〜6A6の全列に及ぶなら、1段目の該当列すべてに「6A」を入れる）。
+     - 縦結合された見出しセルも、その結合範囲のすべての段に値を展開（コピー）してください。
+     - 第1列ヘッダーを 'header' と書く旧ルールは廃止されました。画像上の実際の見出し（例: '日付'）をそのまま書いてください。画像上で第1列に見出しが無い場合は空文字 "" としてください（推測で作らない）。
+     - 各段の列数はすべての段で同一であり、`data_rows` の全行の列数とも完全一致させてください。
+   - `data_rows`: 1データ1行。セル内改行は解体して複数行に分け、空セルは空文字 "" を入れて `header_rows` と全行で列数を完全一致させてください。
+   - 結合セルは完全展開（結合範囲の全行・全列に値をコピー）してください。
+   - ふりがな（ルビ）は除去してください。
+"""
 
 
 def _cell_to_yaml_item(cell: str) -> str:
@@ -1409,10 +1623,10 @@ def _cell_to_yaml_item(cell: str) -> str:
     return '    ' + dumped
 
 
-def _infer_table_semantics(headers: List[str], rows: List[List[str]]) -> Dict[str, Any]:
+def _infer_table_semantics(header_rows: List[List[str]], rows: List[List[str]]) -> Dict[str, Any]:
     """表内容から table_semantics を推定する。"""
     financial_kw = {'収入', '支出', '決算', '予算', '繰越', '合計', '収支', '会費'}
-    all_text = ' '.join(str(h) for h in headers) + ' ' + ' '.join(
+    all_text = ' '.join(str(c) for h_row in header_rows for c in h_row) + ' ' + ' '.join(
         str(c) for row in rows for c in row
     )
     if any(kw in all_text for kw in financial_kw):
@@ -1441,8 +1655,9 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
     for tbl in tables_data:
         tbl_id = tbl['table_id']
         rows = tbl['data_rows']
-        headers = tbl['headers']
-        sem = _infer_table_semantics(headers, rows)
+        header_rows = tbl['header_rows']
+        header_axes = tbl['header_axes']
+        sem = _infer_table_semantics(header_rows, rows)
         type_ja_str = sem['type_ja'] if sem['type_ja'] else 'null'
 
         description = str(tbl.get('description') or '')
@@ -1460,7 +1675,43 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
         lines.append('    date_range: null')
         lines.append(f"    confidence: {sem['confidence']}")
         lines.append('  header_row_indices:')
-        lines.append('  - 0')
+        for h_idx in range(len(header_rows)):
+            lines.append(f'  - {h_idx}')
+        lines.append('  header_axes:')
+        for axis in header_axes:
+            dumped_axis = _yaml.safe_dump([str(axis)], allow_unicode=True).strip()
+            lines.append('  ' + dumped_axis)
+        lines.append('  header_rows:')
+        for h_idx, h_row in enumerate(header_rows):
+            lines.append(f'  - header_row: {h_idx}')
+            lines.append('    cells:')
+            for cell in h_row:
+                lines.append(_cell_to_yaml_item(cell))
+        lines.append('  columns:')
+        if not header_rows:
+            raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
+        if 'row_label_column_count' not in tbl or tbl['row_label_column_count'] is None:
+            raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+        col_count = len(header_rows[0])
+        row_label_col_count = tbl['row_label_column_count']
+        for c in range(col_count):
+            lines.append(f'  - index: {c}')
+            if c < row_label_col_count:
+                bottom_val = header_rows[-1][c]
+                dumped_rl = _yaml.safe_dump({'row_label': str(bottom_val)}, allow_unicode=True).strip()
+                if dumped_rl.endswith('...'):
+                    dumped_rl = dumped_rl[:-3].strip()
+                for rl_line in dumped_rl.split('\n'):
+                    lines.append(f'    {rl_line}')
+            else:
+                lines.append('    axes:')
+                for r_idx, axis_name in enumerate(header_axes):
+                    val = header_rows[r_idx][c]
+                    dumped_entry = _yaml.safe_dump({str(axis_name): str(val)}, allow_unicode=True).strip()
+                    if dumped_entry.endswith('...'):
+                        dumped_entry = dumped_entry[:-3].strip()
+                    for de_line in dumped_entry.split('\n'):
+                        lines.append(f'      {de_line}')
         lines.append('  month_blocks: []')
         lines.append('  data_rows:')
         for idx, row in enumerate(rows):
@@ -1471,271 +1722,443 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
     return '\n'.join(lines)
 
 
-def _direct_extract_build_structured_md(ai_text: str) -> str:
-    """AI が返した生テキストをパイプライン互換の構造化 MD に変換する。"""
-    import re as _re
+def _synthesize_structured_markdown_from_blocks(
+    blocks: List[PageBlock]
+) -> Tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
+    """
+    検証済みブロック配列から、下流システム完全互換の Markdown を決定論的に合成する。
+    Returns:
+        (structured_md, tables_data, ui_data_summary)
+    """
     import html as _html
 
-    # AI が markdown コードブロックで包んだ場合は中身だけ取り出す
-    matches = _re.findall(r'```(?:markdown|md)?\s*\n?(.*?)```', ai_text, _re.DOTALL)
-    if matches:
-        ai_text = '\n\n'.join(m.strip() for m in matches)
-    ai_text = ai_text.strip()
+    prose_parts: List[str] = []
+    tables_data: List[Dict[str, Any]] = []
+    html_lines: List[str] = []
+    current_container_id: Optional[str] = None
 
-    # 親かっこ記号の全角・半角の揺れを標準化
-    ai_text = _re.sub(r'## 非表[\(（](.*?)[）\)]', r'## 非表（\1）', ai_text)
-    ai_text = _re.sub(r'## 表[\(（](.*?)[）\)]', r'## 表（\1）', ai_text)
+    for b in sorted(blocks, key=lambda x: x.order):
+        c_id = b.container.id if b.container else None
+        if c_id != current_container_id:
+            current_container_id = c_id
+            if b.container and b.container.title:
+                c_title = b.container.title.strip()
+                if c_title:
+                    heading_line = c_title if c_title.startswith("#") else f"## {c_title}"
+                    prose_parts.append(heading_line)
 
-    # AI の出力が既に ## 非表 / ## 表 のセクション構造を持っているか確認
-    has_prose_section = bool(_re.search(r'^## 非表', ai_text, _re.MULTILINE))
-    has_table_section = bool(_re.search(r'^## 表', ai_text, _re.MULTILINE))
-
-    if has_prose_section or has_table_section:
-        structured = ai_text
-    else:
-        # フォーマット違反: テキストと表を手動で分離して再構成
-        prose_lines = []
-        table_blocks = []
-        current_table: list[str] = []
-        in_table = False
-        for line in ai_text.split('\n'):
-            is_table_line = line.strip().startswith('|') and line.strip().endswith('|')
-            if is_table_line:
-                if not in_table:
-                    in_table = True
-                    current_table = []
-                current_table.append(line)
+        if b.block_type != "table":
+            text = (b.text_content or "").strip()
+            if text:
+                prose_parts.append(text)
+        else:
+            td = b.table_data
+            if not td:
+                continue
+            raw_tid = td.table_id.strip()
+            if not raw_tid.upper().startswith("B_"):
+                tbl_id = f"B_{raw_tid}"
             else:
-                if in_table:
-                    table_blocks.append('\n'.join(current_table))
-                    current_table = []
-                    in_table = False
-                prose_lines.append(line)
-        if current_table:
-            table_blocks.append('\n'.join(current_table))
+                tbl_id = raw_tid
 
-        parts = []
-        prose = '\n'.join(prose_lines).strip()
-        if prose:
-            parts.append('## 非表（F 地の文）\n\n' + prose)
-        if table_blocks:
-            table_section_lines = ['## 表（ui_data.tables）', '']
-            for i, tb in enumerate(table_blocks):
-                table_section_lines.append(f'## T{i + 1}')
-                table_section_lines.append('')
-                table_section_lines.append(tb)
-                table_section_lines.append('')
-            parts.append('\n'.join(table_section_lines))
-        structured = '\n\n'.join(parts) if parts else ai_text
+            if not td.header_rows:
+                raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
+            header_rows = td.header_rows
+            if td.header_axes is None:
+                raise ValueError(f"契約違反: table {tbl_id} に header_axes がありません")
+            header_axes = td.header_axes
+            if td.data_rows is None:
+                raise ValueError(f"契約違反: table {tbl_id} に data_rows がありません")
+            data_rows = td.data_rows
+            description = td.description.strip()
+            col_count = len(header_rows[0])
 
-    # ## T\d+ → ## B_T\d+ にリネーム（表ヘッダー行のみ対象）
-    structured = _re.sub(r'^(## )T(\d+)\s*$', r'\1B_T\2', structured, flags=_re.MULTILINE)
-
-    # ## 表（ui_data.tables）配下の表から YAML + HTML（colspan対応）を生成
-    tables_data: list[dict] = []
-    html_lines: list[str] = []
-
-    def _parse_cells(line: str) -> List[str]:
-        return [c.strip() for c in line.strip().strip('|').split('|')]
-
-    table_section_match = _re.search(
-        r'^## 表（ui_data\.tables）\s*\n(.*)',
-        structured, _re.MULTILINE | _re.DOTALL | _re.IGNORECASE
-    )
-    if table_section_match:
-        table_section_text = table_section_match.group(1)
-        table_blocks_in_section = _re.split(r'^## (B_T\d+|T\d+)\s*$', table_section_text, flags=_re.MULTILINE | _re.IGNORECASE)
-        # [pre, id1, block1, id2, block2, ...]
-        
-        reconstructed_blocks = [table_blocks_in_section[0]]
-        i = 1
-        while i + 1 < len(table_blocks_in_section):
-            tbl_id = table_blocks_in_section[i].strip()
-            if not tbl_id.upper().startswith('B_'):
-                tbl_id = f"B_{tbl_id}"
-            tbl_md = table_blocks_in_section[i + 1].strip()
-            tbl_lines = [ln for ln in tbl_md.split('\n') if ln.strip().startswith('|')]
-            
-            # ## T1 直後の > blockquote を表の説明として抽出（複数行対応、スペースの揺れを許容）
-            desc_m = _re.findall(r'^>\s*(.*)$', tbl_md, _re.MULTILINE)
-            description = ' '.join(desc_m).strip() if desc_m else ''
-            
-            if len(tbl_lines) >= 2:
-                headers = _parse_cells(tbl_lines[0])
-                data_rows = [_parse_cells(ln) for ln in tbl_lines[2:]]  # skip separator
-
-                tables_data.append({
-                    'table_id': tbl_id,
-                    'headers': headers,
-                    'data_rows': data_rows,
-                    'description': description,
-                })
-
-                # HTML 生成（末尾2列が同一非空値なら colspan=2）
-                th_html = ''.join(f'<th>{_html.escape(h)}</th>' for h in headers)
-                rows_html_parts = []
-                for r in data_rows:
-                    if len(r) >= 4 and r[-1] and r[-2] == r[-1]:
-                        cells_html = (
-                            ''.join(f'<td>{_html.escape(c)}</td>' for c in r[:-2])
-                            + f'<td colspan="2">{_html.escape(r[-2])}</td>'
-                        )
-                    else:
-                        cells_html = ''.join(f'<td>{_html.escape(c)}</td>' for c in r)
-                    rows_html_parts.append(f'<tr>{cells_html}</tr>')
-                html_lines.append(f'<!-- table:{tbl_id} -->')
-                html_lines.append(
-                    f'<table class="md-embed-table"><thead><tr>{th_html}</tr></thead>'
-                    f'<tbody>{"".join(rows_html_parts)}</tbody></table>'
-                )
-            
-            # > で始まる行を削除し、::summary:: description に置換する
-            clean_tbl_md = _re.sub(r'^>.*$\n?', '', tbl_md, flags=_re.MULTILINE).strip()
+            table_lines: List[str] = [f"## {tbl_id}"]
             if description:
-                new_tbl_md = f"::summary:: {description}\n{clean_tbl_md}"
-            else:
-                new_tbl_md = clean_tbl_md
-            
-            reconstructed_blocks.append(f"## {tbl_id}\n{new_tbl_md}")
-            i += 2
-            
-        new_table_section_text = '\n\n'.join(reconstructed_blocks)
-        structured = structured[:table_section_match.start(1)] + new_table_section_text + structured[table_section_match.end(1):]
+                table_lines.append(f"::summary:: {description}")
 
-    if tables_data or html_lines:
-        embed_parts: list[str] = ['## 表（埋め込み）', '', '<!-- dms:tables-md-embed v1 -->']
-        if tables_data:
-            yaml_str = _generate_tables_yaml(tables_data)
-            embed_parts += ['### `tables`（YAML・検索・LLM 向け）', '', '```yaml', yaml_str, '```']
-        if html_lines:
-            embed_parts += ['', '### 表 HTML（MD に埋め込み可）', '']
-            embed_parts.extend(html_lines)
-        structured += '\n\n' + '\n'.join(embed_parts)
+            # Markdown 表のヘッダー（1行）: 行見出しの列は最下段の値、それ以外は段の値を ' / ' で連結（上下段が同じ値なら1回だけ）
+            if td.row_label_column_count is None:
+                raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+            row_label_col_count = td.row_label_column_count
+            single_headers: List[str] = []
+            for c in range(col_count):
+                if c < row_label_col_count:
+                    bottom_val = str(header_rows[-1][c]).strip()
+                    single_headers.append(bottom_val)
+                else:
+                    vals: List[str] = []
+                    for h_row in header_rows:
+                        v = str(h_row[c]).strip()
+                        if v and (not vals or vals[-1] != v):
+                            vals.append(v)
+                    single_headers.append(" / ".join(vals) if vals else "")
 
-    return structured
+            # Markdown 表: 見出しを1行にし、各列の見出しを ' / ' で連結した上で区切り行を置く
+            table_lines.append("| " + " | ".join(h.replace("|", "\\|") for h in single_headers) + " |")
+            if single_headers:
+                table_lines.append("| " + " | ".join("---" for _ in single_headers) + " |")
+            for r in data_rows:
+                table_lines.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
+
+            # HTML 表: thead に複数 tr（段数分の tr）
+            thead_trs: List[str] = []
+            for h_row in header_rows:
+                th_cells = "".join(f"<th>{_html.escape(str(h))}</th>" for h in h_row)
+                thead_trs.append(f"<tr>{th_cells}</tr>")
+            thead_html = "".join(thead_trs)
+
+            rows_html_parts: List[str] = []
+            for r in data_rows:
+                if len(r) >= 4 and r[-1] and r[-2] == r[-1]:
+                    cells_html = (
+                        "".join(f"<td>{_html.escape(str(c))}</td>" for c in r[:-2])
+                        + f'<td colspan="2">{_html.escape(str(r[-2]))}</td>'
+                    )
+                else:
+                    cells_html = "".join(f"<td>{_html.escape(str(c))}</td>" for c in r)
+                rows_html_parts.append(f"<tr>{cells_html}</tr>")
+
+            tbl_html = (
+                f'<!-- table:{tbl_id} -->\n'
+                f'<table class="md-embed-table"><thead>{thead_html}</thead>'
+                f'<tbody>{"".join(rows_html_parts)}</tbody></table>'
+            )
+
+            prose_parts.append("\n".join(table_lines))
+            html_lines.append(tbl_html)
+
+            sem = _infer_table_semantics(header_rows, data_rows)
+
+            # 列ごとの意味 columns を決定論的に生成（行見出しの列は row_label、他は axes）
+            columns: List[Dict[str, Any]] = []
+            for c in range(col_count):
+                if c < row_label_col_count:
+                    bottom_val = header_rows[-1][c]
+                    columns.append({
+                        "index": c,
+                        "row_label": str(bottom_val),
+                    })
+                else:
+                    axes_dict: Dict[str, str] = {}
+                    for r_idx, axis_name in enumerate(header_axes):
+                        val = header_rows[r_idx][c]
+                        axes_dict[str(axis_name)] = str(val)
+                    columns.append({
+                        "index": c,
+                        "axes": axes_dict,
+                    })
+
+            tables_data.append({
+                "table_id": tbl_id,
+                "row_label_column_count": row_label_col_count,
+                "header_axes": header_axes,
+                "header_rows": header_rows,
+                "columns": columns,
+                "headers": single_headers,
+                "data_rows": data_rows,
+                "description": description,
+                "table_semantics": sem,
+            })
+
+    body_md = "\n\n".join(prose_parts).strip()
+
+    embed_parts: List[str] = ["## 表（埋め込み）", "", "<!-- dms:tables-md-embed v1 -->"]
+    if tables_data:
+        yaml_str = _generate_tables_yaml(tables_data)
+        embed_parts += ["### `tables`（YAML・検索・LLM 向け）", "", "```yaml", yaml_str, "```"]
+    if html_lines:
+        embed_parts += ["", "### 表 HTML（MD に埋め込み可）", ""]
+        embed_parts.extend(html_lines)
+
+    full_md = body_md + "\n\n" + "\n".join(embed_parts)
+
+    ui_data_summary = {
+        "actions_count": 0,
+        "g21_articles_count": 0,
+        "g36_rebuild": [],
+        "notices_count": 0,
+        "sections_count": 0,
+        "table_ids": [t["table_id"] for t in tables_data],
+        "tables_count": len(tables_data),
+        "tables_md_embed_chars": len("\n".join(embed_parts)),
+        "timeline_count": 0,
+    }
+
+    return full_md, tables_data, ui_data_summary
 
 
 @lab_bp.route('/api/extract_direct/<session_id>/<int:page_index>', methods=['POST'])
 def api_extract_direct(session_id: str, page_index: int):
-    """AI直接抽出: ページ画像を Gemini に直接送って MD を返す。パイプライン（A→G）は実行しない。"""
+    """AI直接抽出: ページ画像を Gemini (新SDK google-genai / ultra_high) に送ってブロック構造化 JSON を取得・検証・合成する。"""
     base = _safe_session_dir(session_id)
     if not base:
         return jsonify({'success': False, 'error': 'セッション不明'}), 404
 
-    img_path = base / 'preview' / f'page_{page_index}.png'
-    if not img_path.is_file():
-        return jsonify({'success': False, 'error': f'ページ画像が見つかりません: page_{page_index}.png'}), 404
-
     body = request.get_json(silent=True) or {}
-    model_name = (body.get('model') or 'gemini-2.5-flash-lite').strip()
+    model_val = body.get('model')
+    if not model_val or not str(model_val).strip():
+        return jsonify({'success': False, 'error': 'model は必須です'}), 400
+    model_name = str(model_val).strip()
+
+    if model_name == 'deepseek-flash':
+        return jsonify({'success': False, 'error': 'deepseek-flash は新ブロック構造化抽出に非対応です'}), 400
+
+    pdf_path = base / 'input.pdf'
+    if not pdf_path.is_file():
+        return jsonify({'success': False, 'error': 'input.pdf が存在しません'}), 404
 
     try:
-        import google.generativeai as genai
+        doc = fitz.open(str(pdf_path))
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'PDFオープンに失敗しました: {e}'}), 500
+
+    try:
+        if page_index < 0 or page_index >= len(doc):
+            return jsonify({
+                'success': False,
+                'error': f'指定ページ番号 {page_index} は範囲外です（全 {len(doc)} ページ）'
+            }), 400
+
+        try:
+            page = doc[page_index]
+            pix = page.get_pixmap(matrix=fitz.Matrix(3, 3))
+            img_bytes = pix.tobytes("png")
+        except Exception as _fe:
+            loguru_logger.error(f"Matrix(3,3) render failed: {_fe}")
+            return jsonify({'success': False, 'error': f'高解像度レンダリング(Matrix 3x3)に失敗しました: {_fe}'}), 500
+    finally:
+        doc.close()
+
+    try:
         import os as _os
-        api_key = _os.environ.get('GOOGLE_AI_API_KEY')
-        if not api_key:
-            return jsonify({'success': False, 'error': 'GOOGLE_AI_API_KEY が未設定です'}), 500
-
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name)
-
-        img_bytes = img_path.read_bytes()
-        import base64 as _b64
-        img_part = {
-            'inline_data': {
-                'mime_type': 'image/png',
-                'data': _b64.b64encode(img_bytes).decode('utf-8'),
-            }
-        }
 
         from dms.common.ai_cost_logger import start_cost_accumulation, stop_cost_accumulation, log_ai_usage
         start_cost_accumulation()
 
-        response = model.generate_content(
-            [_DIRECT_EXTRACT_PROMPT, img_part], request_options={"timeout": 120}
-        )
-        
-        usage_meta = getattr(response, "usage_metadata", None)
-        pt = getattr(usage_meta, "prompt_token_count", 0) or 0 if usage_meta else 0
-        ct = getattr(usage_meta, "candidates_token_count", 0) or 0 if usage_meta else 0
-        tt = getattr(usage_meta, "thoughts_token_count", 0) or 0 if usage_meta else 0
-        tot = getattr(usage_meta, "total_token_count", 0) or 0 if usage_meta else 0
-        tokens = int(tot or (pt + ct + tt) or 1)
+        api_key = _os.environ.get('GOOGLE_AI_API_KEY')
+        if not api_key:
+            return jsonify({'success': False, 'error': 'GOOGLE_AI_API_KEY が未設定です'}), 500
+
+        service_name = 'Gemini'
+        raw_response_text = None
+        pt = 0
+        ct = 0
+        tt = 0
+        tokens = 0
+        usage_error = None
 
         try:
-            log_ai_usage(
-                app="dms-pipeline",
-                stage="DIRECT-EXTRACT",
-                model=model_name,
-                prompt_token_count=pt,
-                candidates_token_count=ct,
-                thoughts_token_count=tt,
-                total_token_count=tokens,
-                session_id=session_id,
+            from google import genai
+            from google.genai import types as genai_types
+        except ImportError as _imp_err:
+            loguru_logger.error(f"google-genai import failed: {_imp_err}")
+            return jsonify({
+                'success': False,
+                'error': f'google-genai のインポートに失敗しました (google-genai>=1.66.0 が必要です): {_imp_err}'
+            }), 500
+
+        try:
+            client = genai.Client(
+                api_key=api_key,
+                http_options=genai_types.HttpOptions(timeout=180000),
             )
-        except Exception as _e:
-            loguru_logger.warning(f"Cost log failed: {_e}")
+            config = genai_types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=DirectExtractPageResult,
+            )
+
+            img_part = genai_types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+            img_part.media_resolution = genai_types.PartMediaResolution(
+                level=genai_types.PartMediaResolutionLevel.MEDIA_RESOLUTION_ULTRA_HIGH
+            )
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    img_part,
+                    _DIRECT_EXTRACT_PROMPT,
+                ],
+                config=config,
+            )
+            raw_response_text = getattr(response, "text", None)
+            usage_meta = getattr(response, "usage_metadata", None)
+            if usage_meta:
+                pt = getattr(usage_meta, "prompt_token_count", 0) or 0
+                ct = getattr(usage_meta, "candidates_token_count", 0) or 0
+                tt = getattr(usage_meta, "thoughts_token_count", 0) or 0
+                tot = getattr(usage_meta, "total_token_count", 0) or 0
+                tokens = int(tot or (pt + ct + tt))
+            if not usage_meta or tokens == 0:
+                usage_error = 'Geminiのトークン使用量(usage_metadata)が取得できませんでした'
+        except Exception as _genai_err:
+            loguru_logger.warning(f"google-genai call failed: {_genai_err}")
+            return jsonify({'success': False, 'error': f'Gemini API呼び出しエラー: {_genai_err}'}), 500
+
+        if not raw_response_text or not raw_response_text.strip():
+            return jsonify({'success': False, 'error': 'Geminiからのレスポンス本文が空です'}), 500
+
+        # Pydantic パースとスキーマ検証
+        try:
+            parsed_result = DirectExtractPageResult.model_validate_json(raw_response_text)
+        except ValidationError as ve:
+            return jsonify({
+                'success': False,
+                'error': f'スキーマ検証エラー: {ve}',
+                'error_type': 'schema_validation_error',
+                'raw_response': raw_response_text[:2000],
+            }), 422
+        except Exception as je:
+            return jsonify({
+                'success': False,
+                'error': f'JSON解析エラー: {je}',
+                'error_type': 'json_parse_error',
+                'raw_response': raw_response_text[:2000] if raw_response_text else '',
+            }), 422
+
+        # 厳格な業務ルール検証（フォールバック絶対禁止）
+        try:
+            validate_direct_extract_result(parsed_result)
+        except DirectExtractValidationError as de:
+            return jsonify({
+                'success': False,
+                'error': f'ブロック検証エラー: {de.message}',
+                'error_type': 'block_validation_error',
+                'details': de.details,
+            }), 422
+
+        # コスト計算と記録
+        cost_error = None
+        if usage_error:
+            cost_error = f"費用記録失敗: {usage_error}"
+        else:
+            try:
+                log_ai_usage(
+                    app="dms-pipeline",
+                    stage="DIRECT-EXTRACT",
+                    model=model_name,
+                    prompt_token_count=pt,
+                    candidates_token_count=ct,
+                    thoughts_token_count=tt,
+                    total_token_count=tokens,
+                    session_id=session_id,
+                )
+            except Exception as _e:
+                loguru_logger.warning(f"Cost log failed: {_e}")
+                cost_error = f"費用記録失敗: {_e}"
 
         accumulated = stop_cost_accumulation()
-        if not accumulated and tokens > 0:
-            accumulated = [{
-                'stage': 'DIRECT-EXTRACT',
-                'model': model_name,
-                'prompt_tokens': pt,
-                'completion_tokens': ct,
-                'thinking_tokens': tt,
-            }]
-
         ai_cost = _calc_ai_cost(accumulated)
+        if cost_error:
+            ai_cost['error'] = cost_error
+            ai_cost['total_cost_usd'] = None
 
-        structured_md = _direct_extract_build_structured_md(response.text or '')
+        # 決定論的 Markdown 合成（下流完全互換）
+        structured_md, tables_data, ui_data_summary = _synthesize_structured_markdown_from_blocks(parsed_result.blocks)
 
-        # 構造化された Markdown から ui_data 用の yaml tables メタデータを取り込むための summary
-        ui_data_summary = {
-            "actions_count": 0,
-            "g21_articles_count": 0,
-            "g36_rebuild": [],
-            "notices_count": 0,
-            "sections_count": 0,
-            "table_ids": [],
-            "tables_count": 0,
-            "tables_md_embed_chars": 0,
-            "timeline_count": 0
-        }
-        
-        import re as _re
-        table_matches = _re.findall(r'<!-- table:(B_T\d+) -->', structured_md)
-        if table_matches:
-            ui_data_summary["table_ids"] = table_matches
-            ui_data_summary["tables_count"] = len(table_matches)
-        
-        embed_match = _re.search(r'<!-- dms:tables-md-embed v1 -->.*$', structured_md, _re.DOTALL)
-        if embed_match:
-            ui_data_summary["tables_md_embed_chars"] = len(embed_match.group(0))
+        # 互換 reading_stream の構築
+        reading_stream = []
+        for b in sorted(parsed_result.blocks, key=lambda x: x.order):
+            c_dict = b.container.model_dump()
+            tr_dict = b.table_relation.model_dump()
+            sy = b.bbox[0] / 1000.0
 
-        # 直接抽出用のログ保存処理（パイプライン画面のデバッグタブにログを表示するため、実時刻を使用）
+            if b.block_type == "table":
+                td = b.table_data
+                tbl_id = td.table_id.strip()
+                if not tbl_id.upper().startswith("B_"):
+                    tbl_id = f"B_{tbl_id}"
+                
+                # 表テキスト表現
+                t_lines = [f"## {tbl_id}"]
+                if td.description:
+                    t_lines.append(f"::summary:: {td.description}")
+                if not td.header_rows:
+                    raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
+                if td.row_label_column_count is None:
+                    raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+                if td.data_rows is None:
+                    raise ValueError(f"契約違反: table {tbl_id} に data_rows がありません")
+                t_col_count = len(td.header_rows[0])
+                t_row_label_col_count = td.row_label_column_count
+                t_single_headers: List[str] = []
+                for c in range(t_col_count):
+                    if c < t_row_label_col_count:
+                        b_val = str(td.header_rows[-1][c]).strip()
+                        t_single_headers.append(b_val)
+                    else:
+                        vals = []
+                        for h_row in td.header_rows:
+                            v = str(h_row[c]).strip()
+                            if v and (not vals or vals[-1] != v):
+                                vals.append(v)
+                        t_single_headers.append(" / ".join(vals) if vals else "")
+                t_lines.append("| " + " | ".join(h.replace("|", "\\|") for h in t_single_headers) + " |")
+                t_lines.append("| " + " | ".join("---" for _ in t_single_headers) + " |")
+                for r in td.data_rows:
+                    t_lines.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
+                table_text = "\n".join(t_lines)
+
+                reading_stream.append({
+                    "kind": "table_ref",
+                    "order": b.order,
+                    "block_type": "table",
+                    "table_id": tbl_id,
+                    "text": table_text,
+                    "sort_y": sy,
+                    "bbox": b.bbox,
+                    "container": c_dict,
+                    "table_relation": tr_dict,
+                    "table_data": td.model_dump(),
+                })
+            else:
+                reading_stream.append({
+                    "kind": "non_table_paragraph",
+                    "order": b.order,
+                    "block_type": b.block_type,
+                    "text": b.text_content or "",
+                    "sort_y": sy,
+                    "bbox": b.bbox,
+                    "container": c_dict,
+                    "table_relation": tr_dict,
+                })
+
+        # ログ作成
         import datetime as _datetime
         def _get_now_str() -> str:
             return _datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
         direct_log_lines = []
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1631 - [Direct] AI直接抽出開始 (ページ={page_index}, モデル={model_name})")
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1636 - [Direct] Gemini 送信中... (画像のバイト数: {len(img_bytes)} bytes)")
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1640 - [Direct] Gemini レスポンス受信成功。トークンカウント: Prompt={pt}, Candidates={ct}, Total={tokens}")
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1666 - [Direct] 料金計算結果: TotalCost={ai_cost.get('total_cost_usd', 0.0):.6f} USD")
-        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1688 - [Direct] 表データ抽出結果: 検出表数={ui_data_summary['tables_count']} (YAML文字数={ui_data_summary['tables_md_embed_chars']})")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1631 - [Direct] AI直接抽出開始 (ページ={page_index}, モデル={model_name}, SDK=google-genai)")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1636 - [Direct] {service_name} 送信中... (画像: {len(img_bytes)} bytes, 解像度=ultra_high)")
+        tok_summary = f"Prompt={pt}, Candidates={ct}, Thoughts={tt}, Total={tokens}"
+        if usage_error:
+            tok_summary += f" (※{usage_error})"
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1640 - [Direct] {service_name} 構造化レスポンス受信成功。トークンカウント: {tok_summary}")
+        total_usd = ai_cost.get('total_cost_usd')
+        if cost_error:
+            cost_display = cost_error
+        elif total_usd is not None:
+            cost_display = f"{total_usd:.6f} USD"
+        else:
+            err_reason = ai_cost.get('error') or 'エラー理由なし（契約違反）'
+            cost_display = f"計算不可: {err_reason}"
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1666 - [Direct] 料金計算結果: TotalCost={cost_display}")
+        direct_log_lines.append(f"{_get_now_str()} | INFO     | api_extract_direct:1688 - [Direct] ブロック抽出検証成功: 総ブロック数={len(parsed_result.blocks)}, 検出表数={ui_data_summary['tables_count']} (YAML文字数={ui_data_summary['tables_md_embed_chars']})")
 
         direct_log_txt = "\n".join(direct_log_lines)
         log_file = base / f'direct_extract_page_{page_index}.log'
         log_file.write_text(direct_log_txt, encoding='utf-8')
 
+        blocks_dump = [b.model_dump() for b in parsed_result.blocks]
         result_data = {
             'success': True,
             'session_id': session_id,
             'page_index': page_index,
             'mode': 'direct',
             'model': model_name,
-            'reading_stream': [{'type': 'non_table', 'text': structured_md}],
+            'blocks': blocks_dump,
+            'reading_stream': reading_stream,
             'raw_md': structured_md,
             'ai_cost': ai_cost,
             'ui_data_summary': ui_data_summary,
@@ -1756,7 +2179,9 @@ def api_extract_direct(session_id: str, page_index: int):
 
         return jsonify({
             'success': True, 
-            'markdown': structured_md, 
+            'markdown': structured_md,
+            'blocks': blocks_dump,
+            'reading_stream': reading_stream,
             'model': model_name,
             'ai_cost': ai_cost,
             'ui_data_summary': ui_data_summary,
@@ -1765,6 +2190,7 @@ def api_extract_direct(session_id: str, page_index: int):
             'f47_log': '',
         })
     except Exception as e:
+        loguru_logger.exception(f"api_extract_direct exception: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -2035,16 +2461,27 @@ def api_strip_sandwich(session_id: str):
 # ---------------------------------------------------------------------------
 
 def _collect_session_md(session_dir: Path) -> str:
-    """全ページの実行結果から reading_stream テキストを集約する。"""
+    """全ページの実行結果から reading_stream または raw_md テキストを集約する。"""
     parts = []
     for result_file in sorted(session_dir.glob('result_page_*.json')):
         try:
             r = json.loads(result_file.read_text(encoding='utf-8'))
-        except Exception:
-            continue
+        except Exception as e:
+            raise ValueError(f"結果ファイル {result_file.name} の読み込みに失敗しました: {e}")
         page_idx = r.get('page_index', '?')
-        rs = r.get('reading_stream') or []
-        text = '\n'.join(b.get('text', '') for b in rs if b.get('text'))
+        mode = r.get('mode')
+        if not mode:
+            raise ValueError(f"ページ {page_idx} の結果に mode が指定されていません（契約違反）。")
+        if mode == 'direct':
+            text = r.get('raw_md')
+            if not text:
+                raise ValueError(f"ページ {page_idx} (mode=direct) に raw_md がありません（契約違反）。")
+        elif mode == 'pipeline':
+            rs = r.get('reading_stream') or []
+            text = '\n'.join(b.get('text', '') for b in rs if b.get('text'))
+        else:
+            raise ValueError(f"ページ {page_idx} の mode '{mode}' は未対応です。")
+
         if text:
             parts.append(f'## Page {int(page_idx) + 1}\n\n{text}')
     return '\n\n'.join(parts)
@@ -2060,7 +2497,10 @@ def api_download_result_pdf(session_id: str):
     if not pdf_path.is_file():
         return jsonify({'error': 'input.pdf がありません'}), 404
 
-    md_text = _collect_session_md(base)
+    try:
+        md_text = _collect_session_md(base)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
     if not md_text:
         return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
 
@@ -2141,7 +2581,10 @@ def api_download_md(session_id: str):
     base = _safe_session_dir(session_id)
     if not base:
         return jsonify({'error': 'not found'}), 404
-    md_text = _collect_session_md(base)
+    try:
+        md_text = _collect_session_md(base)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
     if not md_text:
         return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
     drive_filename_file = base / 'drive_filename.txt'
@@ -2167,7 +2610,10 @@ def api_save_md_to_drive(session_id: str):
     if not drive_id_file.exists():
         return jsonify({'error': 'Drive ファイル ID が記録されていません（ローカルアップロードのセッション）'}), 400
     drive_file_id = drive_id_file.read_text(encoding='utf-8').strip()
-    md_text = _collect_session_md(base)
+    try:
+        md_text = _collect_session_md(base)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
     if not md_text:
         return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
     drive_filename_file = base / 'drive_filename.txt'
@@ -2198,7 +2644,10 @@ def api_save_md_to_supabase(session_id: str):
     if not md_text:
         base = _safe_session_dir(session_id)
         if base:
-            md_text = _collect_session_md(base)
+            try:
+                md_text = _collect_session_md(base)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 400
     if not md_text:
         return jsonify({'error': '実行結果がありません。先にパイプラインを実行してください'}), 400
     try:
@@ -2237,6 +2686,8 @@ def api_update_page_md(session_id: str, page_index: int):
                 r['reading_stream'] = [{'type': 'non_table', 'text': md_text}]
                 if 'raw_md' in r:
                     r['raw_md'] = md_text
+                if 'mode' not in r:
+                    r['mode'] = 'pipeline'
                 f.parent.mkdir(parents=True, exist_ok=True)
                 f.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding='utf-8')
                 updated = True
@@ -2247,6 +2698,7 @@ def api_update_page_md(session_id: str, page_index: int):
                 'success': True,
                 'session_id': session_id,
                 'page_index': page_index,
+                'mode': 'pipeline',
                 'reading_stream': [{'type': 'non_table', 'text': md_text}]
             }
             f.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding='utf-8')

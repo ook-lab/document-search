@@ -1,114 +1,116 @@
 """
-Google Drive コネクタ (サービスアカウント認証)
+Google Drive コネクタ (OAuth2 ユーザー同意フロー認証)
 
 設計書: COMPLETE_IMPLEMENTATION_GUIDE_v3.md の 1.4節に基づき、Google Driveと通信する。
 """
 import os
+import json
 import time
 from typing import List, Dict, Any, Optional, Union
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload, MediaInMemoryUpload
 from io import FileIO, BytesIO
 from loguru import logger
 from pathlib import Path
 
-# 認証情報ファイルのパス (環境変数から取得、なければローカルのフォールバック)
-CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-
-# ローカル開発用のフォールバックパス
-_LOCAL_CREDENTIALS_PATHS = [
-    os.path.join(os.path.dirname(__file__), '..', '..', '..', '.local', '_runtime', 'credentials', 'google_credentials.json'),
-    os.path.join(os.path.dirname(__file__), '..', '..', '..', '_runtime', 'credentials', 'google_credentials.json'),
-]
-
-# 環境変数がない場合、ローカルパスを探す
-if not CREDENTIALS_PATH:
-    for path in _LOCAL_CREDENTIALS_PATHS:
-        abs_path = os.path.abspath(path)
-        if os.path.exists(abs_path):
-            CREDENTIALS_PATH = abs_path
-            break
-
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
+
+def _load_oauth_credentials(scopes: List[str]) -> Credentials:
+    """
+    OAuth2 ユーザー同意フローの認証情報を環境変数またはローカルファイルから構築する。
+
+    優先順位:
+    1. 環境変数 GOOGLE_OAUTH_TOKEN_JSON (JSON文字列)
+    2. ローカルファイル google_oauth_token.json (GOOGLE_OAUTH_TOKEN_JSON未設定時のみ)
+
+    フォールバック絶対禁止:
+    認証に必要な値(client_id, client_secret, refresh_token)が欠けている場合や、
+    トークン情報が見つからない場合は、明示的に例外を投げて処理を中断する。
+    """
+    token_json_env = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "").strip()
+    token_data = None
+    source = ""
+
+    if token_json_env:
+        source = "環境変数 GOOGLE_OAUTH_TOKEN_JSON"
+        try:
+            token_data = json.loads(token_json_env)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{source} のJSONパースに失敗しました: {e}")
+    else:
+        # ローカル開発用フォールバック
+        candidate_paths = []
+        token_file_env = os.getenv("GOOGLE_OAUTH_TOKEN_FILE", "").strip()
+        if token_file_env:
+            candidate_paths.append(token_file_env)
+
+        cwd = os.getcwd()
+        candidate_paths.append(os.path.join(cwd, "google_oauth_token.json"))
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.abspath(os.path.join(base_dir, "..", "..", "..", "..", ".."))
+        candidate_paths.append(os.path.join(repo_root, "google_oauth_token.json"))
+
+        found_path = None
+        for path in candidate_paths:
+            if os.path.isfile(path):
+                found_path = path
+                break
+
+        if found_path:
+            source = f"ファイル ({found_path})"
+            try:
+                with open(found_path, "r", encoding="utf-8") as f:
+                    token_data = json.load(f)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"OAuth2トークンファイル ({found_path}) のJSONパースに失敗しました: {e}")
+            except Exception as e:
+                raise RuntimeError(f"OAuth2トークンファイル ({found_path}) の読み込みに失敗しました: {e}")
+        else:
+            raise FileNotFoundError(
+                "OAuth2 認証情報が見つかりません。"
+                "環境変数 GOOGLE_OAUTH_TOKEN_JSON (JSON文字列) を設定するか、"
+                "google_oauth_token.json ファイルを配置してください。"
+            )
+
+    if not isinstance(token_data, dict):
+        raise ValueError(f"{source} から取得したデータが辞書形式(dict)ではありません。")
+
+    required_keys = ["client_id", "client_secret", "refresh_token"]
+    missing_keys = [k for k in required_keys if not token_data.get(k)]
+    if missing_keys:
+        raise ValueError(f"{source} に必須キーが不足しています: {', '.join(missing_keys)}")
+
+    try:
+        creds = Credentials.from_authorized_user_info(token_data, scopes=scopes)
+    except Exception as e:
+        raise ValueError(f"{source} から Credentials オブジェクトの作成に失敗しました: {e}")
+
+    if not creds.valid:
+        try:
+            creds.refresh(Request())
+            logger.info(f"{source} のOAuth2アクセストークンを更新しました。")
+        except Exception as e:
+            raise RuntimeError(f"{source} のOAuth2トークン更新に失敗しました: {e}")
+
+    logger.info(f"{source} からOAuth2認証に成功しました。")
+    return creds
+
+
 class GoogleDriveConnector:
-    """Google Drive APIクライアント"""
-    
+    """Google Drive APIクライアント（OAuth2 ユーザー同意フロー認証）"""
+
     def __init__(self):
         self.service = self._authenticate()
         # logger.info("Google Driveコネクタ初期化完了")
 
-    def _apply_delegation(self, creds):
-        """GMAIL_USER_EMAIL が設定されていれば domain-wide delegation でユーザーを impersonate。"""
-        delegated_user = (os.environ.get('GMAIL_USER_EMAIL') or '').strip()
-        if not delegated_user:
-            return creds
-        if hasattr(creds, 'with_subject'):
-            logger.info(f"Domain-wide delegation enabled for: {delegated_user}")
-            return creds.with_subject(delegated_user)
-        logger.warning('GMAIL_USER_EMAIL is set but credentials do not support with_subject().')
-        return creds
-
-    def _credentials_from_env_value(self):
-        """CREDENTIALS_PATH がファイルパスまたはJSON文字列（Secret Manager由来）の両方に対応。"""
-        if not CREDENTIALS_PATH:
-            return None
-        import json as _json
-        raw = CREDENTIALS_PATH.strip()
-        if os.path.exists(raw):
-            return service_account.Credentials.from_service_account_file(raw, scopes=SCOPES)
-        if raw.startswith('{'):
-            info = _json.loads(raw)
-            return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-        return None
-
     def _authenticate(self):
-        """サービスアカウント認証（環境変数ファイル/JSON -> ADC -> Streamlit Secrets の順で試行）"""
-        # 1. 環境変数 (ローカル: JSONファイルパス / Cloud Run: Secret Manager JSON本文)
-        if CREDENTIALS_PATH:
-            try:
-                creds = self._credentials_from_env_value()
-                if creds is None:
-                    raise FileNotFoundError(f"GOOGLE_APPLICATION_CREDENTIALS が有効なファイルパスまたはJSON文字列ではありません: {CREDENTIALS_PATH[:80]}")
-                creds = self._apply_delegation(creds)
-                logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH[:80]}")
-                return build('drive', 'v3', credentials=creds)
-            except Exception as e:
-                logger.warning(f"環境変数からの認証失敗: {e}")
-
-        # 2. Application Default Credentials (ADC) (★Cloud Run用: これを追加！★)
-        try:
-            import google.auth
-            creds, project = google.auth.default(scopes=SCOPES)
-            creds = self._apply_delegation(creds)
-            logger.info("ADC (Application Default Credentials) で認証成功")
-            return build('drive', 'v3', credentials=creds)
-        except Exception as e:
-            logger.warning(f"ADC認証失敗: {e}")
-
-        # 3. Streamlit Secrets (Streamlit Cloud用)
-        try:
-            import streamlit as st
-            if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-                creds_dict = dict(st.secrets["gcp_service_account"])
-                creds = service_account.Credentials.from_service_account_info(
-                    creds_dict, scopes=SCOPES
-                )
-                logger.info("Streamlit Secretsから認証成功")
-                return build('drive', 'v3', credentials=creds)
-        except ImportError:
-            pass
-        except Exception as e:
-            logger.warning(f"Streamlit Secretsからの認証失敗: {e}")
-
-        # 全て失敗した場合
-        raise FileNotFoundError(
-            f"認証情報が見つかりません。以下のいずれかを設定してください:\n"
-            f"1. 環境変数 GOOGLE_APPLICATION_CREDENTIALS (現在: {CREDENTIALS_PATH})\n"
-            f"2. Cloud Run のサービスアカウントに権限が付与されているか (ADC)\n"
-            f"3. Streamlit Secrets が設定されているか"
-        )
+        """OAuth2 ユーザー同意フロー認証"""
+        creds = _load_oauth_credentials(SCOPES)
+        return build('drive', 'v3', credentials=creds)
 
     def create_folder(self, folder_name: str, parent_folder_id: Optional[str] = None) -> Optional[str]:
         """
@@ -145,23 +147,23 @@ class GoogleDriveConnector:
     def list_files_in_folder(self, folder_id: str, mime_type_filter: str = None) -> List[Dict[str, Any]]:
         """
         指定されたフォルダ内のファイルを一覧表示
-        
+
         Args:
             folder_id: 親フォルダのID
             mime_type_filter: MIMEタイプによるフィルタリング（オプション）
-            
+
         Returns:
             ファイルメタデータのリスト
         """
         # フォルダを除外するクエリを構築
         query = f"'{folder_id}' in parents and trashed=false"
-        
+
         # デフォルトでフォルダを除外
         if mime_type_filter is None:
             query += " and mimeType != 'application/vnd.google-apps.folder'"
         else:
             query += f" and {mime_type_filter}"
-        
+
         try:
             results = self.service.files().list(
                 q=query,
@@ -591,7 +593,7 @@ class GoogleDriveConnector:
                 mime_type = mime_type or 'application/octet-stream'
 
             media = MediaFileUpload(str(file_path), mimetype=mime_type, resumable=True)
-            
+
             self.service.files().update(
                 fileId=file_id,
                 media_body=media,

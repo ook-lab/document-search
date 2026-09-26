@@ -1,36 +1,18 @@
 """
-Gmail コネクタ (サービスアカウント + ドメイン全体の委任)
+Gmail コネクタ (OAuth2 ユーザー同意フロー認証)
 
-Google Workspaceアカウントで、サービスアカウントを使ってGmail APIにアクセス。
-アプリパスワード不要の安全な方法。
-
-設定方法: docs/GMAIL_INTEGRATION_SETUP.md を参照
+個人GCPプロジェクト配下でOAuth2リフレッシュトークンを使ってGmail APIにアクセス。
 """
 import os
+import json
 import base64
 from typing import List, Dict, Any, Optional
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from loguru import logger
 from email.mime.text import MIMEText
 from datetime import datetime
-
-# 認証情報ファイルのパス (環境変数から取得、なければローカルのフォールバック)
-CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-
-# ローカル開発用のフォールバックパス
-_LOCAL_CREDENTIALS_PATHS = [
-    os.path.join(os.path.dirname(__file__), '..', '..', '..', '.local', '_runtime', 'credentials', 'google_credentials.json'),
-    os.path.join(os.path.dirname(__file__), '..', '..', '..', '_runtime', 'credentials', 'google_credentials.json'),
-]
-
-# 環境変数がない場合、ローカルパスを探す
-if not CREDENTIALS_PATH:
-    for path in _LOCAL_CREDENTIALS_PATHS:
-        abs_path = os.path.abspath(path)
-        if os.path.exists(abs_path):
-            CREDENTIALS_PATH = abs_path
-            break
 
 # Gmail APIのスコープ
 SCOPES = [
@@ -39,15 +21,97 @@ SCOPES = [
 ]
 
 
+def _load_oauth_credentials(scopes: List[str]) -> Credentials:
+    """
+    OAuth2 ユーザー同意フローの認証情報を環境変数またはローカルファイルから構築する。
+
+    優先順位:
+    1. 環境変数 GOOGLE_OAUTH_TOKEN_JSON (JSON文字列)
+    2. ローカルファイル google_oauth_token.json (GOOGLE_OAUTH_TOKEN_JSON未設定時のみ)
+
+    フォールバック絶対禁止:
+    認証に必要な値(client_id, client_secret, refresh_token)が欠けている場合や、
+    トークン情報が見つからない場合は、明示的に例外を投げて処理を中断する。
+    """
+    token_json_env = os.getenv("GOOGLE_OAUTH_TOKEN_JSON", "").strip()
+    token_data = None
+    source = ""
+
+    if token_json_env:
+        source = "環境変数 GOOGLE_OAUTH_TOKEN_JSON"
+        try:
+            token_data = json.loads(token_json_env)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{source} のJSONパースに失敗しました: {e}")
+    else:
+        # ローカル開発用フォールバック
+        candidate_paths = []
+        token_file_env = os.getenv("GOOGLE_OAUTH_TOKEN_FILE", "").strip()
+        if token_file_env:
+            candidate_paths.append(token_file_env)
+
+        cwd = os.getcwd()
+        candidate_paths.append(os.path.join(cwd, "google_oauth_token.json"))
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.abspath(os.path.join(base_dir, "..", "..", "..", "..", ".."))
+        candidate_paths.append(os.path.join(repo_root, "google_oauth_token.json"))
+
+        found_path = None
+        for path in candidate_paths:
+            if os.path.isfile(path):
+                found_path = path
+                break
+
+        if found_path:
+            source = f"ファイル ({found_path})"
+            try:
+                with open(found_path, "r", encoding="utf-8") as f:
+                    token_data = json.load(f)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"OAuth2トークンファイル ({found_path}) のJSONパースに失敗しました: {e}")
+            except Exception as e:
+                raise RuntimeError(f"OAuth2トークンファイル ({found_path}) の読み込みに失敗しました: {e}")
+        else:
+            raise FileNotFoundError(
+                "OAuth2 認証情報が見つかりません。"
+                "環境変数 GOOGLE_OAUTH_TOKEN_JSON (JSON文字列) を設定するか、"
+                "google_oauth_token.json ファイルを配置してください。"
+            )
+
+    if not isinstance(token_data, dict):
+        raise ValueError(f"{source} から取得したデータが辞書形式(dict)ではありません。")
+
+    required_keys = ["client_id", "client_secret", "refresh_token"]
+    missing_keys = [k for k in required_keys if not token_data.get(k)]
+    if missing_keys:
+        raise ValueError(f"{source} に必須キーが不足しています: {', '.join(missing_keys)}")
+
+    try:
+        creds = Credentials.from_authorized_user_info(token_data, scopes=scopes)
+    except Exception as e:
+        raise ValueError(f"{source} から Credentials オブジェクトの作成に失敗しました: {e}")
+
+    if not creds.valid:
+        try:
+            creds.refresh(Request())
+            logger.info(f"{source} のOAuth2アクセストークンを更新しました。")
+        except Exception as e:
+            raise RuntimeError(f"{source} のOAuth2トークン更新に失敗しました: {e}")
+
+    logger.info(f"{source} からOAuth2認証に成功しました。")
+    return creds
+
+
 class GmailConnector:
-    """Gmail APIクライアント（サービスアカウント認証）"""
+    """Gmail APIクライアント（OAuth2 ユーザー同意フロー認証）"""
 
     def __init__(self, user_email: str):
         """
         Gmail APIに接続
 
         Args:
-            user_email: アクセス対象のメールアドレス（例: ookubo.y@workspace-o.com）
+            user_email: アクセス対象のメールアドレス（過去の呼び出しインターフェース互換のために保持）
         """
         self.user_email = user_email
         self.service = self._authenticate()
@@ -55,60 +119,13 @@ class GmailConnector:
 
     def _authenticate(self):
         """
-        サービスアカウント認証 + ドメイン全体の委任
+        OAuth2 ユーザー同意フロー認証 (リフレッシュトークンによる自動更新)
 
         Returns:
             Gmail APIサービスオブジェクト
         """
-        # 優先順位1: 環境変数 GOOGLE_APPLICATION_CREDENTIALS
-        if CREDENTIALS_PATH and os.path.exists(CREDENTIALS_PATH):
-            try:
-                creds = service_account.Credentials.from_service_account_file(
-                    CREDENTIALS_PATH,
-                    scopes=SCOPES,
-                    subject=self.user_email  # ドメイン全体の委任: 対象ユーザーを指定
-                )
-                logger.info(f"環境変数から認証成功: {CREDENTIALS_PATH}")
-                return build('gmail', 'v1', credentials=creds)
-            except Exception as e:
-                logger.warning(f"環境変数からの認証失敗: {e}")
-
-        # 優先順位2: ADC (Application Default Credentials) - Cloud Run用
-        try:
-            import google.auth
-            creds, project = google.auth.default(scopes=SCOPES)
-            # ドメイン全体の委任のため、subjectを指定
-            creds_with_subject = creds.with_subject(self.user_email)
-            logger.info("ADC (Application Default Credentials) で認証成功")
-            return build('gmail', 'v1', credentials=creds_with_subject)
-        except Exception as e:
-            logger.warning(f"ADC認証失敗: {e}")
-
-        # 優先順位3: Streamlit Secrets (デプロイ環境用)
-        try:
-            import streamlit as st
-            if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-                creds_dict = dict(st.secrets["gcp_service_account"])
-                creds = service_account.Credentials.from_service_account_info(
-                    creds_dict,
-                    scopes=SCOPES,
-                    subject=self.user_email
-                )
-                logger.info("Streamlit Secretsから認証成功")
-                return build('gmail', 'v1', credentials=creds)
-        except ImportError:
-            pass
-        except Exception as e:
-            logger.warning(f"Streamlit Secretsからの認証失敗: {e}")
-
-        # 全て失敗した場合
-        raise FileNotFoundError(
-            f"認証情報が見つかりません。以下のいずれかを設定してください:\n"
-            f"1. 環境変数 GOOGLE_APPLICATION_CREDENTIALS (現在: {CREDENTIALS_PATH})\n"
-            f"2. Cloud Run のサービスアカウントに権限が付与されているか (ADC)\n"
-            f"3. Streamlit Secrets の gcp_service_account\n"
-            f"\n設定方法: docs/GMAIL_INTEGRATION_SETUP.md を参照"
-        )
+        creds = _load_oauth_credentials(SCOPES)
+        return build('gmail', 'v1', credentials=creds)
 
     def list_messages(
         self,

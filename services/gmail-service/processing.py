@@ -50,7 +50,7 @@ def _ocr_image_bytes(client, image_bytes: bytes, mime_type: str) -> str:
     from google.genai import types
     part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
     resp = client.models.generate_content(
-        model="gemini-2.5-flash-lite",
+        model="gemini-3.5-flash-lite",
         contents=[
             "Extract all text from this image. Return only the text, "
             "preserving line breaks. Return empty string if no text.",
@@ -533,7 +533,7 @@ class GmailService:
                 + "\n===\n".join(lines)
             )
             resp = client.models.generate_content(
-                model="gemini-2.5-flash-lite", contents=prompt)
+                model="gemini-3.5-flash-lite", contents=prompt)
             raw = (resp.text or "").strip()
             if "```json" in raw:
                 raw = raw[raw.find("```json")+7:raw.rfind("```")].strip()

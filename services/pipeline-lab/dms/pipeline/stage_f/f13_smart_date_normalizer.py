@@ -62,7 +62,7 @@ class F13SmartDateNormalizer:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-flash-lite",
+        model_name: str = "gemini-3.5-flash-lite",
         next_stage=None
     ):
         """

@@ -38,7 +38,7 @@ class E21ContextExtractor:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-flash-lite"  # Gemini 2.5 Flash-lite
+        model_name: str = "gemini-3.5-flash-lite"  # Gemini 3.5 Flash-lite
     ):
         """
         Context Extractor 初期化
