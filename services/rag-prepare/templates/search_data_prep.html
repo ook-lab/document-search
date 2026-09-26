@@ -291,8 +291,8 @@
                             <div class="actions-cell">
                                 {% if pipeline_lab_base and doc.resolved_drive_id %}
                                 <a class="btn btn-outline" href="{{ pipeline_lab_base }}/pipeline-lab/?drive_id={{ doc.resolved_drive_id }}&raw_table={{ doc.raw_table }}&raw_id={{ doc.raw_id }}" target="_blank" rel="noopener">パイプライン処理</a>
-                                {% elif pipeline_lab_base %}
-                                <a class="btn btn-outline" href="{{ pipeline_lab_base }}/pipeline-lab/" target="_blank" rel="noopener">パイプライン処理</a>
+                                {% elif not doc.resolved_drive_id %}
+                                <span style="color: var(--text-muted); font-size: 12px;">Drive ファイルなし（パイプライン処理不可）</span>
                                 {% else %}
                                 <span style="color: #dc2626; font-size: 12px; font-weight: 600;">[エラー] パイプラインURL未設定</span>
                                 {% endif %}
