@@ -1688,12 +1688,16 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
             for cell in h_row:
                 lines.append(_cell_to_yaml_item(cell))
         lines.append('  columns:')
-        col_count = len(header_rows[0]) if header_rows else 0
-        row_label_col_count = tbl.get('row_label_column_count', 0)
+        if not header_rows:
+            raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
+        if 'row_label_column_count' not in tbl or tbl['row_label_column_count'] is None:
+            raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+        col_count = len(header_rows[0])
+        row_label_col_count = tbl['row_label_column_count']
         for c in range(col_count):
             lines.append(f'  - index: {c}')
             if c < row_label_col_count:
-                bottom_val = header_rows[-1][c] if header_rows and c < len(header_rows[-1]) else ""
+                bottom_val = header_rows[-1][c]
                 dumped_rl = _yaml.safe_dump({'row_label': str(bottom_val)}, allow_unicode=True).strip()
                 if dumped_rl.endswith('...'):
                     dumped_rl = dumped_rl[:-3].strip()
@@ -1702,7 +1706,7 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
             else:
                 lines.append('    axes:')
                 for r_idx, axis_name in enumerate(header_axes):
-                    val = header_rows[r_idx][c] if r_idx < len(header_rows) and c < len(header_rows[r_idx]) else ""
+                    val = header_rows[r_idx][c]
                     dumped_entry = _yaml.safe_dump({str(axis_name): str(val)}, allow_unicode=True).strip()
                     if dumped_entry.endswith('...'):
                         dumped_entry = dumped_entry[:-3].strip()
@@ -1757,30 +1761,37 @@ def _synthesize_structured_markdown_from_blocks(
             else:
                 tbl_id = raw_tid
 
-            header_rows = td.header_rows or []
-            header_axes = td.header_axes or []
-            data_rows = td.data_rows or []
+            if not td.header_rows:
+                raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
+            header_rows = td.header_rows
+            if td.header_axes is None:
+                raise ValueError(f"契約違反: table {tbl_id} に header_axes がありません")
+            header_axes = td.header_axes
+            if td.data_rows is None:
+                raise ValueError(f"契約違反: table {tbl_id} に data_rows がありません")
+            data_rows = td.data_rows
             description = td.description.strip()
-            col_count = len(header_rows[0]) if header_rows else (len(data_rows[0]) if data_rows else 0)
+            col_count = len(header_rows[0])
 
             table_lines: List[str] = [f"## {tbl_id}"]
             if description:
                 table_lines.append(f"::summary:: {description}")
 
             # Markdown 表のヘッダー（1行）: 行見出しの列は最下段の値、それ以外は段の値を ' / ' で連結（上下段が同じ値なら1回だけ）
-            row_label_col_count = td.row_label_column_count if td.row_label_column_count is not None else 0
+            if td.row_label_column_count is None:
+                raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+            row_label_col_count = td.row_label_column_count
             single_headers: List[str] = []
             for c in range(col_count):
                 if c < row_label_col_count:
-                    bottom_val = str(header_rows[-1][c]).strip() if header_rows and c < len(header_rows[-1]) else ""
+                    bottom_val = str(header_rows[-1][c]).strip()
                     single_headers.append(bottom_val)
                 else:
                     vals: List[str] = []
                     for h_row in header_rows:
-                        if c < len(h_row):
-                            v = str(h_row[c]).strip()
-                            if v and (not vals or vals[-1] != v):
-                                vals.append(v)
+                        v = str(h_row[c]).strip()
+                        if v and (not vals or vals[-1] != v):
+                            vals.append(v)
                     single_headers.append(" / ".join(vals) if vals else "")
 
             # Markdown 表: 見出しを1行にし、各列の見出しを ' / ' で連結した上で区切り行を置く
@@ -1823,7 +1834,7 @@ def _synthesize_structured_markdown_from_blocks(
             columns: List[Dict[str, Any]] = []
             for c in range(col_count):
                 if c < row_label_col_count:
-                    bottom_val = header_rows[-1][c] if header_rows and c < len(header_rows[-1]) else ""
+                    bottom_val = header_rows[-1][c]
                     columns.append({
                         "index": c,
                         "row_label": str(bottom_val),
@@ -1831,7 +1842,7 @@ def _synthesize_structured_markdown_from_blocks(
                 else:
                     axes_dict: Dict[str, str] = {}
                     for r_idx, axis_name in enumerate(header_axes):
-                        val = header_rows[r_idx][c] if r_idx < len(header_rows) and c < len(header_rows[r_idx]) else ""
+                        val = header_rows[r_idx][c]
                         axes_dict[str(axis_name)] = str(val)
                     columns.append({
                         "index": c,
@@ -2062,26 +2073,30 @@ def api_extract_direct(session_id: str, page_index: int):
                 t_lines = [f"## {tbl_id}"]
                 if td.description:
                     t_lines.append(f"::summary:: {td.description}")
-                if td.header_rows:
-                    t_col_count = len(td.header_rows[0]) if td.header_rows else (len(td.data_rows[0]) if td.data_rows else 0)
-                    t_row_label_col_count = td.row_label_column_count if td.row_label_column_count is not None else 0
-                    t_single_headers: List[str] = []
-                    for c in range(t_col_count):
-                        if c < t_row_label_col_count:
-                            b_val = str(td.header_rows[-1][c]).strip() if td.header_rows and c < len(td.header_rows[-1]) else ""
-                            t_single_headers.append(b_val)
-                        else:
-                            vals = []
-                            for h_row in td.header_rows:
-                                if c < len(h_row):
-                                    v = str(h_row[c]).strip()
-                                    if v and (not vals or vals[-1] != v):
-                                        vals.append(v)
-                            t_single_headers.append(" / ".join(vals) if vals else "")
-                    t_lines.append("| " + " | ".join(h.replace("|", "\\|") for h in t_single_headers) + " |")
-                    t_lines.append("| " + " | ".join("---" for _ in t_single_headers) + " |")
-                    for r in td.data_rows:
-                        t_lines.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
+                if not td.header_rows:
+                    raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
+                if td.row_label_column_count is None:
+                    raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+                if td.data_rows is None:
+                    raise ValueError(f"契約違反: table {tbl_id} に data_rows がありません")
+                t_col_count = len(td.header_rows[0])
+                t_row_label_col_count = td.row_label_column_count
+                t_single_headers: List[str] = []
+                for c in range(t_col_count):
+                    if c < t_row_label_col_count:
+                        b_val = str(td.header_rows[-1][c]).strip()
+                        t_single_headers.append(b_val)
+                    else:
+                        vals = []
+                        for h_row in td.header_rows:
+                            v = str(h_row[c]).strip()
+                            if v and (not vals or vals[-1] != v):
+                                vals.append(v)
+                        t_single_headers.append(" / ".join(vals) if vals else "")
+                t_lines.append("| " + " | ".join(h.replace("|", "\\|") for h in t_single_headers) + " |")
+                t_lines.append("| " + " | ".join("---" for _ in t_single_headers) + " |")
+                for r in td.data_rows:
+                    t_lines.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
                 table_text = "\n".join(t_lines)
 
                 reading_stream.append({

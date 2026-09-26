@@ -2928,64 +2928,97 @@
                     body.appendChild(descDiv);
                 }
 
-                const rowLabelColCount = (typeof td.row_label_column_count === 'number' && td.row_label_column_count >= 0) ? td.row_label_column_count : 0;
+                // 契約違反チェック（補完・フォールバック絶対禁止）
+                const tableContractErrors = [];
+                if (typeof td.row_label_column_count !== 'number' || td.row_label_column_count < 0) {
+                    tableContractErrors.push('契約違反: row_label_column_count がありません');
+                }
+                if (!td.header_rows || !Array.isArray(td.header_rows) || td.header_rows.length === 0) {
+                    tableContractErrors.push('契約違反: header_rows がありません');
+                }
+                if (!td.header_axes || !Array.isArray(td.header_axes) || td.header_axes.length === 0) {
+                    tableContractErrors.push('契約違反: header_axes がありません');
+                } else if (td.header_rows && Array.isArray(td.header_rows) && td.header_axes.length !== td.header_rows.length) {
+                    tableContractErrors.push('契約違反: header_axes の数が header_rows の段数と一致しません');
+                }
+                if (!td.data_rows || !Array.isArray(td.data_rows)) {
+                    tableContractErrors.push('契約違反: data_rows がありません');
+                }
 
-                if (td.header_axes && Array.isArray(td.header_axes) && td.header_axes.length) {
+                if (tableContractErrors.length > 0) {
+                    card.style.border = '2px solid #dc2626';
+                    tableContractErrors.forEach(errMsg => {
+                        const errDiv = document.createElement('div');
+                        errDiv.style.color = '#dc2626';
+                        errDiv.style.background = '#fef2f2';
+                        errDiv.style.padding = '6px 10px';
+                        errDiv.style.borderRadius = '4px';
+                        errDiv.style.border = '1px solid #f87171';
+                        errDiv.style.fontSize = '0.82rem';
+                        errDiv.style.fontWeight = '600';
+                        errDiv.style.marginTop = '0.4rem';
+                        errDiv.textContent = errMsg;
+                        body.appendChild(errDiv);
+                    });
+                } else {
+                    const rowLabelColCount = td.row_label_column_count;
+                    const headerRows = td.header_rows;
+                    const headerAxes = td.header_axes;
+                    const dataRows = td.data_rows;
+
                     const axesDiv = document.createElement('div');
                     axesDiv.style.color = '#4338ca';
                     axesDiv.style.fontSize = '0.78rem';
                     axesDiv.style.fontWeight = '600';
                     axesDiv.style.marginBottom = '0.4rem';
-                    let axesText = '見出し軸: ' + td.header_axes.join(' / ');
+                    let axesText = '見出し軸: ' + headerAxes.join(' / ');
                     if (rowLabelColCount > 0) {
                         axesText += ' (行見出し: ' + rowLabelColCount + '列)';
                     }
                     axesDiv.textContent = axesText;
                     body.appendChild(axesDiv);
-                }
 
-                const tblWrap = document.createElement('div');
-                tblWrap.className = 'block-card-table-wrap';
-                const table = document.createElement('table');
-                table.className = 'block-card-table';
+                    const tblWrap = document.createElement('div');
+                    tblWrap.className = 'block-card-table-wrap';
+                    const table = document.createElement('table');
+                    table.className = 'block-card-table';
 
-                const thead = document.createElement('thead');
-                const headerRows = td.header_rows || (td.headers ? [td.headers] : []);
-                const headerAxes = td.header_axes || [];
-                headerRows.forEach((hRow, rIdx) => {
-                    const hTr = document.createElement('tr');
-                    const axis = headerAxes[rIdx] ? String(headerAxes[rIdx]).trim() : '';
-                    (hRow || []).forEach((h, cIdx) => {
-                        const th = document.createElement('th');
-                        const hVal = h != null ? String(h).trim() : '';
-                        if (cIdx >= rowLabelColCount && axis && hVal) {
-                            if (hVal.startsWith(axis + ':') || hVal.startsWith(axis + '：') || hVal.startsWith(axis + ': ')) {
-                                th.textContent = hVal;
+                    const thead = document.createElement('thead');
+                    headerRows.forEach((hRow, rIdx) => {
+                        const hTr = document.createElement('tr');
+                        const axis = String(headerAxes[rIdx]).trim();
+                        hRow.forEach((h, cIdx) => {
+                            const th = document.createElement('th');
+                            const hVal = h != null ? String(h).trim() : '';
+                            if (cIdx >= rowLabelColCount && axis && hVal) {
+                                if (hVal.startsWith(axis + ':') || hVal.startsWith(axis + '：') || hVal.startsWith(axis + ': ')) {
+                                    th.textContent = hVal;
+                                } else {
+                                    th.textContent = axis + ': ' + hVal;
+                                }
                             } else {
-                                th.textContent = axis + ': ' + hVal;
+                                th.textContent = hVal;
                             }
-                        } else {
-                            th.textContent = hVal;
-                        }
-                        hTr.appendChild(th);
+                            hTr.appendChild(th);
+                        });
+                        thead.appendChild(hTr);
                     });
-                    thead.appendChild(hTr);
-                });
-                table.appendChild(thead);
+                    table.appendChild(thead);
 
-                const tbody = document.createElement('tbody');
-                (td.data_rows || []).forEach(row => {
-                    const tr = document.createElement('tr');
-                    (row || []).forEach(cell => {
-                        const tdCell = document.createElement('td');
-                        tdCell.textContent = cell != null ? String(cell) : '';
-                        tr.appendChild(tdCell);
+                    const tbody = document.createElement('tbody');
+                    dataRows.forEach(row => {
+                        const tr = document.createElement('tr');
+                        row.forEach(cell => {
+                            const tdCell = document.createElement('td');
+                            tdCell.textContent = cell != null ? String(cell) : '';
+                            tr.appendChild(tdCell);
+                        });
+                        tbody.appendChild(tr);
                     });
-                    tbody.appendChild(tr);
-                });
-                table.appendChild(tbody);
-                tblWrap.appendChild(table);
-                body.appendChild(tblWrap);
+                    table.appendChild(tbody);
+                    tblWrap.appendChild(table);
+                    body.appendChild(tblWrap);
+                }
             } else {
                 const pre = document.createElement('pre');
                 pre.textContent = b.text_content || '';
