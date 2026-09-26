@@ -140,17 +140,33 @@
         .preview-pane {
             background: #e2e8f0;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 2rem;
+            padding: 1.5rem;
             overflow: auto;
             border-right: 1px solid var(--border);
+            box-sizing: border-box;
         }
-        #mainPreviewImg {
-            max-width: 100%;
-            max-height: 100%;
+        #previewContainer {
+            position: relative;
+            margin: auto;
+            line-height: 0;
+            box-sizing: border-box;
+            flex-shrink: 0;
             box-shadow: 0 10px 30px rgba(0,0,0,0.15);
             background: #fff;
+        }
+        #mainPreviewImg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: #fff;
+        }
+        #bboxOverlayLayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
         }
         .data-pane {
             background: var(--surface);
@@ -903,9 +919,9 @@
         <div class="workspace-grid">
             <div class="thumbnails" id="thumbnailList"></div>
             <div class="preview-pane" id="previewPane">
-                <div id="previewContainer" style="position:relative;display:inline-block;max-width:100%;line-height:0;">
-                    <img id="mainPreviewImg" src="" alt="Preview" style="display:block;max-width:100%;height:auto;">
-                    <div id="bboxOverlayLayer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></div>
+                <div id="previewContainer">
+                    <img id="mainPreviewImg" src="" alt="Preview">
+                    <div id="bboxOverlayLayer"></div>
                 </div>
             </div>
             <div class="data-pane" id="dataPane">
@@ -2741,12 +2757,49 @@
         }
     }
 
+    function fitPreviewContainer() {
+        const pane = document.getElementById('previewPane');
+        const img = document.getElementById('mainPreviewImg');
+        const container = document.getElementById('previewContainer');
+        if (!pane || !img || !container) return;
+        const nw = img.naturalWidth;
+        const nh = img.naturalHeight;
+        if (!nw || !nh) {
+            container.style.width = '';
+            container.style.height = '';
+            return;
+        }
+        const cs = window.getComputedStyle(pane);
+        const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+        const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        const availW = Math.max(10, pane.clientWidth - padX);
+        const availH = Math.max(10, pane.clientHeight - padY);
+        if (availW <= 10 || availH <= 10) return;
+
+        const scale = Math.min(availW / nw, availH / nh);
+        const fitW = Math.floor(nw * scale);
+        const fitH = Math.floor(nh * scale);
+        container.style.width = fitW + 'px';
+        container.style.height = fitH + 'px';
+    }
+
+    const _previewImgEl = document.getElementById('mainPreviewImg');
+    if (_previewImgEl) {
+        _previewImgEl.addEventListener('load', fitPreviewContainer);
+    }
+    const _previewPaneEl = document.getElementById('previewPane');
+    if (_previewPaneEl && window.ResizeObserver) {
+        new ResizeObserver(() => fitPreviewContainer()).observe(_previewPaneEl);
+    }
+    window.addEventListener('resize', fitPreviewContainer);
+
     function clearBboxOverlay() {
         const layer = document.getElementById('bboxOverlayLayer');
         if (layer) layer.innerHTML = '';
     }
 
     function renderBboxOverlay(blocks) {
+        fitPreviewContainer();
         const layer = document.getElementById('bboxOverlayLayer');
         if (!layer) return;
         layer.innerHTML = '';
@@ -3040,7 +3093,11 @@
     async function loadActivePage() {
         const p = appState.pages[appState.currentPage];
         if (!p) return;
-        document.getElementById('mainPreviewImg').src = p.image_url;
+        const previewImg = document.getElementById('mainPreviewImg');
+        previewImg.src = p.image_url;
+        if (previewImg.complete && previewImg.naturalWidth) {
+            fitPreviewContainer();
+        }
         overlayPageNum.textContent = String(appState.currentPage + 1);
         document.querySelectorAll('.overlayPageNumRef').forEach(el => { el.textContent = String(appState.currentPage + 1); });
         dataHeaderMeta.textContent = 'ページ ' + (appState.currentPage + 1) + ' / ' + appState.pages.length;
