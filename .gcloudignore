@@ -45,7 +45,6 @@ services/netsuper-search/
 services/pdf-toolbox/
 services/pipeline-lab/
 services/print-run-calculator/
-services/rag-prepare/
 services/reading-context-editor/
 services/sansu-drawing/
 services/tenshoku-tool/
