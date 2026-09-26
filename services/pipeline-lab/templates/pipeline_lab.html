@@ -2928,19 +2928,49 @@
                     body.appendChild(descDiv);
                 }
 
+                const rowLabelColCount = (typeof td.row_label_column_count === 'number' && td.row_label_column_count >= 0) ? td.row_label_column_count : 0;
+
+                if (td.header_axes && Array.isArray(td.header_axes) && td.header_axes.length) {
+                    const axesDiv = document.createElement('div');
+                    axesDiv.style.color = '#4338ca';
+                    axesDiv.style.fontSize = '0.78rem';
+                    axesDiv.style.fontWeight = '600';
+                    axesDiv.style.marginBottom = '0.4rem';
+                    let axesText = '見出し軸: ' + td.header_axes.join(' / ');
+                    if (rowLabelColCount > 0) {
+                        axesText += ' (行見出し: ' + rowLabelColCount + '列)';
+                    }
+                    axesDiv.textContent = axesText;
+                    body.appendChild(axesDiv);
+                }
+
                 const tblWrap = document.createElement('div');
                 tblWrap.className = 'block-card-table-wrap';
                 const table = document.createElement('table');
                 table.className = 'block-card-table';
 
                 const thead = document.createElement('thead');
-                const hTr = document.createElement('tr');
-                (td.headers || []).forEach(h => {
-                    const th = document.createElement('th');
-                    th.textContent = h;
-                    hTr.appendChild(th);
+                const headerRows = td.header_rows || (td.headers ? [td.headers] : []);
+                const headerAxes = td.header_axes || [];
+                headerRows.forEach((hRow, rIdx) => {
+                    const hTr = document.createElement('tr');
+                    const axis = headerAxes[rIdx] ? String(headerAxes[rIdx]).trim() : '';
+                    (hRow || []).forEach((h, cIdx) => {
+                        const th = document.createElement('th');
+                        const hVal = h != null ? String(h).trim() : '';
+                        if (cIdx >= rowLabelColCount && axis && hVal) {
+                            if (hVal.startsWith(axis + ':') || hVal.startsWith(axis + '：') || hVal.startsWith(axis + ': ')) {
+                                th.textContent = hVal;
+                            } else {
+                                th.textContent = axis + ': ' + hVal;
+                            }
+                        } else {
+                            th.textContent = hVal;
+                        }
+                        hTr.appendChild(th);
+                    });
+                    thead.appendChild(hTr);
                 });
-                thead.appendChild(hTr);
                 table.appendChild(thead);
 
                 const tbody = document.createElement('tbody');

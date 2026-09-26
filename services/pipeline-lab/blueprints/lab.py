@@ -1409,7 +1409,15 @@ class TableData(BaseModel):
     table_id: str = Field(description="表ID（例: 'T1', 'T2'）")
     caption: str = Field(description="表のタイトル（画像上のタイトルまたは端的な名称）")
     description: str = Field(description="何の表かを端的に説明した要約（20〜40文字）")
-    headers: List[str] = Field(description="ヘッダー行のセル配列。第1列ヘッダーは 'header' とする")
+    row_label_column_count: int = Field(
+        description="左端から何列が行見出し（行ラベル・インデックス列）かを表す列数（0以上の整数。行見出しが無い場合は0、通常の表で第1列が日付や項目の場合は1）"
+    )
+    header_axes: List[str] = Field(
+        description="見出しの各段が何を表すかの名前の配列（例: ['クラス', '時限']）。header_rows の段数と同数で空文字禁止"
+    )
+    header_rows: List[List[str]] = Field(
+        description="見出し行の配列（上の段から順に1段以上）。横結合や縦結合された見出しセルはその範囲の全列・全段に値を完全展開する"
+    )
     data_rows: List[List[str]] = Field(
         description="データ行（セル内改行は解体し1データ1行、空セルは空文字、結合セルは完全展開）"
     )
@@ -1498,15 +1506,42 @@ def validate_direct_extract_result(data: DirectExtractPageResult) -> None:
                     f"ブロック #{b.order} は block_type='table' ですが text_content が設定されています (null であるべきです)。"
                 )
             td = b.table_data
-            if not td.headers or not isinstance(td.headers, list) or len(td.headers) == 0:
+            if not td.header_rows or not isinstance(td.header_rows, list) or len(td.header_rows) == 0:
                 raise DirectExtractValidationError(
-                    f"表ブロック #{b.order} (table_id='{td.table_id}') の headers が空です。"
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の header_rows が空です。"
                 )
-            header_col_count = len(td.headers)
+            num_header_rows = len(td.header_rows)
+            if not td.header_axes or not isinstance(td.header_axes, list) or len(td.header_axes) != num_header_rows:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の header_axes の数 ({len(td.header_axes) if isinstance(td.header_axes, list) else '非配列'}) が段数 ({num_header_rows}) と不一致です。"
+                )
+            for axis_idx, axis in enumerate(td.header_axes):
+                if axis is None or not str(axis).strip():
+                    raise DirectExtractValidationError(
+                        f"表ブロック #{b.order} (table_id='{td.table_id}') の header_axes[{axis_idx}] が空文字です（空文字禁止）。"
+                    )
+
+            first_header_row = td.header_rows[0]
+            if not isinstance(first_header_row, list) or len(first_header_row) == 0:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の header_rows[0] が空または配列ではありません。"
+                )
+            header_col_count = len(first_header_row)
+            for h_idx, h_row in enumerate(td.header_rows):
+                if not isinstance(h_row, list) or len(h_row) != header_col_count:
+                    raise DirectExtractValidationError(
+                        f"表ブロック #{b.order} (table_id='{td.table_id}') の header_rows[{h_idx}] の列数 ({len(h_row) if isinstance(h_row, list) else '非配列'}) が段 #0 の列数 ({header_col_count}) と不一致です。"
+                    )
+
+            if type(td.row_label_column_count) is not int or td.row_label_column_count < 0 or td.row_label_column_count >= header_col_count:
+                raise DirectExtractValidationError(
+                    f"表ブロック #{b.order} (table_id='{td.table_id}') の row_label_column_count ({td.row_label_column_count}) は 0 以上かつ列数 ({header_col_count}) 未満でなければなりません。"
+                )
+
             for row_idx, row in enumerate(td.data_rows):
                 if not isinstance(row, list) or len(row) != header_col_count:
                     raise DirectExtractValidationError(
-                        f"表ブロック #{b.order} (table_id='{td.table_id}') の行 #{row_idx + 1} の列数 ({len(row) if isinstance(row, list) else '非配列'}) が headers の列数 ({header_col_count}) と不一致です。"
+                        f"表ブロック #{b.order} (table_id='{td.table_id}') の行 #{row_idx + 1} の列数 ({len(row) if isinstance(row, list) else '非配列'}) が header_rows の列数 ({header_col_count}) と不一致です。"
                     )
             if not td.description or not str(td.description).strip():
                 raise DirectExtractValidationError(
@@ -1567,8 +1602,15 @@ _DIRECT_EXTRACT_PROMPT = """あなたは極めて精密なOCRおよび文書構�
 
 7. **表ブロック（table_data）**:
    - `block_type` が `table` の場合、詳細構造を `table_data` に記述し、`text_content` は null にしてください。
-   - `headers`: ヘッダー行のセル配列。第1列ヘッダーは必ず 'header' としてください。
-   - `data_rows`: 1データ1行。セル内改行は解体して複数行に分け、空セルは空文字 "" を入れて headers と全行で列数を完全一致させてください。
+   - `row_label_column_count`: 左端から何列が行見出し（行ラベル・インデックス列、例: 時間割の第1列「日付」や項目の列）かを表す列数（0以上の整数）。行見出しの列がない場合は 0、第1列が行見出しの場合は 1 を指定してください。全列数未満でなければなりません。
+   - `header_axes`: 見出しの各段が何を表すかの名前の配列（例: ['クラス', '時限']、1段見出しなら ['項目'] など）。`header_rows` の段数と同数の要素を持ち、空文字は絶対に含めないでください。これはデータ列の各軸の名前です（行見出し列のための名前ではありません）。
+   - `header_rows`: 見出し行の配列（上の段から順に1段以上）。
+     - 時間割のような多段見出し（例: 1段目「6A」「6B」が横結合、2段目「朝」「1」〜「6」）の場合、上の段から順に各段を行配列として出力してください。
+     - 横結合された見出しセルは、その結合範囲のすべての列に値を展開（コピー）してください（例: 「6A」が6A朝〜6A6の全列に及ぶなら、1段目の該当列すべてに「6A」を入れる）。
+     - 縦結合された見出しセルも、その結合範囲のすべての段に値を展開（コピー）してください。
+     - 第1列ヘッダーを 'header' と書く旧ルールは廃止されました。画像上の実際の見出し（例: '日付'）をそのまま書いてください。画像上で第1列に見出しが無い場合は空文字 "" としてください（推測で作らない）。
+     - 各段の列数はすべての段で同一であり、`data_rows` の全行の列数とも完全一致させてください。
+   - `data_rows`: 1データ1行。セル内改行は解体して複数行に分け、空セルは空文字 "" を入れて `header_rows` と全行で列数を完全一致させてください。
    - 結合セルは完全展開（結合範囲の全行・全列に値をコピー）してください。
    - ふりがな（ルビ）は除去してください。
 """
@@ -1581,10 +1623,10 @@ def _cell_to_yaml_item(cell: str) -> str:
     return '    ' + dumped
 
 
-def _infer_table_semantics(headers: List[str], rows: List[List[str]]) -> Dict[str, Any]:
+def _infer_table_semantics(header_rows: List[List[str]], rows: List[List[str]]) -> Dict[str, Any]:
     """表内容から table_semantics を推定する。"""
     financial_kw = {'収入', '支出', '決算', '予算', '繰越', '合計', '収支', '会費'}
-    all_text = ' '.join(str(h) for h in headers) + ' ' + ' '.join(
+    all_text = ' '.join(str(c) for h_row in header_rows for c in h_row) + ' ' + ' '.join(
         str(c) for row in rows for c in row
     )
     if any(kw in all_text for kw in financial_kw):
@@ -1613,8 +1655,9 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
     for tbl in tables_data:
         tbl_id = tbl['table_id']
         rows = tbl['data_rows']
-        headers = tbl['headers']
-        sem = _infer_table_semantics(headers, rows)
+        header_rows = tbl['header_rows']
+        header_axes = tbl['header_axes']
+        sem = _infer_table_semantics(header_rows, rows)
         type_ja_str = sem['type_ja'] if sem['type_ja'] else 'null'
 
         description = str(tbl.get('description') or '')
@@ -1632,7 +1675,39 @@ def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
         lines.append('    date_range: null')
         lines.append(f"    confidence: {sem['confidence']}")
         lines.append('  header_row_indices:')
-        lines.append('  - 0')
+        for h_idx in range(len(header_rows)):
+            lines.append(f'  - {h_idx}')
+        lines.append('  header_axes:')
+        for axis in header_axes:
+            dumped_axis = _yaml.safe_dump([str(axis)], allow_unicode=True).strip()
+            lines.append('  ' + dumped_axis)
+        lines.append('  header_rows:')
+        for h_idx, h_row in enumerate(header_rows):
+            lines.append(f'  - header_row: {h_idx}')
+            lines.append('    cells:')
+            for cell in h_row:
+                lines.append(_cell_to_yaml_item(cell))
+        lines.append('  columns:')
+        col_count = len(header_rows[0]) if header_rows else 0
+        row_label_col_count = tbl.get('row_label_column_count', 0)
+        for c in range(col_count):
+            lines.append(f'  - index: {c}')
+            if c < row_label_col_count:
+                bottom_val = header_rows[-1][c] if header_rows and c < len(header_rows[-1]) else ""
+                dumped_rl = _yaml.safe_dump({'row_label': str(bottom_val)}, allow_unicode=True).strip()
+                if dumped_rl.endswith('...'):
+                    dumped_rl = dumped_rl[:-3].strip()
+                for rl_line in dumped_rl.split('\n'):
+                    lines.append(f'    {rl_line}')
+            else:
+                lines.append('    axes:')
+                for r_idx, axis_name in enumerate(header_axes):
+                    val = header_rows[r_idx][c] if r_idx < len(header_rows) and c < len(header_rows[r_idx]) else ""
+                    dumped_entry = _yaml.safe_dump({str(axis_name): str(val)}, allow_unicode=True).strip()
+                    if dumped_entry.endswith('...'):
+                        dumped_entry = dumped_entry[:-3].strip()
+                    for de_line in dumped_entry.split('\n'):
+                        lines.append(f'      {de_line}')
         lines.append('  month_blocks: []')
         lines.append('  data_rows:')
         for idx, row in enumerate(rows):
@@ -1682,47 +1757,94 @@ def _synthesize_structured_markdown_from_blocks(
             else:
                 tbl_id = raw_tid
 
-            headers = td.headers or []
+            header_rows = td.header_rows or []
+            header_axes = td.header_axes or []
             data_rows = td.data_rows or []
             description = td.description.strip()
+            col_count = len(header_rows[0]) if header_rows else (len(data_rows[0]) if data_rows else 0)
 
             table_lines: List[str] = [f"## {tbl_id}"]
             if description:
                 table_lines.append(f"::summary:: {description}")
 
-            th_md = "| " + " | ".join(h.replace("|", "\\|") for h in headers) + " |"
-            sep_md = "| " + " | ".join("---" for _ in headers) + " |"
-            table_lines.append(th_md)
-            table_lines.append(sep_md)
+            # Markdown 表のヘッダー（1行）: 行見出しの列は最下段の値、それ以外は段の値を ' / ' で連結（上下段が同じ値なら1回だけ）
+            row_label_col_count = td.row_label_column_count if td.row_label_column_count is not None else 0
+            single_headers: List[str] = []
+            for c in range(col_count):
+                if c < row_label_col_count:
+                    bottom_val = str(header_rows[-1][c]).strip() if header_rows and c < len(header_rows[-1]) else ""
+                    single_headers.append(bottom_val)
+                else:
+                    vals: List[str] = []
+                    for h_row in header_rows:
+                        if c < len(h_row):
+                            v = str(h_row[c]).strip()
+                            if v and (not vals or vals[-1] != v):
+                                vals.append(v)
+                    single_headers.append(" / ".join(vals) if vals else "")
+
+            # Markdown 表: 見出しを1行にし、各列の見出しを ' / ' で連結した上で区切り行を置く
+            table_lines.append("| " + " | ".join(h.replace("|", "\\|") for h in single_headers) + " |")
+            if single_headers:
+                table_lines.append("| " + " | ".join("---" for _ in single_headers) + " |")
             for r in data_rows:
                 table_lines.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
 
-            th_html = "".join(f"<th>{_html.escape(h)}</th>" for h in headers)
+            # HTML 表: thead に複数 tr（段数分の tr）
+            thead_trs: List[str] = []
+            for h_row in header_rows:
+                th_cells = "".join(f"<th>{_html.escape(str(h))}</th>" for h in h_row)
+                thead_trs.append(f"<tr>{th_cells}</tr>")
+            thead_html = "".join(thead_trs)
+
             rows_html_parts: List[str] = []
             for r in data_rows:
                 if len(r) >= 4 and r[-1] and r[-2] == r[-1]:
                     cells_html = (
-                        "".join(f"<td>{_html.escape(c)}</td>" for c in r[:-2])
-                        + f'<td colspan="2">{_html.escape(r[-2])}</td>'
+                        "".join(f"<td>{_html.escape(str(c))}</td>" for c in r[:-2])
+                        + f'<td colspan="2">{_html.escape(str(r[-2]))}</td>'
                     )
                 else:
-                    cells_html = "".join(f"<td>{_html.escape(c)}</td>" for c in r)
+                    cells_html = "".join(f"<td>{_html.escape(str(c))}</td>" for c in r)
                 rows_html_parts.append(f"<tr>{cells_html}</tr>")
 
             tbl_html = (
                 f'<!-- table:{tbl_id} -->\n'
-                f'<table class="md-embed-table"><thead><tr>{th_html}</tr></thead>'
+                f'<table class="md-embed-table"><thead>{thead_html}</thead>'
                 f'<tbody>{"".join(rows_html_parts)}</tbody></table>'
             )
 
             prose_parts.append("\n".join(table_lines))
             html_lines.append(tbl_html)
 
-            sem = _infer_table_semantics(headers, data_rows)
+            sem = _infer_table_semantics(header_rows, data_rows)
+
+            # 列ごとの意味 columns を決定論的に生成（行見出しの列は row_label、他は axes）
+            columns: List[Dict[str, Any]] = []
+            for c in range(col_count):
+                if c < row_label_col_count:
+                    bottom_val = header_rows[-1][c] if header_rows and c < len(header_rows[-1]) else ""
+                    columns.append({
+                        "index": c,
+                        "row_label": str(bottom_val),
+                    })
+                else:
+                    axes_dict: Dict[str, str] = {}
+                    for r_idx, axis_name in enumerate(header_axes):
+                        val = header_rows[r_idx][c] if r_idx < len(header_rows) and c < len(header_rows[r_idx]) else ""
+                        axes_dict[str(axis_name)] = str(val)
+                    columns.append({
+                        "index": c,
+                        "axes": axes_dict,
+                    })
 
             tables_data.append({
                 "table_id": tbl_id,
-                "headers": headers,
+                "row_label_column_count": row_label_col_count,
+                "header_axes": header_axes,
+                "header_rows": header_rows,
+                "columns": columns,
+                "headers": single_headers,
                 "data_rows": data_rows,
                 "description": description,
                 "table_semantics": sem,
@@ -1940,11 +2062,26 @@ def api_extract_direct(session_id: str, page_index: int):
                 t_lines = [f"## {tbl_id}"]
                 if td.description:
                     t_lines.append(f"::summary:: {td.description}")
-                if td.headers:
-                    t_lines.append("| " + " | ".join(td.headers) + " |")
-                    t_lines.append("| " + " | ".join("---" for _ in td.headers) + " |")
+                if td.header_rows:
+                    t_col_count = len(td.header_rows[0]) if td.header_rows else (len(td.data_rows[0]) if td.data_rows else 0)
+                    t_row_label_col_count = td.row_label_column_count if td.row_label_column_count is not None else 0
+                    t_single_headers: List[str] = []
+                    for c in range(t_col_count):
+                        if c < t_row_label_col_count:
+                            b_val = str(td.header_rows[-1][c]).strip() if td.header_rows and c < len(td.header_rows[-1]) else ""
+                            t_single_headers.append(b_val)
+                        else:
+                            vals = []
+                            for h_row in td.header_rows:
+                                if c < len(h_row):
+                                    v = str(h_row[c]).strip()
+                                    if v and (not vals or vals[-1] != v):
+                                        vals.append(v)
+                            t_single_headers.append(" / ".join(vals) if vals else "")
+                    t_lines.append("| " + " | ".join(h.replace("|", "\\|") for h in t_single_headers) + " |")
+                    t_lines.append("| " + " | ".join("---" for _ in t_single_headers) + " |")
                     for r in td.data_rows:
-                        t_lines.append("| " + " | ".join(str(c) for c in r) + " |")
+                        t_lines.append("| " + " | ".join(str(c).replace("|", "\\|") for c in r) + " |")
                 table_text = "\n".join(t_lines)
 
                 reading_stream.append({
