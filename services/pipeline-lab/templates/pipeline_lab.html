@@ -591,6 +591,158 @@
         details.reading-table-fold[open] > summary { border-bottom: 1px solid var(--border); }
         details.reading-table-fold .reading-table-wrap { margin: 0; border-radius: 0 0 8px 8px; border: none; max-height: none; }
 
+        /* ブロック構造化オーバーレイ & カード */
+        .bbox-box {
+            position: absolute;
+            border: 2px solid rgba(79, 70, 229, 0.55);
+            background: rgba(79, 70, 229, 0.06);
+            pointer-events: auto;
+            cursor: pointer;
+            box-sizing: border-box;
+            transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+            z-index: 5;
+        }
+        .bbox-box.highlight {
+            border-color: #ef4444 !important;
+            background: rgba(239, 68, 68, 0.25) !important;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.75) !important;
+            z-index: 25 !important;
+        }
+        .bbox-box.bbox-type-table {
+            border-color: rgba(5, 150, 105, 0.7);
+            background: rgba(5, 150, 105, 0.08);
+        }
+        .bbox-box.bbox-type-heading {
+            border-color: rgba(37, 99, 235, 0.7);
+            background: rgba(37, 99, 235, 0.07);
+        }
+        .bbox-box.bbox-type-bullet_list {
+            border-color: rgba(8, 145, 178, 0.7);
+            background: rgba(8, 145, 178, 0.07);
+        }
+        .bbox-box.bbox-type-figure_caption {
+            border-color: rgba(217, 119, 6, 0.7);
+            background: rgba(217, 119, 6, 0.07);
+        }
+        .bbox-box.bbox-type-footnote {
+            border-color: rgba(100, 116, 139, 0.7);
+            background: rgba(100, 116, 139, 0.07);
+        }
+        .bbox-label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: rgba(15, 23, 42, 0.85);
+            color: #ffffff;
+            font-size: 0.62rem;
+            font-weight: 700;
+            padding: 1px 4px;
+            border-bottom-right-radius: 4px;
+            line-height: 1.1;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        .bbox-box.highlight .bbox-label {
+            background: #ef4444;
+        }
+
+        .block-cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding-bottom: 2rem;
+        }
+        .block-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 0.9rem;
+            transition: all 0.15s ease-in-out;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+            position: relative;
+        }
+        .block-card.highlight {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.3) !important;
+            background: #fffafa !important;
+        }
+        .block-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            font-size: 0.75rem;
+        }
+        .badge-order {
+            background: #0f172a;
+            color: #fff;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+        .badge-type {
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+        }
+        .badge-type-heading { background: #dbeafe; color: #1e40af; }
+        .badge-type-paragraph { background: #ede9fe; color: #5b21b6; }
+        .badge-type-bullet_list { background: #cffafe; color: #155e75; }
+        .badge-type-table { background: #d1fae5; color: #065f46; font-weight: 700; }
+        .badge-type-figure_caption { background: #fef3c7; color: #92400e; }
+        .badge-type-footnote { background: #f1f5f9; color: #475569; }
+
+        .badge-container-tag {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            color: #334155;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        .badge-relation-tag {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+        .block-card-body {
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-main);
+        }
+        .block-card-body pre {
+            margin: 0;
+            white-space: pre-wrap;
+            font-family: inherit;
+        }
+        .block-card-table-wrap {
+            overflow-x: auto;
+            margin-top: 0.4rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .block-card-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+        }
+        .block-card-table th, .block-card-table td {
+            border: 1px solid var(--border);
+            padding: 4px 8px;
+            text-align: left;
+        }
+        .block-card-table th {
+            background: #f8fafc;
+            font-weight: 600;
+        }
+
         /* ================================================================
            レスポンシブ対応
            ================================================================ */
@@ -750,16 +902,21 @@
     <div id="workspaceView">
         <div class="workspace-grid">
             <div class="thumbnails" id="thumbnailList"></div>
-            <div class="preview-pane"><img id="mainPreviewImg" src="" alt="Preview"></div>
+            <div class="preview-pane" id="previewPane">
+                <div id="previewContainer" style="position:relative;display:inline-block;max-width:100%;line-height:0;">
+                    <img id="mainPreviewImg" src="" alt="Preview" style="display:block;max-width:100%;height:auto;">
+                    <div id="bboxOverlayLayer" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></div>
+                </div>
+            </div>
             <div class="data-pane" id="dataPane">
                 <div class="lab-overlay" id="labOverlay">
                     <h2>このページは未処理です</h2>
                     <p>サムネでページを選び、<strong>このページだけ</strong>パイプラインを実行します。</p>
                     <div style="display:flex;flex-direction:column;gap:0.5rem;align-items:center;">
-                        <button type="button" class="btn-primary" style="width:300px;" data-mode="pipeline" data-model="gemini-3.1-flash-lite" id="overlayRunBtn">PL 3.1 flash-lite preview（ページ <span id="overlayPageNum">1</span>）</button>
-                        <button type="button" class="btn-primary" style="width:300px;background:#0891b2;" data-mode="pipeline" data-model="gemini-2.5-flash-lite" id="overlayRunBtn25">PL 2.5 flash-lite（ページ <span class="overlayPageNumRef">1</span>）</button>
-                        <button type="button" class="btn-outline" style="width:300px;" data-mode="direct" data-model="gemini-3.1-flash-lite" id="overlayDirectBtn31">AI直接抽出 3.1 flash-lite preview（ページ <span class="overlayPageNumRef">1</span>）</button>
-                        <button type="button" class="btn-outline" style="width:300px;" data-mode="direct" data-model="gemini-2.5-flash-lite" id="overlayDirectBtn25">AI直接抽出 2.5 flash-lite（ページ <span class="overlayPageNumRef">1</span>）</button>
+                        <button type="button" class="btn-primary" style="width:300px;" data-mode="pipeline" data-model="gemini-3.5-flash-lite" id="overlayRunBtn35">PL 3.5 flash-lite（ページ <span id="overlayPageNum">1</span>）</button>
+                        <button type="button" class="btn-primary" style="width:300px;background:#0891b2;" data-mode="pipeline" data-model="gemini-3.1-flash-lite" id="overlayRunBtn31">PL 3.1 flash-lite（ページ <span class="overlayPageNumRef">1</span>）</button>
+                        <button type="button" class="btn-outline" style="width:300px;" data-mode="direct" data-model="gemini-3.8-flash" id="overlayDirectBtn38">AI直接抽出 3.8 flash（ページ <span class="overlayPageNumRef">1</span>）</button>
+                        <button type="button" class="btn-outline" style="width:300px;" data-mode="direct" data-model="gemini-3.5-flash-lite" id="overlayDirectBtn35">AI直接抽出 3.5 flash-lite（ページ <span class="overlayPageNumRef">1</span>）</button>
                     </div>
                 </div>
                 <div class="data-header">
@@ -772,10 +929,10 @@
                         </div>
                         <div style="display:flex; align-items:center; gap:0.65rem; flex-wrap:wrap;">
                             <span style="font-size:0.8rem;color:var(--text-muted);font-weight:600;" id="dataHeaderMeta">ページ 1 / 1</span>
-                            <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="pipeline" data-model="gemini-3.1-flash-lite" id="headerRunBtn">PL 3.1</button>
-                            <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;background:#0891b2;" data-mode="pipeline" data-model="gemini-2.5-flash-lite" id="headerRunBtn25">PL 2.5</button>
-                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="direct" data-model="gemini-3.1-flash-lite" id="headerDirectBtn31">AI直接 3.1</button>
-                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="direct" data-model="gemini-2.5-flash-lite" id="headerDirectBtn25">AI直接 2.5</button>
+                            <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="pipeline" data-model="gemini-3.5-flash-lite" id="headerRunBtn35">PL 3.5</button>
+                            <button type="button" class="btn-primary" style="padding:0.45rem 0.75rem;font-size:0.75rem;background:#0891b2;" data-mode="pipeline" data-model="gemini-3.1-flash-lite" id="headerRunBtn31">PL 3.1</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="direct" data-model="gemini-3.8-flash" id="headerDirectBtn38">AI直接 3.8</button>
+                            <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" data-mode="direct" data-model="gemini-3.5-flash-lite" id="headerDirectBtn35">AI直接 3.5</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;display:none;" id="saveMdToDriveBtn">MDをDriveに保存</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;" id="downloadMdBtn">MDをダウンロード</button>
                             <button type="button" class="btn-outline" style="padding:0.45rem 0.75rem;font-size:0.75rem;display:none;" id="saveToDriveBtn">MD入りPDFで上書き</button>
@@ -879,9 +1036,7 @@
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const labOverlay = document.getElementById('labOverlay');
-    const overlayRunBtn = document.getElementById('overlayRunBtn');
     const overlayPageNum = document.getElementById('overlayPageNum');
-    const headerRunBtn = document.getElementById('headerRunBtn');
     const btnFullJson = document.getElementById('btnFullJson');
     const paneVisualEditor = document.getElementById('paneVisualEditor');
     const paneRawMd = document.getElementById('paneRawMd');
@@ -2123,7 +2278,7 @@
         var ud = data.ui_data_json || null;
         var g = data.g22_summary || {};
         var r = data.reading || {};
-        var html = '<div class="reading-root">';
+        var html = (data.fetch_error ? '<div class="error-box" style="margin-bottom:1rem;">' + escapeHtml(data.fetch_error) + '</div>' : '') + '<div class="reading-root">';
 
         var useStream = readingVisualStream(data).length > 0;
         if (useStream) {
@@ -2273,8 +2428,15 @@
 
     function renderAiCostHtml(data) {
         const c = data.ai_cost;
-        if (!c || !c.breakdown || !c.breakdown.length) return '';
-        const fmt = n => (n < 0.0001 && n > 0 ? n.toFixed(6) : n.toFixed(4));
+        if (!c) return '';
+        if (c.error && (!c.breakdown || !c.breakdown.length)) {
+            return '<details class="acc-panel" open><summary>AIコスト</summary><div class="acc-body" style="padding:0.5rem;">' +
+                '<div style="color:#b91c1c;font-weight:600;padding:0.5rem;background:#fef2f2;border-radius:4px;border:1px solid #fca5a5;">' +
+                escapeHtml(c.error) +
+                '</div></div></details>';
+        }
+        if (!c.breakdown || !c.breakdown.length) return '';
+        const fmt = n => (n == null ? '—' : (n < 0.0001 && n > 0 ? n.toFixed(6) : n.toFixed(4)));
         const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(1) + 'K' : String(n);
         let rows = '';
         for (const m of c.breakdown) {
@@ -2282,18 +2444,40 @@
             const outTokLabel = hasThink
                 ? fmtTok(m.completion_tokens) + ' + ' + fmtTok(m.thinking_tokens) + '(思考)'
                 : fmtTok(m.completion_tokens);
-            rows += '<tr>' +
-                '<td style="font-weight:600;white-space:nowrap;">' + escapeHtml(m.model) + '</td>' +
-                '<td style="text-align:right;">' + fmtTok(m.prompt_tokens) + '</td>' +
-                '<td style="text-align:right;color:#0891b2;">$' + fmt(m.input_cost_usd) + '</td>' +
-                '<td style="text-align:right;">' + outTokLabel + '</td>' +
-                '<td style="text-align:right;color:#0891b2;">$' + fmt(m.output_cost_usd) + '</td>' +
-                '<td style="text-align:right;font-weight:700;color:#4f46e5;">$' + fmt(m.total_cost_usd) + '</td>' +
-                '<td style="text-align:right;color:var(--text-muted);">' + m.calls + '回</td>' +
-                '</tr>';
+            if (m.error || m.total_cost_usd == null) {
+                const errLabel = escapeHtml(m.error ? m.error : 'エラー理由なし（サーバ応答の契約違反）');
+                rows += '<tr style="background:#fef2f2;">' +
+                    '<td style="font-weight:600;white-space:nowrap;color:#b91c1c;">' + escapeHtml(m.model) + '</td>' +
+                    '<td style="text-align:right;">' + fmtTok(m.prompt_tokens) + '</td>' +
+                    '<td colspan="4" style="text-align:center;color:#b91c1c;font-weight:600;">' + errLabel + '</td>' +
+                    '<td style="text-align:right;color:var(--text-muted);">' + m.calls + '回</td>' +
+                    '</tr>';
+            } else {
+                rows += '<tr>' +
+                    '<td style="font-weight:600;white-space:nowrap;">' + escapeHtml(m.model) + '</td>' +
+                    '<td style="text-align:right;">' + fmtTok(m.prompt_tokens) + '</td>' +
+                    '<td style="text-align:right;color:#0891b2;">$' + fmt(m.input_cost_usd) + '</td>' +
+                    '<td style="text-align:right;">' + outTokLabel + '</td>' +
+                    '<td style="text-align:right;color:#0891b2;">$' + fmt(m.output_cost_usd) + '</td>' +
+                    '<td style="text-align:right;font-weight:700;color:#4f46e5;">$' + fmt(m.total_cost_usd) + '</td>' +
+                    '<td style="text-align:right;color:var(--text-muted);">' + m.calls + '回</td>' +
+                    '</tr>';
+            }
         }
-        const totalStyle = 'font-weight:700;font-size:1rem;color:' + (c.total_cost_usd > 0.01 ? '#dc2626' : '#16a34a') + ';';
+        let totalStr = '';
+        if (c.total_cost_usd != null) {
+            const totalStyle = 'font-weight:700;font-size:1rem;color:' + (c.total_cost_usd > 0.01 ? '#dc2626' : '#16a34a') + ';';
+            totalStr = '<span style="' + totalStyle + '">合計: $' + fmt(c.total_cost_usd) + '</span>';
+        } else {
+            const errText = c.error ? c.error : 'エラー理由なし（サーバ応答の契約違反）';
+            totalStr = '<span style="font-weight:700;font-size:0.85rem;color:#dc2626;">合計: ' + escapeHtml(errText) + '</span>';
+        }
+        let bannerHtml = '';
+        if (c.error) {
+            bannerHtml = '<div style="color:#b91c1c;font-weight:600;padding:0.4rem 0.6rem;margin-bottom:0.5rem;background:#fef2f2;border-radius:4px;border:1px solid #fca5a5;font-size:0.8rem;">' + escapeHtml(c.error) + '</div>';
+        }
         return '<details class="acc-panel" open><summary>AIコスト</summary><div class="acc-body" style="padding:0.5rem;">' +
+            bannerHtml +
             '<table style="width:100%;border-collapse:collapse;font-size:0.78rem;">' +
             '<thead><tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">' +
             '<th style="text-align:left;padding:3px 6px;">モデル</th>' +
@@ -2307,7 +2491,7 @@
             '<tbody>' + rows + '</tbody>' +
             '</table>' +
             '<div style="text-align:right;margin-top:0.5rem;padding-top:0.4rem;border-top:1px solid var(--border);">' +
-            '<span style="' + totalStyle + '">合計: $' + fmt(c.total_cost_usd) + '</span>' +
+            totalStr +
             '</div></div></details>';
     }
 
@@ -2379,8 +2563,8 @@
             ? '<p class="log-note">※ 長い場合は末尾のみ。ファイル: <code>page_results/' + pi + '_f46_table_line_semantics.log</code></p>' : '';
         const f47Note = f47Trunc
             ? '<p class="log-note">※ 長い場合は末尾のみ。ファイル: <code>page_results/' + pi + '_f47_table_ai_processor.log</code></p>' : '';
-        const f46 = data.f46_log || '';
-        const f47 = data.f47_log || '';
+        const f46 = (data.f46_log != null && data.f46_log !== '') ? data.f46_log : 'ログなし';
+        const f47 = (data.f47_log != null && data.f47_log !== '') ? data.f47_log : 'ログなし';
 
         const sumParts = [];
         sumParts.push('<div><span class="badge">処理ページ: ' + (pi + 1) + '</span></div>');
@@ -2416,7 +2600,15 @@
             sumParts.push('<p class="empty-hint">非表プレーンは空です。</p>');
         }
 
+        let errBanner = '';
+        if (data.fetch_error) {
+            errBanner = '<div class="error-box" style="margin-bottom:0.75rem;">' + escapeHtml(data.fetch_error) + '</div>';
+        }
+
+        const pipeLog = (window.__lastPipelineLog != null && window.__lastPipelineLog !== '') ? window.__lastPipelineLog : 'ログなし';
+
         return (
+            errBanner +
             '<div class="debug-stack acc-stack">' +
             renderAiCostHtml(data) +
             renderStructuredPanels(data) +
@@ -2432,7 +2624,7 @@
             '<details class="acc-panel" open><summary>パイプラインログ（loguru・全般）</summary>' +
             '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyPipelineLog">ログをコピー</button></div>' +
             '<div class="acc-body">' + truncNote +
-            '<pre class="log-pre" id="labPipelineLogPre">' + escapeHtml(window.__lastPipelineLog || '') + '</pre></div></details>' +
+            '<pre class="log-pre" id="labPipelineLogPre">' + escapeHtml(pipeLog) + '</pre></div></details>' +
             '<details class="acc-panel"><summary>Stage D 詳細（JSON）</summary>' +
             '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyStageD">JSON をコピー</button></div>' +
             '<div class="acc-body"><pre class="raw" id="labStageDPre">' + escapeHtml(window.__lastStageDJson || '') + '</pre></div></details>' +
@@ -2443,7 +2635,7 @@
     function renderDirectLogHtml(p) {
         if (!p) return '<p class="empty-hint">データがありません。</p>';
         const pi = p.page_index;
-        const logText = p.direct_log || '';
+        const logText = (p.direct_log != null && p.direct_log !== '') ? p.direct_log : 'ログなし';
         const aiCost = p.ai_cost;
 
         window.__lastPipelineLog = logText;
@@ -2453,13 +2645,18 @@
             costHtml = renderAiCostHtml({ ai_cost: aiCost });
         }
 
+        let errBanner = '';
+        if (p.direct_log && p.direct_log.startsWith('結果の取得に失敗:')) {
+            errBanner = '<div class="error-box" style="margin-bottom:0.75rem;">' + escapeHtml(p.direct_log) + '</div>';
+        }
+
         const logPanel = 
             '<details class="acc-panel" open><summary>AI直接抽出ログ（Gemini）</summary>' +
             '<div class="acc-toolbar"><button type="button" class="btn-copy" id="btnCopyPipelineLog">ログをコピー</button></div>' +
             '<div class="acc-body">' +
             '<pre class="log-pre" id="labPipelineLogPre">' + escapeHtml(logText) + '</pre></div></details>';
 
-        return '<div class="debug-stack acc-stack">' + costHtml + logPanel + '</div>';
+        return '<div class="debug-stack acc-stack">' + errBanner + costHtml + logPanel + '</div>';
     }
 
     function renderErrorReadingHtml(pr) {
@@ -2506,7 +2703,19 @@
         if (!needUi && !needSd && !needPlain && !needChainLogs) return;
         try {
             const resFull = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + pg);
-            if (!resFull.ok) return;
+            if (!resFull.ok) {
+                let errDetail = 'HTTP ' + resFull.status + (resFull.statusText ? ' ' + resFull.statusText : '');
+                try {
+                    const errJson = await resFull.json();
+                    if (errJson && errJson.error) errDetail += ' - ' + errJson.error;
+                } catch (_) {}
+                const errMsg = '結果の取得に失敗: ' + errDetail;
+                pr.fetch_error = errMsg;
+                if (!pr.pipeline_log) pr.pipeline_log = errMsg;
+                if (pr.f46_log === undefined) pr.f46_log = errMsg;
+                if (pr.f47_log === undefined) pr.f47_log = errMsg;
+                return;
+            }
             const full = await resFull.json();
             if (needUi && full.ui_data_json) pr.ui_data_json = full.ui_data_json;
             if (needUi && full.final_metadata_json) pr.final_metadata_json = full.final_metadata_json;
@@ -2516,13 +2725,253 @@
             if (full.reading && typeof full.reading === 'object') {
                 pr.reading = Object.assign({}, pr.reading || {}, full.reading);
             }
-            if (full.pipeline_log) pr.pipeline_log = full.pipeline_log;
-            if (Object.prototype.hasOwnProperty.call(full, 'f46_log')) pr.f46_log = full.f46_log;
-            if (Object.prototype.hasOwnProperty.call(full, 'f47_log')) pr.f47_log = full.f47_log;
+            pr.pipeline_log = (full.pipeline_log != null && full.pipeline_log !== '') ? full.pipeline_log : 'ログなし';
+            pr.f46_log = (full.f46_log != null && full.f46_log !== '') ? full.f46_log : 'ログなし';
+            pr.f47_log = (full.f47_log != null && full.f47_log !== '') ? full.f47_log : 'ログなし';
             if (full.pipeline_log_truncated != null) pr.pipeline_log_truncated = full.pipeline_log_truncated;
             if (full.f46_log_truncated != null) pr.f46_log_truncated = full.f46_log_truncated;
             if (full.f47_log_truncated != null) pr.f47_log_truncated = full.f47_log_truncated;
-        } catch (ignore) { }
+        } catch (err) {
+            const exMsg = (err && err.message) ? err.message : String(err);
+            const errMsg = '結果の取得に失敗: ' + exMsg;
+            pr.fetch_error = errMsg;
+            if (!pr.pipeline_log) pr.pipeline_log = errMsg;
+            if (pr.f46_log === undefined) pr.f46_log = errMsg;
+            if (pr.f47_log === undefined) pr.f47_log = errMsg;
+        }
+    }
+
+    function clearBboxOverlay() {
+        const layer = document.getElementById('bboxOverlayLayer');
+        if (layer) layer.innerHTML = '';
+    }
+
+    function renderBboxOverlay(blocks) {
+        const layer = document.getElementById('bboxOverlayLayer');
+        if (!layer) return;
+        layer.innerHTML = '';
+        if (!blocks || !Array.isArray(blocks) || !blocks.length) return;
+
+        blocks.forEach(b => {
+            if (!b || !b.bbox || b.bbox.length < 4) return;
+            const [ymin, xmin, ymax, xmax] = b.bbox;
+            const box = document.createElement('div');
+            if (!b.block_type) {
+                box.className = 'bbox-box bbox-type-error';
+                box.style.border = '2px solid #dc2626';
+            } else {
+                box.className = 'bbox-box bbox-type-' + b.block_type;
+            }
+            box.dataset.order = String(b.order);
+
+            box.style.top = (ymin / 10) + '%';
+            box.style.left = (xmin / 10) + '%';
+            box.style.width = ((xmax - xmin) / 10) + '%';
+            box.style.height = ((ymax - ymin) / 10) + '%';
+
+            const label = document.createElement('div');
+            label.className = 'bbox-label';
+            if (!b.block_type) {
+                label.textContent = '#' + b.order + ' (エラー: block_type欠損)';
+                label.style.background = '#dc2626';
+                label.style.color = '#fff';
+            } else {
+                const typeJa = b.block_type === 'table' ? '表' :
+                               b.block_type === 'heading' ? '見出し' :
+                               b.block_type === 'bullet_list' ? '箇条' :
+                               b.block_type === 'figure_caption' ? '図' :
+                               b.block_type === 'footnote' ? '注' : '';
+                label.textContent = '#' + b.order + (typeJa ? ' ' + typeJa : '');
+            }
+            box.appendChild(label);
+
+            box.addEventListener('mouseenter', () => highlightBlock(b.order, true, 'from-box'));
+            box.addEventListener('mouseleave', () => highlightBlock(b.order, false));
+            box.addEventListener('click', () => {
+                const card = document.querySelector('.block-card[data-order="' + b.order + '"]');
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    highlightBlock(b.order, true);
+                }
+            });
+
+            layer.appendChild(box);
+        });
+    }
+
+    function highlightBlock(order, isHighlight, source) {
+        const strOrder = String(order);
+        const boxes = document.querySelectorAll('.bbox-box[data-order="' + strOrder + '"]');
+        boxes.forEach(el => el.classList.toggle('highlight', isHighlight));
+
+        const cards = document.querySelectorAll('.block-card[data-order="' + strOrder + '"]');
+        cards.forEach(el => {
+            el.classList.toggle('highlight', isHighlight);
+            if (isHighlight && source === 'from-box') {
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+    }
+
+    function renderBlockCards(container, blocks, mdText) {
+        if (!blocks || !Array.isArray(blocks) || !blocks.length) {
+            container.innerHTML = '<div style="padding:1.5rem;color:#dc2626;background:#fef2f2;border:1px solid #f87171;border-radius:6px;font-weight:600;">ブロックデータがありません</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        container.contentEditable = 'false';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'block-cards-container';
+
+        const typeNames = {
+            'heading': '見出し',
+            'paragraph': '段落',
+            'bullet_list': '箇条書き',
+            'table': '表',
+            'figure_caption': '図キャプション',
+            'footnote': '脚注',
+        };
+
+        const containerTypeNames = {
+            'page_body': '本文',
+            'callout_box': '囲み枠',
+            'column_left': '左段',
+            'column_right': '右段',
+            'header': 'ヘッダー',
+            'footer': 'フッター',
+        };
+
+        const relationNames = {
+            'pre_table_description': '表直前説明',
+            'table_heading': '表見出し',
+            'table_footnote': '表注記',
+            'table_body': '表本体',
+        };
+
+        blocks.forEach(b => {
+            const card = document.createElement('div');
+            card.className = 'block-card';
+            card.dataset.order = String(b.order);
+
+            // ヘッダー（バッジ群）
+            const hdr = document.createElement('div');
+            hdr.className = 'block-card-header';
+
+            // 読み順バッジ
+            const orderBadge = document.createElement('span');
+            orderBadge.className = 'badge-order';
+            orderBadge.textContent = '#' + b.order;
+            hdr.appendChild(orderBadge);
+
+            // 種別バッジ
+            const typeBadge = document.createElement('span');
+            if (!b.block_type) {
+                typeBadge.className = 'badge-type badge-type-error';
+                typeBadge.style.background = '#dc2626';
+                typeBadge.style.color = '#fff';
+                typeBadge.textContent = 'エラー: block_type欠損';
+                card.style.border = '2px solid #dc2626';
+            } else {
+                typeBadge.className = 'badge-type badge-type-' + b.block_type;
+                typeBadge.textContent = typeNames[b.block_type] || b.block_type;
+            }
+            hdr.appendChild(typeBadge);
+
+            // 所属枠バッジ
+            if (b.container) {
+                const cTag = document.createElement('span');
+                cTag.className = 'badge-container-tag';
+                const cType = containerTypeNames[b.container.type] || b.container.type;
+                const cTitle = b.container.title ? `「${b.container.title}」` : '';
+                cTag.textContent = cTitle ? `枠: ${cTitle}` : `領域: ${cType}`;
+                hdr.appendChild(cTag);
+            }
+
+            // 表との関係バッジ
+            if (b.table_relation && b.table_relation.role && b.table_relation.role !== 'none') {
+                const rTag = document.createElement('span');
+                rTag.className = 'badge-relation-tag';
+                const rName = relationNames[b.table_relation.role] || b.table_relation.role;
+                const targetId = b.table_relation.target_table_id ? `(${b.table_relation.target_table_id})` : '';
+                rTag.textContent = `${rName}${targetId}`;
+                hdr.appendChild(rTag);
+            }
+
+            card.appendChild(hdr);
+
+            // 本文
+            const body = document.createElement('div');
+            body.className = 'block-card-body';
+
+            if (b.block_type === 'table' && b.table_data) {
+                const td = b.table_data;
+                const titleDiv = document.createElement('div');
+                titleDiv.style.fontWeight = '700';
+                titleDiv.style.fontSize = '0.9rem';
+                titleDiv.style.marginBottom = '0.2rem';
+                const prefix = td.table_id ? td.table_id + ': ' : '';
+                if (td.caption) {
+                    titleDiv.textContent = prefix + td.caption;
+                } else {
+                    titleDiv.innerHTML = escapeHtml(prefix) + '<span style="color:#dc2626;background:#fef2f2;padding:2px 6px;border-radius:4px;border:1px solid #f87171;">エラー: caption 欠損</span>';
+                }
+                body.appendChild(titleDiv);
+
+                if (td.description) {
+                    const descDiv = document.createElement('div');
+                    descDiv.style.color = 'var(--text-muted)';
+                    descDiv.style.fontSize = '0.78rem';
+                    descDiv.style.marginBottom = '0.4rem';
+                    descDiv.textContent = '要約: ' + td.description;
+                    body.appendChild(descDiv);
+                }
+
+                const tblWrap = document.createElement('div');
+                tblWrap.className = 'block-card-table-wrap';
+                const table = document.createElement('table');
+                table.className = 'block-card-table';
+
+                const thead = document.createElement('thead');
+                const hTr = document.createElement('tr');
+                (td.headers || []).forEach(h => {
+                    const th = document.createElement('th');
+                    th.textContent = h;
+                    hTr.appendChild(th);
+                });
+                thead.appendChild(hTr);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                (td.data_rows || []).forEach(row => {
+                    const tr = document.createElement('tr');
+                    (row || []).forEach(cell => {
+                        const tdCell = document.createElement('td');
+                        tdCell.textContent = cell != null ? String(cell) : '';
+                        tr.appendChild(tdCell);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+                tblWrap.appendChild(table);
+                body.appendChild(tblWrap);
+            } else {
+                const pre = document.createElement('pre');
+                pre.textContent = b.text_content || '';
+                body.appendChild(pre);
+            }
+
+            card.appendChild(body);
+
+            // ホバー連携イベント
+            card.addEventListener('mouseenter', () => highlightBlock(b.order, true, 'from-card'));
+            card.addEventListener('mouseleave', () => highlightBlock(b.order, false));
+
+            wrap.appendChild(card);
+        });
+
+        container.appendChild(wrap);
     }
 
     async function loadActivePage() {
@@ -2536,7 +2985,45 @@
         // AI直接抽出結果を優先表示（パイプライン結果より先に確認）
         if (p.direct_md != null) {
             labOverlay.style.display = 'none';
-            _dmeRenderVisualEditor(paneVisualEditor, p.direct_md);
+
+            if (p.blocks && p.blocks.length) {
+                renderBboxOverlay(p.blocks);
+                renderBlockCards(paneVisualEditor, p.blocks, p.direct_md);
+            } else {
+                // セッション結果から blocks の復元を試行
+                try {
+                    const resFull = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + appState.currentPage);
+                    if (resFull.ok) {
+                        const full = await resFull.json();
+                        p.direct_log = (full.pipeline_log != null && full.pipeline_log !== '') ? full.pipeline_log : 'ログなし';
+                        p.ai_cost = full.ai_cost;
+                        if (full.blocks && full.blocks.length) {
+                            p.blocks = full.blocks;
+                            renderBboxOverlay(p.blocks);
+                            renderBlockCards(paneVisualEditor, p.blocks, p.direct_md);
+                        } else {
+                            clearBboxOverlay();
+                            paneVisualEditor.innerHTML = '<div class="error-box" style="margin:1rem 0;padding:1rem;color:#dc2626;background:#fef2f2;border:1px solid #f87171;border-radius:6px;font-weight:600;">' +
+                                '【ブロックデータ復元失敗】実行結果に blocks が存在しません（契約違反）。</div>';
+                        }
+                    } else {
+                        clearBboxOverlay();
+                        let errDetail = 'HTTP ' + resFull.status + (resFull.statusText ? ' ' + resFull.statusText : '');
+                        try {
+                            const errJson = await resFull.json();
+                            if (errJson && errJson.error) errDetail += ' - ' + errJson.error;
+                        } catch (_) {}
+                        paneVisualEditor.innerHTML = '<div class="error-box" style="margin:1rem 0;padding:1rem;color:#dc2626;background:#fef2f2;border:1px solid #f87171;border-radius:6px;font-weight:600;">' +
+                            '【結果取得失敗】ブロックデータの復元に失敗しました (' + escapeHtml(errDetail) + ')</div>';
+                    }
+                } catch (err) {
+                    clearBboxOverlay();
+                    const exMsg = (err && err.message) ? err.message : String(err);
+                    paneVisualEditor.innerHTML = '<div class="error-box" style="margin:1rem 0;padding:1rem;color:#dc2626;background:#fef2f2;border:1px solid #f87171;border-radius:6px;font-weight:600;">' +
+                        '【例外エラー】ブロックデータ取得処理中に例外が発生しました (' + escapeHtml(exMsg) + ')</div>';
+                }
+            }
+
             paneRawMd.innerHTML = _makeRawMdTextarea(p.direct_md);
             _wireRawMdSync(appState.currentPage);
             
@@ -2545,10 +3032,20 @@
                     const resFull = await fetch(API_PREFIX + '/api/result/' + appState.sessionId + '/' + appState.currentPage);
                     if (resFull.ok) {
                         const full = await resFull.json();
-                        p.direct_log = full.pipeline_log || '';
+                        p.direct_log = (full.pipeline_log != null && full.pipeline_log !== '') ? full.pipeline_log : 'ログなし';
                         p.ai_cost = full.ai_cost;
+                    } else {
+                        let errDetail = 'HTTP ' + resFull.status + (resFull.statusText ? ' ' + resFull.statusText : '');
+                        try {
+                            const errJson = await resFull.json();
+                            if (errJson && errJson.error) errDetail += ' - ' + errJson.error;
+                        } catch (_) {}
+                        p.direct_log = '結果の取得に失敗: ' + errDetail;
                     }
-                } catch (ignore) {}
+                } catch (err) {
+                    const exMsg = (err && err.message) ? err.message : String(err);
+                    p.direct_log = '結果の取得に失敗: ' + exMsg;
+                }
             }
             
             paneLog.innerHTML = renderDirectLogHtml(p);
@@ -2560,12 +3057,14 @@
             return;
         }
 
+        clearBboxOverlay();
+
         const pr = p.pipeline_result;
         if (pr && pr.success) {
             await hydratePageResult(pr, appState.currentPage);
-            window.__lastPipelineLog = pr.pipeline_log || '';
-            window.__lastF46Log = pr.f46_log || '';
-            window.__lastF47Log = pr.f47_log || '';
+            window.__lastPipelineLog = (pr.pipeline_log != null && pr.pipeline_log !== '') ? pr.pipeline_log : 'ログなし';
+            window.__lastF46Log = (pr.f46_log != null && pr.f46_log !== '') ? pr.f46_log : 'ログなし';
+            window.__lastF47Log = (pr.f47_log != null && pr.f47_log !== '') ? pr.f47_log : 'ログなし';
             window.__lastStageDJson = JSON.stringify(pr.stage_d_detail != null ? pr.stage_d_detail : {}, null, 2);
             // パイプライン結果を dme-table 編集モードに変換
             const _synMd = buildSyntheticMarkdown(pr).trim();
@@ -2573,6 +3072,13 @@
                 p.direct_md = _synMd;
                 labOverlay.style.display = 'none';
                 _dmeRenderVisualEditor(paneVisualEditor, _synMd);
+                if (pr.fetch_error) {
+                    const errDiv = document.createElement('div');
+                    errDiv.className = 'error-box';
+                    errDiv.style.marginBottom = '1rem';
+                    errDiv.textContent = pr.fetch_error;
+                    paneVisualEditor.insertBefore(errDiv, paneVisualEditor.firstChild);
+                }
                 const _embed = (pr.ui_data_json && pr.ui_data_json.tables_md_embed)
                     ? '\n\n## 表（埋め込み）\n\n' + String(pr.ui_data_json.tables_md_embed).trim()
                     : '';
@@ -2621,6 +3127,7 @@
         if (!appState.sessionId) return;
         const pg = appState.currentPage;
         showLoader('ページ ' + (pg + 1) + ' をパイプライン処理中…');
+        clearBboxOverlay();
         try {
             const body = model ? JSON.stringify({ g26_model: model }) : undefined;
             const res = await fetch(API_PREFIX + '/api/run/' + appState.sessionId + '/' + pg, {
@@ -2675,11 +3182,36 @@
                         if (full.reading && typeof full.reading === 'object') {
                             json.reading = Object.assign({}, json.reading || {}, full.reading);
                         }
+                        json.pipeline_log = (full.pipeline_log != null && full.pipeline_log !== '') ? full.pipeline_log : 'ログなし';
+                        json.f46_log = (full.f46_log != null && full.f46_log !== '') ? full.f46_log : 'ログなし';
+                        json.f47_log = (full.f47_log != null && full.f47_log !== '') ? full.f47_log : 'ログなし';
+                        if (full.pipeline_log_truncated != null) json.pipeline_log_truncated = full.pipeline_log_truncated;
+                        if (full.f46_log_truncated != null) json.f46_log_truncated = full.f46_log_truncated;
+                        if (full.f47_log_truncated != null) json.f47_log_truncated = full.f47_log_truncated;
+                    } else {
+                        let errDetail = 'HTTP ' + resFull.status + (resFull.statusText ? ' ' + resFull.statusText : '');
+                        try {
+                            const errJson = await resFull.json();
+                            if (errJson && errJson.error) errDetail += ' - ' + errJson.error;
+                        } catch (_) {}
+                        const errMsg = '結果の取得に失敗: ' + errDetail;
+                        json.fetch_error = errMsg;
+                        if (!json.pipeline_log) json.pipeline_log = errMsg;
+                        if (!json.f46_log) json.f46_log = errMsg;
+                        if (!json.f47_log) json.f47_log = errMsg;
                     }
-                } catch (ignore) { /* サマリーのみ表示 */ }
+                } catch (err) {
+                    const exMsg = (err && err.message) ? err.message : String(err);
+                    const errMsg = '結果の取得に失敗: ' + exMsg;
+                    json.fetch_error = errMsg;
+                    if (!json.pipeline_log) json.pipeline_log = errMsg;
+                    if (!json.f46_log) json.f46_log = errMsg;
+                    if (!json.f47_log) json.f47_log = errMsg;
+                }
             }
             appState.pages[pg].pipeline_result = json;
             appState.pages[pg].direct_md = null;
+            appState.pages[pg].blocks = null;
             renderThumbnails();
             await loadActivePage();
             // パイプライン結果を即時永続化（保存ボタンがユーザー入力前でも機能するよう）
@@ -2712,6 +3244,7 @@
                 f47_log: (e && e.__f47Log) || '',
             };
             appState.pages[pg].direct_md = null;
+            appState.pages[pg].blocks = null;
             renderThumbnails();
             await loadActivePage();
         } finally {
@@ -2723,6 +3256,7 @@
         if (!appState.sessionId) return;
         const pg = appState.currentPage;
         showLoader('ページ ' + (pg + 1) + ' を AI 直接抽出中…');
+        clearBboxOverlay();
         try {
             const res = await fetch(API_PREFIX + '/api/extract_direct/' + appState.sessionId + '/' + pg, {
                 method: 'POST',
@@ -2731,29 +3265,74 @@
             });
             let data;
             try { data = await res.json(); } catch (_) { throw new Error('サーバーの応答が JSON ではありません。'); }
-            if (!res.ok) throw new Error((data && data.error) || 'HTTP ' + res.status);
-            // 結果を Visual Editor と Raw MD 両方に表示
-            appState.pages[pg].direct_md = data.markdown || '';
-            appState.pages[pg].direct_log = data.pipeline_log || '';
+            
+            if (!res.ok || !data.success) {
+                const errDetail = (data && data.error) ? data.error : ('HTTP ' + res.status);
+                const errType = (data && data.error_type) ? ` [${data.error_type}]` : '';
+                throw new Error(`${errDetail}${errType}`);
+            }
+
+            // markdown が無い応答はエラーとして画面表示し保存しない
+            if (typeof data.markdown !== 'string' || !data.markdown.trim()) {
+                throw new Error('AI直接抽出の応答に markdown が含まれていないか空です。');
+            }
+
+            // サーバ応答の data.model のみを使い、無ければエラー表示
+            if (!data.model) {
+                throw new Error('サーバ応答に model が含まれていません（契約違反）');
+            }
+
+            // サーバ応答に blocks が無い/空のときは契約違反として画面にエラー表示し完了扱いにしない
+            if (!data.blocks || !Array.isArray(data.blocks) || !data.blocks.length) {
+                throw new Error('AI直接抽出の応答に blocks が含まれていないか空です（契約違反）。');
+            }
+
+            // 結果をメモリと画面に反映
+            appState.pages[pg].blocks = data.blocks;
+            appState.pages[pg].direct_md = data.markdown;
+            appState.pages[pg].direct_log = (data.pipeline_log != null && data.pipeline_log !== '') ? data.pipeline_log : 'ログなし';
             appState.pages[pg].ai_cost = data.ai_cost;
             labOverlay.style.display = 'none';
-            _dmeRenderVisualEditor(paneVisualEditor, appState.pages[pg].direct_md);
-            paneRawMd.innerHTML = _makeRawMdTextarea(appState.pages[pg].direct_md);
+
+            // 左プレビュー画像に bbox オーバーレイとブロックカードを描画
+            renderBboxOverlay(data.blocks);
+            renderBlockCards(paneVisualEditor, data.blocks, data.markdown);
+
+            paneRawMd.innerHTML = _makeRawMdTextarea(data.markdown);
             _wireRawMdSync(pg);
             paneLog.innerHTML = renderDirectLogHtml(appState.pages[pg]);
             wireCopyButtons();
             setLabTab('visual');
             btnFullJson.disabled = true;
-            // 即時永続化（保存ボタンがユーザー入力前でも機能するよう）
-            fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
+
+            // 即時永続化（失敗時は画面にエラー表示）
+            const saveRes = await fetch(API_PREFIX + '/api/update_page_md/' + appState.sessionId + '/' + pg, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ markdown_text: appState.pages[pg].direct_md }),
-            }).catch(() => {});
+            });
+            if (!saveRes.ok) {
+                let saveErr = 'HTTP ' + saveRes.status;
+                try {
+                    const saveJson = await saveRes.json();
+                    if (saveJson && saveJson.error) saveErr = saveJson.error;
+                } catch (_) {}
+                throw new Error('抽出結果の保存に失敗しました: ' + saveErr);
+            }
+
             renderThumbnails();
-            headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ページ ' + (pg + 1) + ' AI直接抽出完了 (' + (data.model || model) + ')';
+            headerStatus.textContent = 'PDF: ' + appState.safeFilename + ' · ページ ' + (pg + 1) + ' AI直接抽出完了 (' + data.model + ')';
         } catch (e) {
-            alert('AI直接抽出エラー: ' + (e.message || String(e)));
+            const errMsg = e.message || String(e);
+            clearBboxOverlay();
+            labOverlay.style.display = 'none';
+            paneVisualEditor.innerHTML = '<div class="error-box" style="margin:1rem 0;font-size:0.88rem;line-height:1.6;">' +
+                '<strong>【AI直接抽出エラー（検証失敗）】</strong><br>' +
+                escapeHtml(errMsg) +
+                '<p class="empty-hint" style="margin:0.5rem 0 0;color:#991b1b;">形式の崩れた応答、スキーマ違反、または座標矛盾が検出されたため、フォールバックせず処理を中断しました。</p>' +
+                '</div>';
+            setLabTab('visual');
+            alert('AI直接抽出エラー: ' + errMsg);
         } finally {
             hideLoader();
         }
@@ -2770,8 +3349,8 @@
             }
         });
     }
-    ['overlayRunBtn', 'overlayRunBtn25', 'overlayDirectBtn31', 'overlayDirectBtn25',
-     'headerRunBtn', 'headerRunBtn25', 'headerDirectBtn31', 'headerDirectBtn25'].forEach(id => {
+    ['overlayRunBtn35', 'overlayRunBtn31', 'overlayDirectBtn38', 'overlayDirectBtn35',
+     'headerRunBtn35', 'headerRunBtn31', 'headerDirectBtn38', 'headerDirectBtn35'].forEach(id => {
         const el = document.getElementById(id);
         if (el) makeRunHandler(el);
     });
