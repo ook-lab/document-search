@@ -12,32 +12,23 @@ from standalone import (
     RAG_PREPARE_VECTORIZE_RAW_TABLES,
     RagServiceDB,
     fetch_pending_search_data_prep_docs,
-    resolve_pdf_toolbox_base,
 )
 
 
-def resolve_pipeline_lab_base(request_host: str = None) -> str:
+def resolve_pipeline_lab_base() -> str:
     """
     pipeline-lab のベース URL（末尾スラッシュなし）。
 
     優先順: PIPELINE_LAB_BASE 環境変数
     → ローカル（K_SERVICE なし）: http://127.0.0.1:{PIPELINE_LAB_PORT|5055}
-    → Cloud Run: リクエストホストが *-{num}.{region}.run.app なら pipeline-lab の sibling URL を推定
+    → Cloud Run（K_SERVICE あり）: 推測は廃止し PIPELINE_LAB_BASE の明示設定を必須とする（未設定時は空文字）。
     """
-    import re as _re
     explicit = os.environ.get('PIPELINE_LAB_BASE', '').strip().rstrip('/')
     if explicit:
         return explicit
     if not os.environ.get('K_SERVICE'):
         port = (os.environ.get('PIPELINE_LAB_PORT') or '5055').strip()
         return f'http://127.0.0.1:{port}'
-    # Cloud Run: ホスト名から pipeline-lab の URL を推定
-    if request_host:
-        h = request_host.split(':')[0].strip().lower()
-        m = _re.search(r'-(?P<num>\d+)\.(?P<region>[a-z0-9-]+)\.run\.app$', h, _re.IGNORECASE)
-        if m:
-            num, region = m.group('num'), m.group('region')
-            return f'https://pipeline-lab-{num}.{region}.run.app'
     return ''
 
 app = Flask(__name__)
@@ -74,30 +65,27 @@ def index():
         logger.error(f"Failed to fetch pending docs: {e}")
         list_error = str(e)
 
-    _fh = (request.headers.get("X-Forwarded-Host") or "").strip()
-    req_host = (_fh.split(",")[0].strip() if _fh else "") or (request.host or "").strip()
-    toolbox = resolve_pdf_toolbox_base(request_host=req_host or None)
-    if not toolbox and os.environ.get("K_SERVICE"):
-        logger.warning(
-            "PDF ツールのベース URL を決められませんでした（環境変数 RAG_PREPARE_PDF_TOOLBOX_BASE 等、"
-            "または Cloud Run の *-{プロジェクト番号}.{リージョン}.run.app 形式のホストが必要です）。"
-            "カスタムドメインのみの場合は RAG_PREPARE_PDF_TOOLBOX_BASE を設定してください。"
+    pipeline_lab = resolve_pipeline_lab_base()
+    pipeline_lab_error = None
+    if not pipeline_lab:
+        pipeline_lab_error = (
+            "環境変数 PIPELINE_LAB_BASE が設定されていません。"
+            "Cloud Run の環境変数を設定してください。"
         )
-
-    pipeline_lab = resolve_pipeline_lab_base(request_host=req_host or None)
+        logger.error(pipeline_lab_error)
 
     return render_template(
         "search_data_prep.html",
         docs=pending_docs,
         list_error=list_error,
-        pdf_toolbox_base=toolbox,
         pipeline_lab_base=pipeline_lab,
+        pipeline_lab_error=pipeline_lab_error,
         process_post_url="/process",
     )
 
 def _run_search_index_register():
     data = request.get_json(silent=True) or {}
-    unified_doc_id = (data.get("unified_doc_id") or data.get("doc_id") or "").strip()
+    unified_doc_id = str(data.get("unified_doc_id") or "").strip()
     raw_table = (data.get("raw_table") or "").strip()
     raw_id = (data.get("raw_id") or "").strip()
     if not unified_doc_id and not (raw_table and raw_id):
@@ -121,7 +109,7 @@ def _run_search_index_register():
 
 def _run_date_signals_single():
     data = request.get_json(silent=True) or {}
-    unified_doc_id = (data.get("unified_doc_id") or data.get("doc_id") or "").strip()
+    unified_doc_id = str(data.get("unified_doc_id") or "").strip()
     raw_table = (data.get("raw_table") or "").strip()
     raw_id = (data.get("raw_id") or "").strip()
     if not unified_doc_id and not (raw_table and raw_id):

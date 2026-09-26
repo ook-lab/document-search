@@ -80,10 +80,12 @@ class RagPrepareSearchIndexer:
             )
             ix_skip_pdf = bool((meta_res.data or {}).get("ix_skip_pdf"))
 
+            unified_doc_id = str(ud["id"])
+            raw_row = self._load_raw_row(rt, ud_raw_id)
             ctx = {
                 "raw_id": ud_raw_id,
                 "raw_table": rt,
-                "file_url": ud.get("file_url"),
+                "file_url": raw_row.get("file_url"),
                 "skip_pdf": ix_skip_pdf,
             }
             full_markdown, md_err = self._resolve_markdown(ctx)
@@ -91,13 +93,11 @@ class RagPrepareSearchIndexer:
                 logger.error("インデックス用の本文がありません: %s", unified_doc_id)
                 return False, md_err or "インデックス用の本文がありません（raw / pdf_md_content）"
 
-            unified_doc_id = str(ud["id"])
             person = ud.get("person")
             c1 = ud.get("classification1")
             c2 = ud.get("classification2")
-            c3 = ud.get("classification3") or rt
+            c3 = ud.get("classification3")
 
-            raw_row = self._load_raw_row(rt, ud_raw_id)
             sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_markdown)
             self.db.client.table("09_unified_documents").update(sync_updates).eq("id", unified_doc_id).select("id").execute()
 
@@ -112,16 +112,16 @@ class RagPrepareSearchIndexer:
             if not ud_fresh:
                 return False, "09 を再読込できません"
 
-            date_signals = build_date_signals(ud_fresh, merge_meta_date_signals=False, extra_text="")
+            date_signals = build_date_signals(ud_fresh, extra_text="")
             ix_dates = build_ix_search_date_list(ud_fresh, date_signals)
             self.db.client.table("09_unified_documents").update(
                 {"ix_date_signals": date_signals, "ix_search_dates": ix_dates}
             ).eq("id", unified_doc_id).select("id").execute()
 
-            person = ud_fresh.get("person") or person
-            c1 = ud_fresh.get("classification1") or c1
+            person = ud_fresh.get("person")
+            c1 = ud_fresh.get("classification1")
             c2 = ud_fresh.get("classification2")
-            c3 = ud_fresh.get("classification3") or c3
+            c3 = ud_fresh.get("classification3")
 
             chunk_items = self._md_chunks_with_meta(full_markdown)
             gate = (
@@ -198,13 +198,16 @@ class RagPrepareSearchIndexer:
             if not rt or rid is None or not str(rid).strip():
                 return False, "raw_table / raw_id がありません"
             rid_s = str(rid).strip()
-            ctx = {"raw_id": rid_s, "raw_table": rt, "file_url": ud.get("file_url")}
-            md, md_err = self._resolve_markdown(ctx)
             raw_row = self._load_raw_row(rt, rid_s)
-            body_existing = str(ud.get("body") or "").strip()
-            full_md = (md or "").strip() or body_existing
-            if not full_md:
-                return False, md_err or "本文がありません（raw / 09.body）"
+            ctx = {
+                "raw_id": rid_s,
+                "raw_table": rt,
+                "file_url": raw_row.get("file_url"),
+            }
+            md, md_err = self._resolve_markdown(ctx)
+            if not md or not md.strip():
+                return False, md_err or "本文がありません（raw / pdf_md_content）"
+            full_md = md.strip()
 
             sync_updates = self._sync_09_from_raw_row(ud, raw_row, full_md)
             self.db.client.table("09_unified_documents").update(sync_updates).eq("id", ud["id"]).select("id").execute()
@@ -219,7 +222,7 @@ class RagPrepareSearchIndexer:
             )
             if not ud_fresh:
                 return False, "09 を再読込できません"
-            ds = build_date_signals(ud_fresh, merge_meta_date_signals=False, extra_text="")
+            ds = build_date_signals(ud_fresh, extra_text="")
             ix_dates = build_ix_search_date_list(ud_fresh, ds)
             self.db.client.table("09_unified_documents").update(
                 {"ix_date_signals": ds, "ix_search_dates": ix_dates}
@@ -306,10 +309,11 @@ class RagPrepareSearchIndexer:
                     rid = row.get("raw_id")
                     extra = ""
                     if rt and rid is not None and str(rid).strip():
+                        raw_row = self._load_raw_row(rt, str(rid).strip())
                         ctx = {
                             "raw_id": str(rid).strip(),
                             "raw_table": rt,
-                            "file_url": row.get("file_url"),
+                            "file_url": raw_row.get("file_url"),
                         }
                         md, _ = self._resolve_markdown(ctx)
                         extra = (md or "").strip()
@@ -320,7 +324,7 @@ class RagPrepareSearchIndexer:
                         continue
                     row_for = dict(row)
                     row_for["body"] = text_for_dates
-                    ds = build_date_signals(row_for, merge_meta_date_signals=False, extra_text="")
+                    ds = build_date_signals(row_for, extra_text="")
                     ix_dates = build_ix_search_date_list(row_for, ds)
                     self.db.client.table("09_unified_documents").update(
                         {"ix_date_signals": ds, "ix_search_dates": ix_dates}
@@ -370,7 +374,7 @@ class RagPrepareSearchIndexer:
         else:
             _set_str("classification3", raw_row.get("category"))
 
-        tit = raw_row.get("title") or raw_row.get("file_name")
+        tit = raw_row.get("title")
         _set_str("title", tit)
 
         if raw_row.get("created_at") is not None:
@@ -422,22 +426,30 @@ class RagPrepareSearchIndexer:
                 self.db.client.table("09_unified_documents")
                 .select(_UD_SELECT)
                 .eq("id", unified_doc_id)
-                .single()
+                .maybe_single()
                 .execute()
             )
             if res.data:
                 return res.data
+            logger.error("指定された unified_doc_id (%s) が 09_unified_documents に存在しません", unified_doc_id)
+            return None
         if raw_table and raw_id:
             res2 = (
                 self.db.client.table("09_unified_documents")
                 .select(_UD_SELECT)
                 .eq("raw_table", raw_table)
                 .eq("raw_id", raw_id)
-                .limit(1)
+                .limit(2)
                 .execute()
             )
-            if res2.data:
-                return res2.data[0]
+            rows = res2.data or []
+            if len(rows) > 1:
+                dup_ids = ", ".join(str(r.get("id")) for r in rows)
+                raise RuntimeError(
+                    f"09_unified_documents に同じ (raw_table, raw_id) のレコードが複数存在します（重複: {dup_ids}）"
+                )
+            if len(rows) == 1:
+                return rows[0]
             return self._create_unified_from_raw(raw_table, raw_id)
         return None
 
@@ -464,9 +476,18 @@ class RagPrepareSearchIndexer:
                 else None
             ),
             "classification3": raw_row.get("category"),
-            "title": raw_row.get("title") or raw_row.get("file_name"),
+            "title": raw_row.get("title"),
             "file_url": raw_row.get("file_url"),
-            "post_at": raw_row.get("created_at"),
+            "post_at": (
+                raw_row.get("created_at")
+                if raw_table
+                in (
+                    "03_ema_classroom_01_raw",
+                    "04_ikuya_classroom_01_raw",
+                    "05_ikuya_waseaca_01_raw",
+                )
+                else None
+            ),
             "due_date": raw_row.get("due_date"),
             "post_type": raw_row.get("post_type"),
             "ui_data": {},
@@ -493,32 +514,18 @@ class RagPrepareSearchIndexer:
 
     def _drive_id_from_ctx(self, ctx: Dict[str, Any]) -> Optional[str]:
         fu = ctx.get("file_url")
-        if fu:
-            m = DRIVE_URL_RE.search(str(fu))
-            if m:
-                return m.group(1)
-        raw_table = ctx.get("raw_table")
-        raw_id = ctx.get("raw_id")
-        if not raw_table or not raw_id:
-            return None
-        try:
-            raw = (
-                self.db.client.table(raw_table)
-                .select("file_url")
-                .eq("id", raw_id)
-                .single()
-                .execute()
-                .data
+        if not fu:
+            logger.info(
+                "ctx に file_url が無いため Drive ID 不明: raw_table=%s raw_id=%s",
+                ctx.get("raw_table"),
+                ctx.get("raw_id"),
             )
-        except Exception:
             return None
-        if not raw:
-            return None
-        fu2 = raw.get("file_url")
-        if not fu2:
-            return None
-        m = DRIVE_URL_RE.search(str(fu2))
-        return m.group(1) if m else None
+        m = DRIVE_URL_RE.search(str(fu))
+        if m:
+            return m.group(1)
+        logger.info("file_url に Drive ID が含まれていません: %s", fu)
+        return None
 
     def _resolve_markdown(self, ctx: Dict[str, Any]) -> tuple[str, Optional[str]]:
         raw_table = ctx.get("raw_table")
@@ -596,7 +603,7 @@ class RagPrepareSearchIndexer:
             import google.generativeai as genai
             api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
             if not api_key:
-                return {"annotations": []}
+                raise RuntimeError("GOOGLE_AI_API_KEY が未設定です")
 
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
@@ -657,8 +664,8 @@ class RagPrepareSearchIndexer:
                 "annotations": data.get("annotations") or [],
             }
         except Exception as e:
-            logger.warning("[RAG] AI アノテーション取得失敗: %s", e)
-            return {"annotations": []}
+            logger.error("[RAG] AI アノテーション取得失敗: %s", e)
+            raise RuntimeError(f"AI アノテーション取得に失敗しました: {e}") from e
 
     @staticmethod
     def _apply_annotations(md: str, annotations: List[Dict[str, Any]]) -> str:
@@ -789,8 +796,6 @@ class RagPrepareSearchIndexer:
             yaml_text = yaml_m.group(1).strip()
             # タイトル・サマリーをコンテキストプレフィックスとして構成
             ctx_parts = [p for p in [table_title, table_summary] if p]
-            if not ctx_parts and prose_text:
-                ctx_parts = [prose_text[:300].strip()]
             context_prefix = '\n'.join(ctx_parts)
             for block in re.split(r'(?=^- table_id:)', yaml_text, flags=re.MULTILINE):
                 block = block.strip()
@@ -798,7 +803,7 @@ class RagPrepareSearchIndexer:
                     continue
                 desc_m = re.search(r"^\s*description:\s*'(.*?)'", block, re.MULTILINE)
                 desc = (desc_m.group(1).strip() if desc_m else '')
-                prefix = context_prefix or desc or prose_text[:300].strip()
+                prefix = context_prefix or desc
                 text = f"{prefix}\n\n{block}" if prefix else block
                 results.append({"text": text, "chunk_type": "table_yaml", "chunk_weight": 2.0})
 

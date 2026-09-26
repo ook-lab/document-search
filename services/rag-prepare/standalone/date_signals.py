@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import unicodedata
 import calendar
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_date(s: str) -> Optional[date]:
@@ -21,8 +24,10 @@ def _dedupe_sorted(dates: List[str]) -> List[str]:
     return uniq
 
 
-def _normalize_year(base: date, month: int, day: int) -> Optional[date]:
+def _normalize_year(base: Optional[date], month: int, day: int) -> Optional[date]:
     """基準日に近い年を補完（年跨ぎを許容）。"""
+    if base is None:
+        return None
     candidates = []
     for y in (base.year - 1, base.year, base.year + 1):
         try:
@@ -43,7 +48,9 @@ def _extract_iso_dates(text: str) -> List[str]:
     return out
 
 
-def _extract_month_day_dates(text: str, base: date) -> List[str]:
+def _extract_month_day_dates(text: str, base: Optional[date]) -> List[str]:
+    if base is None:
+        return []
     out: List[str] = []
     # 5/8, 5月8日, 5.8
     for m in re.finditer(r"(?<!\d)(\d{1,2})\s*(?:/|\.|月)\s*(\d{1,2})\s*日?", text):
@@ -55,7 +62,9 @@ def _extract_month_day_dates(text: str, base: date) -> List[str]:
     return out
 
 
-def _extract_ranges(text: str, base: date) -> List[Dict[str, str]]:
+def _extract_ranges(text: str, base: Optional[date]) -> List[Dict[str, str]]:
+    if base is None:
+        return []
     out: List[Dict[str, str]] = []
     # 5/7〜5/13, 5月7日-5月13日
     pat = re.compile(
@@ -72,19 +81,20 @@ def _extract_ranges(text: str, base: date) -> List[Dict[str, str]]:
             # 年跨ぎ補正（例: 12/28〜1/5）
             try:
                 e = date(s.year + 1, em, ed)
-            except Exception:
-                pass
+            except Exception as ex:
+                logger.warning("年跨ぎレンジの終了日生成に失敗したためスキップ: text=%s error=%s", m.group(0), ex)
+                continue
         out.append({"start": s.isoformat(), "end": e.isoformat(), "source_text": m.group(0)})
     return out
 
 
-def _extract_partial_dates(text: str, base: date) -> List[Dict[str, Any]]:
+def _extract_partial_dates(text: str, base: Optional[date]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for m in re.finditer(r"(?<!\d)(\d{1,2})月号\b", text):
         month = int(m.group(1))
         out.append(
             {
-                "year": base.year,
+                "year": None,
                 "month": month,
                 "day": None,
                 "text": m.group(0),
@@ -107,12 +117,12 @@ def _coerce_day(v: Any) -> Optional[date]:
     return None
 
 
-def _base_date(row: Dict[str, Any]) -> date:
-    for key in ("post_at", "start_at", "end_at", "due_date"):
+def _base_date(row: Dict[str, Any]) -> Optional[date]:
+    for key in ("post_at", "start_at"):
         d = _coerce_day(row.get(key))
         if d:
             return d
-    return datetime.now().date()
+    return None
 
 
 def _coerce_meta(meta: Any) -> Dict[str, Any]:
@@ -133,15 +143,12 @@ def build_date_signals(
     row: Dict[str, Any],
     *,
     extra_text: str = "",
-    merge_meta_date_signals: bool = True,
 ) -> Dict[str, Any]:
     """09 行の構造化情報＋本文から date_signals 形の dict を組み立てる。
 
     ``extra_text`` は全文に相当する本文の追補のみ（例: 09.body 未反映の取り込み用）。
-    ``merge_meta_date_signals`` が False のとき、meta 内の旧 date_signals は取り込まない（ix_date_signals 用）。
     """
     base = _base_date(row)
-    meta = _coerce_meta(row.get("meta"))
     body = str(row.get("body") or "")
     title = str(row.get("title") or "")
     ui_data = row.get("ui_data")
@@ -158,18 +165,6 @@ def build_date_signals(
     normalized_dates: List[str] = []
     normalized_ranges: List[Dict[str, str]] = []
     partial_dates: List[Dict[str, Any]] = []
-
-    if merge_meta_date_signals:
-        existing = meta.get("date_signals") if isinstance(meta, dict) else None
-        if isinstance(existing, dict):
-            normalized_dates.extend([str(x) for x in (existing.get("normalized_dates") or [])])
-            normalized_ranges.extend(
-                [x for x in (existing.get("normalized_ranges") or []) if isinstance(x, dict)]
-            )
-            partial_dates.extend([x for x in (existing.get("partial_dates") or []) if isinstance(x, dict)])
-
-    # 既存 all_dates 互換
-    normalized_dates.extend([str(x) for x in (meta.get("all_dates") or [])])
 
     # 構造化列
     for key in ("post_at", "start_at", "end_at", "due_date"):
@@ -209,7 +204,8 @@ def build_date_signals(
     seen_p = set()
     for p in partial_dates:
         try:
-            y = int(p.get("year"))
+            raw_y = p.get("year")
+            y = int(raw_y) if raw_y is not None else None
             m = int(p.get("month"))
             d = p.get("day")
             txt = str(p.get("text") or "")
@@ -270,7 +266,10 @@ def build_ix_search_date_list(
         if not isinstance(p, dict):
             continue
         try:
-            y = int(p.get("year"))
+            raw_y = p.get("year")
+            if raw_y is None:
+                continue
+            y = int(raw_y)
             m = int(p.get("month"))
         except Exception:
             continue

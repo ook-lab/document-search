@@ -83,14 +83,10 @@ def _gmail_without_attachment(
     return True
 
 
-def _display_filename(extras: Dict[str, Any], _raw_id: str) -> str:
-    fn = (extras.get("file_name") or "").strip()
-    title = (extras.get("title") or "").strip()
-    if fn:
-        return fn
-    if title:
-        return title
-    return ""
+def _display_filename(extras: Optional[Dict[str, Any]], _raw_id: str) -> str:
+    if not extras:
+        return ""
+    return (extras.get("file_name") or "").strip()
 
 
 def _resolved_drive_id(file_url: Optional[str]) -> Optional[str]:
@@ -110,21 +106,18 @@ def _raw_select_columns(raw_table: str) -> str:
     return f"{common}, created_at, due_date"
 
 
-def _display_post_at_str(ud: Dict[str, Any], extras: Dict[str, Any]) -> str:
-    """一覧の日付列用。投稿・送信に近い時刻のみ（09 indexed_at や meta 更新日は使わない）。"""
-    for key in ("post_at", "start_at", "end_at"):
-        v = ud.get(key)
-        if v:
-            return str(v)
-    v = extras.get("created_at")
-    if v:
-        return str(v)
-    v = extras.get("due_date")
-    if v:
-        return str(v)
-    v = extras.get("pdf_md_updated_at")
-    if v:
-        return str(v)
+def _display_post_at_str(ud: Dict[str, Any], extras: Optional[Dict[str, Any]], raw_table: str) -> str:
+    """一覧の日付列用。
+    - 09 がある行: 09 の post_at のみ（無ければ空）。
+    - 09 が無い行: Classroom 系 raw(03/04/05) の created_at のみ。08 は空。
+    """
+    has_09 = bool(ud.get("id"))
+    if has_09:
+        v = ud.get("post_at")
+        return str(v) if v else ""
+    if extras and raw_table in _CLASSROOM_RAW_WITH_COURSE_NAME:
+        v = extras.get("created_at")
+        return str(v) if v else ""
     return ""
 
 
@@ -211,12 +204,13 @@ def fetch_pending_search_data_prep_docs(
                 .in_("id", chunk)
                 .execute()
             )
-            for row in ud_by_doc.data or []:
-                uid = row.get("id")
-                if uid is not None:
-                    ud_by_id[str(uid)] = row
-        except Exception:
-            pass
+        except Exception as e:
+            return [], f"09_unified_documents の取得に失敗しました: {e}"
+
+        for row in ud_by_doc.data or []:
+            uid = row.get("id")
+            if uid is not None:
+                ud_by_id[str(uid)] = row
 
     raw_extras_by_pair: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for rt, id_set in by_table.items():
@@ -224,7 +218,6 @@ def fetch_pending_search_data_prep_docs(
         chunk_size = 80
         for i in range(0, len(ids), chunk_size):
             chunk = ids[i : i + chunk_size]
-            fetched: Dict[str, Dict[str, Any]] = {}
             try:
                 raw_res = (
                     db_client.table(rt)
@@ -232,29 +225,28 @@ def fetch_pending_search_data_prep_docs(
                     .in_("id", chunk)
                     .execute()
                 )
-                for row in raw_res.data or []:
-                    if row.get("id") is not None:
-                        entry: Dict[str, Any] = {
-                            "file_url": row.get("file_url"),
-                            "file_name": row.get("file_name"),
-                            "title": row.get("title"),
-                            "source": row.get("source"),
-                            "category": row.get("category"),
-                            "pdf_md_content": row.get("pdf_md_content"),
-                            "pdf_md_updated_at": row.get("pdf_md_updated_at"),
-                        }
-                        if rt in _CLASSROOM_RAW_WITH_COURSE_NAME:
-                            entry["course_name"] = row.get("course_name")
-                        if rt != "08_file_only_01_raw":
-                            entry["created_at"] = row.get("created_at")
-                            entry["due_date"] = row.get("due_date")
-                        fetched[str(row["id"])] = entry
-            except Exception:
-                fetched = {}
-            for rid in chunk:
-                raw_extras_by_pair[(rt, rid)] = fetched.get(rid, {})
+            except Exception as e:
+                return [], f"raw テーブル ({rt}) の取得に失敗しました: {e}"
 
-    ud_by_pair: Dict[Tuple[str, str], Dict[str, Any]] = {}
+            for row in raw_res.data or []:
+                if row.get("id") is not None:
+                    entry: Dict[str, Any] = {
+                        "file_url": row.get("file_url"),
+                        "file_name": row.get("file_name"),
+                        "title": row.get("title"),
+                        "source": row.get("source"),
+                        "category": row.get("category"),
+                        "pdf_md_content": row.get("pdf_md_content"),
+                        "pdf_md_updated_at": row.get("pdf_md_updated_at"),
+                    }
+                    if rt in _CLASSROOM_RAW_WITH_COURSE_NAME:
+                        entry["course_name"] = row.get("course_name")
+                    if rt != "08_file_only_01_raw":
+                        entry["created_at"] = row.get("created_at")
+                        entry["due_date"] = row.get("due_date")
+                    raw_extras_by_pair[(rt, str(row["id"]))] = entry
+
+    uds_by_pair: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for rt, id_set in by_table.items():
         ids = list(id_set)
         chunk_size = 80
@@ -271,13 +263,15 @@ def fetch_pending_search_data_prep_docs(
                     .in_("raw_id", chunk)
                     .execute()
                 )
-                for row in ud_res.data or []:
-                    rrid = row.get("raw_id")
-                    rrt = row.get("raw_table")
-                    if rrid is not None and rrt:
-                        ud_by_pair[(str(rrt), str(rrid))] = row
-            except Exception:
-                pass
+            except Exception as e:
+                return [], f"09_unified_documents (raw突き合わせ: {rt}) の取得に失敗しました: {e}"
+
+            for row in ud_res.data or []:
+                rrid = row.get("raw_id")
+                rrt = row.get("raw_table")
+                if rrid is not None and rrt:
+                    pair_key = (str(rrt), str(rrid))
+                    uds_by_pair.setdefault(pair_key, []).append(row)
 
     out: List[Dict[str, Any]] = []
     for m in pending_meta:
@@ -287,34 +281,59 @@ def fetch_pending_search_data_prep_docs(
             continue
         rid_s = str(rid)
         rt_s = str(rt)
-        extras = raw_extras_by_pair.get((rt_s, rid_s), {})
-        fu = extras.get("file_url")
+        extras = raw_extras_by_pair.get((rt_s, rid_s))
+        row_error: Optional[str] = None
+
+        if extras is None:
+            row_error = f"raw テーブル ({rt_s}) に対応するレコード (id={rid_s}) が存在しません"
+
+        fu = extras.get("file_url") if extras else None
         did_meta = m.get("doc_id")
         ud: Dict[str, Any] = {}
-        if did_meta:
-            ud = ud_by_id.get(str(did_meta), {})
-        if not ud:
-            ud = ud_by_pair.get((rt_s, rid_s), {})
 
-        has_pdf_md = pdf_md_in_raw(extras.get("pdf_md_content"))
+        if did_meta:
+            did_str = str(did_meta).strip()
+            found = ud_by_id.get(did_str)
+            if found:
+                ud = found
+            else:
+                err = f"meta の doc_id ({did_str}) に対応する 09 が存在しません（不整合）"
+                row_error = f"{row_error}; {err}" if row_error else err
+        else:
+            matches = uds_by_pair.get((rt_s, rid_s), [])
+            if len(matches) == 1:
+                ud = matches[0]
+            elif len(matches) > 1:
+                dup_ids = ", ".join(str(r.get("id")) for r in matches)
+                err = f"同じ (raw_table, raw_id) に対応する 09 レコードが複数存在します（重複: {dup_ids}）"
+                row_error = f"{row_error}; {err}" if row_error else err
+            else:
+                ud = {}
+
+        pdf_md_content = extras.get("pdf_md_content") if extras else None
+        has_pdf_md = pdf_md_in_raw(pdf_md_content)
         ix_skip_pdf = bool(m.get("ix_skip_pdf"))
         has_physical_file = (not ix_skip_pdf) and (raw_row_has_file_backing(fu) or bool(drive_id_from_file_url(fu)))
 
-        src_ud = (ud.get("classification1") or "").strip()
-        src_raw = (extras.get("source") or "").strip()
-        merged_source = src_ud or src_raw
-
-        display_course = ""
-        if did_meta is not None and str(did_meta).strip():
-            row09 = ud_by_id.get(str(did_meta).strip())
-            if row09 and row09.get("id") is not None:
-                display_course = str(row09.get("classification2") or "").strip()
-        if not display_course and ud.get("id") is not None:
+        has_09 = bool(ud.get("id"))
+        if has_09:
+            display_source = str(ud.get("classification1") or "").strip()
             display_course = str(ud.get("classification2") or "").strip()
-        if not display_course and rt_s in _CLASSROOM_RAW_WITH_COURSE_NAME:
-            display_course = str(extras.get("course_name") or "").strip()
+            c1 = str(ud.get("classification1") or "").strip()
+            c2 = str(ud.get("classification2") or "").strip()
+            c3 = str(ud.get("classification3") or "").strip()
+        else:
+            display_source = str(extras.get("source") or "").strip() if extras else ""
+            display_course = (
+                str(extras.get("course_name") or "").strip()
+                if extras and rt_s in _CLASSROOM_RAW_WITH_COURSE_NAME
+                else ""
+            )
+            c1 = display_source
+            c2 = display_course
+            c3 = str(extras.get("category") or "").strip() if extras else ""
 
-        if _gmail_without_attachment(merged_source, fu, extras.get("pdf_md_content")):
+        if not row_error and _gmail_without_attachment(display_source, fu, pdf_md_content):
             continue
 
         has_structured_09 = structured_in_09(ud.get("ui_data"))
@@ -332,23 +351,20 @@ def fetch_pending_search_data_prep_docs(
             segment = "text_only"
             segment_label = "テキストのみ"
 
-        display_source = (merged_source or "").strip()
         display_filename = _display_filename(extras, rid_s)
         drive_id = _resolved_drive_id(fu)
 
-        display_post_at = _display_post_at_str(ud, extras)
+        display_post_at = _display_post_at_str(ud, extras, rt_s)
         unified_doc_id = ud.get("id")
-        row_id = str(unified_doc_id) if unified_doc_id else f"{rt_s}:{rid_s}"
+        dom_row_id = f"{rt_s}_{rid_s}"
+        row_id = dom_row_id
 
         ix_vectorized_at = m.get("ix_vectorized_at")
-        # 分類階層（最小分類まで）
-        c1 = str(ud.get("classification1") or extras.get("source") or "").strip()
-        c2 = str(ud.get("classification2") or extras.get("course_name") or "").strip()
-        c3 = str(ud.get("classification3") or extras.get("category") or "").strip()
 
         enriched = {
-            "id": row_id,
-            "row_id": row_id,
+            "id": dom_row_id,
+            "row_id": dom_row_id,
+            "dom_row_id": dom_row_id,
             "unified_doc_id": str(unified_doc_id) if unified_doc_id else None,
             "raw_id": rid_s,
             "raw_table": rt_s,
@@ -365,6 +381,7 @@ def fetch_pending_search_data_prep_docs(
             "classification1": c1,
             "classification2": c2,
             "classification3": c3,
+            "row_error": row_error,
         }
         out.append(enriched)
 
