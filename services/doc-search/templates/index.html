@@ -1657,10 +1657,14 @@
 
             // file_url があればリンクボタンを表示
             const fileUrl = doc.file_url || '';
-            const rawFileName = (doc.file_name && String(doc.file_name).trim()) ? String(doc.file_name).trim() : '';
-            const fileName = rawFileName ? rawFileName : '(ファイル名なし)';
+            const postTitle = (doc.title != null && String(doc.title).trim()) ? String(doc.title).trim() : '';
+            const postTitleLabel = postTitle ? postTitle : '(投稿題名なし)';
+            const rawFileName = (doc.file_name != null && String(doc.file_name).trim())
+                ? String(doc.file_name).trim()
+                : '';
+            const fileNameLabel = rawFileName ? rawFileName : '(ファイル名なし)';
             const linkButton = fileUrl ?
-                `<a href="${escapeHtml(fileUrl)}" target="_blank" class="btn-link">📄 ${escapeHtml(fileName)}</a>` :
+                `<a href="${escapeHtml(fileUrl)}" target="_blank" class="btn-link">📄 ${escapeHtml(`${postTitleLabel} / ${fileNameLabel}`)}</a>` :
                 '';
 
             return `
