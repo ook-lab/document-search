@@ -121,7 +121,7 @@ class WasedaNoticeIngestionPipeline:
         for i, page_html in enumerate(pages, 1):
             match = re.search(r'window\.appProps\s*=\s*(\{.*?\});', page_html, re.DOTALL)
             if not match:
-                logger.warning(f"p={i}: window.appPropsが見つかりませんでした")
+                logger.error(f"p={i}: window.appPropsが見つかりませんでした（ログイン失敗またはDOM変更の可能性）。このページをスキップします。")
                 continue
             try:
                 app_props = json.loads(match.group(1))
@@ -129,7 +129,10 @@ class WasedaNoticeIngestionPipeline:
                 new_count = 0
                 for n in notices:
                     nid = n.get('id')
-                    if nid and nid not in seen_ids:
+                    if not nid:
+                        logger.error(f"p={i}: お知らせにidが欠損しています。スキップします: {n}")
+                        continue
+                    if nid not in seen_ids:
                         seen_ids.add(nid)
                         all_notices.append(n)
                         new_count += 1
@@ -469,8 +472,7 @@ async def main():
         html_content = await pipeline.fetch_html_with_browser()
 
         if not html_content:
-            logger.error("HTMLの取得に失敗しました")
-            return
+            raise RuntimeError("HTMLの取得に失敗しました（ブラウザ自動化からの応答が空です）")
 
         # 1ページ目をデバッグ用に保存
         temp_html_file = Path(__file__).parent / "waseda_notice_page.html"
@@ -523,6 +525,7 @@ async def main():
     for n in current_notices:
         nid = n.get('id')
         if not nid:
+            logger.error(f"処理対象お知らせにidが欠損しています。スキップします: {n}")
             continue
 
         # 【計画への修正】post_id に pdf_slot が NULL の行が1件でもあるお知らせは

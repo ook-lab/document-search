@@ -221,11 +221,11 @@ class DocSearchDB:
                             "month": int(p.get("month")),
                             "day": p.get("day"),
                             "text": str(p.get("text") or ""),
-                            "granularity": str(p.get("granularity") or "month"),
+                            "granularity": str(p["granularity"]),
                         }
                     )
-                except Exception:
-                    continue
+                except Exception as e:
+                    print(f"[WARN] partial_dates エントリのパース失敗: {p!r} ({e})", flush=True)
         return out
 
     async def search_documents(
@@ -448,7 +448,8 @@ class DocSearchDB:
                 doc["final_score"] = float(sim) if sim is not None else None
             except (TypeError, ValueError):
                 doc["final_score"] = None
-            doc.setdefault("time_score", 0.0)
+            if "time_score" not in doc:
+                print(f"[WARN] doc id={doc.get('id')!r} has no time_score field", flush=True)
             doc.pop("rel", None)
 
         return final_results

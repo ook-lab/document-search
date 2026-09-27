@@ -831,6 +831,8 @@ def search_documents():
         db_client, llm_client = get_clients()
 
         data = request.get_json()
+        if data is None:
+            return jsonify({'success': False, 'error': 'リクエストボディが JSON ではありません'}), 400
         query = data.get('query', '')
         # リランク機能のため、フロントエンドの指定を尊重（最大50件まで）
         requested_limit = data.get('limit', 3)
@@ -858,8 +860,9 @@ def search_documents():
             person_names=selected_persons,
             log_context={'app': 'doc-search', 'stage': 'search-refine'},
         )
-        llm_enriched_query = refined.get("query", query)
-        llm_enriched_query = llm_enriched_query if isinstance(llm_enriched_query, str) else query
+        llm_enriched_query = refined.get("query")
+        if not isinstance(llm_enriched_query, str) or not llm_enriched_query.strip():
+            return jsonify({'success': False, 'error': 'クエリ精緻化（Step0）から有効なクエリが得られませんでした'}), 500
         date_range = refined.get("date_range", "")
         intent_spec = refined.get("intent_spec")
         if not isinstance(intent_spec, dict):
@@ -989,6 +992,8 @@ def generate_answer():
         db_client, llm_client = get_clients()
 
         data = request.get_json()
+        if data is None:
+            return jsonify({'success': False, 'error': 'リクエストボディが JSON ではありません'}), 400
         query = data.get('query', '')
         documents = data.get('documents')
         flow_id = data.get('flow')
@@ -1247,7 +1252,7 @@ Evidence:
     )
     if response.get('success'):
         return response.get('content', '').strip(), full_prompt
-    return '', full_prompt
+    raise RuntimeError(f"LLM呼び出し失敗 (_answer_1step): {response.get('error')}")
 
 
 def _evidence_1step(
@@ -1294,7 +1299,7 @@ Confidence: <0〜1>
     )
     if response.get('success'):
         return response.get('content', '').strip(), prompt
-    return ordered_rag_blob[:output_limit], prompt
+    raise RuntimeError(f"LLM呼び出し失敗 (_evidence_1step): {response.get('error')}")
 
 
 def _answer_from_evidence(
@@ -1346,7 +1351,7 @@ def _answer_from_evidence(
     )
     if response.get('success'):
         return response.get('content', '').strip(), full_prompt
-    return '', full_prompt
+    raise RuntimeError(f"LLM呼び出し失敗 (_answer_from_evidence): {response.get('error')}")
 
 
 def _regenerate_step0_dates_after_failure(
@@ -1435,10 +1440,12 @@ def _regenerate_step0_dates_after_failure(
     if isinstance(raw_spec, str):
         try:
             raw_spec = _json.loads(raw_spec)
-        except Exception:
-            raw_spec = {}
+        except Exception as e:
+            print(f"[WARN] Step0 date retry: intent_spec JSON parse failed: {e}", flush=True)
+            return None
     if not isinstance(raw_spec, dict):
-        raw_spec = {}
+        print("[WARN] Step0 date retry: intent_spec is not a dict", flush=True)
+        return None
 
     intent_spec = _normalize_intent_spec_dict(raw_spec, original_query, dr_out)
     print("[INFO] Step0 date retry: repaired date_range and intent_spec", flush=True)
@@ -1619,7 +1626,7 @@ def _compress_step1(
     )
     if response.get('success'):
         return response.get('content', '').strip(), prompt
-    return ordered_rag_blob[:output_limit], prompt
+    raise RuntimeError(f"LLM呼び出し失敗 (_compress_step1): {response.get('error')}")
 
 
 def _compress_step2(
@@ -1664,7 +1671,7 @@ def _compress_step2(
     )
     if response.get('success'):
         return response.get('content', '').strip(), prompt
-    return step1_output[:output_limit], prompt
+    raise RuntimeError(f"LLM呼び出し失敗 (_compress_step2): {response.get('error')}")
 
 
 def _compress_step3(
@@ -1709,7 +1716,7 @@ def _compress_step3(
     )
     if response.get('success'):
         return response.get('content', '').strip(), prompt
-    return '', prompt
+    raise RuntimeError(f"LLM呼び出し失敗 (_compress_step3): {response.get('error')}")
 
 
 def _format_table_to_markdown(table_data: Dict[str, Any]) -> str:
@@ -1871,14 +1878,28 @@ def _group_documents_by_file(documents: List[Dict[str, Any]]) -> List[Dict[str, 
     # 各ドキュメントグループから最高スコアのチャンクを選択
     result = []
     for doc_id, chunks in grouped.items():
+        # similarity欠損チャンクはその単位でスキップ（他ドキュメントは継続）
+        valid_chunks = []
+        for c in chunks:
+            if c.get('similarity') is None:
+                print(f"[WARN] chunk doc_id={doc_id} has no similarity; skipping this chunk", flush=True)
+            else:
+                valid_chunks.append(c)
+        if not valid_chunks:
+            print(f"[WARN] doc_id={doc_id} has no valid chunks with similarity; skipping document", flush=True)
+            continue
+
         # 類似度が最も高いチャンクを選択
-        best_chunk = max(chunks, key=lambda x: x.get('similarity', 0))
+        best_chunk = max(valid_chunks, key=lambda x: x['similarity'])
 
         # 同じドキュメントの全チャンクの内容を結合（重複排除）
         all_contents = []
         seen_contents = set()
-        for chunk in sorted(chunks, key=lambda x: x.get('similarity', 0), reverse=True):
-            content = chunk.get('content') or chunk.get('summary', '')
+        for chunk in sorted(valid_chunks, key=lambda x: x['similarity'], reverse=True):
+            content = chunk.get('content')
+            if content is None:
+                print(f"[WARN] chunk doc_id={doc_id} has no 'content' field; skipping this chunk's content", flush=True)
+                continue
             if content and content not in seen_contents:
                 all_contents.append(content)
                 seen_contents.add(content)
@@ -1890,7 +1911,7 @@ def _group_documents_by_file(documents: List[Dict[str, Any]]) -> List[Dict[str, 
         result.append(best_chunk)
 
     # 類似度順にソート
-    result.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+    result.sort(key=lambda x: x['similarity'], reverse=True)
 
     return result
 
@@ -1929,8 +1950,8 @@ def _parse_date_range(date_range: str) -> Tuple[Optional[date], Optional[date]]:
     try:
         start_s, end_s = date_range.split("..", 1)
         return datetime.strptime(start_s.strip(), "%Y-%m-%d").date(), datetime.strptime(end_s.strip(), "%Y-%m-%d").date()
-    except Exception:
-        return None, None
+    except Exception as e:
+        raise ValueError(f"date_range のパースに失敗しました: {date_range!r} ({e})")
 
 
 def _to_sunday_start(d: date) -> date:
@@ -1966,7 +1987,7 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
         end = start + timedelta(days=7)
         return f"{start.isoformat()}..{end.isoformat()}"
 
-    # 「M/Dの週」「M/Dを含む週」（西暦年は today の年。パース不能なら date_range をそのまま返す）
+    # 「M/Dの週」「M/Dを含む週」（西暦年は today の年）
     m_slash = re.search(r"(\d{1,2})/(\d{1,2})(?:を含む)?の?週", q)
     if m_slash:
         month = int(m_slash.group(1))
@@ -1974,8 +1995,8 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
         year = base_today.year
         try:
             d = date(year, month, day)
-        except Exception:
-            return date_range
+        except Exception as e:
+            raise ValueError(f"週正規化: 不正な日付 {year}/{month}/{day}: {e}")
         start = _to_sunday_start(d)
         end = start + timedelta(days=7)
         return f"{start.isoformat()}..{end.isoformat()}"
@@ -1988,8 +2009,8 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
         year = base_today.year
         try:
             d = date(year, month, day)
-        except Exception:
-            return date_range
+        except Exception as e:
+            raise ValueError(f"週正規化: 不正な日付 {year}/{month}/{day}: {e}")
         start = _to_sunday_start(d)
         end = start + timedelta(days=7)
         return f"{start.isoformat()}..{end.isoformat()}"
@@ -2009,8 +2030,8 @@ def _ix_search_dates_parsed(doc: Dict[str, Any]) -> List[date]:
     for raw_d in raw:
         try:
             out.append(datetime.strptime(str(raw_d)[:10], "%Y-%m-%d").date())
-        except Exception:
-            continue
+        except Exception as e:
+            print(f"[WARN] ix_search_dates パース失敗: {raw_d!r} ({e})", flush=True)
     return out
 
 
@@ -2057,13 +2078,14 @@ def _apply_date_match_bonus(results: List[Dict[str, Any]], date_range: str, quer
     ranked: List[Dict[str, Any]] = []
     for doc in results:
         sim_raw = doc.get("similarity")
-        if sim_raw is not None:
-            try:
-                base = float(sim_raw)
-            except (TypeError, ValueError):
-                base = 0.0
-        else:
-            base = 0.0
+        if sim_raw is None:
+            print(f"[WARN] _apply_date_match_bonus: doc id={doc.get('id')!r} has no similarity; skipping", flush=True)
+            continue
+        try:
+            base = float(sim_raw)
+        except (TypeError, ValueError) as e:
+            print(f"[WARN] _apply_date_match_bonus: doc id={doc.get('id')!r} similarity={sim_raw!r} is not numeric ({e}); skipping", flush=True)
+            continue
         bonus = 0.0
         if start_d and end_d:
             for dd in _ix_search_dates_parsed(doc):
@@ -2083,7 +2105,7 @@ def _apply_date_match_bonus(results: List[Dict[str, Any]], date_range: str, quer
         d["is_date_matched"] = bool(bonus > 0)
         ranked.append(d)
 
-    ranked.sort(key=lambda x: x.get("final_score", 0.0), reverse=True)
+    ranked.sort(key=lambda x: x["final_score"], reverse=True)
     return ranked
 
 
@@ -2507,7 +2529,7 @@ def _calendar_attendance_intent(query: str) -> Optional[set[str]]:
     return {"accepted"}
 
 
-def _calendar_attendance_status(doc: Dict[str, Any]) -> str:
+def _calendar_attendance_status(doc: Dict[str, Any]) -> Optional[str]:
     meta = doc.get("meta") or {}
     status = meta.get("attendance_status")
     if status in {"accepted", "declined", "tentative"}:
@@ -2525,7 +2547,7 @@ def _calendar_attendance_status(doc: Dict[str, Any]) -> str:
         if self_attendee and self_attendee.get("responseStatus") in {"accepted", "declined", "tentative"}:
             return self_attendee["responseStatus"]
 
-    return "accepted"
+    return None
 
 
 def _filter_calendar_results_by_attendance_intent(
@@ -2566,6 +2588,8 @@ def extract_schedules():
         db_client, _ = get_clients()
 
         data = request.get_json()
+        if data is None:
+            return jsonify({'success': False, 'error': 'リクエストボディが JSON ではありません'}), 400
         person     = data.get('person')
         sources    = data.get('sources', [])
         start_date = data.get('start_date')  # YYYY-MM-DD形式
@@ -2600,12 +2624,12 @@ def extract_schedules():
         schedules = []
         for doc in documents:
             doc_id    = doc.get('id')
-            title     = doc.get('title') or ''
-            source    = doc.get('classification1') or ''
-            person_v  = doc.get('person') or ''
-            post_at   = doc.get('post_at') or ''
-            start_at  = doc.get('start_at') or ''
-            ui_data   = doc.get('ui_data') or {}
+            title     = doc.get('title')
+            source    = doc.get('classification1')
+            person_v  = doc.get('person')
+            post_at   = doc.get('post_at')
+            start_at  = doc.get('start_at')
+            ui_data   = doc.get('ui_data')
 
             # Google Calendar イベントはそのままスケジュールとして扱う
             if source == 'Googleカレンダー':
@@ -2622,6 +2646,10 @@ def extract_schedules():
                         'location': doc.get('location'),
                     }
                 })
+                continue
+
+            if not isinstance(ui_data, dict):
+                print(f"[WARN] doc_id={doc_id!r} has no valid ui_data; skipping schedule extraction for this doc", flush=True)
                 continue
 
             # ui_data.sections からキーワードマッチでスケジュール抽出

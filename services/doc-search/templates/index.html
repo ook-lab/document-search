@@ -971,7 +971,12 @@
         }
 
         function updateCostDisplay() {
-            const chars = parseInt(document.getElementById('maxContextInput').value) || 0;
+            const rawVal = document.getElementById('maxContextInput').value;
+            const chars = parseInt(rawVal);
+            if (isNaN(chars)) {
+                document.getElementById('costDisplay').textContent = 'エラー: maxContextInput に数値を入力してください';
+                return;
+            }
             const flowId = document.getElementById('flow-select').value;
             const tokens = Math.round(chars / 4);
             let costUsd = 0;
@@ -997,9 +1002,13 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    hierarchyData = data.hierarchy || [];
-                    renderHierarchyFilters();
-                    console.log(`[フィルタ読み込み] ${hierarchyData.length} workspaces（階層構造）`);
+                    if (data.hierarchy === undefined || data.hierarchy === null) {
+                        showError('フィルタ情報に hierarchy が含まれていません');
+                    } else {
+                        hierarchyData = data.hierarchy;
+                        renderHierarchyFilters();
+                        console.log(`[フィルタ読み込み] ${hierarchyData.length} workspaces（階層構造）`);
+                    }
                 } else {
                     showError('フィルタ情報の取得に失敗しました: ' + (data.error || '不明なエラー'));
                 }
@@ -1344,6 +1353,20 @@
 
                 // ステップ2: 回答生成
                 const selectedFlow = document.getElementById('flow-select').value;
+                if (searchData.refined_query === undefined || searchData.refined_query === null) {
+                    throw new Error('検索結果に refined_query が含まれていません');
+                }
+                if (searchData.date_range === undefined || searchData.date_range === null) {
+                    throw new Error('検索結果に date_range が含まれていません');
+                }
+                if (searchData.intent_spec === undefined || searchData.intent_spec === null) {
+                    throw new Error('検索結果に intent_spec が含まれていません');
+                }
+                const rawMaxContext = document.getElementById('maxContextInput').value;
+                const parsedMaxContext = parseInt(rawMaxContext);
+                if (isNaN(parsedMaxContext)) {
+                    throw new Error('maxContextInput に数値を入力してください: ' + rawMaxContext);
+                }
                 const answerResponse = await fetch('/api/answer', {
                     method: 'POST',
                     headers: {
@@ -1352,11 +1375,11 @@
                     body: JSON.stringify({
                         query,
                         documents: currentDocuments,
-                        refined_query: searchData.refined_query || '',
-                        date_range: searchData.date_range || '',
-                        intent_spec: searchData.intent_spec || {},
+                        refined_query: searchData.refined_query,
+                        date_range: searchData.date_range,
+                        intent_spec: searchData.intent_spec,
                         flow: selectedFlow,
-                        max_context_chars: parseInt(document.getElementById('maxContextInput').value) || null,
+                        max_context_chars: parsedMaxContext,
                         persons: selectedPersons,
                         sources: selectedSources,
                         categories: selectedCategories,
@@ -1370,7 +1393,10 @@
                 }
 
                 displayAnswer(answerData);
-                displayVectorHitChunks(searchData.vector_hit_chunks || []);
+                if (searchData.vector_hit_chunks === undefined || searchData.vector_hit_chunks === null) {
+                    throw new Error('検索結果に vector_hit_chunks が含まれていません');
+                }
+                displayVectorHitChunks(searchData.vector_hit_chunks);
                 displayRagLlmInput(answerData);
                 displayDocuments(currentDocuments);
                 showResults();

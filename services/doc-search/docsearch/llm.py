@@ -70,7 +70,7 @@ class DocSearchLLM:
             if file_path and file_path.exists():
                 mime_type, _ = mimetypes.guess_type(str(file_path))
                 if not mime_type:
-                    mime_type = "application/pdf"
+                    raise ValueError(f"MIMEタイプを推測できませんでした: {file_path}")
                 with open(str(file_path), "rb") as f:
                     file_data = f.read()
                 uploaded_file = {"mime_type": mime_type, "data": file_data}
@@ -108,7 +108,9 @@ class DocSearchLLM:
                     "model": model_name,
                     "provider": "gemini",
                 }
-            text_content = candidate.content.parts[0].text if candidate.content.parts else ""
+            if not candidate.content.parts:
+                return {"success": False, "error": "Gemini returned empty parts", "model": model_name, "provider": "gemini"}
+            text_content = candidate.content.parts[0].text
             return {"success": True, "content": text_content, "model": model_name, "provider": "gemini"}
         except Exception as e:
             logger.error("Gemini error: {}", e)

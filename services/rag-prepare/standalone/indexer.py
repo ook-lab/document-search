@@ -322,12 +322,11 @@ class RagPrepareSearchIndexer:
                         md, _ = self._resolve_markdown(ctx)
                         extra = (md or "").strip()
                     body = str(row.get("body") or "").strip()
-                    text_for_dates = body or extra
-                    if not text_for_dates:
-                        errors.append(f"id={row.get('id')}: 本文なし")
+                    if not body:
+                        errors.append(f"id={row.get('id')}: body欠損のため日付抽出をスキップしました")
                         continue
                     row_for = dict(row)
-                    row_for["body"] = text_for_dates
+                    row_for["body"] = body
                     ds = build_date_signals(row_for, extra_text="")
                     ix_dates = build_ix_search_date_list(row_for, ds)
                     self.db.client.table("09_unified_documents").update(
@@ -767,8 +766,10 @@ class RagPrepareSearchIndexer:
                 request_options={"timeout": 30},
             )
             data = _json.loads(resp.text.strip())
+            if "annotations" not in data:
+                raise KeyError(f"Gemini応答にannotationsキーが存在しません: {list(data.keys())}")
             return {
-                "annotations": data.get("annotations") or [],
+                "annotations": data["annotations"],
             }
         except Exception as e:
             logger.error("[RAG] AI アノテーション取得失敗: %s", e)
@@ -791,7 +792,10 @@ class RagPrepareSearchIndexer:
         for ann in annotations:
             if "line" in ann:
                 idx = ann.get("line")
-                ann_type = ann.get("type", "")
+                if "type" not in ann:
+                    logger.error("[RAG] アノテーション要素にtypeキーが存在しません (line=%s): %s", idx, ann)
+                    continue
+                ann_type = ann["type"]
                 if not isinstance(idx, int) or idx < 0 or idx >= len(lines):
                     continue
                 if ann_type == "section_break":
@@ -1043,7 +1047,7 @@ class RagPrepareSearchIndexer:
                 ext_text = ext_m.group(1).strip()
                 if ext_text:
                     ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
-                    annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, ann_result.get("annotations") or [])
+                    annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, ann_result["annotations"])
                     # section_break マーカーを _structured_md_chunks が認識する --- に変換
                     annotated = annotated.replace(
                         RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"

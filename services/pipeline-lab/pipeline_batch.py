@@ -552,12 +552,16 @@ def _run_pipeline_batch_process():
         logger.error("Failed to fetch pending pipeline targets from %s: %s", target_api_url, e)
         return jsonify({"error": f"Failed to fetch pending pipeline targets: {e}"}), 500
 
-    # pipeline_batch_files に既にある raw_table/raw_id は除く
+    # pipeline_batch_files に既にある raw_table/raw_id は除く。
+    # ただし state='error' かつ job_name='NOT_SUBMITTED_TOO_LARGE' のレコードは
+    # Files API 経由で再送できるため、除外せず再処理対象とする。
     try:
-        existing_res = db.client.table("pipeline_batch_files").select("raw_table, raw_id").execute()
+        existing_res = db.client.table("pipeline_batch_files").select("raw_table, raw_id, state, job_name").execute()
+        # NOT_SUBMITTED_TOO_LARGE で error になったペアは再試行対象なので除外しない
         existing_pairs = {
             (r.get("raw_table"), r.get("raw_id"))
             for r in (existing_res.data or [])
+            if not (r.get("state") == "error" and r.get("job_name") == "NOT_SUBMITTED_TOO_LARGE")
         }
     except Exception as e:
         logger.error("Failed to query existing pipeline_batch_files: %s", e)
@@ -697,36 +701,50 @@ def _run_pipeline_batch_process():
             # 1ファイル分の画像合計サイズ検証（Batch API inline上限 20MB）
             total_img_size = sum(len(b) for b in page_images)
             INLINE_LIMIT_BYTES = 20 * 1024 * 1024  # 20MB
-            if total_img_size > INLINE_LIMIT_BYTES:
-                too_large_reason = "ページ画像の合計が大きすぎてバッチで送れない"
-                logger.warning(
-                    "File %s/%s total image size %d bytes exceeds 20MB limit.",
-                    rt, rid, total_img_size
+            use_files_api = total_img_size > INLINE_LIMIT_BYTES
+
+            if use_files_api:
+                logger.info(
+                    "File %s/%s total image size %d bytes exceeds 20MB inline limit. "
+                    "Uploading each page via Files API.",
+                    rt, rid, total_img_size,
                 )
-                now_iso = datetime.now(timezone.utc).isoformat()
-                db.client.table("pipeline_batch_files").insert({
-                    "raw_table": rt,
-                    "raw_id": rid,
-                    "drive_file_id": drive_file_id,
-                    "total_pages": page_count,
-                    "job_name": "NOT_SUBMITTED_TOO_LARGE",
-                    "state": "error",
-                    "submitted_at": now_iso,
-                    "finished_at": now_iso,
-                    "error": too_large_reason,
-                }).execute()
-                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": too_large_reason}
-                try:
-                    _record_meta_pipeline_error(db, rt, rid, too_large_reason)
-                except Exception as e:
-                    failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
-                failed_files.append(failed_entry)
-                continue
 
             # 1ページ=1依頼（InlinedRequest）を作成
+            # 20MB超の場合は各ページ画像を Files API にアップロードしてファイル参照を使用する
             inlined_requests = []
+            uploaded_files_to_delete: List[Any] = []  # 送信後に Files API から削除するオブジェクト
+            files_api_error: Optional[str] = None
+
             for p_idx, img_bytes in enumerate(page_images):
-                img_part = genai_types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+                if use_files_api:
+                    # Files API にアップロード（失敗はそのファイル全体の失敗とする）
+                    try:
+                        import io
+                        upload_result = client.files.upload(
+                            file=io.BytesIO(img_bytes),
+                            config=genai_types.UploadFileConfig(
+                                display_name=f"{rt[:10]}-{rid[:8]}-p{p_idx}",
+                                mime_type="image/png",
+                            ),
+                        )
+                        uploaded_files_to_delete.append(upload_result)
+                        img_part = genai_types.Part.from_uri(
+                            file_uri=upload_result.uri,
+                            mime_type="image/png",
+                        )
+                    except Exception as upload_err:
+                        files_api_error = (
+                            f"ページ {p_idx} の Files API アップロードに失敗しました: {upload_err}"
+                        )
+                        logger.error(
+                            "Files API upload failed for %s/%s page %d: %s",
+                            rt, rid, p_idx, upload_err,
+                        )
+                        break
+                else:
+                    img_part = genai_types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+
                 img_part.media_resolution = genai_types.PartMediaResolution(
                     level=genai_types.PartMediaResolutionLevel.MEDIA_RESOLUTION_ULTRA_HIGH
                 )
@@ -748,6 +766,40 @@ def _run_pipeline_batch_process():
                     )
                 )
 
+            if files_api_error:
+                # Files API アップロード失敗: 既にアップロード済みの一時ファイルを削除
+                for uf in uploaded_files_to_delete:
+                    try:
+                        client.files.delete(name=uf.name)
+                    except Exception as del_err:
+                        logger.error(
+                            "Files API 一時ファイルの削除に失敗しました (name=%s): %s",
+                            uf.name, del_err,
+                        )
+                # NOT_SUBMITTED_TOO_LARGE の既存 error レコードを upsert で上書き
+                now_iso = datetime.now(timezone.utc).isoformat()
+                db.client.table("pipeline_batch_files").upsert(
+                    {
+                        "raw_table": rt,
+                        "raw_id": rid,
+                        "drive_file_id": drive_file_id,
+                        "total_pages": page_count,
+                        "job_name": "FILES_API_UPLOAD_FAILED",
+                        "state": "error",
+                        "submitted_at": now_iso,
+                        "finished_at": now_iso,
+                        "error": files_api_error,
+                    },
+                    on_conflict="raw_table,raw_id",
+                ).execute()
+                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": files_api_error}
+                try:
+                    _record_meta_pipeline_error(db, rt, rid, files_api_error)
+                except Exception as e:
+                    failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
+                failed_files.append(failed_entry)
+                continue
+
             # そのファイルだけの Gemini バッチを client.batches.create で1つ作成
             disp_name = f"pipe-{rt[:10]}-{rid[:8]}"
             try:
@@ -760,6 +812,15 @@ def _run_pipeline_batch_process():
                 )
                 job_name = batch_job.name
             except Exception as batch_create_err:
+                # バッチ作成失敗: アップロード済み Files API ファイルを削除
+                for uf in uploaded_files_to_delete:
+                    try:
+                        client.files.delete(name=uf.name)
+                    except Exception as del_err:
+                        logger.error(
+                            "Files API 一時ファイルの削除に失敗しました (name=%s): %s",
+                            uf.name, del_err,
+                        )
                 err_reason = f"Gemini バッチ作成失敗: {batch_create_err}"
                 logger.error(err_reason)
                 failed_entry = {"raw_table": rt, "raw_id": rid, "reason": err_reason}
@@ -771,24 +832,35 @@ def _run_pipeline_batch_process():
                 continue
 
             # pipeline_batch_files に state='submitted' で記録
+            # NOT_SUBMITTED_TOO_LARGE の既存 error レコードがある場合は upsert で上書きする
             now_iso = datetime.now(timezone.utc).isoformat()
-            db.client.table("pipeline_batch_files").insert({
-                "raw_table": rt,
-                "raw_id": rid,
-                "drive_file_id": drive_file_id,
-                "total_pages": page_count,
-                "job_name": job_name,
-                "state": "submitted",
-                "submitted_at": now_iso,
-            }).execute()
+            db.client.table("pipeline_batch_files").upsert(
+                {
+                    "raw_table": rt,
+                    "raw_id": rid,
+                    "drive_file_id": drive_file_id,
+                    "total_pages": page_count,
+                    "job_name": job_name,
+                    "state": "submitted",
+                    "submitted_at": now_iso,
+                    "finished_at": None,
+                    "error": None,
+                },
+                on_conflict="raw_table,raw_id",
+            ).execute()
 
             submitted_files.append({
                 "raw_table": rt,
                 "raw_id": rid,
                 "total_pages": page_count,
                 "job_name": job_name,
+                "via_files_api": use_files_api,
             })
-            logger.info("Submitted batch for %s/%s (job=%s, pages=%d, submitted_count=%d/%d)", rt, rid, job_name, page_count, len(submitted_files), MAX_NEW_BATCH_FILES_PER_RUN)
+            logger.info(
+                "Submitted batch for %s/%s (job=%s, pages=%d, via_files_api=%s, submitted_count=%d/%d)",
+                rt, rid, job_name, page_count, use_files_api,
+                len(submitted_files), MAX_NEW_BATCH_FILES_PER_RUN,
+            )
 
             # 送信したバッチ（ファイル）数が上限（最大7ファイル）に達したら終了
             if len(submitted_files) >= MAX_NEW_BATCH_FILES_PER_RUN:
