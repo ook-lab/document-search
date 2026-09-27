@@ -1936,9 +1936,9 @@ def api_extract_direct(session_id: str, page_index: int):
         from dms.common.ai_cost_logger import start_cost_accumulation, stop_cost_accumulation, log_ai_usage
         start_cost_accumulation()
 
-        api_key = _os.environ.get('GOOGLE_AI_API_KEY')
+        api_key = _os.environ.get('GOOGLE_AI_PAID_API_KEY')
         if not api_key:
-            return jsonify({'success': False, 'error': 'GOOGLE_AI_API_KEY が未設定です'}), 500
+            return jsonify({'success': False, 'error': 'GOOGLE_AI_PAID_API_KEY が未設定です'}), 500
 
         service_name = 'Gemini'
         raw_response_text = None
