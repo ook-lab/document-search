@@ -595,7 +595,10 @@ class RagPrepareSearchIndexer:
             "due_date": raw_row.get("due_date"),
             "post_type": raw_row.get("post_type"),
             "ui_data": {},
-            "meta": {"created_by": "rag_prepare_search_index"},
+            "meta": {
+                "created_by": "rag_prepare_search_index",
+                "file_name": raw_row.get("file_name"),
+            },
         }
         ins = self.db.client.table("09_unified_documents").insert(doc).execute()
         rows = ins.data or []
@@ -613,8 +616,8 @@ class RagPrepareSearchIndexer:
                 or {}
             )
         except Exception as e:
-            logger.warning("raw row load failed: table=%s id=%s error=%s", raw_table, raw_id, e)
-            return {}
+            logger.error("raw row load failed: table=%s id=%s error=%s", raw_table, raw_id, e, exc_info=True)
+            raise
 
     def _drive_id_from_ctx(self, ctx: Dict[str, Any]) -> Optional[str]:
         fu = ctx.get("file_url")
