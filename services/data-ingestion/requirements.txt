@@ -5,7 +5,7 @@ google-api-core==2.24.2
 grpcio==1.71.2
 grpcio-status==1.71.2
 google-api-python-client==2.161.0
-google-auth==2.36.0
+google-auth==2.56.0
 google-auth-oauthlib==1.2.1
 google-auth-httplib2==0.2.0
 
@@ -28,7 +28,7 @@ pandas>=2.1.4,<3.0.0
 # Utilities
 python-dotenv==1.0.0
 loguru==0.7.2
-pydantic==2.10.6
+pydantic==2.12.5
 pydantic-settings==2.6.1
 tenacity>=8.2.0
 jsonschema>=4.20.0
