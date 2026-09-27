@@ -3772,12 +3772,14 @@
                 buf = [];
                 return;
             }
-            // ::title:: / ::summary:: またはテーブル直前の ## heading をタイトルとして認識
-            if (!inTable && (line.startsWith('::title::') || line.startsWith('::summary::') ||
+            // ::title:: / ::caption:: / ::summary:: またはテーブル直前の ## heading をタイトルとして認識
+            if (!inTable && (line.startsWith('::title::') || line.startsWith('::caption::') || line.startsWith('::summary::') ||
                 (/^## \S/.test(line) && !line.startsWith('## 表（埋め込み）')))) {
                 if (buf.length) sections.push({type:'text', content:buf.join('\n')});
                 buf = [];
-                if (line.startsWith('::summary::')) {
+                if (line.startsWith('::caption::')) {
+                    sections.push({type:'caption', content:line.slice('::caption::'.length).trim()});
+                } else if (line.startsWith('::summary::')) {
                     sections.push({type:'summary', content:line.slice('::summary::'.length).trim()});
                 } else {
                     const content = line.startsWith('::title::')
@@ -3830,13 +3832,16 @@
         return div;
     }
 
-    function _dmeCreateTable(tableObj, sIdx, titleText, summaryText) {
+    function _dmeCreateTable(tableObj, sIdx, titleText, summaryText, captionText) {
         const wrapper = document.createElement('div');
-        // 表のタイトル欄（ユーザー手入力）
-        const titleDiv = _dmeField('表のタイトル（編集可）', titleText, '（手入力）', 'dme-table-title');
+        // 表の見出し欄（## B_Tn）
+        const titleDiv = _dmeField('表見出し（## B_T1など）', titleText, '（手入力）', 'dme-table-title');
         wrapper.appendChild(titleDiv);
-        // 表の要約欄（AI生成）
-        const summaryDiv = _dmeField('表の要約（編集可）', summaryText, '（AIが生成、または手入力）', 'dme-table-summary');
+        // 表の題名欄（::caption::）
+        const captionDiv = _dmeField('表の題名（caption・編集可）', captionText, '（AIが生成、または手入力）', 'dme-table-caption');
+        wrapper.appendChild(captionDiv);
+        // 表の要約欄（::summary::）
+        const summaryDiv = _dmeField('表の要約（summary・編集可）', summaryText, '（AIが生成、または手入力）', 'dme-table-summary');
         wrapper.appendChild(summaryDiv);
         const table = document.createElement('table');
         table.className = 'dme-table';
@@ -3946,16 +3951,23 @@
         container.contentEditable = 'false';
         const sections = _dmeSplitMd(md);
         
-        // Find which title and summary sections are consumed by tables
+        // Find which title, caption and summary sections are consumed by tables
         const consumed = new Set();
         for (let i = 0; i < sections.length; i++) {
             if (sections[i].type === 'table') {
-                let hasTitle = false, hasSummary = false;
+                let hasTitle = false, hasCaption = false, hasSummary = false;
                 for (let j = i - 1; j >= 0; j--) {
                     if (sections[j].type === 'title') {
                         if (!hasTitle && !consumed.has(j)) {
                             consumed.add(j);
                             hasTitle = true;
+                        } else {
+                            break;
+                        }
+                    } else if (sections[j].type === 'caption') {
+                        if (!hasCaption && !consumed.has(j)) {
+                            consumed.add(j);
+                            hasCaption = true;
                         } else {
                             break;
                         }
@@ -3977,9 +3989,9 @@
 
         for (let i = 0; i < sections.length; i++) {
             const sec = sections[i];
-            if (sec.type === 'title' || sec.type === 'summary') {
+            if (sec.type === 'title' || sec.type === 'caption' || sec.type === 'summary') {
                 if (consumed.has(i)) continue;
-                const prefix = sec.type === 'title' ? '## ' : '::summary:: ';
+                const prefix = sec.type === 'title' ? '## ' : (sec.type === 'caption' ? '::caption:: ' : '::summary:: ');
                 const textVal = prefix + sec.content;
                 const div = document.createElement('div');
                 div.className = 'dme-text-section';
@@ -3993,9 +4005,10 @@
                 continue;
             }
             if (sec.type === 'table') {
-                let titleSec = null, summarySec = null;
+                let titleSec = null, captionSec = null, summarySec = null;
                 for (let j = i - 1; j >= 0; j--) {
                     if (sections[j].type === 'title' && !titleSec) titleSec = sections[j];
+                    else if (sections[j].type === 'caption' && !captionSec) captionSec = sections[j];
                     else if (sections[j].type === 'summary' && !summarySec) summarySec = sections[j];
                     else if (sections[j].type === 'text' && !sections[j].content.trim()) continue;
                     else break;
@@ -4003,7 +4016,8 @@
                 container.appendChild(_dmeCreateTable(
                     _dmeParseMdTable(sec.content), i,
                     titleSec ? titleSec.content : '',
-                    summarySec ? summarySec.content : ''
+                    summarySec ? summarySec.content : '',
+                    captionSec ? captionSec.content : ''
                 ));
             } else if (sec.content.trim()) {
                 const div = document.createElement('div');
@@ -4040,10 +4054,13 @@
             const table = child.querySelector('.dme-table');
             if (table) {
                 const titleInput = child.querySelector('.dme-table-title');
+                const captionInput = child.querySelector('.dme-table-caption');
                 const summaryInput = child.querySelector('.dme-table-summary');
                 const title = titleInput ? titleInput.value.trim() : '';
+                const caption = captionInput ? captionInput.value.trim() : '';
                 const summary = summaryInput ? summaryInput.value.trim() : '';
                 if (title) parts.push('## ' + title);
+                if (caption) parts.push('::caption:: ' + caption);
                 if (summary) parts.push('::summary:: ' + summary);
                 const headers = Array.from(table.querySelectorAll('thead th textarea')).map(t => t.value);
                 const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr =>

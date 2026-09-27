@@ -161,7 +161,7 @@ def fetch_pending_search_data_prep_docs(
             db_client.table(UD_META_TABLE)
             .select(
                 "raw_table, raw_id, doc_id, ix_vectorized_at, ix_skip_pdf, updated_at, "
-                "ix_vectorize_error, ix_vectorize_error_at"
+                "ix_vectorize_error, ix_vectorize_error_at, ix_pipeline_error, ix_pipeline_error_at"
             )
             .in_("raw_table", tables)
             .order("updated_at", desc=True)
@@ -364,6 +364,15 @@ def fetch_pending_search_data_prep_docs(
         ix_vectorized_at = m.get("ix_vectorized_at")
         ix_vectorize_error = m.get("ix_vectorize_error")
         ix_vectorize_error_at = m.get("ix_vectorize_error_at")
+        ix_pipeline_error = m.get("ix_pipeline_error")
+        ix_pipeline_error_at = m.get("ix_pipeline_error_at")
+
+        if has_09:
+            raw_title = ud.get("title")
+            doc_title = str(raw_title).strip() if raw_title is not None and str(raw_title).strip() else None
+        else:
+            raw_title = extras.get("title") if extras else None
+            doc_title = str(raw_title).strip() if raw_title is not None and str(raw_title).strip() else None
 
         enriched = {
             "id": dom_row_id,
@@ -372,6 +381,7 @@ def fetch_pending_search_data_prep_docs(
             "unified_doc_id": str(unified_doc_id) if unified_doc_id else None,
             "raw_id": rid_s,
             "raw_table": rt_s,
+            "title": doc_title,
             "display_post_at": display_post_at,
             "display_segment": segment,
             "display_segment_label": segment_label,
@@ -384,6 +394,8 @@ def fetch_pending_search_data_prep_docs(
             "is_vectorized": bool(ix_vectorized_at),
             "ix_vectorize_error": ix_vectorize_error,
             "ix_vectorize_error_at": ix_vectorize_error_at,
+            "ix_pipeline_error": ix_pipeline_error,
+            "ix_pipeline_error_at": ix_pipeline_error_at,
             "classification1": c1,
             "classification2": c2,
             "classification3": c3,

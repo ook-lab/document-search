@@ -287,6 +287,11 @@
                                 ⚠️ ベクトル化失敗: {{ doc.ix_vectorize_error }}{% if doc.ix_vectorize_error_at %}（{{ doc.ix_vectorize_error_at }}）{% endif %}
                             </div>
                             {% endif %}
+                            {% if doc.ix_pipeline_error %}
+                            <div class="pipeline-error-msg" style="margin-top:6px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:12px;font-weight:600;">
+                                ⚠️ パイプライン失敗: {{ doc.ix_pipeline_error }}{% if doc.ix_pipeline_error_at %}（{{ doc.ix_pipeline_error_at }}）{% endif %}
+                            </div>
+                            {% endif %}
                             <div class="meta-id">
                                 raw {{ doc.raw_table }} / {{ doc.raw_id[:8] }}…
                                 {% if doc.unified_doc_id %}<br>09 id {{ doc.unified_doc_id }}{% endif %}

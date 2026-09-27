@@ -239,54 +239,143 @@ def reset_ix_all():
     return jsonify(result)
 
 
-@app.route('/api/batch/vectorize', methods=['POST'])
-def batch_vectorize():
-    # 1. 認証: 環境変数の確認
-    batch_audience = os.environ.get("RAG_PREPARE_BATCH_AUDIENCE")
-    invoker_email = os.environ.get("RAG_PREPARE_BATCH_INVOKER_EMAIL")
+def _verify_google_oidc(audience_env: str, invoker_email_env: str, log_prefix: str):
+    """Google OIDC ID トークンを検証する共通ヘルパー。エラー時は (jsonify_response, status_code) を返し、成功時は None を返す。"""
+    batch_audience = os.environ.get(audience_env)
+    invoker_email = os.environ.get(invoker_email_env)
     if not batch_audience or not invoker_email:
         logger.error(
-            "Batch vectorize: Server configuration error. "
-            "RAG_PREPARE_BATCH_AUDIENCE or RAG_PREPARE_BATCH_INVOKER_EMAIL is not set"
+            "%s: Server configuration error. %s or %s is not set",
+            log_prefix, audience_env, invoker_email_env
         )
         return jsonify({
-            "error": "Server configuration error: RAG_PREPARE_BATCH_AUDIENCE or RAG_PREPARE_BATCH_INVOKER_EMAIL is not configured"
+            "error": f"Server configuration error: {audience_env} or {invoker_email_env} is not configured"
         }), 500
 
-    # Authorization: Bearer <token> の取得
     auth_header = request.headers.get("Authorization", "").strip()
     if not auth_header.startswith("Bearer "):
-        logger.warning("Batch vectorize: Missing or invalid Authorization header")
+        logger.warning("%s: Missing or invalid Authorization header", log_prefix)
         return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
     token = auth_header.split(" ", 1)[1].strip()
     if not token:
-        logger.warning("Batch vectorize: Empty bearer token")
+        logger.warning("%s: Empty bearer token", log_prefix)
         return jsonify({"error": "Empty bearer token"}), 401
 
     if id_token is None or google_auth_requests is None:
-        logger.error("Batch vectorize: google-auth library is not available")
+        logger.error("%s: google-auth library is not available", log_prefix)
         return jsonify({"error": "Server configuration error: google-auth is not installed"}), 500
 
-    # Google OIDC ID トークン検証
     try:
         auth_req = google_auth_requests.Request()
         id_info = id_token.verify_oauth2_token(token, auth_req, audience=batch_audience)
     except Exception as e:
-        logger.warning("Batch vectorize: Token verification failed: %s", e)
+        logger.warning("%s: Token verification failed: %s", log_prefix, e)
         return jsonify({"error": f"Invalid token: {e}"}), 401
 
     if not id_info.get("email_verified"):
-        logger.warning("Batch vectorize: Token email is not verified")
+        logger.warning("%s: Token email is not verified", log_prefix)
         return jsonify({"error": "Forbidden: email not verified"}), 403
 
     token_email = id_info.get("email")
     if token_email != invoker_email:
         logger.warning(
-            "Batch vectorize: Token email '%s' does not match allowed invoker '%s'",
-            token_email, invoker_email
+            "%s: Token email '%s' does not match allowed invoker '%s'",
+            log_prefix, token_email, invoker_email
         )
         return jsonify({"error": "Forbidden: email mismatch"}), 403
+
+    return None
+
+
+@app.route('/api/internal/pending_pipeline_targets', methods=['GET'])
+def get_pending_pipeline_targets():
+    """パイプライン処理対象のドキュメント一覧を返す内部API（Google OIDC 認証）。
+    対象: rag-prepare 一覧で『パイプライン処理』が出る（resolved_drive_id あり）
+          かつ display_segment=='pending_md' かつ row_error なし かつ 新列 ix_pipeline_error が NULL。
+    順序: display_post_at の新しい順（無いものは最後、同順位は raw_table, raw_id 順）。
+    """
+    auth_err = _verify_google_oidc(
+        "RAG_PREPARE_BATCH_AUDIENCE",
+        "RAG_PREPARE_BATCH_INVOKER_EMAIL",
+        "Pending pipeline targets",
+    )
+    if auth_err:
+        return auth_err
+
+    _, DbClass = get_indexer_tools()
+    if not DbClass:
+        return jsonify({"error": "System dependencies not loaded"}), 500
+
+    try:
+        import functools
+        db = DbClass()
+        raw_tables = list(RAG_PREPARE_VECTORIZE_RAW_TABLES)
+        all_docs, list_err = fetch_pending_search_data_prep_docs(
+            db.client, raw_tables, include_vectorized=False
+        )
+        if list_err:
+            logger.error("Pending pipeline targets: Failed to fetch pending docs: %s", list_err)
+            return jsonify({"error": f"Failed to fetch pending docs: {list_err}"}), 500
+
+        candidate_docs = [
+            d for d in all_docs
+            if d.get("resolved_drive_id")
+            and d.get("display_segment") == "pending_md"
+            and not d.get("row_error")
+            and not d.get("ix_pipeline_error")
+        ]
+
+        def _cmp_targets(a: Dict[str, Any], b: Dict[str, Any]) -> int:
+            pa = a.get("display_post_at") or ""
+            pb = b.get("display_post_at") or ""
+            if bool(pa) != bool(pb):
+                return -1 if pa else 1
+            if pa != pb:
+                return -1 if pa > pb else 1
+            rta = a.get("raw_table") or ""
+            rtb = b.get("raw_table") or ""
+            if rta != rtb:
+                return -1 if rta < rtb else 1
+            ria = a.get("raw_id") or ""
+            rib = b.get("raw_id") or ""
+            if ria != rib:
+                return -1 if ria < rib else 1
+            return 0
+
+        candidate_docs.sort(key=functools.cmp_to_key(_cmp_targets))
+
+        targets = [
+            {
+                "raw_table": d.get("raw_table"),
+                "raw_id": d.get("raw_id"),
+                "resolved_drive_id": d.get("resolved_drive_id"),
+                "display_post_at": d.get("display_post_at") or None,
+                "title": d.get("title"),
+            }
+            for d in candidate_docs
+        ]
+
+        return jsonify({
+            "count": len(targets),
+            "targets": targets,
+        }), 200
+
+    except Exception as e:
+        logger.error("Pending pipeline targets: Unexpected error: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/batch/vectorize', methods=['POST'])
+def batch_vectorize():
+    # 1. 認証: Google OIDC 検証
+    auth_err = _verify_google_oidc(
+        "RAG_PREPARE_BATCH_AUDIENCE",
+        "RAG_PREPARE_BATCH_INVOKER_EMAIL",
+        "Batch vectorize",
+    )
+    if auth_err:
+        return auth_err
 
     # 2. 同時実行防止: プロセス内ロック
     if not batch_vectorize_lock.acquire(blocking=False):

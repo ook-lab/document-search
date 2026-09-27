@@ -11,6 +11,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import yaml
+
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen
 from standalone.date_signals import build_date_signals, build_ix_search_date_list
@@ -817,41 +819,36 @@ class RagPrepareSearchIndexer:
         return [t[i : i + chunk_size] for i in range(0, len(t), chunk_size)]
 
     @staticmethod
-    def _structured_md_chunks(md_text: str, prose_chunk_size: int = 800) -> List[Dict[str, Any]]:
+    def _chunk_single_page(
+        page_md: str,
+        prose_chunk_size: int = 800,
+        page_header: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
-        構造化MD（## 非表（F 地の文）/ ## 表（埋め込み）形式）をチャンク化する。
-
-        - 地の文: 段落単位でマージし prose_chunk_size 以内に収める
-        - 表: YAML ブロック内の各テーブルエントリを1チャンク（絶対に分割しない）
-        - ## 表（ui_data.tables）MD表 と HTML: スキップ（YAML と重複）
-
-        Returns: list of {"text", "chunk_type", "chunk_weight"}
+        単一ページ（または単一文書）の構造化MDから地の文チャンクと表チャンクを生成する。
         """
         results: List[Dict[str, Any]] = []
 
-        # 地の文: 旧フォーマット（## 非表）または新フォーマット（## 表（埋め込み）より前のテキスト）
+        # 地の文: 旧フォーマット（## 非表（F 地の文））または新フォーマット（## 表（埋め込み）より前のテキスト）
         prose_text = ""
-        prose_m = re.search(
+        prose_matches = list(re.finditer(
             r'^## 非表（F 地の文）\s*\n(.*?)(?=^## (?:非表|表（埋め込み）)|\Z)',
-            md_text, re.MULTILINE | re.DOTALL,
-        )
-        if prose_m:
-            prose_text = prose_m.group(1).strip()
+            page_md, re.MULTILINE | re.DOTALL,
+        ))
+        if prose_matches:
+            prose_parts = [m.group(1).strip() for m in prose_matches if m.group(1).strip()]
+            prose_text = "\n\n".join(prose_parts).strip()
         else:
-            embed_idx = md_text.find('\n## 表（埋め込み）')
-            if embed_idx >= 0:
-                candidate = md_text[:embed_idx]
-                # ::title:: / ::summary:: / ## heading を除去してプレーンテキスト化
-                candidate = re.sub(r'^::title::.*$', '', candidate, flags=re.MULTILINE)
-                candidate = re.sub(r'^::summary::.*$', '', candidate, flags=re.MULTILINE)
-                candidate = re.sub(r'^## .+$', '', candidate, flags=re.MULTILINE)
-                prose_text = re.sub(r'\n{3,}', '\n\n', candidate).strip()
-
-        # 表タイトル・サマリーを抽出（チャンクのプレフィックスに付加）
-        title_m = re.search(r'^## (.+?)$', md_text, re.MULTILINE)
-        table_title = title_m.group(1).strip() if title_m else ''
-        summary_m = re.search(r'^::summary::\s*(.+)$', md_text, re.MULTILINE)
-        table_summary = summary_m.group(1).strip() if summary_m else ''
+            embed_m = re.search(r'(?:^|\n)## 表（埋め込み）', page_md)
+            if embed_m:
+                candidate = page_md[:embed_m.start()]
+            else:
+                candidate = page_md
+            # ::title:: / ::summary:: / ## heading を除去してプレーンテキスト化
+            candidate = re.sub(r'^::title::.*$', '', candidate, flags=re.MULTILINE)
+            candidate = re.sub(r'^::summary::.*$', '', candidate, flags=re.MULTILINE)
+            candidate = re.sub(r'^## .+$', '', candidate, flags=re.MULTILINE)
+            prose_text = re.sub(r'\n{3,}', '\n\n', candidate).strip()
 
         # 地の文チャンク化（見出し検出でトピック単位に分割）
         if prose_text:
@@ -880,6 +877,8 @@ class RagPrepareSearchIndexer:
                         text = "\n\n".join(current)
                         if sec_title and not text.startswith(sec_title):
                             text = sec_title + "\n\n" + text
+                        if page_header and not text.startswith(page_header):
+                            text = page_header + "\n\n" + text
                         results.append({"text": text, "chunk_type": "prose", "chunk_weight": 1.0})
                         current = [para]
                         current_len = len(para)
@@ -890,24 +889,112 @@ class RagPrepareSearchIndexer:
                     text = "\n\n".join(current)
                     if sec_title and not text.startswith(sec_title):
                         text = sec_title + "\n\n" + text
+                    if page_header and not text.startswith(page_header):
+                        text = page_header + "\n\n" + text
                     results.append({"text": text, "chunk_type": "prose", "chunk_weight": 1.0})
 
         # YAML テーブル（## 表（埋め込み）内の ```yaml ブロック）
-        yaml_m = re.search(r'```yaml\s*\n(.*?)```', md_text, re.DOTALL)
-        if yaml_m:
-            yaml_text = yaml_m.group(1).strip()
-            # タイトル・サマリーをコンテキストプレフィックスとして構成
-            ctx_parts = [p for p in [table_title, table_summary] if p]
-            context_prefix = '\n'.join(ctx_parts)
-            for block in re.split(r'(?=^- table_id:)', yaml_text, flags=re.MULTILINE):
+        yaml_matches = list(re.finditer(r'```yaml\s*\n(.*?)```', page_md, re.DOTALL))
+        for ym in yaml_matches:
+            yaml_text = ym.group(1).strip()
+            for block in re.split(r'(?=^\s*- table_id:)', yaml_text, flags=re.MULTILINE):
                 block = block.strip()
                 if not block or not block.startswith('- table_id:'):
                     continue
-                desc_m = re.search(r"^\s*description:\s*'(.*?)'", block, re.MULTILINE)
-                desc = (desc_m.group(1).strip() if desc_m else '')
-                prefix = context_prefix or desc
+
+                try:
+                    parsed = yaml.safe_load(block)
+                except Exception as e:
+                    raise ValueError(f"表 YAML ブロックの解析に失敗しました: {e}\n{block}")
+
+                if isinstance(parsed, list):
+                    if len(parsed) != 1:
+                        raise ValueError(f"表 YAML ブロックの要素数がちょうど1つではありません (要素数: {len(parsed)}): {block}")
+                    if not isinstance(parsed[0], dict):
+                        raise ValueError(f"表 YAML ブロックの要素が辞書形式ではありません: {type(parsed[0])}\n{block}")
+                    entry = parsed[0]
+                elif isinstance(parsed, dict):
+                    entry = parsed
+                else:
+                    raise ValueError(f"表 YAML ブロックの解析結果が辞書形式ではありません: {type(parsed)}\n{block}")
+
+                raw_table_id = entry.get('table_id')
+                if not raw_table_id:
+                    raise ValueError(f"表 YAML ブロックに table_id が存在しません: {block}")
+                table_id = str(raw_table_id).strip()
+
+                desc_val = entry.get('description')
+                if desc_val is None:
+                    raise ValueError(f"表 YAML ブロック (table_id='{table_id}') に description が存在しません: {block}")
+                desc = str(desc_val).strip()
+
+                # その表自身の caption と description の両方を YAML から取得
+                caption_val = entry.get('caption')
+                caption = str(caption_val).strip() if caption_val is not None else ""
+
+                ctx_parts: List[str] = []
+                if caption:
+                    ctx_parts.append(caption)
+                if desc:
+                    ctx_parts.append(desc)
+
+                prefix = '\n'.join(ctx_parts)
                 text = f"{prefix}\n\n{block}" if prefix else block
                 results.append({"text": text, "chunk_type": "table_yaml", "chunk_weight": 2.0})
+
+        return results
+
+    @staticmethod
+    def _structured_md_chunks(md_text: str, prose_chunk_size: int = 800) -> List[Dict[str, Any]]:
+        """
+        構造化MD（## 非表（F 地の文）/ ## 表（埋め込み）形式、または ## Page {n} で複数ページが結合された形式）をチャンク化する。
+
+        - 本文が『## Page {n}』見出しで区切られている場合は、ページごとに
+          そのページの『## 表（埋め込み）』より前を本文チャンク、そのページの yaml の各 table_id を表チャンクとして全ページ分をページ順に返す。
+        - 『## Page』見出しが無い文書は現行どおりの動作を変えない。
+
+        Returns: list of {"text", "chunk_type", "chunk_weight"}
+        """
+        page_pattern = re.compile(r'^## Page (\d+)\b[^\n]*', re.MULTILINE)
+        matches = list(page_pattern.finditer(md_text))
+
+        if not matches:
+            # ## Page 見出しが無い文書は現行どおりの動作
+            return RagPrepareSearchIndexer._chunk_single_page(
+                md_text, prose_chunk_size=prose_chunk_size, page_header=None
+            )
+
+        results: List[Dict[str, Any]] = []
+
+        # 最初の ## Page 見出しより前にテキストがあれば先に処理（黙って捨てない）
+        if matches[0].start() > 0:
+            preamble = md_text[:matches[0].start()].strip()
+            if preamble:
+                results.extend(
+                    RagPrepareSearchIndexer._chunk_single_page(
+                        preamble,
+                        prose_chunk_size=prose_chunk_size,
+                        page_header=None,
+                    )
+                )
+
+        # ページごとに順次チャンク化（全ページ分をページ順に返す）
+        for i, m in enumerate(matches):
+            start = m.start()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(md_text)
+            page_content = md_text[start:end].strip()
+            if not page_content:
+                continue
+
+            # 既存の表チャンクの書き方（ヘッダー行: "Page {n}"）に合わせたページ情報
+            page_title = m.group(0).replace('##', '').strip()  # 例: "Page 1"
+            results.extend(
+                RagPrepareSearchIndexer._chunk_single_page(
+                    page_content,
+                    prose_chunk_size=prose_chunk_size,
+                    page_header=page_title,
+                )
+            )
 
         return results
 
@@ -920,7 +1007,7 @@ class RagPrepareSearchIndexer:
         """
         full_markdown をチャンク化し (text, chunk_type, chunk_weight) のリストで返す。
 
-        # PDF抽出Markdown セクションに構造化MD（## 非表 / ## 表（埋め込み））が含まれる場合は
+        # PDF抽出Markdown セクションに構造化MD（## 非表 / ## 表（埋め込み） / ## Page {n}）が含まれる場合は
         意味単位で分割。それ以外は固定サイズ分割。
         """
         results: List[tuple[str, str, float]] = []
@@ -936,6 +1023,7 @@ class RagPrepareSearchIndexer:
             is_structured = bool(
                 re.search(r'^## 非表（F 地の文）', pdf_md, re.MULTILINE)
                 or re.search(r'^## 表（埋め込み）', pdf_md, re.MULTILINE)
+                or re.search(r'^## Page \d+', pdf_md, re.MULTILINE)
             )
             if is_structured:
                 for item in RagPrepareSearchIndexer._structured_md_chunks(pdf_md, prose_chunk_size):

@@ -36,6 +36,7 @@ load_dotenv(_repo_root / '.env')
 load_dotenv(_lab_dir / '.env')
 
 from blueprints.lab import lab_bp
+from pipeline_batch import pipeline_batch_bp
 
 
 def create_app():
@@ -54,6 +55,7 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = str(upload_root)
 
     app.register_blueprint(lab_bp, url_prefix='/pipeline-lab')
+    app.register_blueprint(pipeline_batch_bp)
 
     @app.route('/pipeline-lab')
     def _pipeline_lab_trailing_slash():

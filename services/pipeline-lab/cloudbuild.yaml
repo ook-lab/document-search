@@ -24,7 +24,7 @@ steps:
       - '--allow-unauthenticated'
       - '--service-account=document-management-system@$PROJECT_ID.iam.gserviceaccount.com'
       - '--timeout=600'
-      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID'
+      - '--update-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,PIPELINE_BATCH_AUDIENCE=https://pipeline-lab-6txyszr6ra-an.a.run.app,PIPELINE_BATCH_INVOKER_EMAIL=document-management-system@$PROJECT_ID.iam.gserviceaccount.com,RAG_PREPARE_BASE=https://rag-prepare-6txyszr6ra-an.a.run.app'
       - '--set-secrets=SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest,DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest,GOOGLE_OAUTH_TOKEN_JSON=GOOGLE_OAUTH_TOKEN_JSON:latest,GOOGLE_AI_PAID_API_KEY=GOOGLE_AI_PAID_API_KEY:latest'
 
 images:
