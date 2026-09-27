@@ -71,7 +71,7 @@ function runClassroomSyncForPrefix_(propertyPrefix) {
     var courses = listAllCourses_();
     log("INFO", "CLASSROOM_FETCH_SUCCESS", "取得コース数: " + courses.length, "EXECUTING");
 
-    var stats = { sent: 0, skipped: 0, filtered: 0, planned: 0 };
+    var stats = { sent: 0, skipped: 0, filtered: 0, planned: 0, failed: 0 };
     var categories = ['announcements', 'courseWork', 'courseWorkMaterials'];
 
     for (var ci = 0; ci < courses.length; ci++) {
@@ -81,7 +81,14 @@ function runClassroomSyncForPrefix_(propertyPrefix) {
       for (var catI = 0; catI < categories.length; catI++) {
         var category = categories[catI];
         log("INFO", "CATEGORY_FETCH", "カテゴリー取得試行: " + category, "EXECUTING");
-        var items = listCategoryItems_(course.id, category);
+        var items;
+        try {
+          items = listCategoryItems_(course.id, category);
+        } catch (e) {
+          stats.failed++;
+          log("ERROR", "CATEGORY_FETCH_FAILED", "コースID=" + course.id + " カテゴリー=" + category + " エラー=" + e.toString(), "FAILED", e.toString());
+          continue;
+        }
 
         if (!items || !items.length) {
           log("INFO", "CATEGORY_EMPTY", "アイテムが存在しません: " + category, "EXECUTING");
@@ -111,7 +118,9 @@ function runClassroomSyncForPrefix_(propertyPrefix) {
       if (stats.planned >= CONFIG.MAX_RECORDS_PER_RUN) break;
     }
 
-    log("INFO", "END_PROCESS", "すべての同期工程が完了しました。", "SUCCESS", stats);
+    var endStatus = stats.failed > 0 ? "FAILED" : "SUCCESS";
+    var endLevel = stats.failed > 0 ? "ERROR" : "INFO";
+    log(endLevel, "END_PROCESS", "すべての同期工程が完了しました。", endStatus, stats);
   } catch (e) {
     log("ERROR", "FATAL_ERROR", e.toString(), "FAILED");
   } finally {
@@ -121,21 +130,17 @@ function runClassroomSyncForPrefix_(propertyPrefix) {
 }
 
 function classroomDueDateToIso_(dueDate) {
-  if (!dueDate || dueDate.year == null) return null;
-  var mo = dueDate.month != null ? dueDate.month : 1;
-  var da = dueDate.day != null ? dueDate.day : 1;
+  if (!dueDate || dueDate.year == null || dueDate.month == null || dueDate.day == null) return null;
   function z(n) { return (n < 10 ? '0' : '') + n; }
-  return dueDate.year + '-' + z(mo) + '-' + z(da);
+  return dueDate.year + '-' + z(dueDate.month) + '-' + z(dueDate.day);
 }
 
 function classroomDueTimeToText_(t) {
   if (!t) return null;
   if (typeof t === 'string') return t;
-  if (t.hours == null && t.minutes == null) return null;
-  var h = t.hours != null ? t.hours : 0;
-  var m = t.minutes != null ? t.minutes : 0;
+  if (t.hours == null || t.minutes == null) return null;
   function z(n) { return (n < 10 ? '0' : '') + n; }
-  return z(h) + ':' + z(m);
+  return z(t.hours) + ':' + z(t.minutes);
 }
 
 /**
@@ -146,15 +151,32 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
   var thresholdMs = thresholdDate.getTime();
 
   items.forEach(function(it) {
-    var sentAt = it.creationTime || it.updateTime;
+    if (!it.creationTime) {
+      log("ERROR", "CREATION_TIME_MISSING", "投稿の作成日時(creationTime)が存在しません。itemId=" + it.id, "FAILED");
+      return;
+    }
+    var sentAt = it.creationTime;
     if (new Date(sentAt).getTime() < thresholdMs) return;
 
     var postUrl = 'https://classroom.google.com/u/0/c/' + course.id + '/a/' + it.id;
 
-    var mats = it.materials || it.material || [];
+    var mats = [];
+    if (it.materials) {
+      if (Array.isArray(it.materials)) {
+        mats = it.materials;
+      } else {
+        log("ERROR", "MATERIALS_NOT_ARRAY", "materials が配列ではありません。itemId=" + it.id, "FAILED", it.materials);
+      }
+    }
     var nonDriveText = extractNonDriveAttachmentsText_(mats, course.id, it.id, log);
 
-    var rawDesc = it.text || it.description || null;
+    var rawDesc = null;
+    if (category === 'announcements') {
+      rawDesc = it.text ? String(it.text) : null;
+    } else if (category === 'courseWork' || category === 'courseWorkMaterials') {
+      rawDesc = it.description ? String(it.description) : null;
+    }
+
     var finalDesc = rawDesc;
     if (nonDriveText) {
       if (finalDesc && String(finalDesc).trim().length > 0) {
@@ -183,20 +205,31 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
       creator_name: (it.creatorProfile && it.creatorProfile.name) ? it.creatorProfile.name.fullName : null,
       source_url: postUrl,
       created_at: sentAt,
-      updated_at: it.updateTime || sentAt,
+      updated_at: it.updateTime ? it.updateTime : null,
       file_url: null,
       file_name: null,
       file_id: null
     };
 
-    var driveFiles = mats.filter(function(m) { return m.driveFile; });
+    var driveFiles = mats.filter(function(m) { return m && m.driveFile; });
 
     if (driveFiles.length > 0) {
       driveFiles.forEach(function(m) {
+        if (!m.driveFile || !m.driveFile.driveFile) {
+          log("ERROR", "DRIVE_FILE_PAYLOAD_INVALID", "driveFile オブジェクトが不正です。courseId=" + course.id + " itemId=" + it.id, "FAILED", m);
+          return;
+        }
         var df = m.driveFile.driveFile;
+        if (!df.id) {
+          log("ERROR", "DRIVE_FILE_ID_MISSING", "driveFile の id が存在しません。courseId=" + course.id + " itemId=" + it.id, "FAILED", df);
+          return;
+        }
+        if (!df.title) {
+          log("ERROR", "DRIVE_FILE_TITLE_MISSING", "driveFile の title が存在しません。courseId=" + course.id + " itemId=" + it.id + " fileId=" + df.id, "FAILED", df);
+        }
         out.push(Object.assign({}, base, {
-          file_id: df.id,
-          file_name: df.title || df.name
+          file_id: String(df.id),
+          file_name: df.title ? String(df.title).trim() : null
         }));
       });
     } else {
@@ -212,9 +245,9 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
 /**
  * Drive以外の添付（YouTube動画、リンク、フォーム等）から題名とURLを抽出して文字列化する。
  * 制約（フォールバック絶対禁止）:
- * - 題名やURLが無い添付は推測値・既定値・別キーで埋めず、ある情報のみを出力する。
- * - URLが無い添付はエラーログを出力して明示的に扱う。
- * - 題名・URL両方が欠損している場合はエラーログを出力し出力行に含めない。
+ * - URLが無い添付は不完全データとして除外し、エラーログを出力して明示的に扱う。
+ * - 題名・URL両方が欠損している場合もエラーログを出力し除外する。
+ * - 推測値・既定値・別キーで埋めて不完全な添付を出力行に含めない。
  */
 function extractNonDriveAttachmentsText_(mats, courseId, itemId, log) {
   if (!mats || !mats.length) return null;
@@ -265,17 +298,18 @@ function extractNonDriveAttachmentsText_(mats, courseId, itemId, log) {
     }
 
     if (!url) {
-      log("ERROR", "ATTACHMENT_URL_MISSING", "添付のURLが存在しません。type=" + type + " courseId=" + courseId + " itemId=" + itemId, "FAILED", m);
+      if (title) {
+        log("ERROR", "ATTACHMENT_URL_MISSING", "添付のURLが存在しないため除外します。type=" + type + " title=" + title + " courseId=" + courseId + " itemId=" + itemId, "FAILED", m);
+      } else {
+        log("ERROR", "ATTACHMENT_DATA_EMPTY", "添付の題名・URLが両方とも存在しません。type=" + type + " courseId=" + courseId + " itemId=" + itemId, "FAILED", m);
+      }
+      continue;
     }
 
-    if (title && url) {
+    if (title) {
       lines.push(title + ': ' + url);
-    } else if (url) {
-      lines.push(url);
-    } else if (title) {
-      lines.push(title);
     } else {
-      log("ERROR", "ATTACHMENT_DATA_EMPTY", "添付の題名・URLが両方とも存在しません。type=" + type + " courseId=" + courseId + " itemId=" + itemId, "FAILED", m);
+      lines.push(url);
     }
   }
 
@@ -283,9 +317,13 @@ function extractNonDriveAttachmentsText_(mats, courseId, itemId, log) {
 }
 
 function buildManagedCopyFileName_(r) {
-  var base = r.file_name || 'Classroom';
-  var safe = String(base).replace(/[\\/:*?"<>|]+/g, '_').trim();
-  if (!safe.length) safe = 'Classroom';
+  if (!r.file_name || !String(r.file_name).trim()) {
+    throw new Error("ファイル名が欠損しています。file_id=" + r.file_id);
+  }
+  var safe = String(r.file_name).replace(/[\\/:*?"<>|]+/g, '_').trim();
+  if (!safe.length) {
+    throw new Error("サニタイズ後のファイル名が空です。元のfile_name=" + r.file_name + " file_id=" + r.file_id);
+  }
   return safe + ' [' + r.file_id + ']';
 }
 
@@ -541,9 +579,13 @@ function validateConfig_(cfg, log, propertyPrefix) {
 function listAllCourses_() {
   var courses = [], pageToken = null;
   do {
-    var resp = Classroom.Courses.list({ pageSize: 50, pageToken: pageToken || undefined, courseStates: ['ACTIVE'] });
-    courses = courses.concat(resp.courses || []);
-    pageToken = resp.nextPageToken;
+    var params = { pageSize: 50, courseStates: ['ACTIVE'] };
+    if (pageToken) params.pageToken = pageToken;
+    var resp = Classroom.Courses.list(params);
+    if (resp && resp.courses && Array.isArray(resp.courses)) {
+      courses = courses.concat(resp.courses);
+    }
+    pageToken = resp ? resp.nextPageToken : null;
   } while (pageToken);
   return courses;
 }
@@ -551,14 +593,18 @@ function listAllCourses_() {
 function listCategoryItems_(courseId, cat) {
   var items = [], pageToken = null;
   var methods = { announcements: 'Announcements', courseWork: 'CourseWork', courseWorkMaterials: 'CourseWorkMaterials' };
+  if (!methods[cat]) {
+    throw new Error("未対応のカテゴリーです: " + cat);
+  }
   do {
-    var resp;
-    try {
-      resp = Classroom.Courses[methods[cat]].list(courseId, { pageSize: 50, pageToken: pageToken || undefined });
-      var key = (cat === 'courseWorkMaterials') ? 'courseWorkMaterial' : cat;
-      items = items.concat(resp[key] || []);
-      pageToken = resp.nextPageToken;
-    } catch (e) { break; }
+    var params = { pageSize: 50 };
+    if (pageToken) params.pageToken = pageToken;
+    var resp = Classroom.Courses[methods[cat]].list(courseId, params);
+    var key = (cat === 'courseWorkMaterials') ? 'courseWorkMaterial' : cat;
+    if (resp && resp[key] && Array.isArray(resp[key])) {
+      items = items.concat(resp[key]);
+    }
+    pageToken = resp ? resp.nextPageToken : null;
   } while (pageToken);
   return items;
 }

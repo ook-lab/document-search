@@ -20,8 +20,11 @@ from docsearch.models import AIProvider, get_model_config
 class DocSearchLLM:
     def __init__(self) -> None:
         self.openai_api_key = settings.OPENAI_API_KEY
-        genai.configure(api_key=settings.GOOGLE_AI_API_KEY)
-        self.gemini_api_key = bool(settings.GOOGLE_AI_API_KEY)
+        paid_key = (settings.GOOGLE_AI_PAID_API_KEY or "").strip()
+        if not paid_key:
+            raise ValueError("GOOGLE_AI_PAID_API_KEY が未設定です")
+        genai.configure(api_key=paid_key)
+        self.gemini_api_key = True
         self.openai_client = OpenAI(api_key=self.openai_api_key) if self.openai_api_key else None
 
     def call_model(

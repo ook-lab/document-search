@@ -854,9 +854,7 @@
                     <label>
                         構成フロー:
                         <select id="flow-select" style="padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;" onchange="updateCostDisplay()">
-                            <option value="single-25-lite" selected>2.5 Flash-Lite 単独</option>
-                            <option value="cascade-25lite-31lite-preview">2.5 Flash-Lite → 3.1 Flash-Lite Preview</option>
-                            <option value="single-31-lite-preview">3.1 Flash-Lite Preview 単独</option>
+                            <option value="single-35-flash-lite" selected>3.5 Flash-Lite 単独</option>
                         </select>
                     </label>
                     <label>
@@ -951,16 +949,12 @@
         // ── コスト計算 ────────────────────────────────────────────────
         // 各フローの入力トークン合計 × モデル単価（クエリ改善は誤差範囲）
         function getFlowCost(flowId, chars) {
-            const LITE_25 = 0.10; // $/1M input tokens (Gemini 2.5 Flash-Lite)
-            const LITE_31_PREVIEW = 0.25; // $/1M input tokens (Gemini 3.1 Flash-Lite Preview)
-            const t = chars / 4; // Step1入力トークン（最大）
-            if (flowId === 'single-25-lite') {
-                return (t * LITE_25) / 1_000_000;
-            } else if (flowId === 'cascade-25lite-31lite-preview') {
-                // Step1は全文、Step2はEvidence整理後の約33%を想定
-                return ((t * LITE_25) + (t * 0.33 * LITE_31_PREVIEW)) / 1_000_000;
+            if (flowId !== 'single-35-flash-lite') {
+                throw new Error(`未対応のフローID: ${flowId}`);
             }
-            return (t * LITE_31_PREVIEW) / 1_000_000;
+            const LITE_35 = 0.30; // $/1M input tokens (Gemini 3.5 Flash-Lite Paid Tier Standard)
+            const t = chars / 4; // Step1入力トークン（最大）
+            return (t * LITE_35) / 1_000_000;
         }
 
         let usdJpy = null; // 取得後にセット
@@ -980,7 +974,13 @@
             const chars = parseInt(document.getElementById('maxContextInput').value) || 0;
             const flowId = document.getElementById('flow-select').value;
             const tokens = Math.round(chars / 4);
-            const costUsd = getFlowCost(flowId, chars);
+            let costUsd = 0;
+            try {
+                costUsd = getFlowCost(flowId, chars);
+            } catch (e) {
+                document.getElementById('costDisplay').textContent = e.message;
+                return;
+            }
 
             let text = `≈${tokens.toLocaleString()} tokens / $${costUsd.toFixed(4)}/クエリ`;
             if (usdJpy) {
@@ -1000,9 +1000,12 @@
                     hierarchyData = data.hierarchy || [];
                     renderHierarchyFilters();
                     console.log(`[フィルタ読み込み] ${hierarchyData.length} workspaces（階層構造）`);
+                } else {
+                    showError('フィルタ情報の取得に失敗しました: ' + (data.error || '不明なエラー'));
                 }
             } catch (error) {
                 console.error('フィルタ取得エラー:', error);
+                showError('フィルタ情報の取得中にエラーが発生しました: ' + error.message);
             }
             fetchUsdJpy(); // 為替レート取得 & コスト初期表示
         };
@@ -1305,6 +1308,12 @@
             hideResults();
 
             try {
+                const thresholdInputVal = document.getElementById('thresholdInput').value;
+                const thresholdVal = parseFloat(thresholdInputVal);
+                if (isNaN(thresholdVal)) {
+                    throw new Error('閾値には数値を入力してください');
+                }
+
                 // ステップ1: ベクトル検索（person / source / category フィルタ送信）
                 const searchPayload = {
                     query,
@@ -1312,7 +1321,7 @@
                     persons: selectedPersons,
                     sources: selectedSources,
                     categories: selectedCategories,
-                    threshold: parseFloat(document.getElementById('thresholdInput').value) || 0.4
+                    threshold: thresholdVal
                 };
 
                 console.log('[検索実行]', searchPayload);
@@ -1360,12 +1369,6 @@
                     throw new Error(answerData.error || '回答生成に失敗しました');
                 }
 
-                if (!answerData.refined_query && searchData.refined_query) {
-                    answerData.refined_query = searchData.refined_query;
-                }
-                if ((!answerData.intent_spec || Object.keys(answerData.intent_spec).length === 0) && searchData.intent_spec) {
-                    answerData.intent_spec = searchData.intent_spec;
-                }
                 displayAnswer(answerData);
                 displayVectorHitChunks(searchData.vector_hit_chunks || []);
                 displayRagLlmInput(answerData);
@@ -1566,14 +1569,12 @@
             }
             if (title.length > 50) title = title.substring(0, 50) + '...';
 
-            const bodyText = (doc.snippet && doc.snippet.trim())
-                ? doc.snippet
-                : (doc.chunk_content || '');
+            const bodyText = (doc.snippet && String(doc.snippet).trim()) ? String(doc.snippet).trim() : '';
 
             // 送信者・日時
             const meta = doc.meta || {};
-            const sender = (doc.from_name || meta.author_name || meta.sender_name || '').trim();
-            const dateStr = doc.post_at || doc.indexed_at || '';
+            const sender = (doc.from_name && String(doc.from_name).trim()) ? String(doc.from_name).trim() : '';
+            const dateStr = doc.post_at ? String(doc.post_at).trim() : '';
             const formattedDate = dateStr ? formatDate(dateStr) : '';
 
             // 09 の category のみ（📚 行）。空・ダッシュ類は出さない。person や source は此処に載せない（「ソース／カテゴリ」に見えるのを避ける）。
@@ -1652,11 +1653,12 @@
             let title = doc.title || '';
             if (title.length > 100) title = title.substring(0, 100) + '...';
 
-            const displayText = doc.snippet || truncateText(doc.chunk_content || '', 200);
+            const displayText = (doc.snippet && String(doc.snippet).trim()) ? String(doc.snippet).trim() : '(スニペットなし)';
 
             // file_url があればリンクボタンを表示
             const fileUrl = doc.file_url || '';
-            const fileName = doc.title || 'ファイルを開く';
+            const rawFileName = (doc.file_name && String(doc.file_name).trim()) ? String(doc.file_name).trim() : '';
+            const fileName = rawFileName ? rawFileName : '(ファイル名なし)';
             const linkButton = fileUrl ?
                 `<a href="${escapeHtml(fileUrl)}" target="_blank" class="btn-link">📄 ${escapeHtml(fileName)}</a>` :
                 '';

@@ -66,6 +66,10 @@ class WasedaNoticeIngestionPipeline:
             owner_id: オーナーID（Supabase Auth ユーザーID、省略時は環境変数から取得）
         """
         self.pdf_folder_id = pdf_folder_id or os.getenv("WASEDA_PDF_FOLDER_ID")
+        if not self.pdf_folder_id:
+            raise ValueError(
+                "pdf_folder_id が指定されていません。引数で指定するか、WASEDA_PDF_FOLDER_ID を .env に設定してください。"
+            )
         self.session_cookies = session_cookies or {}
         self.base_url = "https://online.waseda-ac.co.jp"
 
@@ -88,7 +92,7 @@ class WasedaNoticeIngestionPipeline:
         ブラウザ自動化を使用して全ページのHTMLを取得
 
         Returns:
-            各ページのHTMLリスト、失敗時は空リスト
+            各ページのHTMLリスト
         """
         try:
             browser = WasedaAcademyBrowser(headless=True)
@@ -96,7 +100,7 @@ class WasedaNoticeIngestionPipeline:
             return html_pages if html_pages else []
         except Exception as e:
             logger.error(f"ブラウザ自動化エラー: {e}", exc_info=True)
-            return []
+            raise
 
     def extract_notice_data(self, html_content) -> List[Dict[str, Any]]:
         """
@@ -131,7 +135,8 @@ class WasedaNoticeIngestionPipeline:
                         new_count += 1
                 logger.info(f"  [p={i}] {new_count}件")
             except (json.JSONDecodeError, KeyError) as e:
-                logger.error(f"p={i} JSONパースエラー: {e}")
+                logger.error(f"p={i} JSONパースエラーまたはキー不整合: {e}")
+                raise
 
         logger.info(f"お知らせを合計{len(all_notices)}件抽出しました")
         return all_notices
@@ -162,7 +167,7 @@ class WasedaNoticeIngestionPipeline:
 
         except Exception as e:
             logger.error(f"Supabase検索エラー: {e}")
-            return set()
+            raise
 
     @staticmethod
     def _drive_file_id_from_file_url(file_url: Optional[str]) -> Optional[str]:
@@ -186,7 +191,7 @@ class WasedaNoticeIngestionPipeline:
             rows = sel.data or []
         except Exception as e:
             logger.error(f"再取り込み前の raw 取得に失敗: {e}")
-            return 0
+            raise
 
         trashed_drive: Set[str] = set()
         for row in rows:
@@ -205,7 +210,7 @@ class WasedaNoticeIngestionPipeline:
             ).execute()
         except Exception as e:
             logger.error(f"05_ikuya_waseaca_01_raw の削除に失敗: {e}")
-            return 0
+            raise
 
         logger.info(
             f"再取り込み準備: post_id {len(post_ids)} 種 / raw {len(rows)} 行を削除 "
@@ -233,14 +238,14 @@ class WasedaNoticeIngestionPipeline:
             return pdfs
         except Exception as e:
             logger.error(f"PDFバッチダウンロードエラー: {e}", exc_info=True)
-            return {}
+            raise
 
     def save_pdf_to_drive(
         self,
         pdf_data: bytes,
         pdf_title: str,
         notice_id: str
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], str]:
         """
         PDFをGoogle Driveに保存
 
@@ -289,6 +294,7 @@ class WasedaNoticeIngestionPipeline:
         result = {
             'notice_id': notice.get('id'),
             'success': False,
+            'skipped': False,
             'pdf_file_ids': [],
             'document_ids': [],
             'error': None
@@ -298,11 +304,17 @@ class WasedaNoticeIngestionPipeline:
 
         try:
             notice_id = notice.get('id')
-            title = notice.get('title', 'タイトルなし')
-            date = notice.get('date', '')
-            message = notice.get('message', '')
-            source = notice.get('source', {})
-            category = notice.get('category', {})
+            if not notice_id:
+                raise ValueError("お知らせID (id) が欠損しています")
+
+            title = notice.get('title')
+            if not title:
+                raise ValueError(f"お知らせタイトル (title) が欠損しています (post_id={notice_id})")
+
+            date = notice.get('date')
+            message = notice.get('message')
+            source = notice.get('source')
+            category = notice.get('category')
 
             logger.info(f"お知らせ処理開始: {title}")
 
@@ -311,8 +323,12 @@ class WasedaNoticeIngestionPipeline:
             if date:
                 try:
                     sent_at = datetime.strptime(date, '%Y.%m.%d').isoformat()
-                except ValueError:
-                    logger.warning(f"日付のパースに失敗: {date}")
+                except ValueError as e:
+                    raise ValueError(f"日付のパースに失敗: date={date} (post_id={notice_id}): {e}")
+
+            # カテゴリ名・発信元名（欠損時は推測値で埋めず None）
+            category_name = category.get('label') if isinstance(category, dict) else None
+            creator_name = source.get('label') if isinstance(source, dict) else None
 
             # 【計画修正】post_id に pdf_slot が NULL の行が1件でもあるお知らせは旧形式取込済み(またはテキストのみ取込済み)として全体をスキップ
             if (notice_id, None) in existing_set:
@@ -320,136 +336,116 @@ class WasedaNoticeIngestionPipeline:
                     f"旧形式またはテキストのみで取込済みのため全体をスキップ: "
                     f"{title} (post_id={notice_id}, pdf_slotがNULLの行が存在)"
                 )
-                result['success'] = True
+                result['skipped'] = True
+                result['success'] = False
                 return result
 
             # PDFリンクがない場合はテキストのみレコードとして保存（新規テキストのみ投稿は pdf_slot NULL で保存）
-            pdfs = notice.get('pdfs', [])
+            pdfs = notice.get('pdfs')
             if not pdfs:
                 logger.info(f"PDFリンクなし、テキストのみで登録: {title}")
                 raw_row = {
                     'person': '育哉',
                     'source': '早稲アカオンライン',
-                    'category': category.get('label', 'その他'),
+                    'category': category_name,
                     'post_id': notice_id,
                     'post_type': 'notice',
                     'title': title,
                     'description': message,
-                    'creator_name': source.get('label') or '',
+                    'creator_name': creator_name,
                     'created_at': sent_at,
                 }
-                try:
-                    raw_result = self.db.client.table('05_ikuya_waseaca_01_raw').insert(raw_row).execute()
-                    raw_id = raw_result.data[0]['id'] if raw_result.data else None
-                    if raw_id:
-                        self.db.client.table('pipeline_meta').insert({
-                            'raw_id': raw_id,
-                            'raw_table': '05_ikuya_waseaca_01_raw',
-                            'person': '育哉',
-                            'source': '早稲アカオンライン',
-                            'processing_status': 'pending',
-                            'owner_id': self.owner_id,
-                        }).execute()
-                        result['document_ids'].append(raw_id)
-                        logger.info(f"テキストのみ保存完了: {title} → raw_id={raw_id}")
-                    else:
-                        logger.error(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
-                except Exception as db_error:
-                    logger.error(f"Supabase保存エラー（テキストのみ）: {db_error}")
-                    result['error'] = str(db_error)
+                raw_result = self.db.client.table('05_ikuya_waseaca_01_raw').insert(raw_row).execute()
+                raw_id = raw_result.data[0]['id'] if raw_result.data else None
+                if not raw_id:
+                    raise RuntimeError(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
+
+                self.db.client.table('pipeline_meta').insert({
+                    'raw_id': raw_id,
+                    'raw_table': '05_ikuya_waseaca_01_raw',
+                    'person': '育哉',
+                    'source': '早稲アカオンライン',
+                    'processing_status': 'pending',
+                    'owner_id': self.owner_id,
+                }).execute()
+                result['document_ids'].append(raw_id)
                 result['success'] = True
+                logger.info(f"テキストのみ保存完了: {title} → raw_id={raw_id}")
                 return result
 
             # 各PDFを処理（pdf_slot で区別: API 上で url が同一の添付が複数ある）
+            processed_any_pdf = False
             for pdf_slot, pdf in enumerate(pdfs):
                 if (notice_id, pdf_slot) in existing_set:
                     logger.info(f"既に取込済みのためスキップ: {title} (post_id={notice_id}, slot={pdf_slot})")
                     continue
 
-                pdf_title = pdf.get('title', 'untitled')
-                pdf_url = pdf.get('url', '')
+                pdf_title = pdf.get('title')
+                if not pdf_title:
+                    raise ValueError(f"PDFタイトルが欠損しています: post_id={notice_id}, slot={pdf_slot}")
 
+                pdf_url = pdf.get('url')
                 if not pdf_url:
-                    logger.warning(f"PDFのURLが空: {pdf_title}")
-                    continue
+                    raise ValueError(f"PDFのURLが欠損しています: post_id={notice_id}, slot={pdf_slot}")
 
                 # 1. 事前ダウンロード済みのPDFデータを取得
                 pdf_data = pdf_data_dict.get((notice_id, pdf_slot))
                 if not pdf_data:
-                    logger.warning(f"PDFデータが見つかりません（スキップ）: {pdf_title} (slot={pdf_slot})")
-                    continue
+                    raise RuntimeError(f"PDFデータが見つかりません（ダウンロード失敗または欠損）: {pdf_title} (post_id={notice_id}, slot={pdf_slot})")
 
                 # 2. PDFをGoogle Driveに保存
                 file_id, actual_file_name = self.save_pdf_to_drive(pdf_data, pdf_title, notice_id)
                 if not file_id:
-                    logger.error(f"PDFの保存に失敗: {pdf_title}")
-                    continue
+                    raise RuntimeError(f"PDFのDrive保存に失敗: {pdf_title} (post_id={notice_id}, slot={pdf_slot})")
 
                 result['pdf_file_ids'].append(file_id)
-
-                # 3. メタデータ準備
-                # 完全なPDF URLを構築
-                if pdf_url.startswith('http'):
-                    full_pdf_url = pdf_url
-                elif pdf_url.startswith('/'):
-                    full_pdf_url = f"{self.base_url}{pdf_url}"
-                else:
-                    full_pdf_url = f"{self.base_url}/{pdf_url}"
-
-                metadata = {
-                    'notice_title': title,
-                    'notice_date': date,
-                    'notice_source': source.get('label') or '',
-                    'notice_category': category.get('label', 'その他'),
-                    'notice_message': message,
-                    'pdf_url': full_pdf_url,
-                    'pdf_title': pdf_title
-                }
 
                 # 5. Supabaseに基本情報のみ保存（05_ikuya_waseaca_01_raw + pipeline_meta）
                 raw_row = {
                     'person': '育哉',
                     'source': '早稲アカオンライン',
-                    'category': category.get('label', 'その他'),
+                    'category': category_name,
                     'post_id': notice_id,
                     'post_type': 'notice',
                     'title': title,
                     'description': message,
-                    'creator_name': source.get('label') or '',
+                    'creator_name': creator_name,
                     'created_at': sent_at,
                     'file_url': f"https://drive.google.com/file/d/{file_id}/view",
                     'file_name': actual_file_name,
                     'pdf_slot': pdf_slot,
                 }
 
-                try:
-                    raw_result = self.db.client.table('05_ikuya_waseaca_01_raw').insert(raw_row).execute()
-                    raw_id = raw_result.data[0]['id'] if raw_result.data else None
-                    if raw_id:
-                        self.db.client.table('pipeline_meta').insert({
-                            'raw_id': raw_id,
-                            'raw_table': '05_ikuya_waseaca_01_raw',
-                            'person': '育哉',
-                            'source': '早稲アカオンライン',
-                            'processing_status': 'pending',
-                            'owner_id': self.owner_id,
-                        }).execute()
-                        result['document_ids'].append(raw_id)
-                        logger.info(f"Supabase保存完了（pending状態）: raw_id={raw_id} (slot={pdf_slot})")
-                        logger.info(f"  → pipeline_meta.id を確認のうえ scripts/processing/process_queued_documents.py --doc-id <uuid> --execute で処理してください")
-                    else:
-                        logger.error(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
+                raw_result = self.db.client.table('05_ikuya_waseaca_01_raw').insert(raw_row).execute()
+                raw_id = raw_result.data[0]['id'] if raw_result.data else None
+                if not raw_id:
+                    raise RuntimeError(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title} (slot={pdf_slot})")
 
-                except Exception as db_error:
-                    logger.error(f"Supabase保存エラー: {db_error}")
-                    result['error'] = str(db_error)
+                self.db.client.table('pipeline_meta').insert({
+                    'raw_id': raw_id,
+                    'raw_table': '05_ikuya_waseaca_01_raw',
+                    'person': '育哉',
+                    'source': '早稲アカオンライン',
+                    'processing_status': 'pending',
+                    'owner_id': self.owner_id,
+                }).execute()
+                result['document_ids'].append(raw_id)
+                processed_any_pdf = True
+                logger.info(f"Supabase保存完了（pending状態）: raw_id={raw_id} (slot={pdf_slot})")
+                logger.info(f"  → pipeline_meta.id を確認のうえ scripts/processing/process_queued_documents.py --doc-id <uuid> --execute で処理してください")
 
-            result['success'] = True
-            logger.info(f"お知らせ処理完了: {title} ({len(result['pdf_file_ids'])} PDFs)")
+            if processed_any_pdf:
+                result['success'] = True
+                logger.info(f"お知らせ処理完了: {title} ({len(result['pdf_file_ids'])} PDFs)")
+            else:
+                result['skipped'] = True
+                result['success'] = False
+                logger.info(f"全添付PDFが取込済みのため処理をスキップしました: {title}")
 
         except Exception as e:
             logger.error(f"お知らせ処理エラー: {e}", exc_info=True)
             result['error'] = str(e)
+            result['success'] = False
 
         return result
 
@@ -534,11 +530,11 @@ async def main():
         if (nid, None) in existing_slots:
             logger.info(
                 f"旧形式またはテキストのみで取込済みのため全体をスキップ: "
-                f"{n.get('title', 'タイトルなし')} (post_id={nid}, pdf_slotがNULLの行が存在)"
+                f"{n.get('title')} (post_id={nid}, pdf_slotがNULLの行が存在)"
             )
             continue
 
-        pdfs = n.get('pdfs', [])
+        pdfs = n.get('pdfs')
         if not pdfs:
             # 新規テキストのみ投稿（(nid, None) が無いので未取込）
             notices_to_process.append(n)
@@ -548,7 +544,7 @@ async def main():
             if unprocessed_slots:
                 notices_to_process.append(n)
             else:
-                logger.info(f"全添付PDFが取込済みのためスキップ: {n.get('title', 'タイトルなし')} (post_id={nid})")
+                logger.info(f"全添付PDFが取込済みのためスキップ: {n.get('title')} (post_id={nid})")
 
     logger.info(f"現在のお知らせ: {len(current_notices)}件")
     logger.info(f"既存の取込済みスロット: {len(existing_slots)}件")
@@ -562,13 +558,22 @@ async def main():
     pdf_info_list = []
     for notice in notices_to_process:
         notice_id = notice.get('id')
-        pdfs = notice.get('pdfs', [])
-        for pdf_slot, pdf in enumerate(pdfs):
-            if (notice_id, pdf_slot) in existing_slots:
-                continue
-            pdf_title = pdf.get('title', 'untitled')
-            pdf_url = pdf.get('url', '')
-            if pdf_url:
+        if not notice_id:
+            logger.error(f"お知らせIDが欠損しています: {notice}")
+            raise ValueError(f"お知らせIDが欠損しています: {notice}")
+        pdfs = notice.get('pdfs')
+        if pdfs:
+            for pdf_slot, pdf in enumerate(pdfs):
+                if (notice_id, pdf_slot) in existing_slots:
+                    continue
+                pdf_title = pdf.get('title')
+                if not pdf_title:
+                    logger.error(f"PDFタイトルが欠損しています: notice_id={notice_id}, slot={pdf_slot}")
+                    raise ValueError(f"PDFタイトルが欠損しています: notice_id={notice_id}, slot={pdf_slot}")
+                pdf_url = pdf.get('url')
+                if not pdf_url:
+                    logger.error(f"PDFのURLが欠損しています: notice_id={notice_id}, slot={pdf_slot}")
+                    raise ValueError(f"PDFのURLが欠損しています: notice_id={notice_id}, slot={pdf_slot}")
                 pdf_info_list.append({
                     'notice_id': notice_id,
                     'pdf_url': pdf_url,
@@ -584,6 +589,9 @@ async def main():
         logger.info("ブラウザ自動化でPDFを一括ダウンロード中...")
         pdf_data_dict = await pipeline.download_pdfs_with_browser(pdf_info_list)
         logger.info(f"ダウンロード完了: {len(pdf_data_dict)}/{len(pdf_info_list)}件")
+        if len(pdf_data_dict) != len(pdf_info_list):
+            missing_count = len(pdf_info_list) - len(pdf_data_dict)
+            logger.error(f"PDFダウンロードで未取得が発生しました: {missing_count}件欠損（不足分のお知らせは個別処理内で失敗として記録されます）")
 
     # お知らせを処理（PDFデータは既にダウンロード済み）
     results = []
@@ -594,13 +602,16 @@ async def main():
 
     # サマリー
     success_count = sum(1 for r in results if r['success'])
+    skipped_count = sum(1 for r in results if r.get('skipped'))
+    failure_count = sum(1 for r in results if not r['success'] and not r.get('skipped'))
     total_pdfs = sum(len(r['pdf_file_ids']) for r in results)
     total_docs = sum(len(r['document_ids']) for r in results)
 
     logger.info("=" * 60)
     logger.info("処理完了")
     logger.info(f"  成功: {success_count}/{len(results)}")
-    logger.info(f"  失敗: {len(results) - success_count}/{len(results)}")
+    logger.info(f"  スキップ: {skipped_count}/{len(results)}")
+    logger.info(f"  失敗: {failure_count}/{len(results)}")
     logger.info(f"  処理したPDF: {total_pdfs}件")
     logger.info(f"  登録したドキュメント: {total_docs}件（pending状態）")
     logger.info("=" * 60)
@@ -616,7 +627,8 @@ async def main():
 
     for result in results:
         print(f"\nNotice ID: {result['notice_id']}")
-        print(f"  Success: {result['success']}")
+        status_str = "Success" if result['success'] else ("Skipped" if result.get('skipped') else "Failed")
+        print(f"  Status: {status_str}")
         print(f"  PDFs: {len(result['pdf_file_ids'])}")
         for file_id in result['pdf_file_ids']:
             print(f"    - https://drive.google.com/file/d/{file_id}/view")
@@ -628,6 +640,10 @@ async def main():
     print("次のステップ:")
     print("  python scripts/processing/process_queued_documents.py --doc-id <pipeline_meta.id> --execute")
     print("=" * 80)
+
+    if failure_count > 0:
+        logger.error(f"処理完了（失敗あり）: {failure_count}件のお知らせの処理に失敗しました")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

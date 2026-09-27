@@ -34,7 +34,9 @@ class ModelTier:
             "embeddings": cls.EMBEDDING,
             "utility": cls.UI_RESPONSE_GENERATOR,
         }
-        return task_mapping.get(task, cls.UI_RESPONSE_GENERATOR)
+        if task not in task_mapping:
+            raise ValueError(f"不明なタスク: {task}")
+        return task_mapping[task]
 
 
 def get_model_config(tier: str) -> Dict[str, Any]:
@@ -43,23 +45,15 @@ def get_model_config(tier: str) -> Dict[str, Any]:
 
 class ResearchFlow:
     FLOWS = {
-        "single-25-lite": {
+        "single-35-flash-lite": {
             "steps": ["gemini-3.5-flash-lite"],
-            "description": "1段: Gemini 2.5 Flash-Lite単独",
-            "rounds": 1,
-        },
-        "cascade-25lite-31lite-preview": {
-            "steps": ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview"],
-            "description": "2段: 2.5 Flash-Lite → 3.1 Flash-Lite Preview",
-            "rounds": 2,
-        },
-        "single-31-lite-preview": {
-            "steps": ["gemini-3.1-flash-lite-preview"],
-            "description": "1段: Gemini 3.1 Flash-Lite Preview単独",
+            "description": "1段: Gemini 3.5 Flash-Lite単独",
             "rounds": 1,
         },
     }
 
     @classmethod
     def get_flow(cls, flow_id: str) -> Dict[str, Any]:
-        return cls.FLOWS.get(flow_id, cls.FLOWS["single-25-lite"])
+        if flow_id not in cls.FLOWS:
+            raise ValueError(f"不明なフローID: {flow_id}")
+        return cls.FLOWS[flow_id]

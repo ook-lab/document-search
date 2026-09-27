@@ -20,8 +20,8 @@ def _coerce_embedding_list(val: Any) -> Optional[List[float]]:
     if isinstance(val, (list, tuple)):
         try:
             return [float(x) for x in val]
-        except (TypeError, ValueError):
-            return None
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"埋め込みベクトルの要素をfloatに変換できません: {e}") from e
     if isinstance(val, str):
         s = val.strip()
         if s.startswith("[") and s.endswith("]"):
@@ -30,9 +30,9 @@ def _coerce_embedding_list(val: Any) -> Optional[List[float]]:
             return None
         try:
             return [float(x.strip()) for x in s.split(",") if x.strip()]
-        except ValueError:
-            return None
-    return None
+        except ValueError as e:
+            raise ValueError(f"埋め込み文字列をfloatに変換できません: {e}") from e
+    raise ValueError(f"埋め込みベクトルの型が不正です: {type(val).__name__}")
 
 
 def _cosine_similarity(q: List[float], v: List[float]) -> float:
@@ -93,7 +93,7 @@ class DocSearchDB:
             }
         except Exception as e:
             logger.error("get_workspace_hierarchy: {}", e)
-            return {}
+            raise
 
     def _apply_date_filter(self, results: List[Dict[str, Any]], date_filter: str) -> List[Dict[str, Any]]:
         now = datetime.now()
@@ -108,13 +108,15 @@ class DocSearchDB:
                             indexed_at = datetime.fromisoformat(indexed_at_str.replace("Z", "+00:00"))
                             if (now - indexed_at).days <= 30:
                                 filtered_results.append(result)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.error("indexed_at parse error: {}", e)
+                            raise
                 continue
             try:
                 document_date = datetime.strptime(document_date_str, "%Y-%m-%d")
-            except Exception:
-                continue
+            except Exception as e:
+                logger.error("document_date parse error: {}", e)
+                raise
             if date_filter == "today":
                 if document_date.date() == now.date():
                     filtered_results.append(result)
@@ -151,9 +153,9 @@ class DocSearchDB:
         except Exception:
             return None
 
-    def _coerce_meta_dict(self, meta: Any) -> Dict[str, Any]:
+    def _coerce_meta_dict(self, meta: Any) -> Optional[Dict[str, Any]]:
         if meta is None:
-            return {}
+            return None
         if isinstance(meta, dict):
             return meta
         if isinstance(meta, str):
@@ -176,10 +178,7 @@ class DocSearchDB:
         """09.ix_date_signals のみ読む（検索側で日付を組み立てない）。"""
         raw = row.get("ix_date_signals")
         if isinstance(raw, str) and raw.strip():
-            try:
-                raw = json.loads(raw)
-            except Exception:
-                raw = None
+            raw = json.loads(raw)
         out: Dict[str, Any] = {
             "normalized_dates": [],
             "normalized_ranges": [],
@@ -285,14 +284,22 @@ class DocSearchDB:
 
         final_results: List[Dict[str, Any]] = []
         for result in results:
-            raw_date = result.get("post_at") or result.get("start_at")
-            document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
-            date_signals = self._read_date_signals_from_ix(result)
-            doc_id = result.get("doc_id")
             c1 = result.get("classification1")
             c2 = result.get("classification2")
             c3 = result.get("classification3")
+            if c1 == "Googleカレンダー":
+                raw_date = result.get("start_at")
+            else:
+                raw_date = result.get("post_at")
+            document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
+            date_signals = self._read_date_signals_from_ix(result)
+            doc_id = result.get("doc_id")
             meta_dict = self._coerce_meta_dict(result.get("meta"))
+            comb = result.get("combined_score")
+            raw_s = result.get("raw_similarity")
+            weighted_s = result.get("weighted_similarity")
+            ft_s = result.get("fulltext_score")
+            title_m = result.get("title_matched")
             final_results.append(
                 {
                     "id": doc_id,
@@ -312,26 +319,26 @@ class DocSearchDB:
                     "due_date": result.get("due_date"),
                     "location": result.get("location"),
                     "file_url": result.get("file_url"),
-                    "file_name": meta_dict.get("file_name"),
+                    "file_name": meta_dict.get("file_name") if meta_dict else None,
                     "ui_data": result.get("ui_data"),
                     "meta": meta_dict,
                     "date_signals": date_signals,
-                    "ix_search_dates": result.get("ix_search_dates") or [],
+                    "ix_search_dates": result.get("ix_search_dates"),
                     "indexed_at": result.get("indexed_at"),
                     "document_date": document_date,
-                    "document_body": "",
+                    "document_body": None,
                     "chunk_content": result.get("best_chunk_text"),
                     "chunk_id": result.get("best_chunk_id"),
                     "chunk_index": result.get("best_chunk_index"),
                     "chunk_type": result.get("best_chunk_type"),
                     # 検索側の合成スコア。画面に出す類似度とは別に、参照用で残す。
-                    "rpc_hybrid_score": float(result.get("combined_score") or 0),
-                    "similarity": result.get("combined_score", 0),
-                    "raw_similarity": result.get("raw_similarity", 0),
-                    "weighted_similarity": result.get("weighted_similarity", 0),
-                    "fulltext_score": result.get("fulltext_score", 0),
-                    "title_matched": result.get("title_matched", False),
-                    "chunk_score": result.get("combined_score", 0),
+                    "rpc_hybrid_score": float(comb) if comb is not None else None,
+                    "similarity": float(comb) if comb is not None else None,
+                    "raw_similarity": float(raw_s) if raw_s is not None else None,
+                    "weighted_similarity": float(weighted_s) if weighted_s is not None else None,
+                    "fulltext_score": float(ft_s) if ft_s is not None else None,
+                    "title_matched": title_m if title_m is not None else False,
+                    "chunk_score": float(comb) if comb is not None else None,
                     "large_chunk_id": result.get("doc_id"),
                     "small_chunk_id": result.get("best_chunk_id"),
                 }
@@ -343,7 +350,7 @@ class DocSearchDB:
                 if not doc_id:
                     continue
                 if doc_result.get("classification1") == "Googleカレンダー":
-                    doc_result["document_body"] = ""
+                    doc_result["document_body"] = None
                     doc_result["index_chunks_all"] = []
                     doc_result["max_chunk_vector_similarity"] = None
                     continue
@@ -356,12 +363,12 @@ class DocSearchDB:
                         .execute()
                     )
                     if body_response.data:
-                        doc_result["document_body"] = (body_response.data[0].get("body") or "")
+                        doc_result["document_body"] = body_response.data[0].get("body")
                     else:
-                        doc_result["document_body"] = ""
+                        doc_result["document_body"] = None
                 except Exception as e:
-                    logger.warning("body fetch doc_id={}: {}", doc_id, e)
-                    doc_result["document_body"] = ""
+                    logger.error("body fetch doc_id={}: {}", doc_id, e)
+                    raise
 
                 try:
                     chunks_response = (
@@ -400,17 +407,16 @@ class DocSearchDB:
                         doc_result["index_chunks_all"] = []
                         doc_result["max_chunk_vector_similarity"] = None
                 except Exception as e:
-                    logger.warning("chunk fetch doc_id={}: {}", doc_id, e)
-                    doc_result["index_chunks_all"] = []
-                    doc_result["max_chunk_vector_similarity"] = None
+                    logger.error("chunk fetch doc_id={}: {}", doc_id, e)
+                    raise
         else:
             for doc_result in final_results:
                 doc_result["index_chunks_all"] = []
                 doc_result["max_chunk_vector_similarity"] = None
 
         for doc in final_results:
-            rpc = float(doc.get("rpc_hybrid_score", doc.get("similarity", 0)) or 0)
-            doc["rpc_hybrid_score"] = rpc
+            rpc = doc.get("rpc_hybrid_score")
+            doc["rpc_hybrid_score"] = float(rpc) if rpc is not None else None
             mcv = doc.get("max_chunk_vector_similarity")
             if mcv is not None:
                 try:

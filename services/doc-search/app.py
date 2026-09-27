@@ -462,17 +462,11 @@ def _assemble_search_query_with_llm(
                 lines.pop()
             raw_out = "\n".join(lines).strip()
         text = raw_out
+    else:
+        err = response.get("error", "不明なエラー")
+        raise RuntimeError(f"検索文統合 LLM の呼び出しに失敗しました: {err}")
     if not text:
-        print("[ERROR] 検索文統合 LLM が空を返したため機械連結に切り替え", flush=True)
-        return _assemble_search_query_mechanical(
-            original_query=original_query,
-            reading_context_block=rc_block,
-            date_range_literal=date_range_literal,
-            llm_enriched_query=llm_enriched_query,
-            calendar_rows=calendar_rows,
-            query_type_info=query_type_info,
-            intent_spec=intent_spec if isinstance(intent_spec, dict) else {},
-        )
+        raise RuntimeError("検索文統合 LLM の出力が空です")
     return _apply_mandatory_search_query_range(text, date_range_literal)
 
 
@@ -505,7 +499,7 @@ def _llm_question_with_calendar_premise(query_for_llm: str, refined_query: str) 
 
 def _calendar_row_date_str(row: Dict[str, Any]) -> str:
     """カレンダー行の代表日（YYYY-MM-DD）を返す。取れない場合は空文字。"""
-    raw = row.get("start_at") or row.get("post_at") or row.get("due_date")
+    raw = row.get("start_at")
     if raw is None:
         return ""
     if isinstance(raw, datetime):
@@ -567,8 +561,6 @@ def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, 
                 )
         else:
             cc = (doc.get("chunk_content") or "").strip()
-            if not cc and doc.get("title"):
-                cc = str(doc.get("title") or "").strip()
             if cc or doc.get("source") == "Googleカレンダー":
                 cid_raw = doc.get("chunk_id")
                 flat.append(
@@ -638,7 +630,7 @@ def _inject_calendar_premise_into_query(
 
 def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
     """09_unified_documents のカレンダー行を検索結果形式へ変換。"""
-    raw_date = row.get("start_at") or row.get("post_at")
+    raw_date = row.get("start_at")
     document_date = raw_date[:10] if isinstance(raw_date, str) and len(raw_date) >= 10 else None
     return {
         "id": row.get("id"),
@@ -656,17 +648,17 @@ def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
         "ui_data": row.get("ui_data"),
         "meta": row.get("meta"),
         "document_date": document_date,
-        "ix_search_dates": row.get("ix_search_dates") or [],
+        "ix_search_dates": row.get("ix_search_dates"),
         "chunk_content": row.get("snippet") or None,
         "chunk_id": None,
         "chunk_index": None,
         "chunk_type": "calendar_row",
-        "document_body": "",
-        "similarity": 1.0,
-        "rpc_hybrid_score": 1.0,
+        "document_body": None,
+        "similarity": None,
+        "rpc_hybrid_score": None,
         "max_chunk_vector_similarity": None,
         "similarity_basis": "calendar_machine",
-        "final_score": 1.0,
+        "final_score": None,
         "is_date_matched": True,
     }
 
@@ -998,8 +990,10 @@ def generate_answer():
 
         data = request.get_json()
         query = data.get('query', '')
-        documents = data.get('documents') or []
-        flow_id = data.get('flow', 'single-25-lite')
+        documents = data.get('documents')
+        flow_id = data.get('flow')
+        if not flow_id:
+            return jsonify({'success': False, 'error': 'flow は必須です'}), 400
         max_context_chars = int(data.get('max_context_chars') or 30000)
         persons    = data.get('persons', [])
         sources    = data.get('sources', [])
@@ -1017,7 +1011,10 @@ def generate_answer():
         request_id = str(_uuid.uuid4())
 
         from docsearch.models import ResearchFlow
-        flow_config = ResearchFlow.get_flow(flow_id)
+        try:
+            flow_config = ResearchFlow.get_flow(flow_id)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
         steps = flow_config.get('steps')
         rounds = flow_config.get('rounds', 1)
 
@@ -1042,8 +1039,9 @@ def generate_answer():
                 person_names=selected_persons,
                 log_context={'app': 'doc-search', 'stage': 'search-refine', 'session_id': request_id},
             )
-            llm_enriched_query = refined.get("query", query)
-            llm_enriched_query = llm_enriched_query if isinstance(llm_enriched_query, str) else query
+            llm_enriched_query = refined.get("query")
+            if not isinstance(llm_enriched_query, str) or not llm_enriched_query.strip():
+                return jsonify({'success': False, 'error': 'クエリ精緻化（Step0）から有効なクエリが得られませんでした'}), 500
             date_range = refined.get("date_range", "")
             intent_spec = refined.get("intent_spec")
             if not isinstance(intent_spec, dict):
@@ -1162,68 +1160,17 @@ def generate_answer():
 
         llm_prompt_trace: List[Dict[str, Any]] = []
 
-        # フロー別実行
-        if rounds == 1:
-            # 1段: 回答生成+Evidence同時
-            print(f"[INFO] 1段実行 ({steps[0]})", flush=True)
-            answer, p1 = _answer_1step(
-                llm_client, steps[0], ordered_rag_blob,
-                log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
-            )
-            llm_prompt_trace.append(
-                {"stage": "回答+Evidence（1段）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
-            )
-
-        elif rounds == 2:
-            # 2段: Evidence整理 → 回答生成
-            step1_limit = int(max_context_chars * 0.33)
-            print(f"[INFO] 2段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
-            evidence_list, p1 = _evidence_1step(
-                llm_client, steps[0], ordered_rag_blob, step1_limit,
-                log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
-            )
-            llm_prompt_trace.append(
-                {"stage": "Evidence抽出（2段・Step1）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
-            )
-            print(f"[INFO] 2段Step2 ({steps[1]}): 内容依存", flush=True)
-            answer, p2 = _answer_from_evidence(
-                llm_client, steps[1], answer_llm_query, evidence_list,
-                log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
-            )
-            llm_prompt_trace.append(
-                {"stage": "回答生成（2段・Step2）", "model": steps[1], "prompt": p2, "prompt_chars": len(p2)}
-            )
-
-        else:
-            # 3段: Evidence抽出 → 論点整理 → 最終回答
-            step1_limit = int(max_context_chars * 0.4)
-            print(f"[INFO] 3段Step1 ({steps[0]}): →{step1_limit}字上限", flush=True)
-            step1_output, p1 = _compress_step1(
-                llm_client, steps[0], ordered_rag_blob, step1_limit,
-                log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
-            )
-            llm_prompt_trace.append(
-                {"stage": "Evidenceノート（3段・Step1）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
-            )
-
-            step2_limit = int(step1_limit * 0.33)
-            print(f"[INFO] 3段Step2 ({steps[1]}): →{step2_limit}字上限", flush=True)
-            step2_output, p2 = _compress_step2(
-                llm_client, steps[1], answer_llm_query, step1_output, step2_limit,
-                log_context={'app': 'doc-search', 'stage': 'search-step2', 'session_id': request_id},
-            )
-            llm_prompt_trace.append(
-                {"stage": "論点整理（3段・Step2）", "model": steps[1], "prompt": p2, "prompt_chars": len(p2)}
-            )
-
-            print(f"[INFO] 3段Step3 ({steps[2]}): 内容依存", flush=True)
-            answer, p3 = _compress_step3(
-                llm_client, steps[2], answer_llm_query, step2_output,
-                log_context={'app': 'doc-search', 'stage': 'search-step3', 'session_id': request_id},
-            )
-            llm_prompt_trace.append(
-                {"stage": "最終回答（3段・Step3）", "model": steps[2], "prompt": p3, "prompt_chars": len(p3)}
-            )
+        # フロー別実行（単独1段のみサポート）
+        if rounds != 1 or not steps:
+            raise ValueError(f"未対応のフロー構成です: rounds={rounds}, steps={steps}")
+        print(f"[INFO] 1段実行 ({steps[0]})", flush=True)
+        answer, p1 = _answer_1step(
+            llm_client, steps[0], ordered_rag_blob,
+            log_context={'app': 'doc-search', 'stage': 'search-step1', 'session_id': request_id},
+        )
+        llm_prompt_trace.append(
+            {"stage": "回答+Evidence（1段）", "model": steps[0], "prompt": p1, "prompt_chars": len(p1)}
+        )
 
         if not answer:
             return jsonify({'success': False, 'error': '回答生成に失敗しました'}), 500
@@ -1466,8 +1413,10 @@ def _regenerate_step0_dates_after_failure(
         print(f"[WARN] Step0 date retry: JSON parse failed: {e}", flush=True)
         return None
 
-    q_out = obj.get("query", failed_step0.get("query", original_query))
-    q_out = q_out if isinstance(q_out, str) else str(original_query)
+    q_out = obj.get("query")
+    if not isinstance(q_out, str) or not q_out.strip():
+        print("[WARN] Step0 date retry: returned JSON missing valid query", flush=True)
+        return None
     dr_out = obj.get("date_range", "")
     dr_out = dr_out.strip() if isinstance(dr_out, str) else ""
     dr_out = _normalize_week_range_by_rule(
@@ -1564,79 +1513,70 @@ def _refine_query(
         content = response.get('content', '').strip()
         # JSONコードブロックを除去
         content = content.replace('```json', '').replace('```', '').strip()
-        try:
-            result = _json.loads(content)
-            q = result.get("query", query)
-            q = q if isinstance(q, str) else query
-            dr = result.get("date_range", "")
-            dr = dr.strip() if isinstance(dr, str) else ""
+        result = _json.loads(content)
+        q = result.get("query")
+        if not isinstance(q, str) or not q.strip():
+            raise RuntimeError("Step0 の応答に有効な query が含まれていません")
+        dr = result.get("date_range", "")
+        dr = dr.strip() if isinstance(dr, str) else ""
+        dr = _normalize_week_range_by_rule(
+            query=query,
+            today=today,
+            date_range=dr,
+        )
+        raw_spec = result.get("intent_spec")
+        if isinstance(raw_spec, str):
+            try:
+                raw_spec = _json.loads(raw_spec)
+            except Exception as e:
+                raise ValueError(f"intent_spec の JSON 解析に失敗しました: {e}") from e
+        if not isinstance(raw_spec, dict):
+            raw_spec = {}
+        cal = ""
+        if isinstance(raw_spec, dict):
+            cal = (raw_spec.get("calendar_primary_range") or "").strip()
+        if not dr and cal and ".." in cal:
             dr = _normalize_week_range_by_rule(
                 query=query,
                 today=today,
-                date_range=dr,
+                date_range=cal,
             )
-            raw_spec = result.get("intent_spec")
-            if isinstance(raw_spec, str):
-                try:
-                    raw_spec = _json.loads(raw_spec)
-                except Exception:
-                    raw_spec = {}
-            cal = ""
-            if isinstance(raw_spec, dict):
-                cal = (raw_spec.get("calendar_primary_range") or "").strip()
-            if not dr and cal and ".." in cal:
-                dr = _normalize_week_range_by_rule(
-                    query=query,
-                    today=today,
-                    date_range=cal,
-                )
-            lit = _canonical_date_range_literal(dr)
-            if lit:
-                dr = lit
-            lit_dr = _canonical_date_range_literal(dr)
-            cal_chk = ""
-            if isinstance(raw_spec, dict):
-                cal_chk = (raw_spec.get("calendar_primary_range") or "").strip()
-            bad_main = bool(dr.strip()) and not lit_dr
-            bad_cal_only = (not dr.strip()) and bool(cal_chk) and not _canonical_date_range_literal(cal_chk)
-            if bad_main or bad_cal_only:
-                # 日付の LLM によるやり直しは 2 回以上はしない（このブロックの 1 回が再実行の上限）
-                snap = {
-                    "query": q,
-                    "date_range": dr,
-                    "intent_spec": dict(raw_spec) if isinstance(raw_spec, dict) else {},
-                }
-                fixed = _regenerate_step0_dates_after_failure(
-                    llm_client,
-                    query,
-                    today,
-                    snap,
-                    selected,
-                    log_context=log_context,
-                )
-                if fixed:
-                    q = fixed["query"]
-                    dr = fixed["date_range"]
-                    intent_spec = fixed["intent_spec"]
-                else:
-                    print(
-                        "[WARN] Step0: date retry failed; clearing date_range and calendar fields in intent",
-                        flush=True,
-                    )
-                    dr = ""
-                    if isinstance(raw_spec, dict):
-                        raw_spec = dict(raw_spec)
-                        raw_spec["calendar_primary_range"] = ""
-                        raw_spec["document_context_range"] = ""
-                        raw_spec["focal_dates"] = []
-                    intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
+        lit = _canonical_date_range_literal(dr)
+        if lit:
+            dr = lit
+        lit_dr = _canonical_date_range_literal(dr)
+        cal_chk = ""
+        if isinstance(raw_spec, dict):
+            cal_chk = (raw_spec.get("calendar_primary_range") or "").strip()
+        bad_main = bool(dr.strip()) and not lit_dr
+        bad_cal_only = (not dr.strip()) and bool(cal_chk) and not _canonical_date_range_literal(cal_chk)
+        if bad_main or bad_cal_only:
+            # 日付の LLM によるやり直しは 2 回以上はしない（このブロックの 1 回が再実行の上限）
+            snap = {
+                "query": q,
+                "date_range": dr,
+                "intent_spec": dict(raw_spec) if isinstance(raw_spec, dict) else {},
+            }
+            fixed = _regenerate_step0_dates_after_failure(
+                llm_client,
+                query,
+                today,
+                snap,
+                selected,
+                log_context=log_context,
+            )
+            if fixed:
+                q = fixed["query"]
+                dr = fixed["date_range"]
+                intent_spec = fixed["intent_spec"]
             else:
-                intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
-            return {"query": q, "date_range": dr, "intent_spec": intent_spec}
-        except Exception:
-            pass
-    sp = _normalize_intent_spec_dict({}, query, "")
-    return {"query": query, "date_range": "", "intent_spec": sp}
+                raise RuntimeError("Step0: date retry に失敗しました")
+        else:
+            intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
+        return {"query": q, "date_range": dr, "intent_spec": intent_spec}
+    else:
+        err = response.get('error', '不明なエラー')
+        raise RuntimeError(f"Step0 LLM呼び出し失敗: {err}")
 
 
 def _compress_step1(
@@ -1838,7 +1778,7 @@ def _format_table_to_markdown(table_data: Dict[str, Any]) -> str:
                 if "class_schedules" in schedule:
                     for class_schedule in schedule["class_schedules"]:
                         class_name = class_schedule.get("class", "")
-                        subjects = class_schedule.get("subjects", []) or class_schedule.get("periods", [])
+                        subjects = class_schedule.get("subjects") or []
                         markdown_lines.append(f"  - {class_name}: {', '.join(str(s) for s in subjects)}")
 
         if "agenda_groups" in table_data:
@@ -2010,8 +1950,8 @@ def _normalize_week_range_by_rule(query: str, today: str, date_range: str) -> st
         return date_range
     try:
         base_today = datetime.strptime(_to_halfwidth_digits(str(today).strip()[:10]), "%Y-%m-%d").date()
-    except Exception:
-        base_today = datetime.now().date()
+    except Exception as e:
+        raise ValueError(f"today のパースに失敗しました: {today}") from e
 
     # 来週
     if "来週" in q:
@@ -2085,8 +2025,8 @@ def _resolve_retrieval_date_window(user_query: str, refined_date_range: str, tod
     if re.search(r"(去年|昨年)", q):
         try:
             y = int(str(today)[:4]) - 1
-        except Exception:
-            y = datetime.now().year - 1
+        except Exception as e:
+            raise ValueError(f"today から年の取得に失敗しました: {today}") from e
         return date(y, 1, 1), date(y, 12, 31)
 
     s, e = _parse_date_range_bounds(refined_date_range or "")
@@ -2095,8 +2035,8 @@ def _resolve_retrieval_date_window(user_query: str, refined_date_range: str, tod
 
     try:
         t0 = date.fromisoformat(str(today).strip()[:10])
-    except Exception:
-        t0 = datetime.now().date()
+    except Exception as e:
+        raise ValueError(f"today の日付パースに失敗しました: {today}") from e
     return t0 - timedelta(days=365), t0 + timedelta(days=365)
 
 
@@ -2287,8 +2227,8 @@ def _chunk_stable_key(doc_id: str, ch: Optional[Dict[str, Any]], fallback_suffix
     return f"{doc_id}:{fallback_suffix}"
 
 
-def _chunk_row_similarity(ch: Optional[Dict[str, Any]], doc_fallback: float) -> float:
-    """チャンク行の類似度。chunk_vector_similarity が無ければ文書側のベクトル類似度にフォールバック。"""
+def _chunk_row_similarity(ch: Optional[Dict[str, Any]]) -> Optional[float]:
+    """チャンク行の類似度。chunk_vector_similarity が無ければ None。フォールバック禁止。"""
     if ch:
         v = ch.get("chunk_vector_similarity")
         if v is not None:
@@ -2296,7 +2236,7 @@ def _chunk_row_similarity(ch: Optional[Dict[str, Any]], doc_fallback: float) -> 
                 return float(v)
             except (TypeError, ValueError):
                 pass
-    return doc_fallback
+    return None
 
 
 def _indexed_chunks_ordered_for_context(doc: Dict[str, Any]) -> List[Tuple[Optional[Dict[str, Any]], str]]:
@@ -2362,7 +2302,8 @@ def _filter_documents_verified_in_09_unified(db_client: Any, documents: List[Dic
                 if rid:
                     existing.add(rid)
         except Exception as e:
-            print(f"[WARN] 09 実在チェック batch 失敗: {e}", flush=True)
+            print(f"[ERROR] 09 実在チェック batch 失敗: {e}", flush=True)
+            raise
 
     out: List[Dict[str, Any]] = []
     dropped = 0
@@ -2430,17 +2371,17 @@ def _build_context_sections(
         if not did:
             continue
         doc_by_id[did] = doc
-        doc_fallback = _vector_similarity_for_top3_ranking(doc)
         for ch, txt in _indexed_chunks_ordered_for_context(doc):
             t = (txt or "").strip()
             if not t:
                 continue
-            ch_sim = _chunk_row_similarity(ch, doc_fallback)
+            ch_sim = _chunk_row_similarity(ch)
             chunk_events.append((ch_sim, did, doc, ch, t))
 
     doc_best: Dict[str, float] = {}
     for sim, did, *_rest in chunk_events:
-        doc_best[did] = max(doc_best.get(did, float("-inf")), sim)
+        if sim is not None:
+            doc_best[did] = max(doc_best.get(did, float("-inf")), sim)
 
     for doc in text_docs:
         did = str(doc.get("id") or "").strip()
@@ -2473,7 +2414,7 @@ def _build_context_sections(
 
     chunk_events.sort(
         key=lambda x: (
-            -x[0],
+            -x[0] if x[0] is not None else float("inf"),
             x[1],
             (x[3] or {}).get("chunk_index") if x[3] is not None else 10**9,
             str((x[3] or {}).get("id") or "") if x[3] else "",
@@ -2673,7 +2614,7 @@ def extract_schedules():
                     'title':        title,
                     'source':       source,
                     'person':       person_v,
-                    'document_date': (start_at or post_at)[:10] if (start_at or post_at) else None,
+                    'document_date': str(start_at)[:10] if (start_at and len(str(start_at)) >= 10) else None,
                     'schedule_type': 'calendar_event',
                     'schedule_data': {
                         'start_at': doc.get('start_at'),
@@ -2698,7 +2639,7 @@ def extract_schedules():
                         'title':        title,
                         'source':       source,
                         'person':       person_v,
-                        'document_date': (post_at or start_at)[:10] if (post_at or start_at) else None,
+                        'document_date': str(post_at)[:10] if (post_at and len(str(post_at)) >= 10) else None,
                         'schedule_type': 'section',
                         'schedule_data': {
                             'title':   sec_title,
@@ -2721,7 +2662,7 @@ def extract_schedules():
                         'title':        title,
                         'source':       source,
                         'person':       person_v,
-                        'document_date': (post_at or start_at)[:10] if (post_at or start_at) else None,
+                        'document_date': str(post_at)[:10] if (post_at and len(str(post_at)) >= 10) else None,
                         'schedule_type': 'g21_article',
                         'schedule_data': {
                             'title':   sec_title,
@@ -2731,10 +2672,10 @@ def extract_schedules():
 
         print(f"[DEBUG] 抽出されたスケジュール: {len(schedules)} 件")
 
-        # 日付順にソート
+        # 日付順にソート（None は末尾）
         schedules_sorted = sorted(
             schedules,
-            key=lambda x: x.get('document_date') or '9999-12-31'
+            key=lambda x: (x.get('document_date') is None, x.get('document_date') or '')
         )
 
         return jsonify({
@@ -2860,7 +2801,10 @@ def debug_search_raw():
     """実際のembeddingで unified_search_v2 を直接テストするデバッグエンドポイント"""
     try:
         db_client, llm_client = get_clients()
-        query = request.args.get('q', '今週の予定は？')
+        query = request.args.get('q')
+        if not query or not query.strip():
+            return jsonify({'success': False, 'error': 'クエリパラメータ q は必須です'}), 400
+        query = query.strip()
 
         # 実際のembeddingを生成
         embedding = llm_client.generate_embedding(query)
