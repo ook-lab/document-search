@@ -1,7 +1,18 @@
 import os
 import sys
+import time
+import json
 import logging
+import threading
+from typing import Any, Dict, List
 from flask import Flask, render_template, request, jsonify
+
+try:
+    from google.oauth2 import id_token
+    from google.auth.transport import requests as google_auth_requests
+except ImportError:
+    id_token = None
+    google_auth_requests = None
 
 # ワークスペースルートをパスに追加
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +24,8 @@ from standalone import (
     RagServiceDB,
     fetch_pending_search_data_prep_docs,
 )
+
+batch_vectorize_lock = threading.Lock()
 
 
 def resolve_pipeline_lab_base() -> str:
@@ -96,15 +109,55 @@ def _run_search_index_register():
         return jsonify({'success': False, 'error': 'System dependencies not loaded'}), 500
 
     indexer = IndexerClass()
-    success, err_msg = indexer.process_document(
-        unified_doc_id or None,
-        raw_table=raw_table or None,
-        raw_id=raw_id or None,
-    )
+    try:
+        success, err_msg = indexer.process_document(
+            unified_doc_id or None,
+            raw_table=raw_table or None,
+            raw_id=raw_id or None,
+        )
+    except Exception as e:
+        success = False
+        err_msg = str(e)
 
     if success:
+        clr_ok, clr_err = indexer.clear_vectorize_error(
+            raw_table=raw_table or None,
+            raw_id=raw_id or None,
+            doc_id=unified_doc_id or None,
+        )
+        if not clr_ok:
+            logger.error(
+                "Failed to clear vectorize error in DB (manual process): raw_table=%s, raw_id=%s, doc_id=%s: %s",
+                raw_table, raw_id, unified_doc_id, clr_err
+            )
+            return jsonify({
+                'success': True,
+                'raw_table': raw_table or None,
+                'raw_id': raw_id or None,
+                'unified_doc_id': unified_doc_id or None,
+                'clear_error': clr_err or "エラー理由なし（clear_vectorize_error の契約違反）",
+            })
         return jsonify({'success': True})
-    return jsonify({'success': False, 'error': err_msg or 'Processing failed'})
+
+    failure_reason = err_msg or "失敗理由なし（process_document の契約違反）"
+    rec_ok, rec_err = indexer.record_vectorize_error(
+        raw_table=raw_table or None,
+        raw_id=raw_id or None,
+        error_message=failure_reason,
+        doc_id=unified_doc_id or None,
+    )
+    if not rec_ok:
+        logger.error(
+            "Failed to record vectorize error to DB (manual process): raw_table=%s, raw_id=%s, doc_id=%s: %s",
+            raw_table, raw_id, unified_doc_id, rec_err
+        )
+        return jsonify({
+            'success': False,
+            'error': failure_reason,
+            'record_error': f"Failed to record error to DB: {rec_err}",
+        })
+
+    return jsonify({'success': False, 'error': failure_reason})
 
 
 def _run_date_signals_single():
@@ -125,7 +178,7 @@ def _run_date_signals_single():
     )
     if success:
         return jsonify({'success': True})
-    return jsonify({'success': False, 'error': err_msg or 'Processing failed'})
+    return jsonify({'success': False, 'error': err_msg or '失敗理由なし（process_document の契約違反）'})
 
 
 def _run_date_signals_backfill():
@@ -184,6 +237,184 @@ def reset_ix_all():
     indexer = IndexerClass()
     result = indexer.reset_all_ix_vectorized_at(list(RAG_PREPARE_VECTORIZE_RAW_TABLES))
     return jsonify(result)
+
+
+@app.route('/api/batch/vectorize', methods=['POST'])
+def batch_vectorize():
+    # 1. 認証: 環境変数の確認
+    batch_audience = os.environ.get("RAG_PREPARE_BATCH_AUDIENCE")
+    invoker_email = os.environ.get("RAG_PREPARE_BATCH_INVOKER_EMAIL")
+    if not batch_audience or not invoker_email:
+        logger.error(
+            "Batch vectorize: Server configuration error. "
+            "RAG_PREPARE_BATCH_AUDIENCE or RAG_PREPARE_BATCH_INVOKER_EMAIL is not set"
+        )
+        return jsonify({
+            "error": "Server configuration error: RAG_PREPARE_BATCH_AUDIENCE or RAG_PREPARE_BATCH_INVOKER_EMAIL is not configured"
+        }), 500
+
+    # Authorization: Bearer <token> の取得
+    auth_header = request.headers.get("Authorization", "").strip()
+    if not auth_header.startswith("Bearer "):
+        logger.warning("Batch vectorize: Missing or invalid Authorization header")
+        return jsonify({"error": "Missing or invalid Authorization header"}), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        logger.warning("Batch vectorize: Empty bearer token")
+        return jsonify({"error": "Empty bearer token"}), 401
+
+    if id_token is None or google_auth_requests is None:
+        logger.error("Batch vectorize: google-auth library is not available")
+        return jsonify({"error": "Server configuration error: google-auth is not installed"}), 500
+
+    # Google OIDC ID トークン検証
+    try:
+        auth_req = google_auth_requests.Request()
+        id_info = id_token.verify_oauth2_token(token, auth_req, audience=batch_audience)
+    except Exception as e:
+        logger.warning("Batch vectorize: Token verification failed: %s", e)
+        return jsonify({"error": f"Invalid token: {e}"}), 401
+
+    if not id_info.get("email_verified"):
+        logger.warning("Batch vectorize: Token email is not verified")
+        return jsonify({"error": "Forbidden: email not verified"}), 403
+
+    token_email = id_info.get("email")
+    if token_email != invoker_email:
+        logger.warning(
+            "Batch vectorize: Token email '%s' does not match allowed invoker '%s'",
+            token_email, invoker_email
+        )
+        return jsonify({"error": "Forbidden: email mismatch"}), 403
+
+    # 2. 同時実行防止: プロセス内ロック
+    if not batch_vectorize_lock.acquire(blocking=False):
+        logger.warning("Batch vectorize: Another batch process is already running")
+        return jsonify({"error": "Conflict: another batch vectorize job is already running"}), 409
+
+    try:
+        start_time = time.monotonic()
+        IndexerClass, DbClass = get_indexer_tools()
+        if not IndexerClass or not DbClass:
+            return jsonify({"error": "System dependencies not loaded"}), 500
+
+        db = DbClass()
+        raw_tables = list(RAG_PREPARE_VECTORIZE_RAW_TABLES)
+        all_docs, list_err = fetch_pending_search_data_prep_docs(
+            db.client, raw_tables, include_vectorized=False
+        )
+        if list_err:
+            logger.error("Batch vectorize: Failed to fetch pending docs: %s", list_err)
+            return jsonify({"error": f"Failed to fetch pending docs: {list_err}"}), 500
+
+        # 自動処理の対象: 画面で『ベクトル化登録』ボタンが押せて未登録の文書と完全に同じ条件
+        # （fetch_pending_search_data_prep_docs の結果で、row_error なし、display_segment != 'pending_md'、is_vectorized False）
+        # に加え、ix_vectorize_error が NULL のもの。
+        candidate_docs = [
+            d for d in all_docs
+            if not d.get("row_error")
+            and d.get("display_segment") != "pending_md"
+            and not d.get("is_vectorized")
+            and not d.get("ix_vectorize_error")
+        ]
+        candidate_count = len(candidate_docs)
+
+        MAX_DOCS = 20
+        MAX_DURATION_SEC = 180.0
+
+        batch_targets = candidate_docs[:MAX_DOCS]
+        target_count = len(batch_targets)
+
+        indexer = IndexerClass()
+        processed_count = 0
+        success_count = 0
+        failures: List[Dict[str, Any]] = []
+        clear_errors: List[Dict[str, Any]] = []
+        timed_out_remaining = 0
+
+        for i, doc in enumerate(batch_targets):
+            # 開始から180秒を超えたら次の文書に進まず打ち切る（残りは次回）
+            elapsed = time.monotonic() - start_time
+            if elapsed > MAX_DURATION_SEC:
+                logger.warning(
+                    "Batch vectorize: Execution timed out after %.2f seconds (limit %s s). Stopping before index %d.",
+                    elapsed, MAX_DURATION_SEC, i
+                )
+                timed_out_remaining = len(batch_targets) - i
+                break
+
+            processed_count += 1
+            u_id = doc.get("unified_doc_id")
+            r_table = doc.get("raw_table")
+            r_id = doc.get("raw_id")
+
+            try:
+                success, err_msg = indexer.process_document(
+                    u_id or None,
+                    raw_table=r_table or None,
+                    raw_id=r_id or None,
+                )
+            except Exception as e:
+                success = False
+                err_msg = str(e)
+
+            if success:
+                success_count += 1
+                clr_ok, clr_err = indexer.clear_vectorize_error(
+                    raw_table=r_table or None,
+                    raw_id=r_id or None,
+                    doc_id=u_id or None,
+                )
+                if not clr_ok:
+                    logger.error(
+                        "Batch vectorize: Failed to clear error in DB for %s/%s: %s",
+                        r_table, r_id, clr_err
+                    )
+                    clear_errors.append({
+                        "raw_table": r_table,
+                        "raw_id": r_id,
+                        "clear_error": clr_err or "エラー理由なし（clear_vectorize_error の契約違反）",
+                    })
+            else:
+                fail_reason = err_msg or "失敗理由なし（process_document の契約違反）"
+                rec_ok, rec_err = indexer.record_vectorize_error(
+                    raw_table=r_table or None,
+                    raw_id=r_id or None,
+                    error_message=fail_reason,
+                    doc_id=u_id or None,
+                )
+                fail_item: Dict[str, Any] = {
+                    "raw_table": r_table,
+                    "raw_id": r_id,
+                    "reason": fail_reason,
+                }
+                if not rec_ok:
+                    logger.error(
+                        "Batch vectorize: Failed to record error to DB for %s/%s: %s",
+                        r_table, r_id, rec_err
+                    )
+                    fail_item["record_error"] = f"Failed to record error to DB: {rec_err}"
+                failures.append(fail_item)
+
+        total_elapsed = round(time.monotonic() - start_time, 2)
+        summary = {
+            "candidate_count": candidate_count,
+            "target_count": target_count,
+            "processed_count": processed_count,
+            "success_count": success_count,
+            "failure_count": len(failures),
+            "failures": failures,
+            "clear_errors": clear_errors,
+            "timed_out_remaining": timed_out_remaining,
+            "elapsed_seconds": total_elapsed,
+        }
+
+        logger.info("[RAG_BATCH_SUMMARY] %s", json.dumps(summary, ensure_ascii=False))
+        return jsonify(summary), 200
+
+    finally:
+        batch_vectorize_lock.release()
 
 
 @app.route('/api/health', methods=['GET'])

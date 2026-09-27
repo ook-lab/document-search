@@ -395,6 +395,8 @@ class RagPrepareSearchIndexer:
             "doc_id": doc_id,
             "ix_vectorized_at": now_iso,
             "updated_at": now_iso,
+            "ix_vectorize_error": None,
+            "ix_vectorize_error_at": None,
         }
         upd = (
             self.db.client.table(UD_META_TABLE)
@@ -413,8 +415,106 @@ class RagPrepareSearchIndexer:
                 "doc_id": doc_id,
                 "ix_vectorized_at": now_iso,
                 "updated_at": now_iso,
+                "ix_vectorize_error": None,
+                "ix_vectorize_error_at": None,
             }
         ).select("raw_id").execute()
+
+    def record_vectorize_error(
+        self,
+        *,
+        raw_table: Optional[str],
+        raw_id: Optional[str],
+        error_message: str,
+        doc_id: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """09_unified_documents_meta にベクトル化失敗情報 (ix_vectorize_error, ix_vectorize_error_at) を記録する。"""
+        if not raw_table or not raw_id:
+            if doc_id:
+                try:
+                    ud_row = (
+                        self.db.client.table("09_unified_documents")
+                        .select("raw_table, raw_id")
+                        .eq("id", str(doc_id))
+                        .maybe_single()
+                        .execute()
+                    )
+                    if ud_row.data:
+                        raw_table = ud_row.data.get("raw_table")
+                        raw_id = ud_row.data.get("raw_id")
+                except Exception as e:
+                    return False, f"09_unified_documents から raw_table/raw_id を解決できませんでした: {e}"
+        if not raw_table or not raw_id:
+            return False, "raw_table と raw_id が不明なためエラーを記録できません"
+
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            upd_cols: Dict[str, Any] = {
+                "ix_vectorize_error": str(error_message),
+                "ix_vectorize_error_at": now_iso,
+                "updated_at": now_iso,
+            }
+            upd = (
+                self.db.client.table(UD_META_TABLE)
+                .update(upd_cols)
+                .eq("raw_table", str(raw_table))
+                .eq("raw_id", str(raw_id))
+                .select("raw_id")
+                .execute()
+            )
+            if upd.data:
+                return True, None
+
+            ins_cols: Dict[str, Any] = {
+                "raw_table": str(raw_table),
+                "raw_id": str(raw_id),
+                "ix_vectorize_error": str(error_message),
+                "ix_vectorize_error_at": now_iso,
+                "updated_at": now_iso,
+            }
+            self.db.client.table(UD_META_TABLE).insert(ins_cols).select("raw_id").execute()
+            return True, None
+        except Exception as e:
+            logger.error("record_vectorize_error failed: %s", e, exc_info=True)
+            return False, str(e)
+
+    def clear_vectorize_error(
+        self,
+        *,
+        raw_table: Optional[str],
+        raw_id: Optional[str],
+        doc_id: Optional[str] = None,
+    ) -> tuple[bool, Optional[str]]:
+        """09_unified_documents_meta の ix_vectorize_error, ix_vectorize_error_at をクリアする。"""
+        if not raw_table or not raw_id:
+            if doc_id:
+                try:
+                    ud_row = (
+                        self.db.client.table("09_unified_documents")
+                        .select("raw_table, raw_id")
+                        .eq("id", str(doc_id))
+                        .maybe_single()
+                        .execute()
+                    )
+                    if ud_row.data:
+                        raw_table = ud_row.data.get("raw_table")
+                        raw_id = ud_row.data.get("raw_id")
+                except Exception as e:
+                    return False, f"09_unified_documents から raw_table/raw_id を解決できませんでした: {e}"
+        if not raw_table or not raw_id:
+            return False, "raw_table と raw_id が不明なためエラーをクリアできません"
+
+        try:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            self.db.client.table(UD_META_TABLE).update({
+                "ix_vectorize_error": None,
+                "ix_vectorize_error_at": None,
+                "updated_at": now_iso,
+            }).eq("raw_table", str(raw_table)).eq("raw_id", str(raw_id)).execute()
+            return True, None
+        except Exception as e:
+            logger.error("clear_vectorize_error failed: %s", e, exc_info=True)
+            return False, str(e)
 
     def _resolve_or_create_unified_document(
         self,

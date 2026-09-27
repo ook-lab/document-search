@@ -282,6 +282,11 @@
                                 ⚠️ {{ doc.row_error }}
                             </div>
                             {% endif %}
+                            {% if doc.ix_vectorize_error %}
+                            <div class="vectorize-error-msg" style="margin-top:6px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:12px;font-weight:600;">
+                                ⚠️ ベクトル化失敗: {{ doc.ix_vectorize_error }}{% if doc.ix_vectorize_error_at %}（{{ doc.ix_vectorize_error_at }}）{% endif %}
+                            </div>
+                            {% endif %}
                             <div class="meta-id">
                                 raw {{ doc.raw_table }} / {{ doc.raw_id[:8] }}…
                                 {% if doc.unified_doc_id %}<br>09 id {{ doc.unified_doc_id }}{% endif %}
@@ -438,8 +443,12 @@
 
                 if (data.success) {
                     btn.innerText = 'ベクトル化済';
+                    const row = document.getElementById(`row-${domRowId}`);
+                    if (row) {
+                        const errMsg = row.querySelector('.vectorize-error-msg');
+                        if (errMsg) errMsg.remove();
+                    }
                     setTimeout(() => {
-                        const row = document.getElementById(`row-${domRowId}`);
                         if (row) row.style.opacity = '0.35';
                     }, 800);
                 } else {

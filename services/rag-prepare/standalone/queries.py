@@ -156,11 +156,13 @@ def fetch_pending_search_data_prep_docs(
     tables = list(raw_tables)
     if not tables:
         return [], None
-
     try:
         q = (
             db_client.table(UD_META_TABLE)
-            .select("raw_table, raw_id, doc_id, ix_vectorized_at, ix_skip_pdf, updated_at")
+            .select(
+                "raw_table, raw_id, doc_id, ix_vectorized_at, ix_skip_pdf, updated_at, "
+                "ix_vectorize_error, ix_vectorize_error_at"
+            )
             .in_("raw_table", tables)
             .order("updated_at", desc=True)
             .limit(meta_limit)
@@ -360,6 +362,8 @@ def fetch_pending_search_data_prep_docs(
         row_id = dom_row_id
 
         ix_vectorized_at = m.get("ix_vectorized_at")
+        ix_vectorize_error = m.get("ix_vectorize_error")
+        ix_vectorize_error_at = m.get("ix_vectorize_error_at")
 
         enriched = {
             "id": dom_row_id,
@@ -378,6 +382,8 @@ def fetch_pending_search_data_prep_docs(
             "has_09_structured": has_structured_09,
             "has_09_doc": bool(unified_doc_id),
             "is_vectorized": bool(ix_vectorized_at),
+            "ix_vectorize_error": ix_vectorize_error,
+            "ix_vectorize_error_at": ix_vectorize_error_at,
             "classification1": c1,
             "classification2": c2,
             "classification3": c3,
