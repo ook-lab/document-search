@@ -1,157 +1,47 @@
 -- 20260927000002_search_uses_gemini_embedding_v2.sql
--- unified_search_v2: ベクトル評価を s.embedding から s.embedding_v2 (Gemini gemini-embedding-2, 1536次元) へ切り替え。
+-- unified_search_v2 のベクトル評価を embedding（OpenAI）から embedding_v2（Gemini gemini-embedding-2, 1536次元）へ切り替える。
+-- 本番の unified_search_v2 はリポジトリ内のどの定義（v15 等）とも一致しない（classification1..3 を返す手修正版）ため、
+-- 本番の現行定義を pg_get_functiondef で取得し、ベクトル比較の列名だけを置換して再作成する。それ以外は一切変更しない。
+-- 前提が崩れている（関数が1つでない／置換対象が無い／既に embedding_v2）場合は例外で中止し、何も変更しない。
 -- 削除系文（DROP FUNCTION / DROP COLUMN / DROP TABLE / DELETE 等）は含めない。
 
 -- 1. embedding_v2 に ivfflat (vector_cosine_ops, lists=100) インデックスを作成
+-- 既定の maintenance_work_mem (32MB) では ivfflat 作成に不足する（61MB 必要）ため、このトランザクション内だけ引き上げる
+SET LOCAL maintenance_work_mem = '128MB';
 CREATE INDEX IF NOT EXISTS idx_10_ix_embedding_v2
 ON "10_ix_search_index"
 USING ivfflat (embedding_v2 vector_cosine_ops)
 WITH (lists = 100);
 
--- 2. unified_search_v2 を CREATE OR REPLACE で再定義（s.embedding -> s.embedding_v2 以外は完全に同一）
-CREATE OR REPLACE FUNCTION unified_search_v2(
-    query_text         TEXT,
-    query_embedding    vector(1536),
-    match_threshold    FLOAT    DEFAULT 0.0,
-    match_count        INT      DEFAULT 10,
-    vector_weight      FLOAT    DEFAULT 0.7,
-    fulltext_weight    FLOAT    DEFAULT 0.3,
-    filter_sources     TEXT[]   DEFAULT NULL,
-    filter_chunk_types TEXT[]   DEFAULT NULL,
-    filter_persons     TEXT[]   DEFAULT NULL,
-    filter_category    TEXT[]   DEFAULT NULL,
-    filter_date_start  DATE     DEFAULT NULL,
-    filter_date_end    DATE     DEFAULT NULL,
-    calendar_filter_date_start DATE DEFAULT NULL,
-    calendar_filter_date_end   DATE DEFAULT NULL
-)
-RETURNS TABLE (
-    doc_id              UUID,
-    person              TEXT,
-    source              TEXT,
-    category            TEXT,
-    title               TEXT,
-    from_name           TEXT,
-    from_email          TEXT,
-    snippet             TEXT,
-    post_at             TIMESTAMPTZ,
-    start_at            TIMESTAMPTZ,
-    end_at              TIMESTAMPTZ,
-    due_date            DATE,
-    location            TEXT,
-    file_url            TEXT,
-    ui_data             JSONB,
-    meta                JSONB,
-    ix_date_signals     JSONB,
-    ix_search_dates     DATE[],
-    indexed_at          TIMESTAMPTZ,
-    best_chunk_text     TEXT,
-    best_chunk_id       UUID,
-    best_chunk_index    INT,
-    best_chunk_type     TEXT,
-    combined_score      FLOAT,
-    raw_similarity      FLOAT,
-    weighted_similarity FLOAT,
-    fulltext_score      FLOAT,
-    title_matched       BOOLEAN
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+-- 2. 本番の unified_search_v2 を、ベクトル比較の列だけ embedding_v2 に置換して再作成
+DO $$
+DECLARE
+    fn_count  int;
+    def       text;
+    new_def   text;
+    hits      int;
 BEGIN
-    RETURN QUERY
-    WITH chunk_scores AS (
-        SELECT
-            s.id                                                        AS chunk_id,
-            s.doc_id,
-            s.chunk_index,
-            s.chunk_type,
-            s.chunk_text,
-            s.chunk_weight,
-            (1.0 - (s.embedding_v2 <=> query_embedding))::FLOAT         AS raw_sim,
-            0.0::FLOAT                                                   AS ft_score
-        FROM "10_ix_search_index" s
-        INNER JOIN "09_unified_documents" ud ON ud.id = s.doc_id
-        WHERE
-            (ud.source IS DISTINCT FROM 'Googleカレンダー')
-            AND (filter_chunk_types IS NULL OR s.chunk_type = ANY(filter_chunk_types))
-            AND (filter_sources  IS NULL OR s.source    = ANY(filter_sources))
-            AND (filter_persons  IS NULL OR s.person    = ANY(filter_persons))
-            AND (filter_category IS NULL OR ud.category = ANY(filter_category))
-            AND (
-                filter_date_start IS NULL OR filter_date_end IS NULL
-                OR EXISTS (
-                    SELECT 1
-                    FROM unnest(COALESCE(ud.ix_search_dates, ARRAY[]::DATE[])) AS d
-                    WHERE d BETWEEN filter_date_start AND filter_date_end
-                )
-            )
-            AND (1.0 - (s.embedding_v2 <=> query_embedding)) >= match_threshold
-    ),
-    weighted AS (
-        SELECT
-            cs.*,
-            ((vector_weight * cs.raw_sim + fulltext_weight * cs.ft_score)
-             * cs.chunk_weight)::FLOAT                                   AS combined,
-            (cs.chunk_type = 'title')::BOOLEAN                          AS is_title
-        FROM chunk_scores cs
-    ),
-    best_per_doc AS (
-        SELECT DISTINCT ON (w.doc_id)
-            w.doc_id,
-            w.chunk_id      AS best_chunk_id,
-            w.chunk_index   AS best_chunk_index,
-            w.chunk_type    AS best_chunk_type,
-            w.chunk_text    AS best_chunk_text,
-            w.raw_sim       AS raw_similarity,
-            w.combined      AS weighted_similarity,
-            w.ft_score      AS fulltext_score,
-            w.combined      AS combined_score,
-            w.is_title      AS title_matched
-        FROM weighted w
-        ORDER BY w.doc_id, w.combined DESC
-    )
-    SELECT
-        ud.id                              AS doc_id,
-        ud.person,
-        ud.source,
-        ud.category,
-        ud.title,
-        ud.from_name,
-        ud.from_email,
-        ud.snippet,
-        ud.post_at,
-        ud.start_at,
-        ud.end_at,
-        ud.due_date,
-        ud.location,
-        ud.file_url,
-        ud.ui_data,
-        ud.meta,
-        ud.ix_date_signals,
-        ud.ix_search_dates,
-        ud.indexed_at,
-        bp.best_chunk_text::TEXT,
-        bp.best_chunk_id,
-        bp.best_chunk_index,
-        bp.best_chunk_type::TEXT,
-        bp.combined_score,
-        bp.raw_similarity,
-        bp.weighted_similarity,
-        bp.fulltext_score,
-        bp.title_matched
-    FROM best_per_doc bp
-    JOIN "09_unified_documents" ud ON ud.id = bp.doc_id
-    ORDER BY bp.combined_score DESC
-    LIMIT match_count;
-END;
-$$;
+    SELECT count(*) INTO fn_count
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.proname = 'unified_search_v2' AND n.nspname = 'public';
+    IF fn_count <> 1 THEN
+        RAISE EXCEPTION 'public.unified_search_v2 が % 個あります（1個であることが前提）', fn_count;
+    END IF;
 
-REVOKE ALL ON FUNCTION unified_search_v2 FROM PUBLIC;
-REVOKE ALL ON FUNCTION unified_search_v2 FROM anon;
-GRANT EXECUTE ON FUNCTION unified_search_v2 TO service_role;
-GRANT EXECUTE ON FUNCTION unified_search_v2 TO authenticated;
+    SELECT pg_get_functiondef(p.oid) INTO def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.proname = 'unified_search_v2' AND n.nspname = 'public';
 
-COMMENT ON FUNCTION unified_search_v2 IS
-'ハイブリッド検索（Gemini embedding_v2版）: Googleカレンダーは統合しない（機械ヒットのみ）。それ以外は filter_date で ix_search_dates を事前絞り。ベクトル評価には embedding_v2 を使用。';
+    IF position('embedding_v2' IN def) > 0 THEN
+        RAISE EXCEPTION 'unified_search_v2 は既に embedding_v2 を参照しています';
+    END IF;
+
+    hits := (length(def) - length(replace(def, '.embedding <=> query_embedding', ''))) / length('.embedding <=> query_embedding');
+    IF hits = 0 THEN
+        RAISE EXCEPTION 'unified_search_v2 に置換対象 ".embedding <=> query_embedding" がありません';
+    END IF;
+
+    new_def := replace(def, '.embedding <=> query_embedding', '.embedding_v2 <=> query_embedding');
+    EXECUTE new_def;
+    RAISE NOTICE 'unified_search_v2: % 箇所を embedding_v2 に置換して再作成しました', hits;
+END $$;
