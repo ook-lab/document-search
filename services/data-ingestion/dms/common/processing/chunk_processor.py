@@ -4,6 +4,7 @@
 ドキュメントを小チャンクに分割し、embeddingを生成してデータベースに保存する
 """
 
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import asyncio
 from loguru import logger
@@ -109,7 +110,9 @@ class ChunkProcessor:
             # データベースに保存
             chunks_created = 0
             chunks_failed = 0
+            failed_chunks: List[Dict[str, any]] = []
 
+            now_iso = datetime.now(timezone.utc).isoformat()
             for chunk_data in chunks_with_embeddings:
                 if chunk_data.get("embedding"):
                     try:
@@ -120,23 +123,36 @@ class ChunkProcessor:
                             "chunk_text": chunk_text,
                             "chunk_type": "content_small",
                             "chunk_weight": 1.0,
-                            "embedding": chunk_data["embedding"]
+                            "embedding_v2": chunk_data["embedding"],
+                            "embedding_v2_at": now_iso,
                         }).execute()
                         chunks_created += 1
                     except Exception as e:
                         logger.error(f"[ChunkProcessor] Failed to save chunk {chunk_data['chunk_index']}: {e}")
                         chunks_failed += 1
+                        failed_chunks.append({"chunk_index": chunk_data["chunk_index"], "reason": f"DB write error: {e}"})
                 else:
-                    logger.warning(f"[ChunkProcessor] Chunk {chunk_data['chunk_index']} has no embedding, skipping")
+                    logger.error(f"[ChunkProcessor] Chunk {chunk_data['chunk_index']} has no embedding, skipping")
                     chunks_failed += 1
+                    failed_chunks.append({"chunk_index": chunk_data["chunk_index"], "reason": "embedding generation failed"})
 
             logger.info(f"[ChunkProcessor] Document {document_id} processed: {chunks_created} chunks created, {chunks_failed} failed")
+
+            if chunks_failed > 0:
+                return {
+                    "success": False,
+                    "document_id": document_id,
+                    "chunks_created": chunks_created,
+                    "chunks_failed": chunks_failed,
+                    "failed_chunks": failed_chunks,
+                    "error": f"{chunks_failed} chunk(s) failed (embedding or DB write)"
+                }
 
             return {
                 "success": True,
                 "document_id": document_id,
                 "chunks_created": chunks_created,
-                "chunks_failed": chunks_failed
+                "chunks_failed": 0
             }
 
         except Exception as e:

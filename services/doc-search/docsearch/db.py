@@ -356,7 +356,7 @@ class DocSearchDB:
                 try:
                     chunks_response = (
                         self.client.table("10_ix_search_index")
-                        .select("id, chunk_index, chunk_text, chunk_type, chunk_weight, embedding")
+                        .select("id, chunk_index, chunk_text, chunk_type, chunk_weight, embedding_v2")
                         .eq("doc_id", doc_id)
                         .order("chunk_weight", desc=True)
                         .execute()
@@ -366,8 +366,8 @@ class DocSearchDB:
                         qemb = _coerce_embedding_list(embedding)
                         enriched: List[Dict[str, Any]] = []
                         for ch in raw_chunks:
-                            row = {k: v for k, v in ch.items() if k != "embedding"}
-                            cvec = _coerce_embedding_list(ch.get("embedding"))
+                            row = {k: v for k, v in ch.items() if k != "embedding_v2"}
+                            cvec = _coerce_embedding_list(ch.get("embedding_v2"))
                             if qemb and cvec and len(qemb) == len(cvec):
                                 row["chunk_vector_similarity"] = _cosine_similarity(qemb, cvec)
                             else:

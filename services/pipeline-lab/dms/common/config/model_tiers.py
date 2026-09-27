@@ -31,8 +31,8 @@ class ModelTier:
     # Embedding生成
     # LLMClient で tier="embeddings" として使用
     EMBEDDING = {
-        "provider": AIProvider.OPENAI,
-        "model": "text-embedding-3-small",
+        "provider": AIProvider.GEMINI,
+        "model": "gemini-embedding-2",
         "description": "ベクトル検索用Embedding",
         "dimensions": 1536
     }

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import google.generativeai as genai
 from google.generativeai.types import GenerationConfig
+from google import genai as google_genai
+from google.genai import types as genai_types
 from loguru import logger
 from openai import OpenAI
 
@@ -36,7 +39,7 @@ class DocSearchLLM:
         if model_name:
             if "gemini" in model_name.lower():
                 provider = AIProvider.GEMINI
-            elif "gpt" in model_name.lower() or "text-embedding" in model_name.lower():
+            elif "gpt" in model_name.lower():
                 provider = AIProvider.OPENAI
 
         if provider == AIProvider.GEMINI:
@@ -144,12 +147,25 @@ class DocSearchLLM:
 
     def generate_embedding(self, text: str, log_context: Optional[Dict] = None) -> List[float]:
         _ = log_context
-        cfg = get_model_config("embeddings")
-        if not self.openai_client:
-            raise ConnectionError("OpenAI client not initialized for embedding generation.")
-        response = self.openai_client.embeddings.create(
-            model=cfg["model"],
-            input=text,
-            dimensions=cfg.get("dimensions", 1536),
+        if not text or not str(text).strip():
+            raise ValueError("空のテキストはembedding化できません")
+        paid_key = (settings.GOOGLE_AI_PAID_API_KEY or "").strip()
+        if not paid_key:
+            raise ValueError("GOOGLE_AI_PAID_API_KEY is not set")
+        client = google_genai.Client(api_key=paid_key)
+        content_payload = f"task: search result | query: {str(text).strip()}"
+        dimensions = 1536
+        response = client.models.embed_content(
+            model="gemini-embedding-2",
+            contents=content_payload,
+            config=genai_types.EmbedContentConfig(output_dimensionality=dimensions),
         )
-        return response.data[0].embedding
+        if not response.embeddings or len(response.embeddings) != 1:
+            cnt = len(response.embeddings) if response.embeddings else 0
+            raise ValueError(f"Invalid embedding response: expected 1 embedding, got {cnt}")
+        emb = response.embeddings[0]
+        values = getattr(emb, "values", None)
+        if values is None or len(values) != dimensions:
+            dim = len(values) if values else 0
+            raise ValueError(f"Invalid embedding dimensionality: expected {dimensions}, got {dim}")
+        return list(values)

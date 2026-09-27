@@ -187,7 +187,12 @@ class DatabaseClient:
         # Phase 3: owner_id 必須チェック（第三防衛線）
         self._validate_owner_id(table, data)
 
-        # embeddingをPostgreSQLのvector型形式に変換
+        # embedding / embedding_v2 をPostgreSQLのvector型形式に変換
+        if 'embedding_v2' in data and data['embedding_v2'] is not None:
+            embedding_list = data['embedding_v2']
+            if isinstance(embedding_list, list):
+                data = data.copy()
+                data['embedding_v2'] = '[' + ','.join(str(x) for x in embedding_list) + ']'
         if 'embedding' in data and data['embedding'] is not None:
             embedding_list = data['embedding']
             if isinstance(embedding_list, list):
@@ -226,7 +231,12 @@ class DatabaseClient:
         # 新規挿入時に owner_id が必要なため、upsert 前にチェック
         self._validate_owner_id(table, data)
 
-        # embeddingをPostgreSQLのvector型形式に変換
+        # embedding / embedding_v2 をPostgreSQLのvector型形式に変換
+        if 'embedding_v2' in data and data['embedding_v2'] is not None:
+            embedding_list = data['embedding_v2']
+            if isinstance(embedding_list, list):
+                data = data.copy()
+                data['embedding_v2'] = '[' + ','.join(str(x) for x in embedding_list) + ']'
         if 'embedding' in data and data['embedding'] is not None:
             embedding_list = data['embedding']
             if isinstance(embedding_list, list):

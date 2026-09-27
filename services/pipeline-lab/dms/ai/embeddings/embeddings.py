@@ -1,60 +1,70 @@
 """
-Embedding Client (DEPRECATED - OpenAI text-embedding-3-small を使用してください)
-このクラスは後方互換性のために残されていますが、使用は推奨されません。
-代わりに LLMClient.generate_embedding() を使用してください。
+Embedding Client (gemini-embedding-2, 1536次元)
 """
+import os
 from typing import List, Optional
-import httpx
-from openai import OpenAI
-from dms.common.config.settings import settings
+from google import genai
+from google.genai import types
 
 
 class EmbeddingClient:
     """
-    OpenAI text-embedding-3-small を使用したEmbedding生成クライアント (1536次元)
-
-    注意: このクラスは非推奨です。LLMClient.generate_embedding() を使用してください。
+    Gemini gemini-embedding-2 を使用したEmbedding生成クライアント (1536次元)
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.OPENAI_API_KEY
+        self.api_key = (api_key or os.environ.get("GOOGLE_AI_PAID_API_KEY") or "").strip()
         if not self.api_key:
-            raise ValueError("OpenAI API Key が設定されていません")
+            raise ValueError("GOOGLE_AI_PAID_API_KEY is not set")
 
-        self.client = OpenAI(api_key=self.api_key, http_client=httpx.Client(timeout=30.0))
-        self.model_name = "text-embedding-3-small"
+        self.client = genai.Client(api_key=self.api_key)
+        self.model_name = "gemini-embedding-2"
         self.dimensions = 1536
 
     def generate_embedding(self, text: str, task_type: str = "RETRIEVAL_DOCUMENT") -> List[float]:
         """
         Embeddingを生成 (1536次元)
-
-        注意: task_type パラメータは互換性のために残されていますが、使用されません
         """
-        if not text or not text.strip():
+        if not text or not str(text).strip():
             raise ValueError("空のテキストはembedding化できません")
 
-        response = self.client.embeddings.create(
+        clean_text = str(text).strip()
+        if task_type == "RETRIEVAL_DOCUMENT":
+            payload = f"title: none | text: {clean_text}"
+        elif task_type == "RETRIEVAL_QUERY":
+            payload = f"task: search result | query: {clean_text}"
+        else:
+            raise ValueError(f"Invalid task_type: {task_type}. Must be 'RETRIEVAL_DOCUMENT' or 'RETRIEVAL_QUERY'")
+
+        response = self.client.models.embed_content(
             model=self.model_name,
-            input=text,
-            dimensions=self.dimensions
+            contents=payload,
+            config=types.EmbedContentConfig(output_dimensionality=self.dimensions),
         )
 
-        return response.data[0].embedding
+        if not response.embeddings or len(response.embeddings) != 1:
+            cnt = len(response.embeddings) if response.embeddings else 0
+            raise ValueError(f"Invalid embedding response: expected 1 embedding, got {cnt}")
+
+        emb = response.embeddings[0]
+        values = getattr(emb, "values", None)
+        if values is None or len(values) != self.dimensions:
+            dim = len(values) if values else 0
+            raise ValueError(f"Invalid embedding dimensionality: expected {self.dimensions}, got {dim}")
+
+        return list(values)
 
     def generate_embeddings_batch(self, texts: List[str], task_type: str = "RETRIEVAL_DOCUMENT") -> List[List[float]]:
-        """バッチでEmbeddingを生成 (1536次元)"""
+        """バッチでEmbeddingを生成 (1536次元、1リクエスト1テキストで処理、空テキストは例外)"""
         if not texts:
             return []
 
         embeddings = []
         for text in texts:
-            if text and text.strip():
-                embedding = self.generate_embedding(text, task_type)
-                embeddings.append(embedding)
-            else:
-                # OpenAI text-embedding-3-smallは1536次元
-                embeddings.append([0.0] * 1536)
+            if not text or not str(text).strip():
+                raise ValueError("空のテキストはembedding化できません（フォールバック・ゼロベクトル禁止）")
+            embedding = self.generate_embedding(text, task_type)
+            embeddings.append(embedding)
 
         return embeddings
 

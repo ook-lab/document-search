@@ -177,7 +177,7 @@ class LLMClient:
                 provider = AIProvider.CLAUDE
             elif 'gemini' in model_name.lower():
                 provider = AIProvider.GEMINI
-            elif 'gpt' in model_name.lower() or 'text-embedding' in model_name.lower():
+            elif 'gpt' in model_name.lower():
                 provider = AIProvider.OPENAI
 
         if log_context:
@@ -516,46 +516,75 @@ class LLMClient:
         except Exception as e:
             return {"success": False, "error": str(e), "model": model_name, "provider": "openai"}
 
-    def generate_embedding(self, text: str, log_context: Optional[Dict] = None) -> List[float]:
+    def generate_embedding(
+        self,
+        text: str,
+        task_type: str = "RETRIEVAL_DOCUMENT",
+        log_context: Optional[Dict] = None,
+    ) -> List[float]:
         """
-        Embedding生成
+        Embedding生成 (gemini-embedding-2, 1536次元)
 
         Args:
             text: Embeddingを生成するテキスト
+            task_type: タスク種別（RETRIEVAL_DOCUMENT または RETRIEVAL_QUERY）
             log_context: コスト記録コンテキスト（省略可）
 
         Returns:
             1536次元のembeddingベクトル
         """
-        config = get_model_config("embeddings")
+        if not text or not str(text).strip():
+            raise ValueError("空のテキストはembedding化できません")
 
-        if not self.openai_client:
-            raise ConnectionError("OpenAI client not initialized for embedding generation.")
+        paid_key = (os.environ.get("GOOGLE_AI_PAID_API_KEY") or "").strip()
+        if not paid_key:
+            raise ValueError("GOOGLE_AI_PAID_API_KEY is not set")
 
-        # text-embedding-3-smallモデルで1536次元を明示的に指定
-        response = self.openai_client.embeddings.create(
-            model=config["model"],
-            input=text,
-            dimensions=config.get("dimensions", 1536)  # デフォルト1536次元
+        from google import genai
+        from google.genai import types
+
+        clean_text = str(text).strip()
+        if task_type == "RETRIEVAL_DOCUMENT":
+            payload = f"title: none | text: {clean_text}"
+        elif task_type == "RETRIEVAL_QUERY":
+            payload = f"task: search result | query: {clean_text}"
+        else:
+            raise ValueError(f"Invalid task_type: {task_type}. Must be 'RETRIEVAL_DOCUMENT' or 'RETRIEVAL_QUERY'")
+
+        client = genai.Client(api_key=paid_key)
+        dimensions = 1536
+        response = client.models.embed_content(
+            model="gemini-embedding-2",
+            contents=payload,
+            config=types.EmbedContentConfig(output_dimensionality=dimensions),
         )
 
+        if not response.embeddings or len(response.embeddings) != 1:
+            cnt = len(response.embeddings) if response.embeddings else 0
+            raise ValueError(f"Invalid embedding response: expected 1 embedding, got {cnt}")
+
+        emb = response.embeddings[0]
+        values = getattr(emb, "values", None)
+        if values is None or len(values) != dimensions:
+            dim = len(values) if values else 0
+            raise ValueError(f"Invalid embedding dimensionality: expected {dimensions}, got {dim}")
+
         # ログ記録
-        if log_context and hasattr(response, 'usage') and response.usage:
+        if log_context:
             try:
                 from dms.common.ai_cost_logger import log_ai_usage
-                prompt_tokens = getattr(response.usage, 'prompt_tokens', 0) or 0
                 log_ai_usage(
                     app=log_context.get('app', 'unknown'),
                     stage=log_context.get('stage', 'embedding'),
-                    model=config["model"],
-                    prompt_token_count=prompt_tokens,
-                    total_token_count=prompt_tokens,
+                    model="gemini-embedding-2",
+                    prompt_token_count=0,
+                    total_token_count=0,
                     session_id=log_context.get('session_id'),
                 )
             except Exception as _log_err:
                 logger.warning(f"[Embedding] cost log failed: {_log_err}")
 
-        return response.data[0].embedding
+        return list(values)
 
     def generate_with_vision(
         self,

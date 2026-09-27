@@ -7,7 +7,7 @@ google-api-python-client
 google-auth
 google-auth-httplib2
 google-auth-oauthlib
-google-genai>=1.0
+google-genai==2.25.0
 openai>=1.0
 supabase
 pyyaml>=6.0

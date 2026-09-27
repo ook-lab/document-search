@@ -234,12 +234,34 @@ def _chunk(text: str, size: int = 800, overlap: int = 100) -> list[str]:
 
 
 def _embed(chunks: list[str]) -> list[list[float]]:
-    from openai import OpenAI
-    key = os.environ.get("OPENAI_API_KEY")
+    from google import genai
+    from google.genai import types
+    key = (os.environ.get("GOOGLE_AI_PAID_API_KEY") or "").strip()
     if not key:
-        raise RuntimeError("OPENAI_API_KEY not set")
-    r = OpenAI(api_key=key).embeddings.create(model="text-embedding-3-small", input=chunks)
-    return [d.embedding for d in r.data]
+        raise RuntimeError("GOOGLE_AI_PAID_API_KEY not set")
+    client = genai.Client(api_key=key)
+    dimensions = 1536
+    results: list[list[float]] = []
+    for c in chunks:
+        c_str = (c or "").strip()
+        if not c_str:
+            raise ValueError("空のテキストはembedding化できません")
+        payload = f"title: none | text: {c_str}"
+        resp = client.models.embed_content(
+            model="gemini-embedding-2",
+            contents=payload,
+            config=types.EmbedContentConfig(output_dimensionality=dimensions),
+        )
+        if not resp.embeddings or len(resp.embeddings) != 1:
+            cnt = len(resp.embeddings) if resp.embeddings else 0
+            raise ValueError(f"Invalid embedding response: expected 1 embedding, got {cnt}")
+        emb = resp.embeddings[0]
+        values = getattr(emb, "values", None)
+        if values is None or len(values) != dimensions:
+            dim = len(values) if values else 0
+            raise ValueError(f"Invalid embedding dimensionality: expected {dimensions}, got {dim}")
+        results.append(list(values))
+    return results
 
 
 # ===================================================================
@@ -484,6 +506,7 @@ class GmailService:
         if not chunks:
             return
         embs = _embed(chunks)
+        now_iso = datetime.now(timezone.utc).isoformat()
         rows = []
         for i, (c, e) in enumerate(zip(chunks, embs)):
             rows.append({
@@ -494,7 +517,8 @@ class GmailService:
                 "classification3": email.get("category"),
                 "chunk_index": i, "chunk_text": c,
                 "chunk_type": "email_content", "chunk_weight": 1.0,
-                "embedding": "[" + ",".join(str(v) for v in e) + "]",
+                "embedding_v2": "[" + ",".join(str(v) for v in e) + "]",
+                "embedding_v2_at": now_iso,
             })
         for i in range(0, len(rows), 20):
             self.db.client.table("10_ix_search_index").insert(rows[i:i+20]).execute()

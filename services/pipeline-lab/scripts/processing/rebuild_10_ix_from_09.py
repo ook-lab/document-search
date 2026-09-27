@@ -31,39 +31,39 @@ from dms.common.utils.chunking import TextChunker
 from dms.pipeline.stage_k_embedding import StageKEmbedding
 
 
-_OPENAI_EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings"
-
-
 class _EmbeddingOnlyClient:
-    """LLMClient / OpenAI SDK を使わず REST のみで埋め込み（httpx の proxies 不整合を避ける）。"""
+    """Gemini gemini-embedding-2 による埋め込みクライアント。"""
 
     def __init__(self) -> None:
-        key = (settings.OPENAI_API_KEY or "").strip()
+        import os
+        key = (os.environ.get("GOOGLE_AI_PAID_API_KEY") or "").strip()
         if not key:
-            raise RuntimeError("OPENAI_API_KEY が未設定です")
-        self._api_key = key
+            raise RuntimeError("GOOGLE_AI_PAID_API_KEY が未設定です")
+        from google import genai
+        self._client = genai.Client(api_key=key)
+        self._model = "gemini-embedding-2"
+        self._dimensions = 1536
 
-    def generate_embedding(self, text: str, log_context=None):  # noqa: ANN001
-        cfg = get_model_config("embeddings")
-        payload: Dict[str, Any] = {
-            "model": cfg["model"],
-            "input": text,
-        }
-        dims = cfg.get("dimensions")
-        if dims is not None:
-            payload["dimensions"] = dims
-        r = requests.post(
-            _OPENAI_EMBEDDINGS_URL,
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=120,
+    def generate_embedding(self, text: str, log_context=None) -> List[float]:  # noqa: ANN001
+        _ = log_context
+        if not text or not str(text).strip():
+            raise ValueError("空のテキストはembedding化できません")
+        from google.genai import types
+        content_payload = f"title: none | text: {str(text).strip()}"
+        response = self._client.models.embed_content(
+            model=self._model,
+            contents=content_payload,
+            config=types.EmbedContentConfig(output_dimensionality=self._dimensions),
         )
-        r.raise_for_status()
-        data = r.json()
-        return list(data["data"][0]["embedding"])
+        if not response.embeddings or len(response.embeddings) != 1:
+            cnt = len(response.embeddings) if response.embeddings else 0
+            raise ValueError(f"Invalid embedding response: expected 1 embedding, got {cnt}")
+        emb = response.embeddings[0]
+        values = getattr(emb, "values", None)
+        if values is None or len(values) != self._dimensions:
+            dim = len(values) if values else 0
+            raise ValueError(f"Invalid embedding dimensionality: expected {self._dimensions}, got {dim}")
+        return list(values)
 
 
 def _ui_data_dict(ui_data: Any) -> Optional[dict]:

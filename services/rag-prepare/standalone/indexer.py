@@ -138,6 +138,7 @@ class RagPrepareSearchIndexer:
             if self.embedder is None:
                 self.embedder = EmbeddingGen()
 
+            now_iso = datetime.now(timezone.utc).isoformat()
             inserted_count = 0
             for i, (chunk_text, chunk_type, chunk_weight) in enumerate(chunk_items):
                 chunk_text = (chunk_text or "").replace("\u0000", "").strip()
@@ -155,7 +156,8 @@ class RagPrepareSearchIndexer:
                         "chunk_text": chunk_text,
                         "chunk_type": chunk_type,
                         "chunk_weight": chunk_weight,
-                        "embedding": vector,
+                        "embedding_v2": vector,
+                        "embedding_v2_at": now_iso,
                     }
                 ).execute()
                 inserted_count += 1

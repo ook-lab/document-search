@@ -3,9 +3,10 @@
 
 互換のためクラス名は `StageKEmbedding` のまま。パイプライン表記の「Stage K」は廃止。
 
-- モデル: OpenAI text-embedding-3-small (1536次元)
+- モデル: Gemini gemini-embedding-2 (1536次元)
 - 書き込み先: 10_ix_search_index (doc_id = 09_unified_documents.id、FK と require_unified_document_before_ix_write で担保)
 """
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
@@ -89,6 +90,7 @@ class StageKEmbedding:
 
                 embedding = self.llm_client.generate_embedding(chunk_text)
 
+                now_iso = datetime.now(timezone.utc).isoformat()
                 chunk_data = {
                     'doc_id':       doc_id,
                     'person':       person,
@@ -99,7 +101,8 @@ class StageKEmbedding:
                     'chunk_text':   chunk_text,
                     'chunk_type':   chunk.get('chunk_type'),
                     'chunk_weight': chunk.get('search_weight', 1.0),
-                    'embedding':    embedding,
+                    'embedding_v2': embedding,
+                    'embedding_v2_at': now_iso,
                 }
 
                 self.db.client.table('10_ix_search_index').insert(chunk_data).execute()

@@ -2804,10 +2804,10 @@ def debug_database():
     except Exception as e:
         errors['search_index_sample'] = str(e)
 
-    # embedding NULL件数確認（NULLなら埋め込みパイプライン未実行）
+    # embedding_v2 NULL件数確認（NULLなら埋め込みパイプライン未実行）
     try:
-        # embedding IS NOT NULL なチャンク数（直接カラム選択でNULLチェック）
-        not_null_resp = db_client.client.table('10_ix_search_index').select('id', count='exact').not_.is_('embedding', 'null').limit(1).execute()
+        # embedding_v2 IS NOT NULL なチャンク数（直接カラム選択でNULLチェック）
+        not_null_resp = db_client.client.table('10_ix_search_index').select('id', count='exact').not_.is_('embedding_v2', 'null').limit(1).execute()
         result['embedding_not_null_count'] = not_null_resp.count if hasattr(not_null_resp, 'count') else 'unknown'
     except Exception as e:
         errors['embedding_not_null_count'] = str(e)
@@ -2845,6 +2845,7 @@ def debug_database():
         'supabase_key_set': 'YES' if os.getenv('SUPABASE_KEY') else 'NO',
         'service_role_key_set': 'YES' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else 'NO',
         'openai_key_set': 'YES' if os.getenv('OPENAI_API_KEY') else 'NO',
+        'google_ai_paid_key_set': 'YES' if os.getenv('GOOGLE_AI_PAID_API_KEY') else 'NO',
     }
 
     return jsonify({

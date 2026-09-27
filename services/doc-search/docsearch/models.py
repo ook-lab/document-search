@@ -21,8 +21,8 @@ class ModelTier:
         "cost_per_1k_tokens": 0.0003,
     }
     EMBEDDING = {
-        "provider": AIProvider.OPENAI,
-        "model": "text-embedding-3-small",
+        "provider": AIProvider.GEMINI,
+        "model": "gemini-embedding-2",
         "description": "ベクトル検索用",
         "dimensions": 1536,
     }

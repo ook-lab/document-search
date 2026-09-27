@@ -190,26 +190,44 @@ function buildGcalUiData(payload: any, startAt: string | null, attendanceStatus:
 }
 
 async function generateEmbedding(text: string, apiKey: string): Promise<number[]> {
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("空のテキストはembedding化できません");
+  }
+  const payload = `title: none | text: ${trimmed}`;
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent";
+  const res = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
     },
-    body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+    body: JSON.stringify({
+      content: {
+        parts: [{ text: payload }],
+      },
+      outputDimensionality: 1536,
+    }),
   });
   const j = await res.json();
-  if (!res.ok) throw new Error(`embedding API error: ${JSON.stringify(j)}`);
-  return j.data[0].embedding as number[];
+  if (!res.ok) {
+    throw new Error(`Gemini embedding API error (${res.status}): ${JSON.stringify(j)}`);
+  }
+  const values = j.embedding?.values;
+  if (!Array.isArray(values) || values.length !== 1536) {
+    const len = Array.isArray(values) ? values.length : 0;
+    throw new Error(`Invalid embedding dimensionality: expected 1536, got ${len}`);
+  }
+  return values as number[];
 }
 
 serve(async (req) => {
   try {
-    const PROJECT_URL          = mustGetEnv("PROJECT_URL");
-    const SERVICE_ROLE_KEY     = mustGetEnv("SERVICE_ROLE_KEY");
-    const GOOGLE_CLIENT_ID     = mustGetEnv("GOOGLE_CLIENT_ID");
-    const GOOGLE_CLIENT_SECRET = mustGetEnv("GOOGLE_CLIENT_SECRET");
-    const OPENAI_API_KEY       = mustGetEnv("OPENAI_API_KEY");
+    const PROJECT_URL             = mustGetEnv("PROJECT_URL");
+    const SERVICE_ROLE_KEY        = mustGetEnv("SERVICE_ROLE_KEY");
+    const GOOGLE_CLIENT_ID        = mustGetEnv("GOOGLE_CLIENT_ID");
+    const GOOGLE_CLIENT_SECRET    = mustGetEnv("GOOGLE_CLIENT_SECRET");
+    const GOOGLE_AI_PAID_API_KEY  = mustGetEnv("GOOGLE_AI_PAID_API_KEY");
 
     const supabase = createClient(PROJECT_URL, SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
@@ -495,7 +513,7 @@ serve(async (req) => {
             // --- 10_ix_search_index に embedding 保存 ---
             const chunk_text = buildChunkText(payload, start_at, end_at, attendance_status);
             if (chunk_text.trim()) {
-              const embedding = await generateEmbedding(chunk_text, OPENAI_API_KEY);
+              const embedding = await generateEmbedding(chunk_text, GOOGLE_AI_PAID_API_KEY);
               await supabase.from(INDEX_TABLE).delete().eq("doc_id", doc_id);
               const { error: chunkErr } = await supabase.from(INDEX_TABLE).insert({
                 doc_id,
@@ -507,7 +525,8 @@ serve(async (req) => {
                 chunk_text,
                 chunk_type:   "calendar_event",
                 chunk_weight: 1.3,
-                embedding,
+                embedding_v2: embedding,
+                embedding_v2_at: new Date().toISOString(),
               });
               if (chunkErr) throw new Error(`10_ix_search_index insert: ${chunkErr.message}`);
             }
