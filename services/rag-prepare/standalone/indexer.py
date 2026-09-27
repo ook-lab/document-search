@@ -603,9 +603,9 @@ class RagPrepareSearchIndexer:
             import json as _json
             import os
             import google.generativeai as genai
-            api_key = os.environ.get("GOOGLE_AI_API_KEY", "")
+            api_key = os.environ.get("GOOGLE_AI_PAID_API_KEY")
             if not api_key:
-                raise RuntimeError("GOOGLE_AI_API_KEY が未設定です")
+                raise RuntimeError("GOOGLE_AI_PAID_API_KEY が未設定です")
 
             lines = text.split("\n")
             numbered = "\n".join(f"{i}: {line}" for i, line in enumerate(lines))
