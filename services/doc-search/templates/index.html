@@ -1584,10 +1584,17 @@
             // 添付ファイル
             const attachments = [];
 
+            const postTitle = (doc.title != null && String(doc.title).trim()) ? String(doc.title).trim() : '';
+            const postTitleLabel = postTitle ? postTitle : '(投稿題名なし)';
+
             if (doc.file_url) {
+                const rawFileName = (doc.file_name != null && String(doc.file_name).trim())
+                    ? String(doc.file_name).trim()
+                    : '';
+                const fileNameLabel = rawFileName ? rawFileName : '(ファイル名なし)';
                 attachments.push({
                     url: doc.file_url,
-                    name: doc.title || 'ファイル',
+                    name: `${postTitleLabel} / ${fileNameLabel}`,
                     type: 'drive'
                 });
             }
@@ -1596,9 +1603,13 @@
             if (meta.materials && Array.isArray(meta.materials)) {
                 meta.materials.forEach(material => {
                     if (material.driveFile && material.driveFile.url) {
+                        const rawMaterialTitle = (material.driveFile.title != null && String(material.driveFile.title).trim())
+                            ? String(material.driveFile.title).trim()
+                            : '';
+                        const materialFileNameLabel = rawMaterialTitle ? rawMaterialTitle : '(ファイル名なし)';
                         attachments.push({
                             url: material.driveFile.url,
-                            name: material.driveFile.title || 'ファイル',
+                            name: `${postTitleLabel} / ${materialFileNameLabel}`,
                             type: 'material'
                         });
                     }

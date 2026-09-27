@@ -151,6 +151,19 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
 
     var postUrl = 'https://classroom.google.com/u/0/c/' + course.id + '/a/' + it.id;
 
+    var mats = it.materials || it.material || [];
+    var nonDriveText = extractNonDriveAttachmentsText_(mats, course.id, it.id, log);
+
+    var rawDesc = it.text || it.description || null;
+    var finalDesc = rawDesc;
+    if (nonDriveText) {
+      if (finalDesc && String(finalDesc).trim().length > 0) {
+        finalDesc = String(finalDesc) + '\n\n' + nonDriveText;
+      } else {
+        finalDesc = nonDriveText;
+      }
+    }
+
     var base = {
       person: cfg.PERSON,
       source: cfg.WORKSPACE_NAME,
@@ -162,7 +175,7 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
       topic_id: it.topicId ? String(it.topicId) : null,
       topic_name: null,
       title: it.title || null,
-      description: it.text || it.description || null,
+      description: finalDesc,
       state: it.state || null,
       due_date: classroomDueDateToIso_(it.dueDate),
       due_time: classroomDueTimeToText_(it.dueTime),
@@ -176,7 +189,6 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
       file_id: null
     };
 
-    var mats = it.materials || it.material || [];
     var driveFiles = mats.filter(function(m) { return m.driveFile; });
 
     if (driveFiles.length > 0) {
@@ -195,6 +207,79 @@ function buildRecordsFromItems_(items, course, category, cfg, thresholdDate, log
     }
   });
   return out;
+}
+
+/**
+ * Drive以外の添付（YouTube動画、リンク、フォーム等）から題名とURLを抽出して文字列化する。
+ * 制約（フォールバック絶対禁止）:
+ * - 題名やURLが無い添付は推測値・既定値・別キーで埋めず、ある情報のみを出力する。
+ * - URLが無い添付はエラーログを出力して明示的に扱う。
+ * - 題名・URL両方が欠損している場合はエラーログを出力し出力行に含めない。
+ */
+function extractNonDriveAttachmentsText_(mats, courseId, itemId, log) {
+  if (!mats || !mats.length) return null;
+
+  var lines = [];
+  for (var i = 0; i < mats.length; i++) {
+    var m = mats[i];
+    if (!m || m.driveFile) continue;
+
+    var title = null;
+    var url = null;
+    var type = null;
+
+    if (m.youtubeVideo) {
+      type = 'youtubeVideo';
+      if (m.youtubeVideo.title && String(m.youtubeVideo.title).trim()) {
+        title = String(m.youtubeVideo.title).trim();
+      }
+      if (m.youtubeVideo.alternateLink && String(m.youtubeVideo.alternateLink).trim()) {
+        url = String(m.youtubeVideo.alternateLink).trim();
+      }
+    } else if (m.link) {
+      type = 'link';
+      if (m.link.title && String(m.link.title).trim()) {
+        title = String(m.link.title).trim();
+      }
+      if (m.link.url && String(m.link.url).trim()) {
+        url = String(m.link.url).trim();
+      }
+    } else if (m.form) {
+      type = 'form';
+      if (m.form.title && String(m.form.title).trim()) {
+        title = String(m.form.title).trim();
+      }
+      if (m.form.formUrl && String(m.form.formUrl).trim()) {
+        url = String(m.form.formUrl).trim();
+      }
+    } else if (m.gem) {
+      type = 'gem';
+      if (m.gem.title && String(m.gem.title).trim()) title = String(m.gem.title).trim();
+      if (m.gem.url && String(m.gem.url).trim()) url = String(m.gem.url).trim();
+    } else if (m.notebook) {
+      type = 'notebook';
+      if (m.notebook.title && String(m.notebook.title).trim()) title = String(m.notebook.title).trim();
+      if (m.notebook.url && String(m.notebook.url).trim()) url = String(m.notebook.url).trim();
+    } else {
+      type = 'unknown';
+    }
+
+    if (!url) {
+      log("ERROR", "ATTACHMENT_URL_MISSING", "添付のURLが存在しません。type=" + type + " courseId=" + courseId + " itemId=" + itemId, "FAILED", m);
+    }
+
+    if (title && url) {
+      lines.push(title + ': ' + url);
+    } else if (url) {
+      lines.push(url);
+    } else if (title) {
+      lines.push(title);
+    } else {
+      log("ERROR", "ATTACHMENT_DATA_EMPTY", "添付の題名・URLが両方とも存在しません。type=" + type + " courseId=" + courseId + " itemId=" + itemId, "FAILED", m);
+    }
+  }
+
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 function buildManagedCopyFileName_(r) {

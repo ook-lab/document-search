@@ -657,7 +657,7 @@ def _calendar_row_to_result_doc(row: Dict[str, Any]) -> Dict[str, Any]:
         "meta": row.get("meta"),
         "document_date": document_date,
         "ix_search_dates": row.get("ix_search_dates") or [],
-        "chunk_content": row.get("snippet") or row.get("title") or "",
+        "chunk_content": row.get("snippet") or None,
         "chunk_id": None,
         "chunk_index": None,
         "chunk_type": "calendar_row",
@@ -1945,7 +1945,7 @@ def _group_documents_by_file(documents: List[Dict[str, Any]]) -> List[Dict[str, 
 
         # 最高スコアのチャンクに統合された内容を設定
         if all_contents:
-            best_chunk['content'] = '\n\n'.join(all_contents[:3])  # 最大3チャンクまで
+            best_chunk['content'] = '\n\n'.join(all_contents)
 
         result.append(best_chunk)
 

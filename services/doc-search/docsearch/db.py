@@ -156,13 +156,21 @@ class DocSearchDB:
             return {}
         if isinstance(meta, dict):
             return meta
-        if isinstance(meta, str) and meta.strip():
+        if isinstance(meta, str):
             try:
                 o = json.loads(meta)
-                return o if isinstance(o, dict) else {}
-            except Exception:
-                return {}
-        return {}
+            except Exception as e:
+                raise ValueError(
+                    f"メタデータのJSON解析に失敗しました: type={type(meta).__name__}, content={meta[:100]!r}"
+                ) from e
+            if isinstance(o, dict):
+                return o
+            raise ValueError(
+                f"メタデータが辞書ではありません: type={type(o).__name__}, content={repr(o)[:100]}"
+            )
+        raise ValueError(
+            f"メタデータが辞書ではありません: type={type(meta).__name__}, content={repr(meta)[:100]}"
+        )
 
     def _read_date_signals_from_ix(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """09.ix_date_signals のみ読む（検索側で日付を組み立てない）。"""
@@ -284,6 +292,7 @@ class DocSearchDB:
             c1 = result.get("classification1")
             c2 = result.get("classification2")
             c3 = result.get("classification3")
+            meta_dict = self._coerce_meta_dict(result.get("meta"))
             final_results.append(
                 {
                     "id": doc_id,
@@ -303,8 +312,9 @@ class DocSearchDB:
                     "due_date": result.get("due_date"),
                     "location": result.get("location"),
                     "file_url": result.get("file_url"),
+                    "file_name": meta_dict.get("file_name"),
                     "ui_data": result.get("ui_data"),
-                    "meta": result.get("meta"),
+                    "meta": meta_dict,
                     "date_signals": date_signals,
                     "ix_search_dates": result.get("ix_search_dates") or [],
                     "indexed_at": result.get("indexed_at"),

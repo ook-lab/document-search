@@ -136,24 +136,29 @@ class WasedaNoticeIngestionPipeline:
         logger.info(f"お知らせを合計{len(all_notices)}件抽出しました")
         return all_notices
 
-    async def check_existing_notices(self, notice_ids: List[str]) -> set:
+    async def check_existing_notices(self, notice_ids: List[str]) -> Set[Tuple[str, Optional[int]]]:
         """
-        Supabaseで既存のお知らせIDをチェック（05_ikuya_waseaca_01_raw.post_id で照合）
+        Supabaseで既存の (post_id, pdf_slot) をチェック
+        （05_ikuya_waseaca_01_raw.post_id と pdf_slot で照合）
 
         Args:
             notice_ids: チェックするお知らせIDのリスト
 
         Returns:
-            既に存在するお知らせIDのセット
+            既に存在する (post_id, pdf_slot) のセット。既存行で pdf_slot が NULL の場合は (post_id, None) となる。
         """
         try:
-            result = self.db.client.table('05_ikuya_waseaca_01_raw').select('post_id').in_(
+            result = self.db.client.table('05_ikuya_waseaca_01_raw').select('post_id, pdf_slot').in_(
                 'post_id', notice_ids
             ).execute()
 
-            existing_ids = {doc['post_id'] for doc in (result.data or []) if doc.get('post_id')}
-            logger.info(f"既存のお知らせ: {len(existing_ids)}件")
-            return existing_ids
+            existing_slots: Set[Tuple[str, Optional[int]]] = {
+                (doc['post_id'], doc.get('pdf_slot'))
+                for doc in (result.data or [])
+                if doc.get('post_id')
+            }
+            logger.info(f"既存の取込済みスロット: {len(existing_slots)}件")
+            return existing_slots
 
         except Exception as e:
             logger.error(f"Supabase検索エラー: {e}")
@@ -267,7 +272,8 @@ class WasedaNoticeIngestionPipeline:
     async def process_single_notice(
         self,
         notice: Dict[str, Any],
-        pdf_data_dict: Dict[Tuple[str, int], bytes]
+        pdf_data_dict: Dict[Tuple[str, int], bytes],
+        existing_slots: Set[Tuple[str, Optional[int]]],
     ) -> Dict[str, Any]:
         """
         1件のお知らせを処理（PDFのみ）
@@ -275,6 +281,7 @@ class WasedaNoticeIngestionPipeline:
         Args:
             notice: お知らせデータ
             pdf_data_dict: {(notice_id, pdf_slot): pdf_data} の辞書（事前ダウンロード済み）
+            existing_slots: 既にDBに存在する (post_id, pdf_slot) のセット
 
         Returns:
             処理結果の辞書
@@ -286,6 +293,8 @@ class WasedaNoticeIngestionPipeline:
             'document_ids': [],
             'error': None
         }
+
+        existing_set = existing_slots
 
         try:
             notice_id = notice.get('id')
@@ -305,7 +314,16 @@ class WasedaNoticeIngestionPipeline:
                 except ValueError:
                     logger.warning(f"日付のパースに失敗: {date}")
 
-            # PDFリンクがない場合はテキストのみレコードとして保存
+            # 【計画修正】post_id に pdf_slot が NULL の行が1件でもあるお知らせは旧形式取込済み(またはテキストのみ取込済み)として全体をスキップ
+            if (notice_id, None) in existing_set:
+                logger.info(
+                    f"旧形式またはテキストのみで取込済みのため全体をスキップ: "
+                    f"{title} (post_id={notice_id}, pdf_slotがNULLの行が存在)"
+                )
+                result['success'] = True
+                return result
+
+            # PDFリンクがない場合はテキストのみレコードとして保存（新規テキストのみ投稿は pdf_slot NULL で保存）
             pdfs = notice.get('pdfs', [])
             if not pdfs:
                 logger.info(f"PDFリンクなし、テキストのみで登録: {title}")
@@ -344,6 +362,10 @@ class WasedaNoticeIngestionPipeline:
 
             # 各PDFを処理（pdf_slot で区別: API 上で url が同一の添付が複数ある）
             for pdf_slot, pdf in enumerate(pdfs):
+                if (notice_id, pdf_slot) in existing_set:
+                    logger.info(f"既に取込済みのためスキップ: {title} (post_id={notice_id}, slot={pdf_slot})")
+                    continue
+
                 pdf_title = pdf.get('title', 'untitled')
                 pdf_url = pdf.get('url', '')
 
@@ -354,7 +376,7 @@ class WasedaNoticeIngestionPipeline:
                 # 1. 事前ダウンロード済みのPDFデータを取得
                 pdf_data = pdf_data_dict.get((notice_id, pdf_slot))
                 if not pdf_data:
-                    logger.warning(f"PDFデータが見つかりません（スキップ）: {pdf_title}")
+                    logger.warning(f"PDFデータが見つかりません（スキップ）: {pdf_title} (slot={pdf_slot})")
                     continue
 
                 # 2. PDFをGoogle Driveに保存
@@ -397,6 +419,7 @@ class WasedaNoticeIngestionPipeline:
                     'created_at': sent_at,
                     'file_url': f"https://drive.google.com/file/d/{file_id}/view",
                     'file_name': actual_file_name,
+                    'pdf_slot': pdf_slot,
                 }
 
                 try:
@@ -412,7 +435,7 @@ class WasedaNoticeIngestionPipeline:
                             'owner_id': self.owner_id,
                         }).execute()
                         result['document_ids'].append(raw_id)
-                        logger.info(f"Supabase保存完了（pending状態）: raw_id={raw_id}")
+                        logger.info(f"Supabase保存完了（pending状態）: raw_id={raw_id} (slot={pdf_slot})")
                         logger.info(f"  → pipeline_meta.id を確認のうえ scripts/processing/process_queued_documents.py --doc-id <uuid> --execute で処理してください")
                     else:
                         logger.error(f"05_ikuya_waseaca_01_raw INSERT 失敗（データ空）: {title}")
@@ -496,26 +519,53 @@ async def main():
         )
         pipeline.prepare_post_reingest(reingest_post_ids_arg)
 
-    # 既存のお知らせIDをSupabaseから取得
-    existing_ids = await pipeline.check_existing_notices(notice_ids)
+    # 既存の (post_id, pdf_slot) をSupabaseから取得
+    existing_slots = await pipeline.check_existing_notices(notice_ids)
 
-    # 新着お知らせを抽出
-    new_notices = [n for n in current_notices if n.get('id') not in existing_ids]
+    # 処理対象のお知らせを抽出
+    notices_to_process = []
+    for n in current_notices:
+        nid = n.get('id')
+        if not nid:
+            continue
+
+        # 【計画への修正】post_id に pdf_slot が NULL の行が1件でもあるお知らせは
+        # 旧形式取込済み(またはテキストのみ取込済み)として、そのお知らせ全体をスキップし、ログに明示
+        if (nid, None) in existing_slots:
+            logger.info(
+                f"旧形式またはテキストのみで取込済みのため全体をスキップ: "
+                f"{n.get('title', 'タイトルなし')} (post_id={nid}, pdf_slotがNULLの行が存在)"
+            )
+            continue
+
+        pdfs = n.get('pdfs', [])
+        if not pdfs:
+            # 新規テキストのみ投稿（(nid, None) が無いので未取込）
+            notices_to_process.append(n)
+        else:
+            # 未取込の pdf_slot が1つでもあるかチェック
+            unprocessed_slots = [slot for slot in range(len(pdfs)) if (nid, slot) not in existing_slots]
+            if unprocessed_slots:
+                notices_to_process.append(n)
+            else:
+                logger.info(f"全添付PDFが取込済みのためスキップ: {n.get('title', 'タイトルなし')} (post_id={nid})")
 
     logger.info(f"現在のお知らせ: {len(current_notices)}件")
-    logger.info(f"既存のお知らせ: {len(existing_ids)}件")
-    logger.info(f"新着お知らせ: {len(new_notices)}件")
+    logger.info(f"既存の取込済みスロット: {len(existing_slots)}件")
+    logger.info(f"処理対象のお知らせ: {len(notices_to_process)}件")
 
-    if not new_notices:
-        logger.info("新着お知らせはありません")
+    if not notices_to_process:
+        logger.info("新着・未取込のお知らせはありません")
         return
 
-    # 新着お知らせからPDF情報を収集
+    # 未取込のPDFのみをダウンロード対象として収集
     pdf_info_list = []
-    for notice in new_notices:
+    for notice in notices_to_process:
         notice_id = notice.get('id')
         pdfs = notice.get('pdfs', [])
         for pdf_slot, pdf in enumerate(pdfs):
+            if (notice_id, pdf_slot) in existing_slots:
+                continue
             pdf_title = pdf.get('title', 'untitled')
             pdf_url = pdf.get('url', '')
             if pdf_url:
@@ -535,11 +585,11 @@ async def main():
         pdf_data_dict = await pipeline.download_pdfs_with_browser(pdf_info_list)
         logger.info(f"ダウンロード完了: {len(pdf_data_dict)}/{len(pdf_info_list)}件")
 
-    # 新着お知らせを処理（PDFデータは既にダウンロード済み）
+    # お知らせを処理（PDFデータは既にダウンロード済み）
     results = []
-    for i, notice in enumerate(new_notices, 1):
-        logger.info(f"[{i}/{len(new_notices)}] 処理中...")
-        result = await pipeline.process_single_notice(notice, pdf_data_dict)
+    for i, notice in enumerate(notices_to_process, 1):
+        logger.info(f"[{i}/{len(notices_to_process)}] 処理中...")
+        result = await pipeline.process_single_notice(notice, pdf_data_dict, existing_slots=existing_slots)
         results.append(result)
 
     # サマリー
