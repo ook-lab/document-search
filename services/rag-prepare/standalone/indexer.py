@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 
 import yaml
 
@@ -28,6 +28,15 @@ _UD_SELECT = (
     "post_at, start_at, end_at, due_date, snippet, from_name, from_email, location, post_type, ui_data, meta, "
     "body, ix_date_signals, ix_search_dates"
 )
+
+
+class _AiAnnotationItem(TypedDict):
+    line: int
+    type: str
+
+
+class _AiAnnotationsResponse(TypedDict):
+    annotations: List[_AiAnnotationItem]
 
 
 class RagPrepareSearchIndexer:
@@ -784,12 +793,14 @@ class RagPrepareSearchIndexer:
                 generation_config=genai.types.GenerationConfig(
                     temperature=0.0,
                     response_mime_type="application/json",
+                    response_schema=_AiAnnotationsResponse,
                 ),
                 request_options={"timeout": 30},
             )
             data = _json.loads(resp.text.strip())
-            if "annotations" not in data:
-                raise KeyError(f"Gemini応答にannotationsキーが存在しません: {list(data.keys())}")
+            if not isinstance(data, dict) or "annotations" not in data:
+                keys = list(data.keys()) if isinstance(data, dict) else type(data).__name__
+                raise KeyError(f"Gemini応答にannotationsキーが存在しません: {keys}")
             return {
                 "annotations": data["annotations"],
             }

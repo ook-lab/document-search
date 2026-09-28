@@ -287,7 +287,7 @@ def render_page_to_png_bytes(doc: fitz.Document, page_index: int) -> bytes:
 
 def _cell_to_yaml_item(cell: str) -> str:
     """YAML cells リストアイテム（4スペースインデント）。安全にエスケープ処理を行う。"""
-    dumped = _yaml.safe_dump([cell], allow_unicode=True).strip()
+    dumped = _yaml.safe_dump([cell], allow_unicode=True, width=float('inf')).strip()
     return '    ' + dumped
 
 
@@ -318,87 +318,83 @@ def _infer_table_semantics(header_rows: List[List[str]], rows: List[List[str]]) 
 
 def _generate_tables_yaml(tables_data: List[Dict[str, Any]]) -> str:
     """tables リストから YAML テキストを生成する。"""
-    lines = ['tables:']
+    tables_list: List[Dict[str, Any]] = []
     for tbl in tables_data:
         tbl_id = tbl['table_id']
         rows = tbl['data_rows']
         header_rows = tbl['header_rows']
         header_axes = tbl['header_axes']
-        sem = _infer_table_semantics(header_rows, rows)
-        type_ja_str = sem['type_ja'] if sem['type_ja'] else 'null'
-
-        description = str(tbl.get('description') or '')
-        desc_yaml = _yaml.safe_dump(description, allow_unicode=True).strip()
-        if desc_yaml.endswith('...'):
-            desc_yaml = desc_yaml[:-3].strip()
-
-        caption = str(tbl.get('caption') or '').strip()
-
-        lines.append(f'- table_id: {tbl_id}')
-        if caption:
-            caption_yaml = _yaml.safe_dump(caption, allow_unicode=True).strip()
-            if caption_yaml.endswith('...'):
-                caption_yaml = caption_yaml[:-3].strip()
-            lines.append(f'  caption: {caption_yaml}')
-        lines.append(f'  description: {desc_yaml}')
-        lines.append('  table_semantics:')
-        lines.append(f"    type: {sem['type']}")
-        lines.append(f'    type_ja: {type_ja_str}')
-        lines.append('    target: null')
-        lines.append('    scope: null')
-        lines.append('    date_range: null')
-        lines.append(f"    confidence: {sem['confidence']}")
-        lines.append('  header_row_indices:')
-        for h_idx in range(len(header_rows)):
-            lines.append(f'  - {h_idx}')
-        lines.append('  header_axes:')
-        for axis in header_axes:
-            dumped_axis = _yaml.safe_dump([str(axis)], allow_unicode=True).strip()
-            lines.append('  ' + dumped_axis)
-        lines.append('  header_rows:')
-        for h_idx, h_row in enumerate(header_rows):
-            lines.append(f'  - header_row: {h_idx}')
-            lines.append('    cells:')
-            for cell in h_row:
-                lines.append(_cell_to_yaml_item(cell))
-        lines.append('  columns:')
         if not header_rows:
             raise ValueError(f"契約違反: table {tbl_id} に header_rows がありません")
         if 'row_label_column_count' not in tbl or tbl['row_label_column_count'] is None:
             raise ValueError(f"契約違反: table {tbl_id} に row_label_column_count がありません")
+
+        sem = _infer_table_semantics(header_rows, rows)
+        description = str(tbl.get('description') or '')
+        caption = str(tbl.get('caption') or '').strip()
+
         col_count = len(header_rows[0])
         row_label_col_count = tbl['row_label_column_count']
+        columns: List[Dict[str, Any]] = []
         for c in range(col_count):
-            lines.append(f'  - index: {c}')
+            col_dict: Dict[str, Any] = {'index': c}
             if c < row_label_col_count:
                 rl_vals: List[str] = []
                 for h_row in header_rows:
                     v = str(h_row[c]).strip()
                     if v and (not rl_vals or rl_vals[-1] != v):
                         rl_vals.append(v)
-                row_label_val = " / ".join(rl_vals)
-                dumped_rl = _yaml.safe_dump({'row_label': row_label_val}, allow_unicode=True).strip()
-                if dumped_rl.endswith('...'):
-                    dumped_rl = dumped_rl[:-3].strip()
-                for rl_line in dumped_rl.split('\n'):
-                    lines.append(f'    {rl_line}')
+                col_dict['row_label'] = " / ".join(rl_vals)
             else:
-                lines.append('    axes:')
+                axes_dict: Dict[str, str] = {}
                 for r_idx, axis_name in enumerate(header_axes):
                     val = header_rows[r_idx][c]
-                    dumped_entry = _yaml.safe_dump({str(axis_name): str(val)}, allow_unicode=True).strip()
-                    if dumped_entry.endswith('...'):
-                        dumped_entry = dumped_entry[:-3].strip()
-                    for de_line in dumped_entry.split('\n'):
-                        lines.append(f'      {de_line}')
-        lines.append('  month_blocks: []')
-        lines.append('  data_rows:')
-        for idx, row in enumerate(rows):
-            lines.append(f'  - sheet_row: {idx + 1}')
-            lines.append('    cells:')
-            for cell in row:
-                lines.append(_cell_to_yaml_item(cell))
-    return '\n'.join(lines)
+                    axes_dict[str(axis_name)] = str(val)
+                col_dict['axes'] = axes_dict
+            columns.append(col_dict)
+
+        tbl_dict: Dict[str, Any] = {
+            'table_id': tbl_id,
+        }
+        if caption:
+            tbl_dict['caption'] = caption
+        tbl_dict['description'] = description
+        tbl_dict['table_semantics'] = {
+            'type': sem['type'],
+            'type_ja': sem.get('type_ja') or None,
+            'target': None,
+            'scope': None,
+            'date_range': None,
+            'confidence': sem['confidence'],
+        }
+        tbl_dict['header_row_indices'] = list(range(len(header_rows)))
+        tbl_dict['header_axes'] = [str(axis) for axis in header_axes]
+        tbl_dict['header_rows'] = [
+            {
+                'header_row': h_idx,
+                'cells': [str(cell) if cell is not None else '' for cell in h_row],
+            }
+            for h_idx, h_row in enumerate(header_rows)
+        ]
+        tbl_dict['columns'] = columns
+        tbl_dict['month_blocks'] = []
+        tbl_dict['data_rows'] = [
+            {
+                'sheet_row': idx + 1,
+                'cells': [str(cell) if cell is not None else '' for cell in row],
+            }
+            for idx, row in enumerate(rows)
+        ]
+        tables_list.append(tbl_dict)
+
+    payload = {'tables': tables_list}
+    return _yaml.safe_dump(
+        payload,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+        width=float('inf'),
+    ).strip()
 
 
 def _synthesize_structured_markdown_from_blocks(

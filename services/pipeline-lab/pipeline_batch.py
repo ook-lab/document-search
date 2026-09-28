@@ -10,6 +10,7 @@ pipeline_batch: Gemini Batch API を用いた非同期・高品質パイプラ�
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import fitz  # PyMuPDF
+from PIL import Image, ImageOps
 from flask import Blueprint, jsonify, request
 from loguru import logger as loguru_logger
 
@@ -66,8 +68,14 @@ def _is_image_file(name: str) -> bool:
 
 
 def _image_to_pdf(img_path: Path, pdf_path: Path) -> None:
+    with Image.open(img_path) as raw_img:
+        img = ImageOps.exif_transpose(raw_img)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        img_bytes = buf.getvalue()
+
     doc = fitz.open()
-    img_doc = fitz.open(str(img_path))
+    img_doc = fitz.open(stream=img_bytes, filetype="png")
     pdf_bytes = img_doc.convert_to_pdf()
     img_doc.close()
     img_pdf = fitz.open('pdf', pdf_bytes)
