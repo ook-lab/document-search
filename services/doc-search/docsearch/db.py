@@ -340,6 +340,7 @@ class DocSearchDB:
                     "classification1": c1,
                     "classification2": c2,
                     "classification3": c3,
+                    "raw_table": result.get("raw_table"),
                     "from_name": result.get("from_name"),
                     "from_email": result.get("from_email"),
                     "snippet": result.get("snippet"),
@@ -361,6 +362,8 @@ class DocSearchDB:
                     "chunk_id": result.get("best_chunk_id"),
                     "chunk_index": result.get("best_chunk_index"),
                     "chunk_type": result.get("best_chunk_type"),
+                    "post_body_similarity": None,
+                    "attachment_similarity": None,
                     # 検索側の合成スコア。画面に出す類似度とは別に、参照用で残す。
                     "rpc_hybrid_score": float(comb) if comb is not None else None,
                     "similarity": float(comb) if comb is not None else None,
@@ -383,17 +386,21 @@ class DocSearchDB:
                     doc_result["document_body"] = None
                     doc_result["index_chunks_all"] = []
                     doc_result["max_chunk_vector_similarity"] = None
+                    doc_result["post_body_similarity"] = None
+                    doc_result["attachment_similarity"] = None
                     continue
                 try:
                     body_response = (
                         self.client.table("09_unified_documents")
-                        .select("body")
+                        .select("body, raw_table")
                         .eq("id", doc_id)
                         .limit(1)
                         .execute()
                     )
                     if body_response.data:
                         doc_result["document_body"] = body_response.data[0].get("body")
+                        if not doc_result.get("raw_table"):
+                            doc_result["raw_table"] = body_response.data[0].get("raw_table")
                     else:
                         doc_result["document_body"] = None
                 except Exception as e:
@@ -413,6 +420,11 @@ class DocSearchDB:
                         qemb = _coerce_embedding_list(embedding)
                         enriched: List[Dict[str, Any]] = []
                         for ch in raw_chunks:
+                            ctype = ch.get("chunk_type")
+                            if not ctype or not str(ctype).strip():
+                                raise ValueError(
+                                    f"契約違反: チャンクの種別 (chunk_type) が取得できません: doc_id={doc_id}, chunk_id={ch.get('id')}"
+                                )
                             row = {k: v for k, v in ch.items() if k != "embedding_v2"}
                             cvec = _coerce_embedding_list(ch.get("embedding_v2"))
                             if qemb and cvec and len(qemb) == len(cvec):
@@ -427,15 +439,27 @@ class DocSearchDB:
                                 str(x.get("id") or ""),
                             ),
                         )
-                        sims_mc = [
+                        post_body_sims = [
+                            float(x["chunk_vector_similarity"])
+                            for x in enriched
+                            if x.get("chunk_type") == "post_body" and x.get("chunk_vector_similarity") is not None
+                        ]
+                        non_post_body_sims = [
+                            float(x["chunk_vector_similarity"])
+                            for x in enriched
+                            if x.get("chunk_type") != "post_body" and x.get("chunk_vector_similarity") is not None
+                        ]
+                        doc_result["post_body_similarity"] = max(post_body_sims) if post_body_sims else None
+                        doc_result["attachment_similarity"] = max(non_post_body_sims) if non_post_body_sims else None
+
+                        all_sims = [
                             float(x["chunk_vector_similarity"])
                             for x in enriched
                             if x.get("chunk_vector_similarity") is not None
                         ]
-                        doc_result["max_chunk_vector_similarity"] = max(sims_mc) if sims_mc else None
+                        doc_result["max_chunk_vector_similarity"] = max(all_sims) if all_sims else None
                     else:
-                        doc_result["index_chunks_all"] = []
-                        doc_result["max_chunk_vector_similarity"] = None
+                        raise ValueError(f"契約違反: チャンクが存在しないか種別が取得できません: doc_id={doc_id}")
                 except Exception as e:
                     logger.error("chunk fetch doc_id={}: {}", doc_id, e)
                     raise
@@ -443,6 +467,8 @@ class DocSearchDB:
             for doc_result in final_results:
                 doc_result["index_chunks_all"] = []
                 doc_result["max_chunk_vector_similarity"] = None
+                doc_result["post_body_similarity"] = None
+                doc_result["attachment_similarity"] = None
 
         for doc in final_results:
             rpc = doc.get("rpc_hybrid_score")
@@ -453,9 +479,8 @@ class DocSearchDB:
                     # 文書の類似度 = その文書内のチャンクの類似度の最大
                     doc["similarity"] = float(mcv)
                     doc["similarity_basis"] = "max_chunk_in_doc"
-                except (TypeError, ValueError):
-                    doc["similarity"] = None
-                    doc["similarity_basis"] = "no_chunk_similarity"
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"類似度が数値ではありません: doc_id={doc.get('id')}, max_chunk_vector_similarity={mcv!r}") from e
             else:
                 # チャンクごとの類似度が一つも計算できない文書は数を付けない
                 doc["similarity"] = None
@@ -476,8 +501,8 @@ class DocSearchDB:
             sim = doc.get("similarity")
             try:
                 doc["final_score"] = float(sim) if sim is not None else None
-            except (TypeError, ValueError):
-                doc["final_score"] = None
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"類似度が数値ではありません: doc_id={doc.get('id')}, similarity={sim!r}") from e
             if "time_score" not in doc:
                 print(f"[WARN] doc id={doc.get('id')!r} has no time_score field", flush=True)
             doc.pop("rel", None)
@@ -551,3 +576,181 @@ class DocSearchDB:
         except Exception as e:
             logger.exception("search_documents_sync failed: {}", e)
             raise
+
+    def search_documents_by_keywords(
+        self,
+        keywords: List[str],
+        persons: Optional[List[str]] = None,
+        sources: Optional[List[str]] = None,
+        categories: Optional[List[str]] = None,
+        filter_date_start: Optional[date_type] = None,
+        filter_date_end: Optional[date_type] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        09_unified_documents からキーワード（body または title の ILIKE）に一致するレコードを全件検索する。
+        - 100件で打ち切らずページングにより該当を全件取得。
+        - 投稿日（post_at）の新しい順（降順）で返す。
+        - カレンダー（classification1 = 'Googleカレンダー'）は除外。
+        - ベクトル検索と同じ絞り込み（人・ソース・3段目・日付範囲）を適用。
+        - 3段目はクラスルーム(03/04)は classification2、それ以外は classification3 で照合（get_workspace_hierarchy と同じ契約）。
+        - フォールバック絶対禁止（欠損・失敗時は例外を再送出）。
+        """
+        if not keywords:
+            raise ValueError("search_documents_by_keywords: keywords が空です")
+
+        # カレンダーは除外
+        effective_sources = [s for s in sources if s != "Googleカレンダー"] if sources else None
+        if sources is not None and not effective_sources:
+            return []
+
+        try:
+            base_query = self.client.table("09_unified_documents").select(
+                "id, raw_table, person, classification1, classification2, classification3, "
+                "title, body, snippet, post_at, start_at, end_at, due_date, location, "
+                "file_url, meta, indexed_at, ui_data, ix_date_signals, ix_search_dates"
+            ).neq("classification1", "Googleカレンダー")
+
+            if persons:
+                base_query = base_query.in_("person", persons)
+            if effective_sources:
+                base_query = base_query.in_("classification1", effective_sources)
+
+            conditions: List[str] = []
+            for kw in keywords:
+                clean_kw = kw.strip().replace(",", " ").replace("(", " ").replace(")", " ")
+                if clean_kw:
+                    conditions.append(f"body.ilike.%{clean_kw}%,title.ilike.%{clean_kw}%")
+
+            if conditions:
+                base_query = base_query.or_(",".join(conditions))
+
+            offset = 0
+            page_size = 1000
+            rows: List[Dict[str, Any]] = []
+            while True:
+                response = base_query.range(offset, offset + page_size - 1).execute()
+                batch = response.data or []
+                rows.extend(batch)
+                if len(batch) < page_size:
+                    break
+                offset += page_size
+
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                doc_id = row.get("id")
+                raw_table = (row.get("raw_table") or "").strip()
+                person = (row.get("person") or "").strip()
+                c1 = (row.get("classification1") or "").strip()
+                c2 = (row.get("classification2") or "").strip()
+                c3 = (row.get("classification3") or "").strip()
+                title = str(row.get("title") or "")
+                body = str(row.get("body") or "")
+
+                # 1. キーワード一致確認
+                title_lower = title.lower()
+                body_lower = body.lower()
+                matched = any(kw.lower() in title_lower or kw.lower() in body_lower for kw in keywords)
+                if not matched:
+                    continue
+
+                # 2. 人・ソース絞り込み
+                if persons and person not in persons:
+                    continue
+                if effective_sources and c1 not in effective_sources:
+                    continue
+
+                # 3. 3段目絞り込み（クラスルームは classification2、それ以外は classification3）
+                if categories:
+                    if raw_table in _CLASSROOM_RAW_TABLES:
+                        cat_val = c2
+                    else:
+                        cat_val = c3
+                    if not cat_val or cat_val not in categories:
+                        continue
+
+                # 4. 日付範囲絞り込み
+                # 投稿日(post_at)がある文書は範囲内かチェック。投稿日がない文書は除外せず保持する（確定事項2）。
+                raw_date = row.get("post_at")
+                doc_date_str = self._parse_yyyy_mm_dd(raw_date)
+                if doc_date_str:
+                    try:
+                        d_val = date_type.fromisoformat(doc_date_str)
+                        if filter_date_start and d_val < filter_date_start:
+                            continue
+                        if filter_date_end and d_val > filter_date_end:
+                            continue
+                    except Exception as e:
+                        logger.error("search_documents_by_keywords: post_at parse error: {}", e)
+                        raise
+
+                # 整形
+                meta_dict = self._coerce_meta_dict(row.get("meta"))
+                date_signals = self._read_date_signals_from_ix(row)
+                title_m = any(kw.lower() in title_lower for kw in keywords)
+
+                results.append(
+                    {
+                        "id": doc_id,
+                        "title": row.get("title"),
+                        "source": c1,
+                        "person": person,
+                        "category": c2 if raw_table in _CLASSROOM_RAW_TABLES else c3,
+                        "classification1": c1,
+                        "classification2": c2,
+                        "classification3": c3,
+                        "raw_table": raw_table,
+                        "from_name": row.get("from_name"),
+                        "from_email": row.get("from_email"),
+                        "snippet": row.get("snippet"),
+                        "post_at": row.get("post_at"),
+                        "start_at": row.get("start_at"),
+                        "end_at": row.get("end_at"),
+                        "due_date": row.get("due_date"),
+                        "location": row.get("location"),
+                        "file_url": row.get("file_url"),
+                        "file_name": meta_dict.get("file_name") if meta_dict else None,
+                        "ui_data": row.get("ui_data"),
+                        "meta": meta_dict,
+                        "date_signals": date_signals,
+                        "ix_search_dates": row.get("ix_search_dates"),
+                        "indexed_at": row.get("indexed_at"),
+                        "document_date": doc_date_str,
+                        "document_body": body,
+                        "chunk_content": row.get("snippet"),
+                        "chunk_id": None,
+                        "chunk_index": None,
+                        "chunk_type": None,
+                        "post_body_similarity": None,
+                        "attachment_similarity": None,
+                        "rpc_hybrid_score": None,
+                        "similarity": None,
+                        "raw_similarity": None,
+                        "weighted_similarity": None,
+                        "fulltext_score": None,
+                        "title_matched": title_m,
+                        "is_keyword_matched": True,
+                        "chunk_score": None,
+                        "large_chunk_id": doc_id,
+                        "small_chunk_id": None,
+                        "final_score": None,
+                        "index_chunks_all": [],
+                        "max_chunk_vector_similarity": None,
+                        "similarity_basis": "keyword_match",
+                    }
+                )
+
+            # 投稿日の新しい順（降順 DESC、日付あり優先、日付なし末尾）でソート
+            def _post_at_sort_key(r: Dict[str, Any]) -> Tuple[int, str]:
+                pa = r.get("post_at")
+                s = str(pa).strip() if pa is not None else ""
+                if s:
+                    return (1, s)
+                return (0, "")
+
+            results.sort(key=_post_at_sort_key, reverse=True)
+            return results
+        except Exception as e:
+            logger.error("search_documents_by_keywords error: {}", e)
+            raise
+

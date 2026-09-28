@@ -125,7 +125,8 @@ class RagPrepareSearchIndexer:
             c2 = ud_fresh.get("classification2")
             c3 = ud_fresh.get("classification3")
 
-            chunk_items = self._md_chunks_with_meta(full_markdown)
+            raw_file_name = (raw_row.get("file_name") or "").strip() or None
+            chunk_items = self._md_chunks_with_meta(full_markdown, file_name=raw_file_name)
             gate = (
                 self.db.client.table("09_unified_documents")
                 .select("id")
@@ -651,7 +652,7 @@ class RagPrepareSearchIndexer:
             sections: List[str] = []
 
             # Stage F ではファイル外テキストを本文に混ぜない。検索データ準備で raw メタと PDF MD を統合する。
-            external = self._raw_external_markdown(raw_row)
+            external = self._raw_external_markdown(raw_row, raw_table=str(raw_table))
             if external:
                 sections.append("# ファイル外テキスト\n\n" + external)
 
@@ -673,7 +674,16 @@ class RagPrepareSearchIndexer:
         return "", None
 
     @staticmethod
-    def _raw_external_markdown(raw: Dict[str, Any]) -> str:
+    def _raw_external_markdown(raw: Dict[str, Any], raw_table: str) -> str:
+        if not raw_table or not isinstance(raw_table, str) or not raw_table.strip():
+            raise ValueError(f"raw_table が未設定です: {raw_table!r}")
+        rt = raw_table.strip()
+        _CLASSROOM_RAW_TABLES = (
+            "03_ema_classroom_01_raw",
+            "04_ikuya_classroom_01_raw",
+        )
+        is_classroom = rt in _CLASSROOM_RAW_TABLES
+
         fields = [
             ("person", "対象者"),
             ("source", "ソース"),
@@ -694,6 +704,8 @@ class RagPrepareSearchIndexer:
         ]
         lines = []
         for key, label in fields:
+            if is_classroom and key in ("category", "post_type"):
+                continue
             value = raw.get(key)
             if value is None:
                 continue
@@ -962,7 +974,11 @@ class RagPrepareSearchIndexer:
         return results
 
     @staticmethod
-    def _structured_md_chunks(md_text: str, prose_chunk_size: int = 800) -> List[Dict[str, Any]]:
+    def _structured_md_chunks(
+        md_text: str,
+        prose_chunk_size: int = 800,
+        file_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
         構造化MD（## 非表（F 地の文）/ ## 表（埋め込み）形式、または ## Page {n} で複数ページが結合された形式）をチャンク化する。
 
@@ -975,10 +991,12 @@ class RagPrepareSearchIndexer:
         page_pattern = re.compile(r'^## Page (\d+)\b[^\n]*', re.MULTILINE)
         matches = list(page_pattern.finditer(md_text))
 
+        default_header = f"[{file_name}]" if file_name else None
+
         if not matches:
             # ## Page 見出しが無い文書は現行どおりの動作
             return RagPrepareSearchIndexer._chunk_single_page(
-                md_text, prose_chunk_size=prose_chunk_size, page_header=None
+                md_text, prose_chunk_size=prose_chunk_size, page_header=default_header
             )
 
         results: List[Dict[str, Any]] = []
@@ -991,7 +1009,7 @@ class RagPrepareSearchIndexer:
                     RagPrepareSearchIndexer._chunk_single_page(
                         preamble,
                         prose_chunk_size=prose_chunk_size,
-                        page_header=None,
+                        page_header=default_header,
                     )
                 )
 
@@ -1005,11 +1023,12 @@ class RagPrepareSearchIndexer:
 
             # 既存の表チャンクの書き方（ヘッダー行: "Page {n}"）に合わせたページ情報
             page_title = m.group(0).replace('##', '').strip()  # 例: "Page 1"
+            header = f"[{file_name}] {page_title}" if file_name else page_title
             results.extend(
                 RagPrepareSearchIndexer._chunk_single_page(
                     page_content,
                     prose_chunk_size=prose_chunk_size,
-                    page_header=page_title,
+                    page_header=header,
                 )
             )
 
@@ -1020,52 +1039,79 @@ class RagPrepareSearchIndexer:
         full_markdown: str,
         plain_chunk_size: int = 1200,
         prose_chunk_size: int = 800,
+        file_name: Optional[str] = None,
     ) -> List[tuple[str, str, float]]:
         """
         full_markdown をチャンク化し (text, chunk_type, chunk_weight) のリストで返す。
 
-        # PDF抽出Markdown セクションに構造化MD（## 非表 / ## 表（埋め込み） / ## Page {n}）が含まれる場合は
-        意味単位で分割。それ以外は固定サイズ分割。
+        - # ファイル外テキスト（投稿本文・メタ情報）は chunk_type = 'post_body', chunk_weight = 1.0 の独立断片とする。
+        - # PDF抽出Markdown（添付ファイル）は投稿本文を含めず、中身のみ＋ファイル名見出しで独立断片とする（prose / table_yaml）。
         """
         results: List[tuple[str, str, float]] = []
 
         # section stop: named headers only, not PDF content headings
         _SECTION_STOP = r'(?=^# (?:PDF抽出Markdown|ファイル外テキスト)|\Z)'
+
+        # 1. 投稿本文（ファイル外テキスト）の独立断片化
+        ext_m = re.search(
+            r'^# ファイル外テキスト\s*\n(.*?)' + _SECTION_STOP,
+            full_markdown, re.MULTILINE | re.DOTALL,
+        )
+        if ext_m:
+            ext_text = ext_m.group(1).strip()
+            if ext_text:
+                if len(ext_text) <= prose_chunk_size:
+                    results.append((ext_text, "post_body", 1.0))
+                else:
+                    paras = [p.strip() for p in re.split(r'\n{2,}', ext_text) if p.strip()]
+                    if len(paras) <= 1:
+                        paras = [p.strip() for p in ext_text.split('\n') if p.strip()]
+                    current: List[str] = []
+                    current_len = 0
+                    for para in paras:
+                        if len(para) > prose_chunk_size:
+                            if current:
+                                results.append(("\n\n".join(current), "post_body", 1.0))
+                                current = []
+                                current_len = 0
+                            for chunk in RagPrepareSearchIndexer._plain_chunks(para, prose_chunk_size):
+                                results.append((chunk, "post_body", 1.0))
+                            continue
+                        if current_len + len(para) > prose_chunk_size and current:
+                            results.append(("\n\n".join(current), "post_body", 1.0))
+                            current = [para]
+                            current_len = len(para)
+                        else:
+                            current.append(para)
+                            current_len += len(para)
+                    if current:
+                        results.append(("\n\n".join(current), "post_body", 1.0))
+
+        # 2. 添付ファイル（PDF抽出Markdown）の独立断片化
         pdf_md_m = re.search(
             r'^# PDF抽出Markdown\s*\n(.*?)' + _SECTION_STOP,
             full_markdown, re.MULTILINE | re.DOTALL,
         )
         if pdf_md_m:
-            pdf_md = pdf_md_m.group(1)
-            is_structured = bool(
-                re.search(r'^## 非表（F 地の文）', pdf_md, re.MULTILINE)
-                or re.search(r'^## 表（埋め込み）', pdf_md, re.MULTILINE)
-                or re.search(r'^## Page \d+', pdf_md, re.MULTILINE)
-            )
-            if is_structured:
-                for item in RagPrepareSearchIndexer._structured_md_chunks(pdf_md, prose_chunk_size):
-                    results.append((item["text"], item["chunk_type"], item["chunk_weight"]))
-            else:
-                for c in RagPrepareSearchIndexer._plain_chunks(pdf_md, plain_chunk_size):
-                    results.append((c, "rag_prepare_plain", 1.0))
-
-            ext_m = re.search(
-                r'^# ファイル外テキスト\s*\n(.*?)' + _SECTION_STOP,
-                full_markdown, re.MULTILINE | re.DOTALL,
-            )
-            if ext_m:
-                ext_text = ext_m.group(1).strip()
-                if ext_text:
-                    ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
-                    annotated = RagPrepareSearchIndexer._apply_annotations(ext_text, ann_result["annotations"])
-                    # section_break マーカーを _structured_md_chunks が認識する --- に変換
-                    annotated = annotated.replace(
-                        RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"
-                    ).strip()
-                    wrapped = "## 非表（F 地の文）\n\n" + annotated
-                    for item in RagPrepareSearchIndexer._structured_md_chunks(wrapped, prose_chunk_size):
+            pdf_md = pdf_md_m.group(1).strip()
+            if pdf_md:
+                is_structured = bool(
+                    re.search(r'^## 非表（F 地の文）', pdf_md, re.MULTILINE)
+                    or re.search(r'^## 表（埋め込み）', pdf_md, re.MULTILINE)
+                    or re.search(r'^## Page \d+', pdf_md, re.MULTILINE)
+                )
+                if is_structured:
+                    for item in RagPrepareSearchIndexer._structured_md_chunks(
+                        pdf_md, prose_chunk_size=prose_chunk_size, file_name=file_name
+                    ):
                         results.append((item["text"], item["chunk_type"], item["chunk_weight"]))
-        else:
+                else:
+                    for c in RagPrepareSearchIndexer._plain_chunks(pdf_md, plain_chunk_size):
+                        chunk_text = f"[{file_name}]\n\n{c}" if file_name else c
+                        results.append((chunk_text, "file_plain", 1.0))
+
+        # 3. どちらのセクションも見つからなかった場合のフォールスルー
+        if not ext_m and not pdf_md_m and full_markdown.strip():
             for c in RagPrepareSearchIndexer._plain_chunks(full_markdown, plain_chunk_size):
                 results.append((c, "rag_prepare_plain", 1.0))
 

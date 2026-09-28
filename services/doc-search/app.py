@@ -153,16 +153,20 @@ def _merge_ordered_rag_input(
     part1_question: str, part2_unified_md: str, part3_other_chunks: str, max_chars: int
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    回答系 LLM へ渡す文字列を１→２→３の順で連結し、max_chars を超えるときは末尾から切る（先頭＝質問を優先）。
+    回答系 LLM へ渡す文字列を１→２の順（【１｜質問】【２｜投稿日新しい順・資料全文】）で連結し、
+    max_chars を超えるときは末尾から切る（先頭＝質問を優先）。
     max_chars は当面「文字数」の上限とみなす。戻り値のメタは UI 表示用。
     """
     s1 = (part1_question or "").strip()
     s2 = (part2_unified_md or "").strip()
     s3 = (part3_other_chunks or "").strip()
     blk1 = f"【１｜質問】\n{s1}"
-    blk2 = f"【２｜類似度順・統合MD】\n{s2 if s2 else '（該当なし）'}"
-    blk3 = f"【３｜類似度順・抽出チャンク】\n{s3 if s3 else '（該当なし）'}"
-    full = f"{blk1}\n\n{blk2}\n\n{blk3}"
+    blk2 = f"【２｜投稿日新しい順・資料全文】\n{s2 if s2 else '（該当なし）'}"
+    if s3:
+        blk3 = f"【３｜抽出チャンク】\n{s3}"
+        full = f"{blk1}\n\n{blk2}\n\n{blk3}"
+    else:
+        full = f"{blk1}\n\n{blk2}"
     full_len = len(full)
     if max_chars <= 0 or full_len <= max_chars:
         out = full
@@ -183,6 +187,7 @@ def _merge_ordered_rag_input(
         else "切り捨てなし（全文がモデル入力）",
     }
     return out, meta
+
 
 
 def _fill_intent_spec_ranges(intent_spec: Dict[str, Any], date_range: str, context_days: int = 14) -> None:
@@ -536,9 +541,12 @@ def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, 
     flat: List[Dict[str, Any]] = []
     for doc in results:
         doc_id = str(doc.get("id") or "")
-        try:
-            sim_doc = float(doc.get("similarity")) if doc.get("similarity") is not None else None
-        except (TypeError, ValueError):
+        if doc.get("similarity") is not None:
+            try:
+                sim_doc = float(doc.get("similarity"))
+            except (TypeError, ValueError) as e:
+                raise ValueError(f"類似度が数値ではありません: doc_id={doc_id}, similarity={doc.get('similarity')!r}") from e
+        else:
             sim_doc = None
         chunks = doc.get("index_chunks_all")
         if isinstance(chunks, list) and chunks:
@@ -546,9 +554,12 @@ def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, 
                 cid_raw = ch.get("id")
                 cid_s = str(cid_raw) if cid_raw is not None else ""
                 cvs = ch.get("chunk_vector_similarity")
-                try:
-                    row_sim = float(cvs) if cvs is not None else None
-                except (TypeError, ValueError):
+                if cvs is not None:
+                    try:
+                        row_sim = float(cvs)
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(f"チャンク類似度が数値ではありません: doc_id={doc_id}, chunk_id={cid_s}, similarity={cvs!r}") from e
+                else:
                     row_sim = None
                 flat.append(
                     {
@@ -579,8 +590,8 @@ def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, 
             return 1_000_000_000
         try:
             return int(v)
-        except (TypeError, ValueError):
-            return 1_000_000_000
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"chunk_index が数値ではありません: doc_id={r.get('doc_id')}, chunk_id={r.get('chunk_id')}, chunk_index={v!r}") from e
 
     def _sim_key(r: Dict[str, Any]) -> float:
         s = r.get("similarity")
@@ -588,8 +599,8 @@ def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, 
             return -1.0
         try:
             return float(s)
-        except (TypeError, ValueError):
-            return -1.0
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"類似度が数値ではありません: doc_id={r.get('doc_id')}, chunk_id={r.get('chunk_id')}, similarity={s!r}") from e
 
     flat.sort(
         key=lambda r: (
@@ -953,6 +964,7 @@ def search_documents():
         print(f"[DEBUG] 最終検索結果: {len(results)} 件返却")
 
         vector_hit_chunks = _flatten_vector_hit_chunks(results)
+        keywords = refined.get("keywords")
 
         response_data = {
             'success': True,
@@ -962,6 +974,7 @@ def search_documents():
             'refined_query': refined_query,
             'date_range': date_range,
             'intent_spec': intent_spec,
+            'keywords': keywords,
             'vector_hit_chunks': vector_hit_chunks,
         }
 
@@ -1027,6 +1040,7 @@ def generate_answer():
 
         # Step0（日付・意図）※クライアントから草稿 refined があれば Step0 出力の代わりに使う → 統合 LLM で質問文を完成
         selected_persons = persons if isinstance(persons, list) else []
+        keywords = data.get("keywords")
         if client_refined_query:
             llm_enriched_query = client_refined_query
             date_range = _normalize_week_range_by_rule(
@@ -1036,6 +1050,8 @@ def generate_answer():
             )
             intent_spec = client_intent_spec if isinstance(client_intent_spec, dict) else {}
             print(f"[INFO] クエリ改善(クライアント草稿): Step0 スキップ date_range={date_range}", flush=True)
+            if not keywords:
+                return jsonify({'success': False, 'error': 'クライアント草稿に keywords が含まれていません'}), 400
         else:
             refined = _refine_query(
                 llm_client,
@@ -1051,6 +1067,15 @@ def generate_answer():
             intent_spec = refined.get("intent_spec")
             if not isinstance(intent_spec, dict):
                 intent_spec = {}
+            if not keywords:
+                keywords = refined.get("keywords")
+
+        # 確定事項: Step0 が検索語を返さない/空の場合は、元の質問文から推測で作らずエラーとして扱う
+        if not isinstance(keywords, list):
+            return jsonify({'success': False, 'error': '検索語（keywords）は配列でなければなりません'}), 400
+        keywords = [str(k).strip() for k in keywords if str(k).strip()]
+        if not keywords:
+            return jsonify({'success': False, 'error': '検索語（keywords）が空です（Step0 から検索語が得られませんでした）'}), 400
 
         lit_ans = _canonical_date_range_literal(date_range)
         if lit_ans:
@@ -1145,12 +1170,46 @@ def generate_answer():
             ]
             print(f"[INFO] RAG検索: {len(search_results)}件", flush=True)
 
-        search_results = _filter_documents_verified_in_09_unified(db_client, search_results)
+        # キーワード検索を実行（同じ人・ソース・3段目・日付窓の絞り込みを適用）
+        keyword_docs = db_client.search_documents_by_keywords(
+            keywords=keywords,
+            persons=persons if isinstance(persons, list) and persons else None,
+            sources=sources if isinstance(sources, list) and sources else None,
+            categories=categories if isinstance(categories, list) and categories else None,
+            filter_date_start=lo,
+            filter_date_end=hi,
+        )
+        print(f"[INFO] キーワード検索 ('{keywords}'): {len(keyword_docs)}件ヒット", flush=True)
 
-        # （２）（３）を構築し、（１）（２）（３）をこの順で結合してから入力上限で切断
+        # ベクトル検索結果とキーワード検索結果のマージ (doc_id ベース)
+        merged_map: Dict[str, Dict[str, Any]] = {}
+        for doc in search_results:
+            did = str(doc.get("id") or "").strip()
+            if did:
+                merged_map[did] = doc
+
+        for kw_doc in keyword_docs:
+            did = str(kw_doc.get("id") or "").strip()
+            if not did:
+                continue
+            if did in merged_map:
+                merged_map[did]["is_keyword_matched"] = True
+                if not merged_map[did].get("document_body") and kw_doc.get("document_body"):
+                    merged_map[did]["document_body"] = kw_doc.get("document_body")
+            else:
+                merged_map[did] = kw_doc
+
+        target_documents = list(merged_map.values())
+        target_documents = _filter_documents_verified_in_09_unified(db_client, target_documents)
+
+        # （２）投稿日降順・同一投稿集約による資料構築
+        threshold_val = float(data.get("threshold", 0.4))
         part2_unified, part3_chunks = _build_context_sections(
-            search_results,
+            target_documents,
             focal_date_range=date_range if date_range and ".." in date_range else None,
+            keywords=keywords,
+            threshold=threshold_val,
+            max_context_chars=max_context_chars,
         )
         ordered_rag_blob, rag_input_meta = _merge_ordered_rag_input(
             answer_llm_query,
@@ -1159,7 +1218,7 @@ def generate_answer():
             max_context_chars,
         )
         print(
-            f"[INFO] 回答入力(1→2→3): 総{len(ordered_rag_blob)}字 / 上限{max_context_chars} / フロー: {flow_id}",
+            f"[INFO] 回答入力(1→2): 総{len(ordered_rag_blob)}字 / 上限{max_context_chars} / フロー: {flow_id}",
             flush=True,
         )
 
@@ -1213,10 +1272,10 @@ def _answer_1step(
     prompt_parts = [f"""あなたはRAG回答エンジンです。
 
 【網羅の前提】下記【ルール】先頭の【網羅｜絶対遵守】と同義（ここでも明示する）。
-手元の【入力】に見える【１】【２】【３】の文字は、質問に関係しうる限りすべて拾いつくす。読み飛ばし・粗読み・代表的な1件だけ見て確定する、は禁止。
+手元の【入力】に見える【１】【２】の文字は、質問に関係しうる限りすべて拾いつくす。読み飛ばし・粗読み・代表的な1件だけ見て確定する、は禁止。
 【入力】が上限で途中までしか無い場合は、それより後は手元に無いものとして扱い、捏造・断定はせず不確実性に書く。手前に見える文字はすべて対象とする。
 
-以下は【１→２→３の順】です。【入力】のみを材料に質問へ回答してください。
+以下は【１→２の順】（【１｜質問】【２｜投稿日新しい順・資料全文】）です。【入力】のみを材料に質問へ回答してください。
 
 【入力】
 {ordered_rag_blob}
@@ -1267,9 +1326,9 @@ def _evidence_1step(
     """
     prompt = f"""あなたはRAGのEvidence抽出器です。
 
-【網羅の前提】下記【ルール】先頭の【網羅｜絶対遵守】と同義。【入力】の【１】【２】【３】に見える文字から、質問に関係しうる断片を漏らさず抽出する。
+【網羅の前提】下記【ルール】先頭の【網羅｜絶対遵守】と同義。【入力】の【１】【２】に見える文字から、質問に関係しうる断片を漏らさず抽出する。
 
-以下は【１→２→３の順】です。末尾がシステム上限で切れている場合があります。切れた先は手元に無いものとして扱う。
+以下は【１→２の順】（【１｜質問】【２｜投稿日新しい順・資料全文】）です。末尾がシステム上限で切れている場合があります。切れた先は手元に無いものとして扱う。
 
 【入力】
 {ordered_rag_blob}
@@ -1449,7 +1508,15 @@ def _regenerate_step0_dates_after_failure(
 
     intent_spec = _normalize_intent_spec_dict(raw_spec, original_query, dr_out)
     print("[INFO] Step0 date retry: repaired date_range and intent_spec", flush=True)
-    return {"query": q_out.strip(), "date_range": dr_out, "intent_spec": intent_spec}
+    
+    kw_out = obj.get("keywords") if isinstance(obj, dict) else None
+    if isinstance(kw_out, list):
+        cleaned_kw = [str(k).strip() for k in kw_out if str(k).strip()]
+    else:
+        cleaned_kw = failed_step0.get("keywords")
+    if not cleaned_kw:
+        cleaned_kw = failed_step0.get("keywords")
+    return {"query": q_out.strip(), "date_range": dr_out, "intent_spec": intent_spec, "keywords": cleaned_kw}
 
 
 def _refine_query(
@@ -1468,7 +1535,7 @@ def _refine_query(
 
     Returns:
         query, date_range（互換）, intent_spec（version / task / resolved_instruction_ja / focal_dates /
-        calendar_primary_range / document_context_range）
+        calendar_primary_range / document_context_range）, keywords
     """
     import json as _json
 
@@ -1483,6 +1550,7 @@ def _refine_query(
 【必須キー】
 - query: 検索のための自然語草稿。**短く要約してはならない。** 元の発話の情報を落とさず、趣旨・人物・種別を含め、検索エンジンが文脈を拾いやすい**情報豊かな一文〜数文**にする。date_range が空でないときは query に YYYY-MM-DD 形式の暦や「を含む週」「5/9から一週間」「明日から一週間」等の暦口語を含めない（暦の区間は date_range のキーだけ）。後段で検索用文字列の先頭に同一の暦区間リテラルが機械的に1回付く）
 - date_range: 質問の主軸となる暦日レンジ "YYYY-MM-DD..YYYY-MM-DD"。日付が無ければ ""
+- keywords: 質問の核となる検索語・名詞の配列（1個以上の文字列のリスト。依頼口語「教えて」「ありますか」「確認して」や助詞などを除いた名詞・検索キーワード。例: ["宿題"]、["持ち物", "水筒"]）。空配列にしてはならない。
 - intent_spec: 下流モデル向けの固定スキーマ（必ずオブジェクト）
   - version: 1（整数）
   - task: 英語の短いスラッグ（例: schedule_day_with_related_context, general_question）
@@ -1508,7 +1576,7 @@ def _refine_query(
 元の質問: {query}
 
 参考（構造の例。内容は質問に合わせて変えよ。今日が {today} のとき）:
-{{"query":"本日に関係する予定・提出物・連絡・参加依頼・持ち物・場所変更など、学校・保育・習い事の文脈で起こりうる事項を漏れなく検索したい。人物・種別は元の発話に合わせて明示する。","date_range":"{today}..{today}","intent_spec":{{"version":1,"task":"schedule_day_with_related_context","resolved_instruction_ja":"(1) ユーザーは本日の予定を把握したい。(2) カレンダー由来の情報から calendar_primary_range に含まれる日の予定・イベントをすべて抽出する。(3) 提出物・連絡・参加・宿題など予定に関連しうる文書は、document_context_range と日付が重なるものを抽出する。(4) (2)(3)を統合し時系列で列挙して答え、不足は不確実性に書く。","focal_dates":["{today}"],"calendar_primary_range":"{today}..{today}","document_context_range":""}}}}
+{{"query":"本日に関係する予定・提出物・連絡・参加依頼・持ち物・場所変更など、学校・保育・習い事の文脈で起こりうる事項を漏れなく検索したい。人物・種別は元の発話に合わせて明示する。","date_range":"{today}..{today}","keywords":["予定","提出物","連絡","持ち物"],"intent_spec":{{"version":1,"task":"schedule_day_with_related_context","resolved_instruction_ja":"(1) ユーザーは本日の予定を把握したい。(2) カレンダー由来の情報から calendar_primary_range に含まれる日の予定・イベントをすべて抽出する。(3) 提出物・連絡・参加・宿題など予定に関連しうる文書は、document_context_range と日付が重なるものを抽出する。(4) (2)(3)を統合し時系列で列挙して答え、不足は不確実性に書く。","focal_dates":["{today}"],"calendar_primary_range":"{today}..{today}","document_context_range":""}}}}
 出力:"""
     response = llm_client.call_model(
         tier="ui_response",
@@ -1524,6 +1592,15 @@ def _refine_query(
         q = result.get("query")
         if not isinstance(q, str) or not q.strip():
             raise RuntimeError("Step0 の応答に有効な query が含まれていません")
+
+        # 確定事項: Step0 が検索語を返さない/空の場合は、元の質問文から推測で作らずエラーとして扱う
+        keywords_raw = result.get("keywords")
+        if not isinstance(keywords_raw, list):
+            raise RuntimeError("Step0 の応答に有効な keywords (配列) が含まれていません")
+        keywords = [str(k).strip() for k in keywords_raw if isinstance(k, (str, int, float)) and str(k).strip()]
+        if not keywords:
+            raise RuntimeError("Step0 の応答の keywords が空です（検索語が取得できませんでした）")
+
         dr = result.get("date_range", "")
         dr = dr.strip() if isinstance(dr, str) else ""
         dr = _normalize_week_range_by_rule(
@@ -1563,6 +1640,7 @@ def _refine_query(
                 "query": q,
                 "date_range": dr,
                 "intent_spec": dict(raw_spec) if isinstance(raw_spec, dict) else {},
+                "keywords": keywords,
             }
             fixed = _regenerate_step0_dates_after_failure(
                 llm_client,
@@ -1576,11 +1654,12 @@ def _refine_query(
                 q = fixed["query"]
                 dr = fixed["date_range"]
                 intent_spec = fixed["intent_spec"]
+                keywords = fixed.get("keywords") or keywords
             else:
                 raise RuntimeError("Step0: date retry に失敗しました")
         else:
             intent_spec = _normalize_intent_spec_dict(raw_spec, query, dr)
-        return {"query": q, "date_range": dr, "intent_spec": intent_spec}
+        return {"query": q, "date_range": dr, "intent_spec": intent_spec, "keywords": keywords}
     else:
         err = response.get('error', '不明なエラー')
         raise RuntimeError(f"Step0 LLM呼び出し失敗: {err}")
@@ -1596,9 +1675,9 @@ def _compress_step1(
     重複をまとめ、必ずSourceを付ける。
     戻り値: (抽出テキスト, call_model に渡したプロンプト全文)
     """
-    prompt = f"""【網羅の前提】下記【ルール】先頭の【網羅｜絶対遵守】と同義。【入力】の【１】【２】【３】を読み飛ばさず、質問（１）に関係しうる情報を拾いつくす。
+    prompt = f"""【網羅の前提】下記【ルール】先頭の【網羅｜絶対遵守】と同義。【入力】の【１】【２】を読み飛ばさず、質問（１）に関係しうる情報を拾いつくす。
 
-以下は【１→２→３の順】の質問および参照資料です。末尾がシステム上限で切れている場合があります。
+以下は【１→２の順】（【１｜質問】【２｜投稿日新しい順・資料全文】）の質問および参照資料です。末尾がシステム上限で切れている場合があります。
 
 【入力】
 {ordered_rag_blob}
@@ -2084,8 +2163,7 @@ def _apply_date_match_bonus(results: List[Dict[str, Any]], date_range: str, quer
         try:
             base = float(sim_raw)
         except (TypeError, ValueError) as e:
-            print(f"[WARN] _apply_date_match_bonus: doc id={doc.get('id')!r} similarity={sim_raw!r} is not numeric ({e}); skipping", flush=True)
-            continue
+            raise ValueError(f"_apply_date_match_bonus: doc id={doc.get('id')!r} similarity={sim_raw!r} is not numeric") from e
         bonus = 0.0
         if start_d and end_d:
             for dd in _ix_search_dates_parsed(doc):
@@ -2355,147 +2433,258 @@ def _vector_similarity_for_top3_ranking(doc: Dict[str, Any]) -> float:
         return float("-inf")
     try:
         return float(s)
-    except (TypeError, ValueError):
-        return float("-inf")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"類似度が数値ではありません: doc_id={doc.get('id')}, similarity={s!r}") from e
+
+
+def _split_classroom_body(body: str) -> Tuple[str, str]:
+    """Classroom の body を (ファイル外テキスト/投稿本文, 添付抽出テキスト) に分割する。"""
+    if not body:
+        return "", ""
+    m = re.search(r"(?m)^#\s+(?:PDF抽出Markdown|.+抽出.*?)$", body)
+    if m:
+        main_text = body[:m.start()].strip()
+        attach_text = body[m.start():].strip()
+        return main_text, attach_text
+    return body.strip(), ""
+
+
+def _extract_classroom_post_url(body: str) -> Optional[str]:
+    """body 内の '- 投稿URL: ...' から URL を抽出する。"""
+    if not body:
+        return None
+    m = re.search(r"-\s*投稿URL:\s*(\S+)", body)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+def _ensure_float_sim(val: Any, doc_id: Any, name: str) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{name} が数値ではありません: doc_id={doc_id}, value={val!r}") from e
+
+
+def _text_contains_any_keyword(text: str, keywords: Optional[List[str]]) -> bool:
+    if not text or not keywords:
+        return False
+    t_lower = text.lower()
+    return any(kw.lower() in t_lower for kw in keywords if kw and str(kw).strip())
 
 
 def _build_context_sections(
-    documents: List[Dict[str, Any]], focal_date_range: Optional[str] = None
+    documents: List[Dict[str, Any]],
+    focal_date_range: Optional[str] = None,
+    keywords: Optional[List[str]] = None,
+    threshold: float = 0.4,
+    max_context_chars: int = 30000,
 ) -> Tuple[str, str]:
     """
-    （2）（3）のみ返すタプル。（1）は呼び出し側で質問へ付与済みである前提。
-
-    （2）全チャンクを類似度の良い順に見て doc_id ごとに文書類似度を付与するが、同一文書では低い値で上書きしない
-        （＝その doc のチャンク類似度の最大）。その文書類似度で並べた上位ちょうど3 UUID のみを対象に、
-        document_body（統合MD）が非空のものを同順で連結する。4位以下で穴埋めしない。
-    （3）全チャンクをチャンク類似度の高い順に並べ、【２】に選ばれた上位3 UUID の doc_id と一致しないチャンクだけを送る。
-        ブロックに載せる類似度はチャンク単位。
+    回答生成資料の構築（投稿単位の集約と新順ソート）:
+    - Classroom の同一投稿を投稿URLで集約し、投稿本文は1回だけ記載。
+    - 添付ファイルは「post_body以外の断片類似度閾値以上 または 添付部分本文に質問の言葉を含む」のみ全文掲載。
+    - 投稿（本文1回）は「いずれかの行のpost_body類似度閾値以上、投稿本文に質問の言葉を含む、または載せる添付ファイルが1つ以上ある」場合に掲載。
+    - 投稿日（post_at）の新しい順（降順 DESC）にソート。
+    - 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる。
+    - max_context_chars を超える古い投稿は含めずに打ち切る。
     Googleカレンダー行は含めない。
-    呼び出し側で _filter_documents_verified_in_09_unified を通し、09 に無い id を先に落とすこと。
-    focal_date_range: 呼び出し互換のみ（現在は未参照）。
+    戻り値: (part2_unified, "")
     """
     _ = focal_date_range
 
-    empty_pair = ("", "")
     if not documents:
-        return empty_pair
-
-    sep = "─" * 60
-
-    text_docs = [d for d in documents if d.get("source") != "Googleカレンダー"]
-
-    # (chunk_sim, doc_id, doc_dict, chunk_row|None, chunk_text)
-    chunk_events: List[Tuple[float, str, Dict[str, Any], Optional[Dict[str, Any]], str]] = []
-    doc_by_id: Dict[str, Dict[str, Any]] = {}
-
-    for doc in text_docs:
-        did = str(doc.get("id") or "").strip()
-        if not did:
-            continue
-        doc_by_id[did] = doc
-        for ch, txt in _indexed_chunks_ordered_for_context(doc):
-            t = (txt or "").strip()
-            if not t:
-                continue
-            ch_sim = _chunk_row_similarity(ch)
-            chunk_events.append((ch_sim, did, doc, ch, t))
-
-    doc_best: Dict[str, float] = {}
-    for sim, did, *_rest in chunk_events:
-        if sim is not None:
-            doc_best[did] = max(doc_best.get(did, float("-inf")), sim)
-
-    for doc in text_docs:
-        did = str(doc.get("id") or "").strip()
-        if not did:
-            continue
-        if did not in doc_best:
-            doc_best[did] = _vector_similarity_for_top3_ranking(doc)
-
-    ordered_docs = sorted(
-        text_docs,
-        key=lambda d: (-doc_best.get(str(d.get("id") or "").strip(), float("-inf")), str(d.get("id") or "")),
-    )
-    top3_ids_ordered = [
-        str(d.get("id") or "").strip()
-        for d in ordered_docs[:3]
-        if str(d.get("id") or "").strip()
-    ]
-    top3_id_set = set(top3_ids_ordered)
-
-    integrated_md_bodies: List[str] = []
-    for did in top3_ids_ordered:
-        doc = doc_by_id.get(did)
-        if not doc:
-            continue
-        body_text = (doc.get("document_body") or "").strip()
-        if body_text:
-            integrated_md_bodies.append(body_text)
-
-    seg2 = "\n\n---\n\n".join(integrated_md_bodies).strip()
-
-    chunk_events.sort(
-        key=lambda x: (
-            -x[0] if x[0] is not None else float("inf"),
-            x[1],
-            (x[3] or {}).get("chunk_index") if x[3] is not None else 10**9,
-            str((x[3] or {}).get("id") or "") if x[3] else "",
-        ),
-    )
-
-    extras_idx = 0
-    emitted_keys: set[str] = set()
-    blocks3: List[str] = []
-
-    for ch_sim, did, doc_local, ch, txt_local in chunk_events:
-        if did in top3_id_set:
-            continue
-        key = _chunk_stable_key(did, ch, "snippet")
-        if key in emitted_keys:
-            continue
-        emitted_keys.add(key)
-        extras_idx += 1
-        title_loc = str(doc_local.get("title") or "").strip()
-        person_loc = str(doc_local.get("person") or "").strip()
-        cat_loc = str(doc_local.get("category") or "").strip()
-        if cat_loc in ("—", "-", "―"):
-            cat_loc = ""
-        meta_extra_lines: List[str] = []
-        if person_loc:
-            meta_extra_lines.append(f"人物: {person_loc}")
-        if cat_loc:
-            meta_extra_lines.append(f"カテゴリ: {cat_loc}")
-        meta_extra = ("\n".join(meta_extra_lines) + "\n") if meta_extra_lines else ""
-        dd = doc_local.get("document_date", "")
-        dm = doc_local.get("is_date_matched", False)
-        tag = "（日付一致✓）" if dm else ""
-        try:
-            s_disp = f"{float(ch_sim):.3f}"
-        except (TypeError, ValueError):
-            s_disp = str(ch_sim)
-        blk = (
-            f"""【それ以外の抽出チャンク{extras_idx}】{tag}
-タイトル: {title_loc}
-{meta_extra}日付: {dd}
-チャンク類似度: {s_disp}
-
-{_llm_chunk_heading(ch)}{txt_local}
-{sep}"""
-        )
-        blocks3.append(blk)
-
-    if not integrated_md_bodies and not blocks3:
         return "", ""
 
-    seg3 = "\n\n".join(blocks3).strip()
-    total_chars_estimate = sum(len(x) for x in integrated_md_bodies) + sum(len(x) for x in blocks3)
+    text_docs = [d for d in documents if d.get("source") != "Googleカレンダー"]
+    if not text_docs:
+        return "", ""
+
+    classroom_raw_tables = ("03_ema_classroom_01_raw", "04_ikuya_classroom_01_raw")
+
+    groups_map: Dict[str, Dict[str, Any]] = {}
+    group_order: List[str] = []
+
+    for doc in text_docs:
+        raw_table = str(doc.get("raw_table") or "").strip()
+        is_classroom = raw_table in classroom_raw_tables
+        body = str(doc.get("document_body") or "").strip()
+
+        if is_classroom:
+            post_url = _extract_classroom_post_url(body)
+            if not post_url:
+                raise ValueError(f"クラスルーム行に投稿URLが存在しません: doc_id={doc.get('id')}")
+            gkey = f"classroom_url:{post_url}"
+            main_text, attach_text = _split_classroom_body(body)
+        else:
+            gkey = f"doc:{doc.get('id')}"
+            post_url = doc.get("file_url")
+            main_text = body
+            attach_text = ""
+
+        if gkey not in groups_map:
+            group_order.append(gkey)
+            post_at_raw = doc.get("post_at")
+            post_at_str = str(post_at_raw).strip() if post_at_raw is not None else ""
+            has_date = bool(post_at_str)
+
+            title = str(doc.get("title") or "").strip()
+            person = str(doc.get("person") or "").strip()
+            source = str(doc.get("source") or doc.get("classification1") or "").strip()
+
+            if is_classroom:
+                category = str(doc.get("classification2") or "").strip()
+            else:
+                category = str(doc.get("classification3") or "").strip()
+
+            groups_map[gkey] = {
+                "group_key": gkey,
+                "post_at": post_at_str if has_date else None,
+                "has_date": has_date,
+                "post_at_sort_val": post_at_str if has_date else "",
+                "title": title,
+                "person": person,
+                "source": source,
+                "category": category,
+                "post_url": post_url,
+                "main_body": main_text,
+                "attachments": [],  # List[Tuple[str, str]]
+                "is_classroom": is_classroom,
+                "post_body_sim_matched": False,
+                "main_body_kw_matched": False,
+                "non_classroom_matched": False,
+            }
+
+        if is_classroom:
+            # post_body 断片の類似度判定
+            pb_sim = _ensure_float_sim(doc.get("post_body_similarity"), doc.get("id"), "post_body_similarity")
+            if pb_sim is not None and pb_sim >= threshold:
+                groups_map[gkey]["post_body_sim_matched"] = True
+
+            # 投稿本文のキーワード判定
+            if _text_contains_any_keyword(main_text, keywords):
+                groups_map[gkey]["main_body_kw_matched"] = True
+
+            # 修正点1: 添付ファイルを載せるかは、その行の「post_body 以外の断片」の類似度の最大値が閾値以上、
+            # または添付ファイル部分の本文（# PDF抽出Markdown 以降）に質問の言葉を含む場合だけ。
+            # 投稿の本文に質問の言葉があるだけで添付を載せない。
+            if attach_text:
+                att_sim = _ensure_float_sim(doc.get("attachment_similarity"), doc.get("id"), "attachment_similarity")
+                att_sim_ok = (att_sim is not None and att_sim >= threshold)
+                att_kw_ok = _text_contains_any_keyword(attach_text, keywords)
+                if att_sim_ok or att_kw_ok:
+                    raw_fn = doc.get("file_name")
+                    file_name = str(raw_fn).strip() if raw_fn and str(raw_fn).strip() else "(ファイル名なし)"
+                    existing_att = groups_map[gkey]["attachments"]
+                    if not any(fn == file_name and txt == attach_text for fn, txt in existing_att):
+                        existing_att.append((file_name, attach_text))
+        else:
+            # クラスルーム以外の文書
+            doc_sim = _ensure_float_sim(doc.get("similarity"), doc.get("id"), "similarity")
+            sim_ok = (doc_sim is not None and doc_sim >= threshold)
+            kw_ok = _text_contains_any_keyword(main_text, keywords) or _text_contains_any_keyword(str(doc.get("title") or ""), keywords)
+            if sim_ok or kw_ok:
+                groups_map[gkey]["non_classroom_matched"] = True
+
+    # 修正点2: 投稿（本文1回）を載せるのは、その投稿のいずれかの行の post_body 断片の類似度が閾値以上、
+    # 投稿の本文に質問の言葉を含む、または載せる添付ファイルが1つ以上ある場合。
+    valid_groups: List[Dict[str, Any]] = []
+    for gkey in group_order:
+        g = groups_map[gkey]
+        if g["is_classroom"]:
+            if g["post_body_sim_matched"] or g["main_body_kw_matched"] or len(g["attachments"]) > 0:
+                valid_groups.append(g)
+        else:
+            if g["non_classroom_matched"]:
+                valid_groups.append(g)
+
+    if not valid_groups:
+        return "", ""
+
+    # 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる
+    date_groups = [g for g in valid_groups if g["has_date"]]
+    no_date_groups = [g for g in valid_groups if not g["has_date"]]
+
+    # 日付のある投稿を新しい順にソート (降順 DESC)
+    date_groups.sort(key=lambda g: g["post_at_sort_val"], reverse=True)
+
+    def _format_group_block(g: Dict[str, Any], is_no_date: bool = False) -> str:
+        parts: List[str] = []
+        parts.append("━" * 50)
+        parts.append(f"【投稿】タイトル: {g['title']}")
+
+        meta_items: List[str] = []
+        if g['has_date']:
+            meta_items.append(f"投稿日: {g['post_at']}")
+        else:
+            meta_items.append("投稿日: （投稿日不明）")
+        if g['source']:
+            meta_items.append(f"ソース: {g['source']}")
+        if g['person']:
+            meta_items.append(f"人物: {g['person']}")
+        if g['category']:
+            meta_items.append(f"カテゴリ: {g['category']}")
+        parts.append(" | ".join(meta_items))
+
+        if g.get("post_url"):
+            parts.append(f"投稿URL: {g['post_url']}")
+        parts.append("")
+
+        if g["main_body"]:
+            parts.append(g["main_body"])
+
+        for fname, att_txt in g["attachments"]:
+            parts.append("")
+            parts.append(f"【添付ファイル: {fname}】")
+            parts.append(att_txt)
+
+        parts.append("━" * 50)
+        return "\n".join(parts)
+
+    formatted_date_blocks = [_format_group_block(g) for g in date_groups]
+    formatted_no_date_blocks = [_format_group_block(g, is_no_date=True) for g in no_date_groups]
+
+    # 文字数上限（max_context_chars）による古い方のカット
+    allowed_chars = max_context_chars
+    selected_blocks: List[str] = []
+    current_chars = 0
+
+    for blk in formatted_date_blocks:
+        blk_len = len(blk) + 2
+        if selected_blocks and (current_chars + blk_len > allowed_chars):
+            print(
+                f"[INFO] max_context_chars ({max_context_chars}) により古い投稿をカットしました (現在 {current_chars} 字)",
+                flush=True,
+            )
+            break
+        selected_blocks.append(blk)
+        current_chars += blk_len
+
+    if formatted_no_date_blocks and (current_chars < allowed_chars or not selected_blocks):
+        no_date_header = "\n\n▼▼▼ 投稿日不明の資料 ▼▼▼\n（以下の資料は投稿日時が記録されていません）\n\n"
+        no_date_added: List[str] = []
+        for blk in formatted_no_date_blocks:
+            blk_len = len(blk) + 2
+            if selected_blocks and (current_chars + len(no_date_header) + blk_len > allowed_chars):
+                print(
+                    f"[INFO] max_context_chars ({max_context_chars}) により投稿日不明の古い資料をカットしました",
+                    flush=True,
+                )
+                break
+            no_date_added.append(blk)
+            current_chars += blk_len
+
+        if no_date_added:
+            selected_blocks.append(no_date_header + "\n\n".join(no_date_added))
+
+    final_seg2 = "\n\n".join(selected_blocks).strip()
     print(
-        f"[DEBUG] （2）（3）: 【２】上位3doc UUID={top3_ids_ordered} body件数={len(integrated_md_bodies)} "
-        f"【３】チャンク数={extras_idx} 文字数≈{total_chars_estimate}",
+        f"[DEBUG] _build_context_sections: 日付あり={len(date_groups)}件 日付なし={len(no_date_groups)}件 採用={len(selected_blocks)}ブロック 総文字数={len(final_seg2)}",
         flush=True,
     )
-
-    return seg2, seg3
+    return final_seg2, ""
 
 
 def _calendar_attendance_intent(query: str) -> Optional[set[str]]:

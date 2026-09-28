@@ -1378,6 +1378,9 @@
                 if (searchData.intent_spec === undefined || searchData.intent_spec === null) {
                     throw new Error('検索結果に intent_spec が含まれていません');
                 }
+                if (searchData.keywords === undefined || searchData.keywords === null) {
+                    throw new Error('検索結果に keywords が含まれていません');
+                }
                 const rawMaxContext = document.getElementById('maxContextInput').value;
                 const parsedMaxContext = parseInt(rawMaxContext);
                 if (isNaN(parsedMaxContext)) {
@@ -1394,6 +1397,7 @@
                         refined_query: searchData.refined_query,
                         date_range: searchData.date_range,
                         intent_spec: searchData.intent_spec,
+                        keywords: searchData.keywords,
                         flow: selectedFlow,
                         max_context_chars: parsedMaxContext,
                         persons: selectedPersons,
