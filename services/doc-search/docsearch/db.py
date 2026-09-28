@@ -46,6 +46,12 @@ def _cosine_similarity(q: List[float], v: List[float]) -> float:
     return dot / (nq * nv)
 
 
+_CLASSROOM_RAW_TABLES = (
+    "03_ema_classroom_01_raw",
+    "04_ikuya_classroom_01_raw",
+)
+
+
 class DocSearchDB:
     def __init__(self, *, use_service_role: bool = True):
         if not settings.SUPABASE_URL:
@@ -63,8 +69,8 @@ class DocSearchDB:
 
     def get_workspace_hierarchy(self) -> Dict[str, Dict[str, List[str]]]:
         """09 から person→source→category の階層を構築。PostgREST の 1000 行既定を超える場合はページング。
-        3段目の値は classification2（コース名）と classification3（カテゴリ）のうち値がある方。
-        両方に値がある行は契約違反として ValueError を送出する。
+        3段目の値はクラスルーム(raw_table が 03_ema_classroom_01_raw / 04_ikuya_classroom_01_raw)は
+        classification2（コース名）、それ以外は classification3。
         """
         try:
             hierarchy: Dict[str, Dict[str, set]] = {}
@@ -73,26 +79,38 @@ class DocSearchDB:
             while True:
                 response = (
                     self.client.table("09_unified_documents")
-                    .select("person, classification1, classification2, classification3")
+                    .select("id, raw_table, person, classification1, classification2, classification3")
                     .range(offset, offset + page_size - 1)
                     .execute()
                 )
                 batch = response.data or []
                 for doc in batch:
+                    doc_id = doc.get("id")
                     person = (doc.get("person") or "").strip()
                     source = (doc.get("classification1") or "").strip()
                     c2 = (doc.get("classification2") or "").strip()
                     c3 = (doc.get("classification3") or "").strip()
-                    if not person or not source:
+                    raw_table = (doc.get("raw_table") or "").strip()
+
+                    if not person:
+                        logger.error("get_workspace_hierarchy: person が未設定です (id={})", doc_id)
                         continue
-                    # 契約違反チェック: classification2 と classification3 の両方に値がある行は不正
-                    if c2 and c3:
-                        raise ValueError(
-                            f"契約違反: classification2 と classification3 の両方に値がある行が存在します "
-                            f"(person={person!r}, source={source!r}, classification2={c2!r}, classification3={c3!r})"
-                        )
-                    # 3段目の値: c2 か c3 のうち値がある方
-                    cat = c2 if c2 else c3
+                    if not source:
+                        logger.error("get_workspace_hierarchy: classification1 が未設定です (id={})", doc_id)
+                        continue
+
+                    # 3段目の値: クラスルームは classification2(コース名)、それ以外は classification3
+                    if raw_table in _CLASSROOM_RAW_TABLES:
+                        if not c2:
+                            logger.error(
+                                "get_workspace_hierarchy: クラスルーム行に classification2(コース名) が未設定です (id={})",
+                                doc_id,
+                            )
+                            continue
+                        cat = c2
+                    else:
+                        cat = c3
+
                     hierarchy.setdefault(person, {}).setdefault(source, set())
                     if cat:
                         hierarchy[person][source].add(cat)
@@ -318,8 +336,7 @@ class DocSearchDB:
                     "title": result.get("title"),
                     "source": c1,
                     "person": result.get("person"),
-                    # 3段目の値: classification2（コース名）か classification3（カテゴリ）のどちらかに入っている
-                    "category": (c2 or "").strip() if c2 else c3,
+                    "category": c3,
                     "classification1": c1,
                     "classification2": c2,
                     "classification3": c3,

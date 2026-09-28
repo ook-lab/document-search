@@ -365,7 +365,9 @@ class RagPrepareSearchIndexer:
         ):
             _set_str(key, raw_row.get(key))
 
-        rt = ud.get("raw_table") or ""
+        rt = (ud.get("raw_table") or "").strip()
+        if not rt:
+            raise ValueError(f"raw_table が未設定です (doc_id={ud.get('id')})")
         _set_str("classification1", raw_row.get("source"))
         # クラスルーム行(03/04): classification2=コース名, classification3=NULL（投稿種別は不要）
         # 05_ikuya_waseaca_01_raw: classification2=コース名, classification3=カテゴリ（従来どおり）

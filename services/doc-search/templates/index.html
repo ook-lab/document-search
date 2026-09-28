@@ -1213,37 +1213,46 @@
             });
         }
 
-        function applyFilters() {
-            selectedPersons = [];
-            selectedSources = [];
-            selectedCategories = [];
+        function computeCurrentFilters() {
+            const persons = [];
+            const sources = [];
+            const categories = [];
 
             hierarchyData.forEach(ws => {
                 const wsCb = document.getElementById(`ws-${ws.name}`);
                 if (wsCb && wsCb.checked && !wsCb.indeterminate) {
                     // person 全体が選択 → person だけ追加（source/category は絞らない）
-                    selectedPersons.push(ws.name);
+                    persons.push(ws.name);
                     return;
                 }
                 ws.sources.forEach(src => {
                     const srcCb = document.getElementById(`src-${ws.name}-${src.name}`);
                     if (srcCb && srcCb.checked && !srcCb.indeterminate) {
                         // source 全体が選択 → person + source を追加
-                        if (!selectedPersons.includes(ws.name)) selectedPersons.push(ws.name);
-                        if (!selectedSources.includes(src.name)) selectedSources.push(src.name);
+                        if (!persons.includes(ws.name)) persons.push(ws.name);
+                        if (!sources.includes(src.name)) sources.push(src.name);
                         return;
                     }
                     // category 単位の選択
                     src.categories.forEach(cat => {
                         const catCb = document.getElementById(`cat-${ws.name}-${src.name}-${cat}`);
                         if (catCb && catCb.checked) {
-                            if (!selectedPersons.includes(ws.name)) selectedPersons.push(ws.name);
-                            if (!selectedSources.includes(src.name)) selectedSources.push(src.name);
-                            if (!selectedCategories.includes(cat)) selectedCategories.push(cat);
+                            if (!persons.includes(ws.name)) persons.push(ws.name);
+                            if (!sources.includes(src.name)) sources.push(src.name);
+                            if (!categories.includes(cat)) categories.push(cat);
                         }
                     });
                 });
             });
+
+            return { persons, sources, categories };
+        }
+
+        function applyFilters() {
+            const current = computeCurrentFilters();
+            selectedPersons = current.persons;
+            selectedSources = current.sources;
+            selectedCategories = current.categories;
 
             console.log('[フィルタ適用]', { selectedPersons, selectedSources, selectedCategories });
             updateFilterChips();
@@ -1310,6 +1319,13 @@
                 showError('質問を入力してください');
                 return;
             }
+
+            // 検索実行時点のチェックボックス状態から絞り込みを組み立て（未決定でも画面の印と一致させる）
+            const currentFilters = computeCurrentFilters();
+            selectedPersons = currentFilters.persons;
+            selectedSources = currentFilters.sources;
+            selectedCategories = currentFilters.categories;
+            updateFilterChips();
 
             // UI状態更新
             setLoading(true);
