@@ -1073,19 +1073,22 @@ class RagPrepareSearchIndexer:
         if ext_m:
             ext_text = ext_m.group(1).strip()
             if ext_text:
-                ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
-                annotated = RagPrepareSearchIndexer._apply_annotations(
-                    ext_text, ann_result.get("annotations") or []
-                )
-                # section_break マーカーを _structured_md_chunks が認識する --- に変換
-                annotated = annotated.replace(
-                    RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"
-                ).strip()
-                wrapped = "## 非表（F 地の文）\n\n" + annotated
-                for item in RagPrepareSearchIndexer._structured_md_chunks(
-                    wrapped, prose_chunk_size=prose_chunk_size
-                ):
-                    results.append((item["text"], "post_body", 1.0))
+                if len(ext_text) <= prose_chunk_size:
+                    results.append((ext_text, "post_body", 1.0))
+                else:
+                    ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
+                    annotated = RagPrepareSearchIndexer._apply_annotations(
+                        ext_text, ann_result.get("annotations") or []
+                    )
+                    # section_break マーカーを _structured_md_chunks が認識する --- に変換
+                    annotated = annotated.replace(
+                        RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"
+                    ).strip()
+                    wrapped = "## 非表（F 地の文）\n\n" + annotated
+                    for item in RagPrepareSearchIndexer._structured_md_chunks(
+                        wrapped, prose_chunk_size=prose_chunk_size
+                    ):
+                        results.append((item["text"], "post_body", 1.0))
 
         # 2. 添付ファイル（PDF抽出Markdown）の独立断片化
         pdf_md_m = re.search(
