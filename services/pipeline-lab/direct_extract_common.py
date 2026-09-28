@@ -60,12 +60,13 @@ class TableData(BaseModel):
 class PageBlock(BaseModel):
     order: int = Field(description="ページ内での自然な読み順（1から始まる連番）")
     block_type: Literal[
-        "heading",          # 大見出し・中見出し・小見出し
-        "paragraph",        # 一般の地の文・段落
-        "bullet_list",      # 箇条書き
-        "table",            # 表本体
-        "figure_caption",   # 写真・イラスト・図のキャプション
-        "footnote"          # ページ下部の脚注・注釈
+        "heading",             # 大見出し・中見出し・小見出し
+        "paragraph",           # 一般の地の文・段落
+        "bullet_list",         # 箇条書き
+        "table",               # 表本体
+        "figure_caption",      # 写真・イラスト・図のキャプション（印刷された文字）
+        "figure_description",  # 写真・イラスト・図の内容の説明（キャプションとは別）
+        "footnote"             # ページ下部の脚注・注釈
     ] = Field(description="ブロックの種別。『枠』はブロックではなく container で表す")
     bbox: List[int] = Field(
         description="ブロックの正規化座標 [ymin, xmin, ymax, xmax] (0〜1000 の整数。ymin < ymax, xmin < xmax)"
@@ -202,7 +203,7 @@ def validate_direct_extract_result(data: DirectExtractPageResult) -> None:
 
 _DIRECT_EXTRACT_PROMPT = """あなたは極めて精密なOCRおよび文書構造化システムです。
 提供された画像（ページ画像）からすべてのブロックを印刷物の自然な読み順（Reading Order）の1本の配列（blocks）として抽出し、JSONスキーマに従って出力してください。
-「順番は崩さず、テキストブロックはテキストブロック、表は表としてちゃんと読み取る」ことを絶対条件とします。
+「順番は崩さず、テキストブロックはテキストブロック、表は表としてちゃんと読み取る」ことを絶対条件とします。文字の無い写真・イラスト・図についても、内容を把握して説明ブロックとして抽出してください。
 
 【最重要ルール】
 1. **読み順の維持（Reading Order）**:
@@ -215,7 +216,8 @@ _DIRECT_EXTRACT_PROMPT = """あなたは極めて精密なOCRおよび文書構�
    - `paragraph`: 一般の地の文・段落
    - `bullet_list`: 箇条書きリスト
    - `table`: 表本体
-   - `figure_caption`: 図・写真・イラストのキャプション
+   - `figure_caption`: 図・写真・イラストのキャプション（印刷された説明文・題名）
+   - `figure_description`: 写真・イラスト・図・手書きの図の内容の説明（印刷されたキャプションとは別物）
    - `footnote`: ページ下部の注釈・脚注
    - ※枠線（囲み枠・コラム）自体はブロックにせず、`container` 属性で表現してください。
 
@@ -238,11 +240,17 @@ _DIRECT_EXTRACT_PROMPT = """あなたは極めて精密なOCRおよび文書構�
      - 'none': 表とは無関係な一般テキスト
    - `target_table_id`: 対象の表ID（例: 'T1'）。none の場合は null。
 
-6. **テキストブロック（text_content）**:
-   - `block_type` が `table` 以外の場合、Markdownテキスト（見出しの#や箇条書きの-を含む）を `text_content` に記述し、`table_data` は null にしてください。
+6. **写真・イラスト・図の説明（figure_description）**:
+   - ページ内の写真・イラスト・図・手書きの図などの領域ごとに、その内容を説明する `figure_description` ブロックを読み順の位置に出してください（既存の印刷されたキャプションである `figure_caption` とは別物です）。
+   - 説明には、見て分かる場面・行事・人数や様子・写っている物・写真の中で読める文字（看板・掲示・黒板など）を書き、見えないことを推測で書かないでください。
+   - ページ全体が文字のない写真の場合でも、決して blocks を空にせず、必ずこの `figure_description` ブロックを出力してください。
+   - `text_content` に説明文を入れ、`table_data` は null にしてください。
+
+7. **テキストブロック（text_content）**:
+   - `block_type` が `table` 以外の場合（`figure_description` を含む）、Markdownテキスト（見出しの#や箇条書きの-を含む、または写真・図の説明文）を `text_content` に記述し、`table_data` は null にしてください。
    - 漢字のふりがな（ルビ）は完全に除去してください。
 
-7. **表ブロック（table_data）**:
+8. **表ブロック（table_data）**:
    - `block_type` が `table` の場合、詳細構造を `table_data` に記述し、`text_content` は null にしてください。
    - `row_label_column_count`: 左端から何列が行見出し（行ラベル・インデックス列、例: 時間割の第1列「日付」や項目の列）かを表す列数（0以上の整数）。行見出しの列がない場合は 0、第1列が行見出しの場合は 1 を指定してください。全列数未満でなければなりません。
    - `header_axes`: 見出しの各段が何を表すかの名前の配列（例: ['クラス', '時限']、1段見出しなら ['項目'] など）。`header_rows` の段数と同数の要素を持ち、空文字は絶対に含めないでください。これはデータ列の各軸の名前です（行見出し列のための名前ではありません）。
@@ -423,7 +431,14 @@ def _synthesize_structured_markdown_from_blocks(
         if b.block_type != "table":
             if b.text_content is None or not str(b.text_content).strip():
                 raise ValueError(f"契約違反: ブロック #{b.order} (block_type='{b.block_type}') の text_content が欠損または空です")
-            prose_parts.append(str(b.text_content).strip())
+            content = str(b.text_content).strip()
+            if b.block_type == "figure_description":
+                if content.startswith("[写真・図の説明]"):
+                    prose_parts.append(content)
+                else:
+                    prose_parts.append(f"[写真・図の説明] {content}")
+            else:
+                prose_parts.append(content)
         else:
             td = b.table_data
             if not td:
