@@ -2315,8 +2315,8 @@ def _build_context_sections(
     1. まず、回答対象の投稿（今の選び方のまま）を新しい順に、投稿の本文だけでまとまりを作る。
        各まとまりには、その投稿の添付のうち今の条件（中身の断片の類似度が閾値以上）を満たすもののファイル名を並べる。
        本文だけのまとまりを新しい順に枠(max_context_chars)へ入れ、入らないものは「字数の上限で入らなかった投稿」に記録する。
-    2. 次に、残った枠で、条件を満たす添付の全文を類似度の高い順に、それぞれ自分の投稿のまとまりの中（ファイル名の位置）に入れる。
-       入らない添付は飛ばして次に小さいものを試す。
+    2. 次に、残った枠で、条件を満たす添付の全文を、その添付が属する投稿の投稿日の新しい順（同じ投稿内は今の並び、投稿日不明は日付ありの後）に、それぞれ自分の投稿のまとまりの中（ファイル名の位置）に入れる。
+       入らない添付は飛ばして次を試す。
     3. 全文が入らなかった添付は、自分の投稿の中にファイル名と「全文は字数の上限で省略」と書いて残す。
        画面の「字数の上限で入らなかった投稿」の一覧にも、全文が入らなかった添付（投稿題名・ファイル名・字数）を分けて表示する。
     4. 最終的に AI に渡す文字列は、投稿日の新しい順のまとまりの並び（各まとまりは 本文→添付）とする。
@@ -2559,17 +2559,13 @@ def _build_context_sections(
             continue
         selected_no_date_groups.append(g)
 
-    # 2. 残った枠で、条件を満たす添付の全文を類似度の高い順に、
-    #    それぞれ自分の投稿のまとまりの中（ファイル名の位置）に入れる。入らない添付は飛ばして次に小さいものを試す。
+    # 2. 残った枠で、条件を満たす添付の全文を、その添付が属する投稿の投稿日の新しい順
+    #    （同じ投稿内は今の並び、投稿日不明は日付ありの後）に、
+    #    それぞれ自分の投稿のまとまりの中（ファイル名の位置）に入れる。入らない添付は飛ばして次を試す。
     candidate_attachments: List[Dict[str, Any]] = []
     for g in (selected_date_groups + selected_no_date_groups):
         for att in g["attachments"]:
             candidate_attachments.append(att)
-
-    # 類似度が高い順（降順）。類似度が同じ場合は字数が小さい順、次にファイル名順で安定化
-    candidate_attachments.sort(
-        key=lambda a: (-a["similarity"], a["chars"], a["file_name"])
-    )
 
     full_attachment_keys: set = set()
     skipped_attachments: List[Dict[str, Any]] = []
@@ -2580,7 +2576,7 @@ def _build_context_sections(
         if len(text_trial) <= max_context_chars:
             full_attachment_keys.add(att["att_key"])
         else:
-            # 入らない添付は飛ばして次に小さいものを試す
+            # 入らない添付は飛ばして次を試す
             skipped_attachments.append({
                 "post_title": att["post_title"],
                 "file_name": att["file_name"],
