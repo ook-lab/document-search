@@ -1019,12 +1019,17 @@ def generate_answer():
 
         # （２）投稿日降順・同一投稿集約による資料構築
         threshold_val = float(data.get("threshold", 0.4))
+        # _merge_ordered_rag_input で資料の前後に付く文字列（質問ブロックや見出し等）の長さを差し引く
+        q_block = f"【１｜質問】\n{(answer_llm_query or '').strip()}"
+        overhead_chars = len(f"{q_block}\n\n【２｜投稿日新しい順・資料全文】\n")
+        doc_max_context_chars = max(0, max_context_chars - overhead_chars)
+
         part2_unified, part3_chunks, skipped_posts, skipped_attachments = _build_context_sections(
             target_documents,
             focal_date_range=date_range if date_range and ".." in date_range else None,
             keywords=keywords,
             threshold=threshold_val,
-            max_context_chars=max_context_chars,
+            max_context_chars=doc_max_context_chars,
         )
         ordered_rag_blob, rag_input_meta = _merge_ordered_rag_input(
             answer_llm_query,
