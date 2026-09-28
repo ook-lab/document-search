@@ -1040,8 +1040,8 @@ def generate_answer():
 
         # Step0（日付・意図）※クライアントから草稿 refined があれば Step0 出力の代わりに使う → 統合 LLM で質問文を完成
         selected_persons = persons if isinstance(persons, list) else []
-        keywords = data.get("keywords")
         if client_refined_query:
+            keywords = data.get("keywords")
             llm_enriched_query = client_refined_query
             date_range = _normalize_week_range_by_rule(
                 query=query,
@@ -1067,8 +1067,7 @@ def generate_answer():
             intent_spec = refined.get("intent_spec")
             if not isinstance(intent_spec, dict):
                 intent_spec = {}
-            if not keywords:
-                keywords = refined.get("keywords")
+            keywords = refined.get("keywords")
 
         # 確定事項: Step0 が検索語を返さない/空の場合は、元の質問文から推測で作らずエラーとして扱う
         if not isinstance(keywords, list):
@@ -1194,13 +1193,18 @@ def generate_answer():
                 continue
             if did in merged_map:
                 merged_map[did]["is_keyword_matched"] = True
-                if not merged_map[did].get("document_body") and kw_doc.get("document_body"):
-                    merged_map[did]["document_body"] = kw_doc.get("document_body")
             else:
                 merged_map[did] = kw_doc
 
         target_documents = list(merged_map.values())
         target_documents = _filter_documents_verified_in_09_unified(db_client, target_documents)
+
+        # 回答に使う全文書で document_body の存在を検証（カレンダー以外のテキスト文書）
+        for doc in target_documents:
+            if doc.get("source") != "Googleカレンダー":
+                doc_body = doc.get("document_body")
+                if not doc_body or not str(doc_body).strip():
+                    raise ValueError(f"回答対象文書に document_body が存在しません: doc_id={doc.get('id')}")
 
         # （２）投稿日降順・同一投稿集約による資料構築
         threshold_val = float(data.get("threshold", 0.4))
@@ -1443,6 +1447,7 @@ def _regenerate_step0_dates_after_failure(
 - date_range は **空文字 ""** か **"YYYY-MM-DD..YYYY-MM-DD"** のどちらかだけ。それ以外の区切り・口語・片側欠けは禁止。
 - intent_spec はオブジェクトで返す。version / task / resolved_instruction_ja は失敗 JSON から流用してよいが、
   focal_dates・calendar_primary_range・document_context_range は **date_range と矛盾しない**ように必ず整合させる。
+- keywords は文字列の配列（List[str]）として必ず含めて出力してください（空の配列は禁止）。
 - 今日の日付 {today} を基準に相対日を絶対化する（Step0 と同じ暦ルール）。
 
 今日の日付: {today}
@@ -1510,12 +1515,13 @@ def _regenerate_step0_dates_after_failure(
     print("[INFO] Step0 date retry: repaired date_range and intent_spec", flush=True)
     
     kw_out = obj.get("keywords") if isinstance(obj, dict) else None
-    if isinstance(kw_out, list):
-        cleaned_kw = [str(k).strip() for k in kw_out if str(k).strip()]
-    else:
-        cleaned_kw = failed_step0.get("keywords")
+    if not isinstance(kw_out, list):
+        print("[WARN] Step0 date retry: returned JSON missing valid keywords list", flush=True)
+        return None
+    cleaned_kw = [str(k).strip() for k in kw_out if str(k).strip()]
     if not cleaned_kw:
-        cleaned_kw = failed_step0.get("keywords")
+        print("[WARN] Step0 date retry: returned keywords list is empty", flush=True)
+        return None
     return {"query": q_out.strip(), "date_range": dr_out, "intent_spec": intent_spec, "keywords": cleaned_kw}
 
 
@@ -1654,7 +1660,10 @@ def _refine_query(
                 q = fixed["query"]
                 dr = fixed["date_range"]
                 intent_spec = fixed["intent_spec"]
-                keywords = fixed.get("keywords") or keywords
+                fixed_kw = fixed.get("keywords")
+                if not isinstance(fixed_kw, list) or not fixed_kw:
+                    raise RuntimeError("Step0: date retry の結果に keywords が含まれていません")
+                keywords = fixed_kw
             else:
                 raise RuntimeError("Step0: date retry に失敗しました")
         else:
@@ -2508,9 +2517,16 @@ def _build_context_sections(
     group_order: List[str] = []
 
     for doc in text_docs:
-        raw_table = str(doc.get("raw_table") or "").strip()
+        raw_table_val = doc.get("raw_table")
+        if not raw_table_val or not str(raw_table_val).strip():
+            raise ValueError(f"文書に raw_table が存在しません: doc_id={doc.get('id')}")
+        raw_table = str(raw_table_val).strip()
         is_classroom = raw_table in classroom_raw_tables
-        body = str(doc.get("document_body") or "").strip()
+
+        body_val = doc.get("document_body")
+        if not body_val or not str(body_val).strip():
+            raise ValueError(f"文書に document_body が存在しません: doc_id={doc.get('id')}")
+        body = str(body_val).strip()
 
         if is_classroom:
             post_url = _extract_classroom_post_url(body)
@@ -2532,7 +2548,10 @@ def _build_context_sections(
 
             title = str(doc.get("title") or "").strip()
             person = str(doc.get("person") or "").strip()
-            source = str(doc.get("source") or doc.get("classification1") or "").strip()
+            source_val = doc.get("source")
+            if not source_val or not str(source_val).strip():
+                raise ValueError(f"文書に source が存在しません: doc_id={doc.get('id')}")
+            source = str(source_val).strip()
 
             if is_classroom:
                 category = str(doc.get("classification2") or "").strip()

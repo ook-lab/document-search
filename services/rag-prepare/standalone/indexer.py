@@ -1044,7 +1044,7 @@ class RagPrepareSearchIndexer:
         """
         full_markdown をチャンク化し (text, chunk_type, chunk_weight) のリストで返す。
 
-        - # ファイル外テキスト（投稿本文・メタ情報）は chunk_type = 'post_body', chunk_weight = 1.0 の独立断片とする。
+        - # ファイル外テキスト（投稿本文・メタ情報）は AI アノテーションにより構造解析し、chunk_type = 'post_body', chunk_weight = 1.0 の独立断片とする。
         - # PDF抽出Markdown（添付ファイル）は投稿本文を含めず、中身のみ＋ファイル名見出しで独立断片とする（prose / table_yaml）。
         """
         results: List[tuple[str, str, float]] = []
@@ -1060,32 +1060,19 @@ class RagPrepareSearchIndexer:
         if ext_m:
             ext_text = ext_m.group(1).strip()
             if ext_text:
-                if len(ext_text) <= prose_chunk_size:
-                    results.append((ext_text, "post_body", 1.0))
-                else:
-                    paras = [p.strip() for p in re.split(r'\n{2,}', ext_text) if p.strip()]
-                    if len(paras) <= 1:
-                        paras = [p.strip() for p in ext_text.split('\n') if p.strip()]
-                    current: List[str] = []
-                    current_len = 0
-                    for para in paras:
-                        if len(para) > prose_chunk_size:
-                            if current:
-                                results.append(("\n\n".join(current), "post_body", 1.0))
-                                current = []
-                                current_len = 0
-                            for chunk in RagPrepareSearchIndexer._plain_chunks(para, prose_chunk_size):
-                                results.append((chunk, "post_body", 1.0))
-                            continue
-                        if current_len + len(para) > prose_chunk_size and current:
-                            results.append(("\n\n".join(current), "post_body", 1.0))
-                            current = [para]
-                            current_len = len(para)
-                        else:
-                            current.append(para)
-                            current_len += len(para)
-                    if current:
-                        results.append(("\n\n".join(current), "post_body", 1.0))
+                ann_result = RagPrepareSearchIndexer._get_ai_annotations(ext_text)
+                annotated = RagPrepareSearchIndexer._apply_annotations(
+                    ext_text, ann_result.get("annotations") or []
+                )
+                # section_break マーカーを _structured_md_chunks が認識する --- に変換
+                annotated = annotated.replace(
+                    RagPrepareSearchIndexer._SPLIT_MARKER, "\n---\n"
+                ).strip()
+                wrapped = "## 非表（F 地の文）\n\n" + annotated
+                for item in RagPrepareSearchIndexer._structured_md_chunks(
+                    wrapped, prose_chunk_size=prose_chunk_size
+                ):
+                    results.append((item["text"], "post_body", 1.0))
 
         # 2. 添付ファイル（PDF抽出Markdown）の独立断片化
         pdf_md_m = re.search(
@@ -1110,10 +1097,11 @@ class RagPrepareSearchIndexer:
                         chunk_text = f"[{file_name}]\n\n{c}" if file_name else c
                         results.append((chunk_text, "file_plain", 1.0))
 
-        # 3. どちらのセクションも見つからなかった場合のフォールスルー
-        if not ext_m and not pdf_md_m and full_markdown.strip():
-            for c in RagPrepareSearchIndexer._plain_chunks(full_markdown, plain_chunk_size):
-                results.append((c, "rag_prepare_plain", 1.0))
+        # 3. どちらのセクションも見つからなかった場合は契約違反として例外送出
+        if not ext_m and not pdf_md_m:
+            raise ValueError(
+                "本文に '# ファイル外テキスト' または '# PDF抽出Markdown' が含まれていません（契約違反）"
+            )
 
         return results
 

@@ -183,6 +183,32 @@ class DocSearchDB:
         except Exception:
             return None
 
+    def _parse_post_at_strict(self, s: Optional[Any], doc_id: Optional[Any] = None) -> Optional[str]:
+        """キーワード検索経路用の厳密な post_at 日付解析。
+        post_at が存在しない（None または空文字）場合のみ None を返し、値があるのに解析失敗した場合はエラー。
+        _parse_yyyy_mm_dd の他経路の挙動には影響を与えない。
+        """
+        if s is None:
+            return None
+        if isinstance(s, datetime):
+            return s.date().isoformat()
+        if isinstance(s, date_type) and not isinstance(s, datetime):
+            return s.isoformat()
+        if isinstance(s, str):
+            t = s.strip()
+            if not t:
+                return None
+            if len(t) >= 10:
+                prefix = t[:10]
+                try:
+                    _ = date_type.fromisoformat(prefix)
+                    return prefix
+                except Exception as e:
+                    raise ValueError(f"post_at の日付解析に失敗しました: doc_id={doc_id}, post_at={s!r}") from e
+            raise ValueError(f"post_at の日付形式が不正です（10文字未満）: doc_id={doc_id}, post_at={s!r}")
+        raise ValueError(f"post_at の型が不正です: doc_id={doc_id}, post_at={s!r}, type={type(s).__name__}")
+
+
     def _coerce_meta_dict(self, meta: Any) -> Optional[Dict[str, Any]]:
         if meta is None:
             return None
@@ -340,7 +366,7 @@ class DocSearchDB:
                     "classification1": c1,
                     "classification2": c2,
                     "classification3": c3,
-                    "raw_table": result.get("raw_table"),
+                    "raw_table": None,
                     "from_name": result.get("from_name"),
                     "from_email": result.get("from_email"),
                     "snippet": result.get("snippet"),
@@ -397,12 +423,14 @@ class DocSearchDB:
                         .limit(1)
                         .execute()
                     )
-                    if body_response.data:
-                        doc_result["document_body"] = body_response.data[0].get("body")
-                        if not doc_result.get("raw_table"):
-                            doc_result["raw_table"] = body_response.data[0].get("raw_table")
-                    else:
-                        doc_result["document_body"] = None
+                    if not body_response.data:
+                        raise ValueError(f"09_unified_documents に文書が存在しません: doc_id={doc_id}")
+                    doc_row = body_response.data[0]
+                    doc_result["document_body"] = doc_row.get("body")
+                    raw_table_val = doc_row.get("raw_table")
+                    if not raw_table_val or not str(raw_table_val).strip():
+                        raise ValueError(f"09_unified_documents に raw_table が存在しません: doc_id={doc_id}")
+                    doc_result["raw_table"] = str(raw_table_val).strip()
                 except Exception as e:
                     logger.error("body fetch doc_id={}: {}", doc_id, e)
                     raise
@@ -672,7 +700,7 @@ class DocSearchDB:
                 # 4. 日付範囲絞り込み
                 # 投稿日(post_at)がある文書は範囲内かチェック。投稿日がない文書は除外せず保持する（確定事項2）。
                 raw_date = row.get("post_at")
-                doc_date_str = self._parse_yyyy_mm_dd(raw_date)
+                doc_date_str = self._parse_post_at_strict(raw_date, doc_id)
                 if doc_date_str:
                     try:
                         d_val = date_type.fromisoformat(doc_date_str)
