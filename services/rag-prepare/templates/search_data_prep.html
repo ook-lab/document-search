@@ -178,25 +178,96 @@
         }
         .filter-bar .filter-count { font-size: 12px; color: var(--text-muted); margin-left: auto; }
         tr.hidden-row { display: none; }
+        .stats-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 13px;
+            align-items: center;
+        }
+        .stat-badge {
+            background: #fff;
+            border: 1px solid var(--border);
+            padding: 6px 14px;
+            border-radius: 8px;
+            white-space: nowrap;
+            color: var(--text-muted);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        .stat-badge strong {
+            font-size: 15px;
+            font-family: 'Outfit', sans-serif;
+            margin-left: 2px;
+        }
+        .stat-total {
+            border-color: #cbd5e1;
+            color: var(--text-main);
+        }
+        .stat-total strong {
+            color: var(--text-main);
+        }
+        .stat-pending-raw {
+            border-color: #fde68a;
+            background: #fffbeb;
+            color: #b45309;
+        }
+        .stat-pending-raw strong {
+            color: var(--amber);
+        }
+        .stat-pending-vec {
+            border-color: #c7d2fe;
+            background: #eef2ff;
+            color: #4338ca;
+        }
+        .stat-pending-vec strong {
+            color: var(--indigo);
+        }
+        .stat-vectorized {
+            border-color: #a7f3d0;
+            background: #ecfdf5;
+            color: #065f46;
+        }
+        .stat-vectorized strong {
+            color: var(--success);
+        }
+        .stat-error {
+            border-color: var(--border);
+            color: var(--text-muted);
+        }
+        .stat-error.has-error {
+            border-color: #fecaca;
+            background: #fef2f2;
+            color: #dc2626;
+            font-weight: 600;
+        }
+        .stat-error.has-error strong {
+            color: #dc2626;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <div>
-                <h1>検索データ準備</h1>
-                <div class="subtitle">
-                    ドキュメント処理パイプラインとは別経路で、検索用ベクトル（<code>10_ix_search_index</code>）へ登録するための一覧です。
-                    対象は 03–05 の classroom 系と 08（file-only）。正本の本文は <code>raw.pdf_md_content</code>、生成テキストは <code>09_unified_documents</code> / <code>10_ix_search_index</code>。
-                    登録済み判定は補助テーブル <code>09_unified_documents_meta.ix_vectorized_at</code>（ステータスのみ）です。<code>pipeline_meta</code> は参照しません。
-                    パイプラインツールのベース URL は <code>PIPELINE_LAB_BASE</code>（末尾スラッシュなし）。
+        <header style="flex-direction: column; align-items: stretch; gap: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px;">
+                <div>
+                    <h1>検索データ準備</h1>
+                    <div class="subtitle">
+                        ドキュメント処理パイプラインとは別経路で、検索用ベクトル（<code>10_ix_search_index</code>）へ登録するための一覧です。
+                        対象は 03–05 の classroom 系と 08（file-only）。正本の本文は <code>raw.pdf_md_content</code>、生成テキストは <code>09_unified_documents</code> / <code>10_ix_search_index</code>。
+                        登録済み判定は補助テーブル <code>09_unified_documents_meta.ix_vectorized_at</code>（ステータスのみ）です。<code>pipeline_meta</code> は参照しません。
+                        パイプラインツールのベース URL は <code>PIPELINE_LAB_BASE</code>（末尾スラッシュなし）。
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; flex-shrink: 0;">
+                    <button type="button" class="btn btn-outline" style="font-size: 12px; color: #dc2626; border-color: #fca5a5;" onclick="resetAllIx(this)">全て未処理に戻す</button>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <div style="font-size: 14px; color: var(--success); font-weight: 600;">
-                    {{ docs|length }} 件の待機中
-                </div>
-                <button type="button" class="btn btn-outline" style="font-size: 12px; color: #dc2626; border-color: #fca5a5;" onclick="resetAllIx(this)">全て未処理に戻す</button>
+            <div class="stats-summary">
+                <span class="stat-badge stat-total">全体: <strong>{{ counts.total if counts else docs|length }}</strong> 件</span>
+                <span class="stat-badge stat-pending-raw">未処理(読み取り待ち): <strong>{{ counts.pending_raw if counts else 0 }}</strong> 件</span>
+                <span class="stat-badge stat-pending-vec">構造化済(ベクトル化待ち): <strong>{{ counts.pending_vectorize if counts else 0 }}</strong> 件</span>
+                <span class="stat-badge stat-vectorized">登録済み: <strong>{{ counts.vectorized if counts else 0 }}</strong> 件</span>
+                <span class="stat-badge stat-error {% if counts and counts.has_error > 0 %}has-error{% endif %}">失敗あり: <strong>{{ counts.has_error if counts else 0 }}</strong> 件</span>
             </div>
         </header>
 
@@ -283,14 +354,26 @@
                             </div>
                             {% endif %}
                             {% if doc.ix_vectorize_error %}
+                            {% if doc.ix_vectorize_error_is_temp or '[TEMPORARY_503]' in doc.ix_vectorize_error %}
+                            <div class="vectorize-error-msg" style="margin-top:6px;padding:6px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#b45309;font-size:12px;font-weight:600;">
+                                ⏳ 一時的な失敗（次の回で自動再処理）[ベクトル化]: {{ doc.ix_vectorize_error }}{% if doc.ix_vectorize_error_at %}（{{ doc.ix_vectorize_error_at }}）{% endif %}
+                            </div>
+                            {% else %}
                             <div class="vectorize-error-msg" style="margin-top:6px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:12px;font-weight:600;">
                                 ⚠️ ベクトル化失敗: {{ doc.ix_vectorize_error }}{% if doc.ix_vectorize_error_at %}（{{ doc.ix_vectorize_error_at }}）{% endif %}
                             </div>
                             {% endif %}
+                            {% endif %}
                             {% if doc.ix_pipeline_error %}
+                            {% if doc.ix_pipeline_error_is_temp or '[TEMPORARY_503]' in doc.ix_pipeline_error %}
+                            <div class="pipeline-error-msg" style="margin-top:6px;padding:6px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#b45309;font-size:12px;font-weight:600;">
+                                ⏳ 一時的な失敗（次の回で自動再処理）[パイプライン]: {{ doc.ix_pipeline_error }}{% if doc.ix_pipeline_error_at %}（{{ doc.ix_pipeline_error_at }}）{% endif %}
+                            </div>
+                            {% else %}
                             <div class="pipeline-error-msg" style="margin-top:6px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#dc2626;font-size:12px;font-weight:600;">
                                 ⚠️ パイプライン失敗: {{ doc.ix_pipeline_error }}{% if doc.ix_pipeline_error_at %}（{{ doc.ix_pipeline_error_at }}）{% endif %}
                             </div>
+                            {% endif %}
                             {% endif %}
                             <div class="meta-id">
                                 raw {{ doc.raw_table }} / {{ doc.raw_id[:8] }}…

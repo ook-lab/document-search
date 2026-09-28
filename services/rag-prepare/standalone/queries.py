@@ -10,6 +10,7 @@ import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from standalone.error_utils import is_gemini_503_error
 from standalone.ud_meta import UD_META_TABLE
 
 DRIVE_URL_RE = re.compile(r"/d/([a-zA-Z0-9_-]+)")
@@ -149,31 +150,44 @@ def fetch_pending_search_data_prep_docs(
     db_client: Any,
     raw_tables: Sequence[str],
     *,
-    meta_limit: int = 500,
+    meta_limit: Optional[int] = None,
     include_vectorized: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """meta 行を一覧表示する。include_vectorized=True で登録済みも含む。"""
     tables = list(raw_tables)
     if not tables:
         return [], None
+
+    page_size = 1000
+    offset = 0
+    pending_meta: List[Dict[str, Any]] = []
+
     try:
-        q = (
-            db_client.table(UD_META_TABLE)
-            .select(
-                "raw_table, raw_id, doc_id, ix_vectorized_at, ix_skip_pdf, updated_at, "
-                "ix_vectorize_error, ix_vectorize_error_at, ix_pipeline_error, ix_pipeline_error_at"
+        while True:
+            q = (
+                db_client.table(UD_META_TABLE)
+                .select(
+                    "raw_table, raw_id, doc_id, ix_vectorized_at, ix_skip_pdf, updated_at, "
+                    "ix_vectorize_error, ix_vectorize_error_at, ix_pipeline_error, ix_pipeline_error_at"
+                )
+                .in_("raw_table", tables)
+                .order("updated_at", desc=True)
+                .range(offset, offset + page_size - 1)
             )
-            .in_("raw_table", tables)
-            .order("updated_at", desc=True)
-            .limit(meta_limit)
-        )
-        if not include_vectorized:
-            q = q.is_("ix_vectorized_at", "null")
-        meta_res = q.execute()
+            if not include_vectorized:
+                q = q.is_("ix_vectorized_at", "null")
+            meta_res = q.execute()
+            rows = meta_res.data or []
+            pending_meta.extend(rows)
+            if meta_limit is not None and len(pending_meta) >= meta_limit:
+                pending_meta = pending_meta[:meta_limit]
+                break
+            if len(rows) < page_size:
+                break
+            offset += page_size
     except Exception as e:
         return [], f"{UD_META_TABLE} の取得に失敗しました: {e}"
 
-    pending_meta = list(meta_res.data or [])
     if not pending_meta:
         return [], None
 
@@ -394,8 +408,10 @@ def fetch_pending_search_data_prep_docs(
             "is_vectorized": bool(ix_vectorized_at),
             "ix_vectorize_error": ix_vectorize_error,
             "ix_vectorize_error_at": ix_vectorize_error_at,
+            "ix_vectorize_error_is_temp": is_gemini_503_error(ix_vectorize_error),
             "ix_pipeline_error": ix_pipeline_error,
             "ix_pipeline_error_at": ix_pipeline_error_at,
+            "ix_pipeline_error_is_temp": is_gemini_503_error(ix_pipeline_error),
             "classification1": c1,
             "classification2": c2,
             "classification3": c3,
@@ -405,3 +421,47 @@ def fetch_pending_search_data_prep_docs(
 
     out.sort(key=lambda x: (x.get("display_post_at") or ""), reverse=True)
     return out, None
+
+
+def compute_search_data_prep_counts(docs: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+    """画面上部の件数表示用内訳を集計する。
+    - 全体 (total)
+    - 未処理(読み取り待ち) (pending_raw)
+    - 構造化済(ベクトル化待ち) (pending_vectorize)
+    - 登録済み (vectorized)
+    - 失敗あり (has_error)
+    """
+    total = len(docs)
+    pending_raw = 0
+    pending_vectorize = 0
+    vectorized = 0
+    has_error = 0
+
+    for d in docs:
+        is_vec = bool(d.get("is_vectorized"))
+        seg = d.get("display_segment")
+        err = bool(
+            d.get("row_error")
+            or d.get("ix_vectorize_error")
+            or d.get("ix_pipeline_error")
+        )
+
+        if err:
+            has_error += 1
+
+        if is_vec:
+            vectorized += 1
+        else:
+            if seg == "pending_md":
+                pending_raw += 1
+            else:
+                pending_vectorize += 1
+
+    return {
+        "total": total,
+        "pending_raw": pending_raw,
+        "pending_vectorize": pending_vectorize,
+        "vectorized": vectorized,
+        "has_error": has_error,
+    }
+

@@ -217,13 +217,13 @@ class GoogleDriveConnector:
                 )
                 dest_path = dest_path.with_suffix('.docx')
             elif mime_type == 'application/vnd.google-apps.spreadsheet':
-                # Google Sheets -> XLSXとしてエクスポート
+                # Google Sheets -> PDFとしてエクスポート
                 request = self.service.files().export(
                     fileId=file_id,
-                    mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    mimeType='application/pdf',
                     supportsAllDrives=True  # 共有ドライブ対応
                 )
-                dest_path = dest_path.with_suffix('.xlsx')
+                dest_path = dest_path.with_suffix('.pdf')
             elif mime_type == 'application/vnd.google-apps.presentation':
                 # Google Slides -> PPTXとしてエクスポート
                 request = self.service.files().export(

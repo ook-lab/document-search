@@ -18,6 +18,7 @@ import yaml
 from standalone.db import RagServiceDB
 from standalone.embeddings import EmbeddingGen
 from standalone.date_signals import build_date_signals, build_ix_search_date_list
+from standalone.error_utils import format_503_error, is_gemini_503_error
 from standalone.scope import RAG_PREPARE_VECTORIZE_RAW_TABLES
 from standalone.ud_meta import UD_META_TABLE
 
@@ -193,7 +194,7 @@ class RagPrepareSearchIndexer:
 
         except Exception as e:
             logger.error("Search index update failed: %s", e, exc_info=True)
-            return False, str(e)
+            return False, format_503_error(e)
 
     def process_date_signals_for_document(
         self,
@@ -470,9 +471,10 @@ class RagPrepareSearchIndexer:
             return False, "raw_table と raw_id が不明なためエラーを記録できません"
 
         try:
+            formatted_msg = format_503_error(error_message)
             now_iso = datetime.now(timezone.utc).isoformat()
             upd_cols: Dict[str, Any] = {
-                "ix_vectorize_error": str(error_message),
+                "ix_vectorize_error": formatted_msg,
                 "ix_vectorize_error_at": now_iso,
                 "updated_at": now_iso,
             }
@@ -490,7 +492,7 @@ class RagPrepareSearchIndexer:
             ins_cols: Dict[str, Any] = {
                 "raw_table": str(raw_table),
                 "raw_id": str(raw_id),
-                "ix_vectorize_error": str(error_message),
+                "ix_vectorize_error": formatted_msg,
                 "ix_vectorize_error_at": now_iso,
                 "updated_at": now_iso,
             }

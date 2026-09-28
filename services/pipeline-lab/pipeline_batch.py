@@ -20,6 +20,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import fitz  # PyMuPDF
@@ -89,7 +90,11 @@ _WORD_MIME_TYPES = frozenset({
     "text/rtf",  # .rtf
 })
 
-_SUPPORTED_MIME_TYPES = _PDF_MIME_TYPES | _IMAGE_MIME_TYPES | _WORD_MIME_TYPES
+_SPREADSHEET_MIME_TYPES = frozenset({
+    "application/vnd.google-apps.spreadsheet",
+})
+
+_SUPPORTED_MIME_TYPES = _PDF_MIME_TYPES | _IMAGE_MIME_TYPES | _WORD_MIME_TYPES | _SPREADSHEET_MIME_TYPES
 
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 
@@ -196,14 +201,93 @@ def _fetch_cloud_run_id_token(audience: str) -> str:
     return google_id_token.fetch_id_token(auth_req, audience)
 
 
+TEMPORARY_503_PREFIX = "[TEMPORARY_503] "
+
+
+def is_gemini_503_error(err: Any) -> bool:
+    """Gemini API や Google 側の一時的不調（HTTP 503 UNAVAILABLE 等）由来のエラーかを判定する。
+
+    例外オブジェクトのステータスコード/属性、原因例外、エラーメッセージ文字列のいずれからでも判定可能。
+    """
+    if err is None:
+        return False
+
+    # 1. 印のチェック
+    if isinstance(err, str) and "[TEMPORARY_503]" in err:
+        return True
+
+    # 2. 例外オブジェクトの属性・原因例外の検査
+    if isinstance(err, BaseException):
+        for attr in ("code", "status_code", "http_status"):
+            val = getattr(err, attr, None)
+            if val == 503 or val == "503":
+                return True
+        resp = getattr(err, "response", None)
+        if resp is not None:
+            sc = getattr(resp, "status_code", None) or getattr(resp, "status", None)
+            if sc == 503 or sc == "503":
+                return True
+        cause = getattr(err, "__cause__", None)
+        if cause is not None and is_gemini_503_error(cause):
+            return True
+        ctx = getattr(err, "__context__", None)
+        if ctx is not None and is_gemini_503_error(ctx):
+            return True
+
+    # 3. 辞書型の場合（API レスポンス辞書など）
+    if isinstance(err, dict):
+        if err.get("code") == 503 or err.get("status") == "UNAVAILABLE":
+            return True
+        error_dict = err.get("error")
+        if isinstance(error_dict, dict):
+            if error_dict.get("code") == 503 or error_dict.get("status") == "UNAVAILABLE":
+                return True
+
+    # 4. 文字列表現のパターン検査
+    s = str(err)
+    if "[TEMPORARY_503]" in s:
+        return True
+
+    # 代表的な 503 エラーパターン
+    if "Authentication backend unavailable" in s:
+        return True
+    if "The service is currently unavailable" in s:
+        return True
+    if "503 UNAVAILABLE" in s or "503 Unavailable" in s:
+        return True
+    if "503 Service Unavailable" in s or "503 Server Error" in s:
+        return True
+    if "'code': 503" in s or '"code": 503' in s or "code: 503" in s:
+        return True
+
+    # 正規表現: 503 かつ (unavailable | backend | service)
+    if re.search(r"\b503\b", s) and re.search(r"(unavailable|backend|service)", s, re.IGNORECASE):
+        return True
+
+    return False
+
+
+def format_503_error(err: Any) -> str:
+    """エラーメッセージを記録用にフォーマットする。
+
+    503 由来のエラーの場合は先頭に [TEMPORARY_503] を付与する（既にあれば二重付与しない）。
+    """
+    err_str = str(err) if err is not None else ""
+    if is_gemini_503_error(err):
+        if not err_str.startswith("[TEMPORARY_503]"):
+            return f"{TEMPORARY_503_PREFIX}{err_str}"
+    return err_str
+
+
 def _record_meta_pipeline_error(db: DatabaseClient, raw_table: str, raw_id: str, error_msg: str) -> None:
     """09_unified_documents_meta にパイプライン失敗理由と日時を記録する。"""
+    formatted_msg = format_503_error(error_msg)
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
         upd = (
             db.client.table("09_unified_documents_meta")
             .update({
-                "ix_pipeline_error": str(error_msg),
+                "ix_pipeline_error": formatted_msg,
                 "ix_pipeline_error_at": now_iso,
                 "updated_at": now_iso,
             })
@@ -251,6 +335,7 @@ def _record_batch_file_error(
     total_pages: int = 0,
 ) -> None:
     """pipeline_batch_files に state='error' を記録（または更新）する。"""
+    formatted_msg = format_503_error(error_msg)
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
         db.client.table("pipeline_batch_files").upsert(
@@ -263,7 +348,7 @@ def _record_batch_file_error(
                 "state": "error",
                 "submitted_at": now_iso,
                 "finished_at": now_iso,
-                "error": str(error_msg),
+                "error": formatted_msg,
             },
             on_conflict="raw_table,raw_id",
         ).execute()
@@ -719,14 +804,15 @@ def _run_pipeline_batch_process():
 
             if extract_error:
                 logger.error("Extract failed for %s/%s: %s", rt, rid, extract_error)
+                formatted_extract_err = format_503_error(extract_error)
                 db.client.table("pipeline_batch_files").update({
                     "state": "error",
                     "finished_at": now_iso,
-                    "error": extract_error,
+                    "error": formatted_extract_err,
                 }).eq("raw_table", rt).eq("raw_id", rid).execute()
-                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": extract_error}
+                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": formatted_extract_err}
                 try:
-                    _record_meta_pipeline_error(db, rt, rid, extract_error)
+                    _record_meta_pipeline_error(db, rt, rid, formatted_extract_err)
                 except Exception as e:
                     failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
                 failed_files.append(failed_entry)
@@ -797,16 +883,20 @@ def _run_pipeline_batch_process():
 
         else:
             # FAILED / EXPIRED / CANCELLED
+            job_err = getattr(batch_job, "error", None)
             fail_reason = f"Geminiバッチジョブが終了ステータス '{st_val_upper}' で失敗しました (job={job_name})"
-            logger.error(fail_reason)
+            if job_err:
+                fail_reason += f": {job_err}"
+            formatted_fail_reason = format_503_error(fail_reason) if (is_gemini_503_error(job_err) or is_gemini_503_error(fail_reason)) else fail_reason
+            logger.error(formatted_fail_reason)
             db.client.table("pipeline_batch_files").update({
                 "state": "error",
                 "finished_at": now_iso,
-                "error": fail_reason,
+                "error": formatted_fail_reason,
             }).eq("raw_table", rt).eq("raw_id", rid).execute()
-            failed_entry = {"raw_table": rt, "raw_id": rid, "reason": fail_reason}
+            failed_entry = {"raw_table": rt, "raw_id": rid, "reason": formatted_fail_reason}
             try:
-                _record_meta_pipeline_error(db, rt, rid, fail_reason)
+                _record_meta_pipeline_error(db, rt, rid, formatted_fail_reason)
             except Exception as e:
                 failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
             failed_files.append(failed_entry)
@@ -879,14 +969,19 @@ def _run_pipeline_batch_process():
         return jsonify({"error": f"Failed to fetch pending pipeline targets: {e}"}), 500
 
     # pipeline_batch_files のうち submitted / completed の行がある文書は対象外。
-    # state が error の行は、対象一覧（rag-prepare の pending_pipeline_targets。失敗の記録が消えた文書だけが返る）に出てきたら再送するため除外しない。
+    # state が error の行は、503 由来であれば再送対象（除外しない）。
+    # 503 以外の永続的エラーは除外して止める。
     try:
-        existing_res = db.client.table("pipeline_batch_files").select("raw_table, raw_id, state").execute()
-        excluded_pairs = {
-            (r.get("raw_table"), r.get("raw_id"))
-            for r in (existing_res.data or [])
-            if r.get("state") in ("submitted", "completed")
-        }
+        existing_res = db.client.table("pipeline_batch_files").select("raw_table, raw_id, state, error").execute()
+        excluded_pairs = set()
+        for r in (existing_res.data or []):
+            st = r.get("state")
+            err = r.get("error")
+            if st in ("submitted", "completed"):
+                excluded_pairs.add((r.get("raw_table"), r.get("raw_id")))
+            elif st == "error" and not is_gemini_503_error(err):
+                # 503 以外の恒久的エラーは再送対象から除外して止める
+                excluded_pairs.add((r.get("raw_table"), r.get("raw_id")))
     except Exception as e:
         logger.error("Failed to query existing pipeline_batch_files: %s", e)
         return jsonify({"error": f"Database query failed: {e}"}), 500
@@ -953,6 +1048,8 @@ def _run_pipeline_batch_process():
                     doc_format = "image"
                 elif mime_type in _WORD_MIME_TYPES:
                     doc_format = "word"
+                elif mime_type in _SPREADSHEET_MIME_TYPES:
+                    doc_format = "spreadsheet"
                 else:
                     err_reason = f"対応外のファイル形式です (name={filename}, mime={mime_type})"
                     logger.error(err_reason)
@@ -965,19 +1062,43 @@ def _run_pipeline_batch_process():
                     failed_files.append(failed_entry)
                     continue
 
-                downloaded = drive.download_file(drive_file_id, filename, temp_path)
-                if not downloaded:
-                    err_reason = f"Drive からのファイルダウンロードに失敗しました (fileId={drive_file_id})"
+                try:
+                    downloaded = drive.download_file(drive_file_id, filename, temp_path)
+                except Exception as dl_ex:
+                    if doc_format == "spreadsheet":
+                        err_reason = f"GoogleスプレッドシートのPDFエクスポートに失敗しました (fileId={drive_file_id}): {dl_ex}"
+                        fail_code = "EXPORT_FAILED"
+                    else:
+                        err_reason = f"Drive からのファイルダウンロードに失敗しました (fileId={drive_file_id}): {dl_ex}"
+                        fail_code = "DOWNLOAD_FAILED"
+                    logger.error(err_reason)
                     failed_entry = {"raw_table": rt, "raw_id": rid, "reason": err_reason}
                     try:
                         _record_meta_pipeline_error(db, rt, rid, err_reason)
                     except Exception as e:
                         failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
-                    _record_batch_file_error(db, rt, rid, drive_file_id, "DOWNLOAD_FAILED", err_reason)
+                    _record_batch_file_error(db, rt, rid, drive_file_id, fail_code, err_reason)
                     failed_files.append(failed_entry)
                     continue
 
-                dl_path = temp_path / filename
+                if not downloaded:
+                    if doc_format == "spreadsheet":
+                        err_reason = f"GoogleスプレッドシートのPDFエクスポートに失敗しました (fileId={drive_file_id})"
+                        fail_code = "EXPORT_FAILED"
+                    else:
+                        err_reason = f"Drive からのファイルダウンロードに失敗しました (fileId={drive_file_id})"
+                        fail_code = "DOWNLOAD_FAILED"
+                    logger.error(err_reason)
+                    failed_entry = {"raw_table": rt, "raw_id": rid, "reason": err_reason}
+                    try:
+                        _record_meta_pipeline_error(db, rt, rid, err_reason)
+                    except Exception as e:
+                        failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
+                    _record_batch_file_error(db, rt, rid, drive_file_id, fail_code, err_reason)
+                    failed_files.append(failed_entry)
+                    continue
+
+                dl_path = Path(downloaded)
                 pdf_path = temp_path / "input.pdf"
                 if doc_format == "image":
                     _image_to_pdf(dl_path, pdf_path)
@@ -985,7 +1106,8 @@ def _run_pipeline_batch_process():
                     # Word は soffice --headless --convert-to pdf で PDF に変換してから今の PDF と同じ処理をする
                     # 変換失敗はそのファイルの失敗として明示記録
                     _convert_word_to_pdf(dl_path, pdf_path, temp_path)
-                elif doc_format == "pdf":
+                elif doc_format in ("pdf", "spreadsheet"):
+                    # スプレッドシートは Drive API の export で既に PDF として書き出されているため、今の PDF と同じ処理
                     if dl_path != pdf_path:
                         dl_path.rename(pdf_path)
 
@@ -1115,6 +1237,7 @@ def _run_pipeline_batch_process():
                             uf.name, del_err,
                         )
                 # Files API アップロード失敗時の error レコードを upsert で記録・上書き
+                formatted_files_err = format_503_error(files_api_error)
                 now_iso = datetime.now(timezone.utc).isoformat()
                 db.client.table("pipeline_batch_files").upsert(
                     {
@@ -1126,13 +1249,13 @@ def _run_pipeline_batch_process():
                         "state": "error",
                         "submitted_at": now_iso,
                         "finished_at": now_iso,
-                        "error": files_api_error,
+                        "error": formatted_files_err,
                     },
                     on_conflict="raw_table,raw_id",
                 ).execute()
-                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": files_api_error}
+                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": formatted_files_err}
                 try:
-                    _record_meta_pipeline_error(db, rt, rid, files_api_error)
+                    _record_meta_pipeline_error(db, rt, rid, formatted_files_err)
                 except Exception as e:
                     failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
                 failed_files.append(failed_entry)
@@ -1160,12 +1283,16 @@ def _run_pipeline_batch_process():
                             uf.name, del_err,
                         )
                 err_reason = f"Gemini バッチ作成失敗: {batch_create_err}"
-                logger.error(err_reason)
-                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": err_reason}
+                formatted_batch_err = format_503_error(err_reason)
+                logger.error(formatted_batch_err)
+                failed_entry = {"raw_table": rt, "raw_id": rid, "reason": formatted_batch_err}
                 try:
-                    _record_meta_pipeline_error(db, rt, rid, err_reason)
+                    _record_meta_pipeline_error(db, rt, rid, formatted_batch_err)
                 except Exception as e:
                     failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
+                _record_batch_file_error(
+                    db, rt, rid, drive_file_id, "BATCH_CREATE_FAILED", formatted_batch_err, total_pages=page_count
+                )
                 failed_files.append(failed_entry)
                 continue
 

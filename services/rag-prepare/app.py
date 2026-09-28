@@ -23,7 +23,9 @@ from standalone import (
     RAG_PREPARE_VECTORIZE_RAW_TABLES,
     RagServiceDB,
     fetch_pending_search_data_prep_docs,
+    is_gemini_503_error,
 )
+from standalone.queries import compute_search_data_prep_counts
 
 batch_vectorize_lock = threading.Lock()
 
@@ -87,9 +89,12 @@ def index():
         )
         logger.error(pipeline_lab_error)
 
+    counts = compute_search_data_prep_counts(pending_docs)
+
     return render_template(
         "search_data_prep.html",
         docs=pending_docs,
+        counts=counts,
         list_error=list_error,
         pipeline_lab_base=pipeline_lab,
         pipeline_lab_error=pipeline_lab_error,
@@ -323,7 +328,7 @@ def get_pending_pipeline_targets():
             if d.get("resolved_drive_id")
             and d.get("display_segment") == "pending_md"
             and not d.get("row_error")
-            and not d.get("ix_pipeline_error")
+            and (not d.get("ix_pipeline_error") or is_gemini_503_error(d.get("ix_pipeline_error")))
         ]
 
         def _cmp_targets(a: Dict[str, Any], b: Dict[str, Any]) -> int:
@@ -399,13 +404,13 @@ def batch_vectorize():
 
         # 自動処理の対象: 画面で『ベクトル化登録』ボタンが押せて未登録の文書と完全に同じ条件
         # （fetch_pending_search_data_prep_docs の結果で、row_error なし、display_segment != 'pending_md'、is_vectorized False）
-        # に加え、ix_vectorize_error が NULL のもの。
+        # に加え、ix_vectorize_error が NULL のもの、または 503 由来の一時的失敗のもの。
         candidate_docs = [
             d for d in all_docs
             if not d.get("row_error")
             and d.get("display_segment") != "pending_md"
             and not d.get("is_vectorized")
-            and not d.get("ix_vectorize_error")
+            and (not d.get("ix_vectorize_error") or is_gemini_503_error(d.get("ix_vectorize_error")))
         ]
         candidate_count = len(candidate_docs)
 
