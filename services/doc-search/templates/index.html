@@ -366,6 +366,40 @@
             font-weight: 600;
         }
 
+        .skipped-subheading {
+            font-size: 13px;
+            font-weight: 700;
+            color: #9a3412;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .skipped-attachment-card {
+            background: #fefce8;
+            border: 1px solid #fef08a;
+            border-left: 4px solid #ca8a04;
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+
+        .skipped-attachment-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #1e293b;
+            margin-bottom: 6px;
+        }
+
+        .skipped-attachment-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 12px;
+            color: #854d0e;
+            font-weight: 600;
+        }
+
         .document-list {
             display: grid;
             gap: 15px;
@@ -965,8 +999,15 @@
 
                 <div id="skippedPostsSection" class="skipped-posts-section" style="display: none;">
                     <h2 class="section-title">字数の上限で入らなかった投稿</h2>
-                    <p class="skipped-posts-note">以下の投稿は文字数の上限（max_context_chars）を超えるため回答の資料から除外されましたが、より古い小さな投稿は詰め込まれています（AI への入力には含まれていません）。</p>
-                    <div class="skipped-posts-list" id="skippedPostsList"></div>
+                    <p class="skipped-posts-note">以下の投稿または添付ファイルは文字数の上限（max_context_chars）を超えるため、回答の資料から除外または全文が省略されました（AI への入力には含まれていません）。</p>
+                    <div id="skippedPostsGroup" style="display: none; margin-bottom: 16px;">
+                        <h3 class="skipped-subheading">📄 入らなかった投稿</h3>
+                        <div class="skipped-posts-list" id="skippedPostsList"></div>
+                    </div>
+                    <div id="skippedAttachmentsGroup" style="display: none;">
+                        <h3 class="skipped-subheading">📎 全文が入らなかった添付（投稿本文のみ送信・全文省略）</h3>
+                        <div class="skipped-posts-list" id="skippedAttachmentsList"></div>
+                    </div>
                 </div>
 
                 <div id="ragLlmInputSection" style="display: none;">
@@ -1469,7 +1510,7 @@
                     throw new Error('検索結果に vector_hit_chunks が含まれていません');
                 }
                 displayVectorHitChunks(searchData.vector_hit_chunks);
-                displaySkippedPosts(answerData.skipped_posts || []);
+                displaySkippedPosts(answerData.skipped_posts || [], answerData.skipped_attachments || []);
                 displayRagLlmInput(answerData);
                 displayDocuments(currentDocuments);
                 showResults();
@@ -1481,29 +1522,60 @@
             }
         }
 
-        function displaySkippedPosts(skippedPosts) {
+        function displaySkippedPosts(skippedPosts, skippedAttachments) {
             const sec = document.getElementById('skippedPostsSection');
-            const list = document.getElementById('skippedPostsList');
-            if (!skippedPosts || !Array.isArray(skippedPosts) || skippedPosts.length === 0) {
+            const postsGroup = document.getElementById('skippedPostsGroup');
+            const postsList = document.getElementById('skippedPostsList');
+            const attsGroup = document.getElementById('skippedAttachmentsGroup');
+            const attsList = document.getElementById('skippedAttachmentsList');
+
+            const hasPosts = Array.isArray(skippedPosts) && skippedPosts.length > 0;
+            const hasAtts = Array.isArray(skippedAttachments) && skippedAttachments.length > 0;
+
+            if (!hasPosts && !hasAtts) {
                 sec.style.display = 'none';
-                list.innerHTML = '';
+                if (postsList) postsList.innerHTML = '';
+                if (attsList) attsList.innerHTML = '';
                 return;
             }
+
             sec.style.display = 'block';
-            list.innerHTML = skippedPosts.map(p => {
-                const title = escapeHtml(p.title || '(タイトルなし)');
-                const postAt = escapeHtml(p.post_at || '（投稿日不明）');
-                const chars = p.chars != null ? Number(p.chars).toLocaleString() : '不明';
-                return `
-                    <div class="skipped-post-card">
-                        <div class="skipped-post-title">${title}</div>
-                        <div class="skipped-post-meta">
-                            <span>📅 <strong>投稿日:</strong> ${postAt}</span>
-                            <span>📝 <strong>字数:</strong> ${chars} 字</span>
+
+            if (postsGroup) postsGroup.style.display = hasPosts ? 'block' : 'none';
+            if (postsList) {
+                postsList.innerHTML = hasPosts ? skippedPosts.map(p => {
+                    const title = escapeHtml(p.title || '(タイトルなし)');
+                    const postAt = escapeHtml(p.post_at || '（投稿日不明）');
+                    const chars = p.chars != null ? Number(p.chars).toLocaleString() : '不明';
+                    return `
+                        <div class="skipped-post-card">
+                            <div class="skipped-post-title">${title}</div>
+                            <div class="skipped-post-meta">
+                                <span>📅 <strong>投稿日:</strong> ${postAt}</span>
+                                <span>📝 <strong>字数:</strong> ${chars} 字</span>
+                            </div>
                         </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('') : '';
+            }
+
+            if (attsGroup) attsGroup.style.display = hasAtts ? 'block' : 'none';
+            if (attsList) {
+                attsList.innerHTML = hasAtts ? skippedAttachments.map(a => {
+                    const postTitle = escapeHtml(a.post_title || '(投稿題名なし)');
+                    const fileName = escapeHtml(a.file_name || '(ファイル名なし)');
+                    const chars = a.chars != null ? Number(a.chars).toLocaleString() : '不明';
+                    return `
+                        <div class="skipped-attachment-card">
+                            <div class="skipped-attachment-title">📌 <strong>投稿:</strong> ${postTitle}</div>
+                            <div class="skipped-attachment-meta">
+                                <span>📎 <strong>ファイル名:</strong> ${fileName}</span>
+                                <span>📝 <strong>字数:</strong> ${chars} 字</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('') : '';
+            }
         }
 
         function displayVectorHitChunks(rows) {
@@ -1562,6 +1634,7 @@
             const blobEmbeddedInTrace =
                 Boolean(blob) && trace.some((t) => typeof t.prompt === 'string' && t.prompt.includes(blob));
             const skippedList = Array.isArray(data.skipped_posts) ? data.skipped_posts : [];
+            const skippedAttList = Array.isArray(data.skipped_attachments) ? data.skipped_attachments : [];
             const lines = [
                 `モデル API 呼び出し: ${trace.length} 回（各回のプロンプト全文＝ルール＋【入力】込み。これが実際の送信内容）`,
                 trace.length
@@ -1572,7 +1645,7 @@
                 truncated
                     ? `【１〜３】切断で未送信: ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : ''} 字`
                     : '【１〜３】切断: なし',
-                `字数の上限で入らなかった投稿: ${skippedList.length} 件`,
+                `字数の上限で入らなかった投稿: ${skippedList.length} 件 / 全文省略の添付: ${skippedAttList.length} 件`,
                 blobEmbeddedInTrace
                     ? '末尾参照欄: プロンプト内【入力】と同一のため省略（スクロールの二重表示を避ける）'
                     : '末尾参照欄: いずれのプロンプトにも【１〜３】全文が無い場合のみ、下に raw を表示',

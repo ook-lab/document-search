@@ -1019,7 +1019,7 @@ def generate_answer():
 
         # （２）投稿日降順・同一投稿集約による資料構築
         threshold_val = float(data.get("threshold", 0.4))
-        part2_unified, part3_chunks, skipped_posts = _build_context_sections(
+        part2_unified, part3_chunks, skipped_posts, skipped_attachments = _build_context_sections(
             target_documents,
             focal_date_range=date_range if date_range and ".." in date_range else None,
             keywords=keywords,
@@ -1033,7 +1033,7 @@ def generate_answer():
             max_context_chars,
         )
         print(
-            f"[INFO] 回答入力(1→2): 総{len(ordered_rag_blob)}字 / 上限{max_context_chars} / フロー: {flow_id} / スキップ投稿: {len(skipped_posts)}件",
+            f"[INFO] 回答入力(1→2): 総{len(ordered_rag_blob)}字 / 上限{max_context_chars} / フロー: {flow_id} / スキップ投稿: {len(skipped_posts)}件 / スキップ添付: {len(skipped_attachments)}件",
             flush=True,
         )
 
@@ -1068,6 +1068,7 @@ def generate_answer():
             'rag_input_meta': rag_input_meta,
             'llm_prompt_trace': llm_prompt_trace,
             'skipped_posts': skipped_posts,
+            'skipped_attachments': skipped_attachments,
         })
 
     except Exception as e:
@@ -2302,26 +2303,29 @@ def _build_context_sections(
     keywords: Optional[List[str]] = None,
     threshold: float = 0.4,
     max_context_chars: int = 30000,
-) -> Tuple[str, str, List[Dict[str, Any]]]:
+) -> Tuple[str, str, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    回答生成資料の構築（投稿単位の集約と新順ソート）:
-    - Classroom の同一投稿を投稿URLで集約し、投稿本文は1回だけ記載。
-    - 添付ファイルは「その添付ファイルの中身の断片(post_body以外)の類似度の最大値が閾値以上」のみ掲載（添付部分本文にキーワードを含むだけでは掲載しない）。
-    - 投稿（本文1回）は「いずれかの行のpost_body類似度閾値以上、投稿本文に質問の言葉を含む、または載せる添付ファイルが1つ以上ある」場合に掲載。
-    - 投稿日（post_at）の新しい順（降順 DESC）にソート。
-    - 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる。
-    - max_context_chars を超える投稿はその投稿のみスキップし、入る大きさのより古い投稿を詰め続ける。
+    回答生成資料の構築（投稿単位の集約と新順ソート、枠の使い方最適化）:
+    - 投稿と添付ファイルの関係は切らない（添付は必ず自分の投稿のまとまりの中に置く）。
+    1. まず、回答対象の投稿（今の選び方のまま）を新しい順に、投稿の本文だけでまとまりを作る。
+       各まとまりには、その投稿の添付のうち今の条件（中身の断片の類似度が閾値以上）を満たすもののファイル名を並べる。
+       本文だけのまとまりを新しい順に枠(max_context_chars)へ入れ、入らないものは「字数の上限で入らなかった投稿」に記録する。
+    2. 次に、残った枠で、条件を満たす添付の全文を類似度の高い順に、それぞれ自分の投稿のまとまりの中（ファイル名の位置）に入れる。
+       入らない添付は飛ばして次に小さいものを試す。
+    3. 全文が入らなかった添付は、自分の投稿の中にファイル名と「全文は字数の上限で省略」と書いて残す。
+       画面の「字数の上限で入らなかった投稿」の一覧にも、全文が入らなかった添付（投稿題名・ファイル名・字数）を分けて表示する。
+    4. 最終的に AI に渡す文字列は、投稿日の新しい順のまとまりの並び（各まとまりは 本文→添付）とする。
     Googleカレンダー行は含めない。
-    戻り値: (part2_unified, "", skipped_posts)
+    戻り値: (part2_unified, "", skipped_posts, skipped_attachments)
     """
     _ = focal_date_range
 
     if not documents:
-        return "", "", []
+        return "", "", [], []
 
     text_docs = [d for d in documents if d.get("source") != "Googleカレンダー"]
     if not text_docs:
-        return "", "", []
+        return "", "", [], []
 
     classroom_raw_tables = ("03_ema_classroom_01_raw", "04_ikuya_classroom_01_raw")
 
@@ -2381,7 +2385,7 @@ def _build_context_sections(
                 "category": category,
                 "post_url": post_url,
                 "main_body": main_text,
-                "attachments": [],  # List[Tuple[str, str]]
+                "attachments": [],  # List[Dict[str, Any]]
                 "is_classroom": is_classroom,
                 "post_body_sim_matched": False,
                 "main_body_kw_matched": False,
@@ -2407,8 +2411,24 @@ def _build_context_sections(
                     raw_fn = doc.get("file_name")
                     file_name = str(raw_fn).strip() if raw_fn and str(raw_fn).strip() else "(ファイル名なし)"
                     existing_att = groups_map[gkey]["attachments"]
-                    if not any(fn == file_name and txt == attach_text for fn, txt in existing_att):
-                        existing_att.append((file_name, attach_text))
+                    found_att = None
+                    for existing_item in existing_att:
+                        if existing_item["file_name"] == file_name and existing_item["attach_text"] == attach_text:
+                            found_att = existing_item
+                            break
+                    if found_att is not None:
+                        if att_sim is not None:
+                            found_att["similarity"] = max(found_att["similarity"], att_sim)
+                    else:
+                        att_idx = len(existing_att)
+                        existing_att.append({
+                            "att_key": f"{gkey}:att:{att_idx}",
+                            "file_name": file_name,
+                            "attach_text": attach_text,
+                            "similarity": att_sim if att_sim is not None else -1.0,
+                            "chars": len(attach_text),
+                            "post_title": groups_map[gkey]["title"] or "(タイトルなし)",
+                        })
         else:
             # クラスルーム以外の文書
             doc_sim = _ensure_float_sim(doc.get("similarity"), doc.get("id"), "similarity")
@@ -2417,8 +2437,7 @@ def _build_context_sections(
             if sim_ok or kw_ok:
                 groups_map[gkey]["non_classroom_matched"] = True
 
-    # 修正点2: 投稿（本文1回）を載せるのは、その投稿のいずれかの行の post_body 断片の類似度が閾値以上、
-    # 投稿の本文に質問の言葉を含む、または載せる添付ファイルが1つ以上ある場合。
+    # 投稿（本文1回）を載せる条件（今の選び方のまま）:
     valid_groups: List[Dict[str, Any]] = []
     for gkey in group_order:
         g = groups_map[gkey]
@@ -2430,7 +2449,7 @@ def _build_context_sections(
                 valid_groups.append(g)
 
     if not valid_groups:
-        return "", "", []
+        return "", "", [], []
 
     # 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる
     date_groups = [g for g in valid_groups if g["has_date"]]
@@ -2439,7 +2458,11 @@ def _build_context_sections(
     # 日付のある投稿を新しい順にソート (降順 DESC)
     date_groups.sort(key=lambda g: g["post_at_sort_val"], reverse=True)
 
-    def _format_group_block(g: Dict[str, Any], is_no_date: bool = False) -> str:
+    def _format_group_block(
+        g: Dict[str, Any],
+        full_att_keys: set,
+        is_no_date: bool = False,
+    ) -> str:
         parts: List[str] = []
         parts.append("━" * 50)
         parts.append(f"【投稿】タイトル: {g['title']}")
@@ -2464,79 +2487,114 @@ def _build_context_sections(
         if g["main_body"]:
             parts.append(g["main_body"])
 
-        for fname, att_txt in g["attachments"]:
+        for att in g["attachments"]:
             parts.append("")
-            parts.append(f"【添付ファイル: {fname}】")
-            parts.append(att_txt)
+            parts.append(f"【添付ファイル: {att['file_name']}】")
+            if att["att_key"] in full_att_keys:
+                parts.append(att["attach_text"])
+            else:
+                parts.append("（全文は字数の上限で省略）")
 
         parts.append("━" * 50)
         return "\n".join(parts)
 
-    # 飛ばした投稿（題名・投稿日・字数）の記録リスト
+    def _build_full_text(
+        sel_date_groups: List[Dict[str, Any]],
+        sel_no_date_groups: List[Dict[str, Any]],
+        full_att_keys: set,
+    ) -> str:
+        blocks: List[str] = []
+        for g in sel_date_groups:
+            blocks.append(_format_group_block(g, full_att_keys, is_no_date=False))
+
+        if sel_no_date_groups:
+            no_date_header = "\n\n▼▼▼ 投稿日不明の資料 ▼▼▼\n（以下の資料は投稿日時が記録されていません）\n\n"
+            no_date_blocks = [
+                _format_group_block(g, full_att_keys, is_no_date=True)
+                for g in sel_no_date_groups
+            ]
+            if blocks:
+                blocks.append(no_date_header + "\n\n".join(no_date_blocks))
+            else:
+                blocks.append(no_date_header.lstrip() + "\n\n".join(no_date_blocks))
+
+        return "\n\n".join(blocks).strip()
+
+    # 1. 本文だけのまとまりを新しい順に枠(max_context_chars)へ入れ、
+    #    入らないものは「字数の上限で入らなかった投稿」に記録する。
+    selected_date_groups: List[Dict[str, Any]] = []
+    selected_no_date_groups: List[Dict[str, Any]] = []
     skipped_posts: List[Dict[str, Any]] = []
 
-    # 文字数上限（max_context_chars）によるフィルタリング
-    allowed_chars = max_context_chars
-    selected_blocks: List[str] = []
-    current_chars = 0
-
-    # 1. 日付のある投稿を新しい順に詰める（入らない投稿はその投稿だけ飛ばし、古い投稿を詰め続ける）
+    # 日付あり投稿を新しい順に詰める
     for g in date_groups:
-        blk = _format_group_block(g)
-        blk_chars = len(blk)
-        needed_chars = (2 if selected_blocks else 0) + blk_chars
-        if current_chars + needed_chars > allowed_chars:
-            print(
-                f"[INFO] max_context_chars ({max_context_chars}) 超過のため投稿をスキップ: "
-                f"title={g.get('title')}, post_at={g.get('post_at')}, chars={blk_chars}",
-                flush=True,
-            )
+        trial_date_groups = selected_date_groups + [g]
+        text_trial = _build_full_text(trial_date_groups, [], set())
+        if len(text_trial) > max_context_chars:
+            single_blk = _format_group_block(g, set(), is_no_date=False)
             skipped_posts.append({
                 "title": g.get("title") or "(タイトルなし)",
                 "post_at": g.get("post_at") or "（投稿日不明）",
-                "chars": blk_chars,
+                "chars": len(single_blk),
             })
             continue
-        selected_blocks.append(blk)
-        current_chars += needed_chars
+        selected_date_groups.append(g)
 
-    # 2. 投稿日不明の投稿を詰める（同様に入らない投稿はその投稿だけ飛ばし、詰め続ける）
-    if no_date_groups:
-        no_date_header = "\n\n▼▼▼ 投稿日不明の資料 ▼▼▼\n（以下の資料は投稿日時が記録されていません）\n\n"
-        no_date_added: List[str] = []
-        for g in no_date_groups:
-            blk = _format_group_block(g, is_no_date=True)
-            blk_chars = len(blk)
-            if not no_date_added:
-                needed_chars = (2 if selected_blocks else 0) + len(no_date_header) + blk_chars
-            else:
-                needed_chars = 2 + blk_chars
+    # 投稿日不明の投稿を詰める
+    for g in no_date_groups:
+        trial_no_date_groups = selected_no_date_groups + [g]
+        text_trial = _build_full_text(selected_date_groups, trial_no_date_groups, set())
+        if len(text_trial) > max_context_chars:
+            single_blk = _format_group_block(g, set(), is_no_date=True)
+            skipped_posts.append({
+                "title": g.get("title") or "(タイトルなし)",
+                "post_at": "（投稿日不明）",
+                "chars": len(single_blk),
+            })
+            continue
+        selected_no_date_groups.append(g)
 
-            if current_chars + needed_chars > allowed_chars:
-                print(
-                    f"[INFO] max_context_chars ({max_context_chars}) 超過のため投稿日不明資料をスキップ: "
-                    f"title={g.get('title')}, chars={blk_chars}",
-                    flush=True,
-                )
-                skipped_posts.append({
-                    "title": g.get("title") or "(タイトルなし)",
-                    "post_at": "（投稿日不明）",
-                    "chars": blk_chars,
-                })
-                continue
+    # 2. 残った枠で、条件を満たす添付の全文を類似度の高い順に、
+    #    それぞれ自分の投稿のまとまりの中（ファイル名の位置）に入れる。入らない添付は飛ばして次に小さいものを試す。
+    candidate_attachments: List[Dict[str, Any]] = []
+    for g in (selected_date_groups + selected_no_date_groups):
+        for att in g["attachments"]:
+            candidate_attachments.append(att)
 
-            no_date_added.append(blk)
-            current_chars += needed_chars
+    # 類似度が高い順（降順）。類似度が同じ場合は字数が小さい順、次にファイル名順で安定化
+    candidate_attachments.sort(
+        key=lambda a: (-a["similarity"], a["chars"], a["file_name"])
+    )
 
-        if no_date_added:
-            selected_blocks.append(no_date_header + "\n\n".join(no_date_added))
+    full_attachment_keys: set = set()
+    skipped_attachments: List[Dict[str, Any]] = []
 
-    final_seg2 = "\n\n".join(selected_blocks).strip()
+    for att in candidate_attachments:
+        trial_keys = full_attachment_keys | {att["att_key"]}
+        text_trial = _build_full_text(selected_date_groups, selected_no_date_groups, trial_keys)
+        if len(text_trial) <= max_context_chars:
+            full_attachment_keys.add(att["att_key"])
+        else:
+            # 入らない添付は飛ばして次に小さいものを試す
+            skipped_attachments.append({
+                "post_title": att["post_title"],
+                "file_name": att["file_name"],
+                "chars": att["chars"],
+            })
+
+    # 3 & 4. 全文が入らなかった添付は、自分の投稿の中にファイル名と「全文は字数の上限で省略」と書いて残す。
+    # 最終的に AI に渡す文字列は、投稿日の新しい順のまとまりの並び（各まとまりは 本文→添付）とする。
+    final_seg2 = _build_full_text(selected_date_groups, selected_no_date_groups, full_attachment_keys)
+
     print(
-        f"[DEBUG] _build_context_sections: 日付あり={len(date_groups)}件 日付なし={len(no_date_groups)}件 採用={len(selected_blocks)}ブロック スキップ={len(skipped_posts)}件 総文字数={len(final_seg2)}",
+        f"[DEBUG] _build_context_sections: 日付あり={len(selected_date_groups)}/{len(date_groups)}件 "
+        f"日付なし={len(selected_no_date_groups)}/{len(no_date_groups)}件 "
+        f"採用添付={len(full_attachment_keys)}/{len(candidate_attachments)}件 "
+        f"スキップ投稿={len(skipped_posts)}件 スキップ添付={len(skipped_attachments)}件 "
+        f"総文字数={len(final_seg2)} (上限={max_context_chars})",
         flush=True,
     )
-    return final_seg2, "", skipped_posts
+    return final_seg2, "", skipped_posts, skipped_attachments
 
 
 def _calendar_attendance_intent(query: str) -> Optional[set[str]]:
