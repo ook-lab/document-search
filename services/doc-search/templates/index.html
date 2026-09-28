@@ -320,6 +320,52 @@
             font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
         }
 
+        /* ✅ 字数の上限で入らなかった投稿 */
+        .skipped-posts-section {
+            margin-bottom: 25px;
+        }
+
+        .skipped-posts-note {
+            font-size: 13px;
+            color: #b45309;
+            margin-bottom: 12px;
+            line-height: 1.5;
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 6px;
+            padding: 10px 14px;
+        }
+
+        .skipped-posts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .skipped-post-card {
+            background: #fffaf0;
+            border: 1px solid #fed7aa;
+            border-left: 4px solid #ea580c;
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+
+        .skipped-post-title {
+            font-weight: 700;
+            font-size: 14px;
+            color: #1e293b;
+            margin-bottom: 6px;
+        }
+
+        .skipped-post-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            font-size: 12px;
+            color: #9a3412;
+            font-weight: 600;
+        }
+
         .document-list {
             display: grid;
             gap: 15px;
@@ -917,6 +963,12 @@
                     <div class="refined-query-box" id="refinedQueryBox"></div>
                 </div>
 
+                <div id="skippedPostsSection" class="skipped-posts-section" style="display: none;">
+                    <h2 class="section-title">字数の上限で入らなかった投稿</h2>
+                    <p class="skipped-posts-note">以下の投稿は文字数の上限（max_context_chars）を超えるため回答の資料から除外されましたが、より古い小さな投稿は詰め込まれています（AI への入力には含まれていません）。</p>
+                    <div class="skipped-posts-list" id="skippedPostsList"></div>
+                </div>
+
                 <div id="ragLlmInputSection" style="display: none;">
                     <h2 class="section-title">回答生成でモデルに送った全文</h2>
                     <p class="vector-chunks-note"><strong>本体は「モデル呼び出し」ブロック</strong>です（ルール・網羅指示・【入力】込みの <code>call_model</code> 引数と同一）。そのプロンプトの <strong>【入力】</strong>に【１】〜【３】が埋まっている場合は、末尾の参照欄は<strong>同一テキストの二重表示になるため省略</strong>します（多段フローでどのプロンプトにも【１〜３】全文が現れないときだけ末尾に出します）。</p>
@@ -1417,6 +1469,7 @@
                     throw new Error('検索結果に vector_hit_chunks が含まれていません');
                 }
                 displayVectorHitChunks(searchData.vector_hit_chunks);
+                displaySkippedPosts(answerData.skipped_posts || []);
                 displayRagLlmInput(answerData);
                 displayDocuments(currentDocuments);
                 showResults();
@@ -1426,6 +1479,31 @@
             } finally {
                 setLoading(false);
             }
+        }
+
+        function displaySkippedPosts(skippedPosts) {
+            const sec = document.getElementById('skippedPostsSection');
+            const list = document.getElementById('skippedPostsList');
+            if (!skippedPosts || !Array.isArray(skippedPosts) || skippedPosts.length === 0) {
+                sec.style.display = 'none';
+                list.innerHTML = '';
+                return;
+            }
+            sec.style.display = 'block';
+            list.innerHTML = skippedPosts.map(p => {
+                const title = escapeHtml(p.title || '(タイトルなし)');
+                const postAt = escapeHtml(p.post_at || '（投稿日不明）');
+                const chars = p.chars != null ? Number(p.chars).toLocaleString() : '不明';
+                return `
+                    <div class="skipped-post-card">
+                        <div class="skipped-post-title">${title}</div>
+                        <div class="skipped-post-meta">
+                            <span>📅 <strong>投稿日:</strong> ${postAt}</span>
+                            <span>📝 <strong>字数:</strong> ${chars} 字</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function displayVectorHitChunks(rows) {
@@ -1483,6 +1561,7 @@
             }
             const blobEmbeddedInTrace =
                 Boolean(blob) && trace.some((t) => typeof t.prompt === 'string' && t.prompt.includes(blob));
+            const skippedList = Array.isArray(data.skipped_posts) ? data.skipped_posts : [];
             const lines = [
                 `モデル API 呼び出し: ${trace.length} 回（各回のプロンプト全文＝ルール＋【入力】込み。これが実際の送信内容）`,
                 trace.length
@@ -1493,6 +1572,7 @@
                 truncated
                     ? `【１〜３】切断で未送信: ${meta.cut_dropped_chars != null ? meta.cut_dropped_chars : ''} 字`
                     : '【１〜３】切断: なし',
+                `字数の上限で入らなかった投稿: ${skippedList.length} 件`,
                 blobEmbeddedInTrace
                     ? '末尾参照欄: プロンプト内【入力】と同一のため省略（スクロールの二重表示を避ける）'
                     : '末尾参照欄: いずれのプロンプトにも【１〜３】全文が無い場合のみ、下に raw を表示',
@@ -1750,6 +1830,7 @@
             document.getElementById('answerSection').style.display = 'none';
             document.getElementById('refinedQuerySection').style.display = 'none';
             document.getElementById('vectorChunksSection').style.display = 'none';
+            document.getElementById('skippedPostsSection').style.display = 'none';
             document.getElementById('ragLlmInputSection').style.display = 'none';
             document.getElementById('documentsSection').style.display = 'none';
         }

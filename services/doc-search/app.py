@@ -1019,7 +1019,7 @@ def generate_answer():
 
         # （２）投稿日降順・同一投稿集約による資料構築
         threshold_val = float(data.get("threshold", 0.4))
-        part2_unified, part3_chunks = _build_context_sections(
+        part2_unified, part3_chunks, skipped_posts = _build_context_sections(
             target_documents,
             focal_date_range=date_range if date_range and ".." in date_range else None,
             keywords=keywords,
@@ -1033,7 +1033,7 @@ def generate_answer():
             max_context_chars,
         )
         print(
-            f"[INFO] 回答入力(1→2): 総{len(ordered_rag_blob)}字 / 上限{max_context_chars} / フロー: {flow_id}",
+            f"[INFO] 回答入力(1→2): 総{len(ordered_rag_blob)}字 / 上限{max_context_chars} / フロー: {flow_id} / スキップ投稿: {len(skipped_posts)}件",
             flush=True,
         )
 
@@ -1067,6 +1067,7 @@ def generate_answer():
             'ordered_rag_blob': ordered_rag_blob,
             'rag_input_meta': rag_input_meta,
             'llm_prompt_trace': llm_prompt_trace,
+            'skipped_posts': skipped_posts,
         })
 
     except Exception as e:
@@ -2301,7 +2302,7 @@ def _build_context_sections(
     keywords: Optional[List[str]] = None,
     threshold: float = 0.4,
     max_context_chars: int = 30000,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, List[Dict[str, Any]]]:
     """
     回答生成資料の構築（投稿単位の集約と新順ソート）:
     - Classroom の同一投稿を投稿URLで集約し、投稿本文は1回だけ記載。
@@ -2309,18 +2310,18 @@ def _build_context_sections(
     - 投稿（本文1回）は「いずれかの行のpost_body類似度閾値以上、投稿本文に質問の言葉を含む、または載せる添付ファイルが1つ以上ある」場合に掲載。
     - 投稿日（post_at）の新しい順（降順 DESC）にソート。
     - 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる。
-    - max_context_chars を超える古い投稿は含めずに打ち切る。
+    - max_context_chars を超える投稿はその投稿のみスキップし、入る大きさのより古い投稿を詰め続ける。
     Googleカレンダー行は含めない。
-    戻り値: (part2_unified, "")
+    戻り値: (part2_unified, "", skipped_posts)
     """
     _ = focal_date_range
 
     if not documents:
-        return "", ""
+        return "", "", []
 
     text_docs = [d for d in documents if d.get("source") != "Googleカレンダー"]
     if not text_docs:
-        return "", ""
+        return "", "", []
 
     classroom_raw_tables = ("03_ema_classroom_01_raw", "04_ikuya_classroom_01_raw")
 
@@ -2429,7 +2430,7 @@ def _build_context_sections(
                 valid_groups.append(g)
 
     if not valid_groups:
-        return "", ""
+        return "", "", []
 
     # 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる
     date_groups = [g for g in valid_groups if g["has_date"]]
@@ -2471,48 +2472,71 @@ def _build_context_sections(
         parts.append("━" * 50)
         return "\n".join(parts)
 
-    formatted_date_blocks = [_format_group_block(g) for g in date_groups]
-    formatted_no_date_blocks = [_format_group_block(g, is_no_date=True) for g in no_date_groups]
+    # 飛ばした投稿（題名・投稿日・字数）の記録リスト
+    skipped_posts: List[Dict[str, Any]] = []
 
-    # 文字数上限（max_context_chars）による古い方のカット
+    # 文字数上限（max_context_chars）によるフィルタリング
     allowed_chars = max_context_chars
     selected_blocks: List[str] = []
     current_chars = 0
 
-    for blk in formatted_date_blocks:
-        blk_len = len(blk) + 2
-        if selected_blocks and (current_chars + blk_len > allowed_chars):
+    # 1. 日付のある投稿を新しい順に詰める（入らない投稿はその投稿だけ飛ばし、古い投稿を詰め続ける）
+    for g in date_groups:
+        blk = _format_group_block(g)
+        blk_chars = len(blk)
+        needed_chars = (2 if selected_blocks else 0) + blk_chars
+        if current_chars + needed_chars > allowed_chars:
             print(
-                f"[INFO] max_context_chars ({max_context_chars}) により古い投稿をカットしました (現在 {current_chars} 字)",
+                f"[INFO] max_context_chars ({max_context_chars}) 超過のため投稿をスキップ: "
+                f"title={g.get('title')}, post_at={g.get('post_at')}, chars={blk_chars}",
                 flush=True,
             )
-            break
+            skipped_posts.append({
+                "title": g.get("title") or "(タイトルなし)",
+                "post_at": g.get("post_at") or "（投稿日不明）",
+                "chars": blk_chars,
+            })
+            continue
         selected_blocks.append(blk)
-        current_chars += blk_len
+        current_chars += needed_chars
 
-    if formatted_no_date_blocks and (current_chars < allowed_chars or not selected_blocks):
+    # 2. 投稿日不明の投稿を詰める（同様に入らない投稿はその投稿だけ飛ばし、詰め続ける）
+    if no_date_groups:
         no_date_header = "\n\n▼▼▼ 投稿日不明の資料 ▼▼▼\n（以下の資料は投稿日時が記録されていません）\n\n"
         no_date_added: List[str] = []
-        for blk in formatted_no_date_blocks:
-            blk_len = len(blk) + 2
-            if selected_blocks and (current_chars + len(no_date_header) + blk_len > allowed_chars):
+        for g in no_date_groups:
+            blk = _format_group_block(g, is_no_date=True)
+            blk_chars = len(blk)
+            if not no_date_added:
+                needed_chars = (2 if selected_blocks else 0) + len(no_date_header) + blk_chars
+            else:
+                needed_chars = 2 + blk_chars
+
+            if current_chars + needed_chars > allowed_chars:
                 print(
-                    f"[INFO] max_context_chars ({max_context_chars}) により投稿日不明の古い資料をカットしました",
+                    f"[INFO] max_context_chars ({max_context_chars}) 超過のため投稿日不明資料をスキップ: "
+                    f"title={g.get('title')}, chars={blk_chars}",
                     flush=True,
                 )
-                break
+                skipped_posts.append({
+                    "title": g.get("title") or "(タイトルなし)",
+                    "post_at": "（投稿日不明）",
+                    "chars": blk_chars,
+                })
+                continue
+
             no_date_added.append(blk)
-            current_chars += blk_len
+            current_chars += needed_chars
 
         if no_date_added:
             selected_blocks.append(no_date_header + "\n\n".join(no_date_added))
 
     final_seg2 = "\n\n".join(selected_blocks).strip()
     print(
-        f"[DEBUG] _build_context_sections: 日付あり={len(date_groups)}件 日付なし={len(no_date_groups)}件 採用={len(selected_blocks)}ブロック 総文字数={len(final_seg2)}",
+        f"[DEBUG] _build_context_sections: 日付あり={len(date_groups)}件 日付なし={len(no_date_groups)}件 採用={len(selected_blocks)}ブロック スキップ={len(skipped_posts)}件 総文字数={len(final_seg2)}",
         flush=True,
     )
-    return final_seg2, ""
+    return final_seg2, "", skipped_posts
 
 
 def _calendar_attendance_intent(query: str) -> Optional[set[str]]:
