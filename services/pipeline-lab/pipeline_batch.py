@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -36,6 +37,7 @@ except ImportError:
 from direct_extract_common import (
     DirectExtractPageResult,
     DirectExtractValidationError,
+    PageBlock,
     _DIRECT_EXTRACT_PROMPT,
     render_page_to_png_bytes,
     validate_direct_extract_result,
@@ -60,6 +62,35 @@ _TERMINAL_JOB_STATES = frozenset({
     "JOB_STATE_EXPIRED", "EXPIRED",
 })
 
+# 対応ファイル形式の MIME タイプ定義（明示的列挙）
+_PDF_MIME_TYPES = frozenset({
+    "application/pdf",
+})
+
+_IMAGE_MIME_TYPES = frozenset({
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/gif",
+    "image/webp",
+    "image/tiff",
+    "image/bmp",
+})
+
+_WORD_MIME_TYPES = frozenset({
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/msword",  # .doc
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.template",  # .dotx
+    "application/vnd.ms-word.document.macroEnabled.12",  # .docm
+    "application/vnd.ms-word.template.macroEnabled.12",  # .dotm
+    "application/vnd.oasis.opendocument.text",  # .odt
+    "application/vnd.oasis.opendocument.text-template",  # .ott
+    "application/rtf",  # .rtf
+    "text/rtf",  # .rtf
+})
+
+_SUPPORTED_MIME_TYPES = _PDF_MIME_TYPES | _IMAGE_MIME_TYPES | _WORD_MIME_TYPES
+
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 
 
@@ -83,6 +114,55 @@ def _image_to_pdf(img_path: Path, pdf_path: Path) -> None:
     img_pdf.close()
     doc.save(str(pdf_path))
     doc.close()
+
+
+def _convert_word_to_pdf(src_path: Path, dest_pdf_path: Path, work_dir: Path) -> None:
+    """LibreOffice (soffice) を用いて Word/文書ファイルを PDF に変換する。
+    フォールバック絶対禁止。失敗時は RuntimeError を送出する。
+    """
+    lo_profile_dir = work_dir / "lo_profile"
+    lo_profile_dir.mkdir(parents=True, exist_ok=True)
+    profile_url = f"file:///{lo_profile_dir.as_posix().lstrip('/')}"
+
+    cmd = [
+        "soffice",
+        "--headless",
+        f"-env:UserInstallation={profile_url}",
+        "--convert-to",
+        "pdf",
+        "--outdir",
+        str(work_dir),
+        str(src_path),
+    ]
+    logger.info("Converting document to PDF via LibreOffice: %s", " ".join(cmd))
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as te:
+        raise RuntimeError(f"LibreOfficeによるPDF変換がタイムアウトしました (120秒): {te}") from te
+    except FileNotFoundError as fnfe:
+        raise RuntimeError(f"LibreOffice (soffice) がインストールされていないか実行できません: {fnfe}") from fnfe
+    except Exception as e:
+        raise RuntimeError(f"LibreOffice実行エラー: {e}") from e
+
+    if proc.returncode != 0:
+        err_msg = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"LibreOffice PDF変換に失敗しました (exit code {proc.returncode}): {err_msg}")
+
+    # LibreOffice は <src_stem>.pdf を出力する
+    converted_pdf = work_dir / f"{src_path.stem}.pdf"
+    if not converted_pdf.is_file() or converted_pdf.stat().st_size == 0:
+        raise RuntimeError(f"LibreOfficeによる変換後PDFファイルが見つからないか空です: {converted_pdf.name}")
+
+    if converted_pdf != dest_pdf_path:
+        if dest_pdf_path.exists():
+            dest_pdf_path.unlink()
+        converted_pdf.rename(dest_pdf_path)
 
 
 def _fetch_cloud_run_id_token(audience: str) -> str:
@@ -138,13 +218,88 @@ def _clear_meta_pipeline_error(db: DatabaseClient, raw_table: str, raw_id: str) 
         raise
 
 
-@pipeline_batch_bp.route('/api/batch/pipeline_direct', methods=['POST'])
-@pipeline_batch_bp.route('/pipeline-lab/api/batch/pipeline_direct', methods=['POST'])
-def batch_pipeline_direct():
-    """Gemini Batch API を用いた一括パイプライン直接抽出エンドポイント。Google OIDC 認証。"""
-    # ---------------------------------------------------------
-    # 1. 認証: Google OIDC ID トークン検証
-    # ---------------------------------------------------------
+def _record_batch_file_error(
+    db: DatabaseClient,
+    raw_table: str,
+    raw_id: str,
+    drive_file_id: Optional[str],
+    job_name: str,
+    error_msg: str,
+    total_pages: int = 0,
+) -> None:
+    """pipeline_batch_files に state='error' を記録（または更新）する。"""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        db.client.table("pipeline_batch_files").upsert(
+            {
+                "raw_table": raw_table,
+                "raw_id": raw_id,
+                "drive_file_id": drive_file_id,
+                "total_pages": total_pages,
+                "job_name": job_name,
+                "state": "error",
+                "submitted_at": now_iso,
+                "finished_at": now_iso,
+                "error": str(error_msg),
+            },
+            on_conflict="raw_table,raw_id",
+        ).execute()
+    except Exception as e:
+        logger.error("Failed to record pipeline_batch_files error for %s/%s: %s", raw_table, raw_id, e)
+
+
+def _save_batch_completed_result(
+    db: DatabaseClient,
+    raw_table: str,
+    raw_id: str,
+    full_md: str,
+    now_iso: Optional[str] = None,
+    page_markdowns: Optional[Dict[int, str]] = None,
+) -> None:
+    """通常のバッチ完了時および再合成時共通の保存処理。
+    RAW テーブルの pdf_md_content / pdf_md_updated_at を更新し、
+    pipeline_batch_files の state を completed に更新し、
+    09_unified_documents_meta のパイプラインエラーをクリアする。
+    """
+    if not now_iso:
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+    # RAW テーブル保存（同じ列: pdf_md_content, pdf_md_updated_at）
+    upd_raw = (
+        db.client.table(raw_table)
+        .update({
+            "pdf_md_content": full_md,
+            "pdf_md_updated_at": now_iso,
+        })
+        .eq("id", raw_id)
+        .select("id")
+        .execute()
+    )
+    if not upd_raw.data:
+        raise RuntimeError(f"RAWテーブルの更新対象が見つかりません (table={raw_table}, id={raw_id})")
+
+    # pipeline_batch_files を completed に更新
+    db.client.table("pipeline_batch_files").update({
+        "state": "completed",
+        "finished_at": now_iso,
+        "error": None,
+    }).eq("raw_table", raw_table).eq("raw_id", raw_id).execute()
+
+    # pipeline_batch_pages の各ページの markdown 列も更新（page_markdowns が指定されている場合）
+    if page_markdowns:
+        for p_idx, p_md in page_markdowns.items():
+            db.client.table("pipeline_batch_pages").update({
+                "markdown": p_md,
+            }).eq("raw_table", raw_table).eq("raw_id", raw_id).eq("page_index", p_idx).execute()
+
+    # 09_unified_documents_meta のエラーをクリア
+    _clear_meta_pipeline_error(db, raw_table, raw_id)
+
+
+def _verify_oidc_token(req: Any) -> Optional[Tuple[Any, int]]:
+    """Google OIDC ID トークン検証。
+    成功時は None、失敗時は (jsonify(...), status_code) を返す。
+    """
     batch_audience = os.environ.get("PIPELINE_BATCH_AUDIENCE")
     invoker_email = os.environ.get("PIPELINE_BATCH_INVOKER_EMAIL")
     if not batch_audience or not invoker_email:
@@ -153,7 +308,7 @@ def batch_pipeline_direct():
             "error": "Server configuration error: PIPELINE_BATCH_AUDIENCE or PIPELINE_BATCH_INVOKER_EMAIL is not configured"
         }), 500
 
-    auth_header = request.headers.get("Authorization", "").strip()
+    auth_header = req.headers.get("Authorization", "").strip()
     if not auth_header.startswith("Bearer "):
         logger.warning("Batch pipeline: Missing or invalid Authorization header")
         return jsonify({"error": "Missing or invalid Authorization header"}), 401
@@ -186,6 +341,17 @@ def batch_pipeline_direct():
         )
         return jsonify({"error": "Forbidden: email mismatch"}), 403
 
+    return None
+
+
+@pipeline_batch_bp.route('/api/batch/pipeline_direct', methods=['POST'])
+@pipeline_batch_bp.route('/pipeline-lab/api/batch/pipeline_direct', methods=['POST'])
+def batch_pipeline_direct():
+    """Gemini Batch API を用いた一括パイプライン直接抽出エンドポイント。Google OIDC 認証。"""
+    auth_err = _verify_oidc_token(request)
+    if auth_err is not None:
+        return auth_err
+
     # 同時実行防止: プロセス内ロック
     if not pipeline_batch_lock.acquire(blocking=False):
         logger.warning("Batch pipeline: Another batch process is already running")
@@ -195,6 +361,148 @@ def batch_pipeline_direct():
         return _run_pipeline_batch_process()
     finally:
         pipeline_batch_lock.release()
+
+
+@pipeline_batch_bp.route('/api/batch/resynthesize', methods=['POST'])
+@pipeline_batch_bp.route('/pipeline-lab/api/batch/resynthesize', methods=['POST'])
+def batch_resynthesize():
+    """保存済みのページの読み取り結果 (pipeline_batch_pages の blocks) から、
+    そのファイルの Markdown を現在の合成処理で作り直して保存し直す管理用エンドポイント。
+    """
+    auth_err = _verify_oidc_token(request)
+    if auth_err is not None:
+        return auth_err
+
+    body = request.get_json(silent=True) or {}
+    raw_table = body.get("raw_table")
+    raw_id = body.get("raw_id")
+
+    if not raw_table or not isinstance(raw_table, str) or not raw_table.strip():
+        return jsonify({"error": "リクエスト本文に有効な 'raw_table' が必要です"}), 400
+    if not raw_id or not isinstance(raw_id, str) or not raw_id.strip():
+        return jsonify({"error": "リクエスト本文に有効な 'raw_id' が必要です"}), 400
+
+    raw_table = raw_table.strip()
+    raw_id = raw_id.strip()
+
+    db = DatabaseClient(use_service_role=True)
+
+    # 1. pipeline_batch_files の確認
+    try:
+        file_res = (
+            db.client.table("pipeline_batch_files")
+            .select("raw_table, raw_id, total_pages, state")
+            .eq("raw_table", raw_table)
+            .eq("raw_id", raw_id)
+            .execute()
+        )
+        if not file_res.data:
+            return jsonify({
+                "error": f"pipeline_batch_files に対象レコードが見つかりません (raw_table={raw_table}, raw_id={raw_id})"
+            }), 404
+        file_row = file_res.data[0]
+    except Exception as e:
+        logger.error("Failed to query pipeline_batch_files for resynthesize: %s", e)
+        return jsonify({"error": f"Database query failed: {e}"}), 500
+
+    raw_total_pages = file_row.get("total_pages")
+    if not isinstance(raw_total_pages, int) or raw_total_pages < 1:
+        return jsonify({
+            "error": f"total_pages が不正です (期待値: 1以上の整数, 実際: {raw_total_pages!r})"
+        }), 400
+    total_pages: int = raw_total_pages
+
+    # 2. pipeline_batch_pages の確認・取得
+    try:
+        pages_res = (
+            db.client.table("pipeline_batch_pages")
+            .select("page_index, blocks")
+            .eq("raw_table", raw_table)
+            .eq("raw_id", raw_id)
+            .execute()
+        )
+        pages_rows = list(pages_res.data or [])
+    except Exception as e:
+        logger.error("Failed to query pipeline_batch_pages for resynthesize: %s", e)
+        return jsonify({"error": f"Database query failed: {e}"}), 500
+
+    pages_by_idx: Dict[int, Any] = {}
+    for p_row in pages_rows:
+        p_idx = p_row.get("page_index")
+        if isinstance(p_idx, int):
+            pages_by_idx[p_idx] = p_row.get("blocks")
+
+    # 全ページが保存されているか検証（欠損・推測埋めは絶対禁止）
+    missing_pages = [i for i in range(total_pages) if i not in pages_by_idx]
+    if missing_pages:
+        err_msg = f"そのファイルの全ページが保存されていません (全 {total_pages} ページ中、未保存ページ: {missing_pages})"
+        logger.error("Resynthesize failed for %s/%s: %s", raw_table, raw_id, err_msg)
+        return jsonify({
+            "error": err_msg,
+            "total_pages": total_pages,
+            "missing_pages": missing_pages,
+        }), 400
+
+    # 3. 各ページの blocks から現在の合成処理で Markdown を再合成
+    page_markdowns: Dict[int, str] = {}
+    for p_idx in range(total_pages):
+        raw_blocks = pages_by_idx[p_idx]
+        if not raw_blocks or not isinstance(raw_blocks, list):
+            err_msg = f"ページ {p_idx} の blocks が存在しないか配列ではありません"
+            logger.error(err_msg)
+            return jsonify({"error": err_msg}), 400
+
+        try:
+            page_blocks = [PageBlock.model_validate(b) for b in raw_blocks]
+        except Exception as ve:
+            err_msg = f"ページ {p_idx} の blocks スキーマ復元に失敗しました: {ve}"
+            logger.error(err_msg)
+            return jsonify({"error": err_msg}), 400
+
+        try:
+            page_md, tables_data, ui_summary = _synthesize_structured_markdown_from_blocks(page_blocks)
+        except Exception as se:
+            err_msg = f"ページ {p_idx} のMarkdown再合成エラー: {se}"
+            logger.error(err_msg)
+            return jsonify({"error": err_msg}), 400
+
+        if not page_md or not page_md.strip():
+            err_msg = f"ページ {p_idx} の再合成Markdownが空です"
+            logger.error(err_msg)
+            return jsonify({"error": err_msg}), 400
+
+        page_markdowns[p_idx] = page_md
+
+    # 4. 全ページ順番どおりに結合（'## Page {n}' 見出し、'\n\n' 区切り）
+    full_md_parts = [f"## Page {i + 1}\n\n{page_markdowns[i]}" for i in range(total_pages)]
+    full_md = "\n\n".join(full_md_parts)
+
+    # 5. 通常のバッチ完了時と同じ関数・同じ列で保存
+    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        _save_batch_completed_result(
+            db=db,
+            raw_table=raw_table,
+            raw_id=raw_id,
+            full_md=full_md,
+            now_iso=now_iso,
+            page_markdowns=page_markdowns,
+        )
+        logger.info(
+            "Successfully resynthesized and saved RAW MD for %s/%s (pages=%d)",
+            raw_table, raw_id, total_pages
+        )
+    except Exception as save_err:
+        err_msg = f"Markdownの保存に失敗しました: {save_err}"
+        logger.error("Resynthesize save failed for %s/%s: %s", raw_table, raw_id, err_msg)
+        return jsonify({"error": err_msg}), 500
+
+    return jsonify({
+        "success": True,
+        "raw_table": raw_table,
+        "raw_id": raw_id,
+        "total_pages": total_pages,
+    }), 200
 
 
 def _run_pipeline_batch_process():
@@ -438,28 +746,15 @@ def _run_pipeline_batch_process():
                 full_md_parts = [f"## Page {i + 1}\n\n{page_results_by_idx[i][0]}" for i in range(total_pages)]
                 full_md = "\n\n".join(full_md_parts)
 
-                # RAW 保存（/api/save_md_to_supabase と同じ）
+                # RAW 保存（通常バッチ完了時と再合成時で共通の関数・共通の列を使用）
                 try:
-                    db.client.table(rt).update({
-                        "pdf_md_content": full_md,
-                        "pdf_md_updated_at": now_iso,
-                    }).eq("id", rid).execute()
-
-                    db.client.table("pipeline_batch_files").update({
-                        "state": "completed",
-                        "finished_at": now_iso,
-                        "error": None,
-                    }).eq("raw_table", rt).eq("raw_id", rid).execute()
-
-                    try:
-                        _clear_meta_pipeline_error(db, rt, rid)
-                    except Exception as clear_err:
-                        status_check_errors.append({
-                            "raw_table": rt,
-                            "raw_id": rid,
-                            "job_name": job_name,
-                            "reason": f"失敗理由の記録に失敗: {clear_err}",
-                        })
+                    _save_batch_completed_result(
+                        db=db,
+                        raw_table=rt,
+                        raw_id=rid,
+                        full_md=full_md,
+                        now_iso=now_iso,
+                    )
                     saved_files.append({"raw_table": rt, "raw_id": rid, "pages": total_pages})
                     logger.info("Successfully extracted and saved RAW MD for %s/%s (pages=%d)", rt, rid, total_pages)
                 except Exception as save_raw_err:
@@ -560,16 +855,14 @@ def _run_pipeline_batch_process():
         logger.error("Failed to fetch pending pipeline targets from %s: %s", target_api_url, e)
         return jsonify({"error": f"Failed to fetch pending pipeline targets: {e}"}), 500
 
-    # pipeline_batch_files に既にある raw_table/raw_id は除く。
-    # ただし state='error' かつ job_name='NOT_SUBMITTED_TOO_LARGE' のレコードは
-    # Files API 経由で再送できるため、除外せず再処理対象とする。
+    # pipeline_batch_files のうち submitted / completed の行がある文書は対象外。
+    # state が error の行は、対象一覧（rag-prepare の pending_pipeline_targets。失敗の記録が消えた文書だけが返る）に出てきたら再送するため除外しない。
     try:
-        existing_res = db.client.table("pipeline_batch_files").select("raw_table, raw_id, state, job_name").execute()
-        # NOT_SUBMITTED_TOO_LARGE で error になったペアは再試行対象なので除外しない
-        existing_pairs = {
+        existing_res = db.client.table("pipeline_batch_files").select("raw_table, raw_id, state").execute()
+        excluded_pairs = {
             (r.get("raw_table"), r.get("raw_id"))
             for r in (existing_res.data or [])
-            if not (r.get("state") == "error" and r.get("job_name") == "NOT_SUBMITTED_TOO_LARGE")
+            if r.get("state") in ("submitted", "completed")
         }
     except Exception as e:
         logger.error("Failed to query existing pipeline_batch_files: %s", e)
@@ -577,7 +870,7 @@ def _run_pipeline_batch_process():
 
     eligible_targets = [
         t for t in targets
-        if (t.get("raw_table"), t.get("raw_id")) not in existing_pairs
+        if (t.get("raw_table"), t.get("raw_id")) not in excluded_pairs
     ]
 
     drive = GoogleDriveConnector()
@@ -630,15 +923,22 @@ def _run_pipeline_batch_process():
                     failed_files.append(failed_entry)
                     continue
 
-                is_img = _is_image_file(filename) or mime_type.startswith("image/")
-                is_pdf = filename.lower().endswith(".pdf") or mime_type == "application/pdf"
-                if not is_pdf and not is_img:
-                    err_reason = f"PDFまたは画像以外のファイル形式です (name={filename}, mime={mime_type})"
+                # 対応形式の判定（マイム型で明示的に列挙、それ以外は対応外の形式として失敗）
+                if mime_type in _PDF_MIME_TYPES:
+                    doc_format = "pdf"
+                elif mime_type in _IMAGE_MIME_TYPES:
+                    doc_format = "image"
+                elif mime_type in _WORD_MIME_TYPES:
+                    doc_format = "word"
+                else:
+                    err_reason = f"対応外のファイル形式です (name={filename}, mime={mime_type})"
+                    logger.error(err_reason)
                     failed_entry = {"raw_table": rt, "raw_id": rid, "reason": err_reason}
                     try:
                         _record_meta_pipeline_error(db, rt, rid, err_reason)
                     except Exception as e:
                         failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
+                    _record_batch_file_error(db, rt, rid, drive_file_id, "UNSUPPORTED_FORMAT", err_reason)
                     failed_files.append(failed_entry)
                     continue
 
@@ -650,15 +950,21 @@ def _run_pipeline_batch_process():
                         _record_meta_pipeline_error(db, rt, rid, err_reason)
                     except Exception as e:
                         failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
+                    _record_batch_file_error(db, rt, rid, drive_file_id, "DOWNLOAD_FAILED", err_reason)
                     failed_files.append(failed_entry)
                     continue
 
                 dl_path = temp_path / filename
                 pdf_path = temp_path / "input.pdf"
-                if is_img:
+                if doc_format == "image":
                     _image_to_pdf(dl_path, pdf_path)
-                elif dl_path != pdf_path:
-                    dl_path.rename(pdf_path)
+                elif doc_format == "word":
+                    # Word は soffice --headless --convert-to pdf で PDF に変換してから今の PDF と同じ処理をする
+                    # 変換失敗はそのファイルの失敗として明示記録
+                    _convert_word_to_pdf(dl_path, pdf_path, temp_path)
+                elif doc_format == "pdf":
+                    if dl_path != pdf_path:
+                        dl_path.rename(pdf_path)
 
                 doc = fitz.open(str(pdf_path))
                 page_count = len(doc)
@@ -670,6 +976,7 @@ def _run_pipeline_batch_process():
                     _record_meta_pipeline_error(db, rt, rid, err_reason)
                 except Exception as e:
                     failed_entry["record_error"] = f"失敗理由の記録に失敗: {e}"
+                _record_batch_file_error(db, rt, rid, drive_file_id, "CONVERT_FAILED", err_reason)
                 failed_files.append(failed_entry)
                 continue
 
@@ -784,7 +1091,7 @@ def _run_pipeline_batch_process():
                             "Files API 一時ファイルの削除に失敗しました (name=%s): %s",
                             uf.name, del_err,
                         )
-                # NOT_SUBMITTED_TOO_LARGE の既存 error レコードを upsert で上書き
+                # Files API アップロード失敗時の error レコードを upsert で記録・上書き
                 now_iso = datetime.now(timezone.utc).isoformat()
                 db.client.table("pipeline_batch_files").upsert(
                     {
@@ -839,8 +1146,7 @@ def _run_pipeline_batch_process():
                 failed_files.append(failed_entry)
                 continue
 
-            # pipeline_batch_files に state='submitted' で記録
-            # NOT_SUBMITTED_TOO_LARGE の既存 error レコードがある場合は upsert で上書きする
+            # pipeline_batch_files に state='submitted' で記録（新規および再送時は同じ行を upsert で上書き）
             now_iso = datetime.now(timezone.utc).isoformat()
             db.client.table("pipeline_batch_files").upsert(
                 {

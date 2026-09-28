@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     libgl1 \
     libglib2.0-0 \
+    libreoffice-nogui \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/pipeline-lab/requirements.txt /app/requirements.txt
