@@ -128,26 +128,6 @@ def _calendar_rpc_date_bounds(refined_date_range: str) -> Tuple[Optional[date], 
     return a, b
 
 
-def _suppress_calendar_facts_for_integrated_query(user_query: str, date_range_literal: str) -> bool:
-    """
-    統合質問文へカレンダーの機械ヒットを載せない条件（トークン圧迫対策）。
-    - 主軸日付レンジが付いていない（広い検索窓のみ扱う問い）
-    - 去年／今年／単年・年度表記など、年単位のスコープとして聞いている問い
-    上記のとき True。RPC や検索結果へのカレンダー行合成は別経路のまま。
-    """
-    dr = (date_range_literal or "").strip()
-    if not dr:
-        return True
-    q = _to_halfwidth_digits((user_query or "").strip())
-    for t in ("去年", "昨年", "今年", "本年度"):
-        if t in q:
-            return True
-    if re.search(r"(?:19|20)\d{2}\s*年", q):
-        return True
-    if re.search(r"(?:19|20)\d{2}\s*年度", q):
-        return True
-    return False
-
 
 def _merge_ordered_rag_input(
     part1_question: str, part2_unified_md: str, part3_other_chunks: str, max_chars: int
@@ -283,7 +263,7 @@ def _normalize_intent_spec_dict(raw: Any, query: str, date_range: str) -> Dict[s
 
 
 def _build_reading_context_block(person_names: Optional[List[str]]) -> str:
-    """人物ごとの読み込みコンテキスト（検索文の統合 LLM にのみ渡す）。"""
+    """人物ごとの読み込みコンテキスト（回答の AI 入力に渡す）。"""
     from docsearch.user_context import load_person_reading_contexts
 
     selected = [p.strip() for p in (person_names or []) if isinstance(p, str) and p.strip()]
@@ -315,165 +295,6 @@ def _calendar_premise_block(target_date_range: str, calendar_rows: List[Dict[str
     return f"【前提知識】\n{premise}" if premise else ""
 
 
-def _query_type_guidance_ja(query_type_info: Dict[str, Any]) -> str:
-    """検索統合 LLM 用の網羅方針。分類タイプには依存しない（ログ用の query_type_info は呼び出し側で保持）。"""
-    _ = query_type_info
-    return RAG_POLICY_SEARCH_UNIVERSAL_JA
-
-
-def _calendar_facts_plain(date_range_literal: str, calendar_rows: List[Dict[str, Any]]) -> str:
-    """統合 LLM に渡す、主軸日付とカレンダー機械ヒットの平文化。"""
-    tdr = (date_range_literal or "").strip()
-    lines = _calendar_premise_lines(calendar_rows)
-    parts: List[str] = []
-    if tdr:
-        parts.append(f"主軸の日付レンジ（参照・本文先頭にそのまま書かない）: {tdr}")
-    if lines:
-        parts.append("機械ヒットしたカレンダー予定:")
-        parts.extend(lines)
-    return "\n".join(parts).strip()
-
-
-def _assemble_search_query_mechanical(
-    *,
-    original_query: str,
-    reading_context_block: str,
-    date_range_literal: str,
-    llm_enriched_query: str,
-    calendar_rows: List[Dict[str, Any]],
-    query_type_info: Dict[str, Any],
-    intent_spec: Dict[str, Any],
-) -> str:
-    """
-    統合 LLM が失敗したときのみ使う機械連結（ログが無ければ通常経路では呼ばない想定）。
-    """
-    parts: List[str] = []
-    oq = (original_query or "").strip()
-    if oq:
-        parts.append(f"【元の質問】\n{oq}")
-    rc = (reading_context_block or "").strip()
-    if rc:
-        parts.append(rc)
-    eq = _strip_existing_calendar_premise_block((llm_enriched_query or "").strip())
-    if eq:
-        parts.append(f"【検索用に補った質問】\n{eq}")
-    prem = _calendar_premise_block(date_range_literal, calendar_rows)
-    if prem:
-        parts.append(prem)
-    qh = _query_type_guidance_ja(query_type_info)
-    if qh:
-        parts.append(f"【網羅方針（全質問共通）】\n{qh}")
-    if isinstance(intent_spec, dict):
-        ri = (intent_spec.get("resolved_instruction_ja") or "").strip()
-        if ri:
-            parts.append(f"【下流向け手順（Step0）】\n{ri}")
-        cal = (intent_spec.get("calendar_primary_range") or "").strip()
-        doc = (intent_spec.get("document_context_range") or "").strip()
-        extras: List[str] = []
-        if cal:
-            extras.append(f"カレンダー参照レンジ: {cal}")
-        if doc and doc != cal:
-            extras.append(f"関連文書参照レンジ: {doc}")
-        if extras:
-            parts.append("\n".join(extras))
-    body = "\n\n".join(p for p in parts if p).strip()
-    return _apply_mandatory_search_query_range(body, date_range_literal)
-
-
-def _assemble_search_query_with_llm(
-    llm_client,
-    *,
-    original_query: str,
-    llm_enriched_query: str,
-    date_range_literal: str,
-    calendar_rows: List[Dict[str, Any]],
-    query_type_info: Dict[str, Any],
-    intent_spec: Dict[str, Any],
-    person_names: Optional[List[str]],
-    log_context: Optional[dict] = None,
-) -> str:
-    """
-    検索・埋め込み用の長文を LLM で1本に統合する。
-    読み込みコンテキストはここで初めて読み込む。
-    """
-    rc_block = _build_reading_context_block(person_names)
-    cal_facts = _calendar_facts_plain(date_range_literal, calendar_rows)
-    qh = _query_type_guidance_ja(query_type_info)
-    ri = ""
-    cal_rng = ""
-    doc_rng = ""
-    if isinstance(intent_spec, dict):
-        ri = (intent_spec.get("resolved_instruction_ja") or "").strip()
-        cal_rng = (intent_spec.get("calendar_primary_range") or "").strip()
-        doc_rng = (intent_spec.get("document_context_range") or "").strip()
-    rng_lines: List[str] = []
-    if cal_rng:
-        rng_lines.append(f"カレンダー主軸のレンジ（参照）: {cal_rng}")
-    if doc_rng:
-        rng_lines.append(f"関連文書を広げるレンジ（参照）: {doc_rng}")
-    rng_block = "\n".join(rng_lines).strip()
-
-    eq = _strip_existing_calendar_premise_block((llm_enriched_query or "").strip())
-
-    prompt = f"""あなたは、検索エンジンとベクトル検索に渡す**統合質問文**を1本だけ書く担当です。
-以下の材料に書いてある内容以外は創作しない。検索がヒットしやすい自然な日本語にまとめる。
-
-【厳守】
-- 出力は**プレーンテキスト1本分のみ**。見出し・コードフェンス・JSON・前置きや後書きは付けない。
-- **YYYY-MM-DD..YYYY-MM-DD** の形式の暦の区間を**出力の先頭に書かない**（システムが別途先頭に1回だけ付ける）。
-- 材料に無い予定・提出物・人物関係は書き足さない。
-
-■ ユーザーそのものの発話
-{(original_query or '').strip()}
-
-■ 直前の正規化で補った検索向けの文（草稿）
-{eq or '（なし）'}
-
-■ 主軸の日付と機械ヒットしたカレンダー（事実として統合に含める）
-{cal_facts or '（なし）'}
-
-■ 網羅方針（全質問共通）
-{qh}
-
-■ 下流への手順・拘束（検索要約にも溶け込ませる）
-{ri or '（なし）'}
-
-■ 参照用レンジ
-{rng_block or '（なし）'}
-
-■ 人物・読み込みコンテキスト
-{(rc_block or '').strip() or '（なし）'}
-
-統合した検索用テキスト（出力のみ）:"""
-
-    ctx = dict(log_context) if log_context else {}
-    ctx.setdefault("app", "doc-search")
-    ctx.setdefault("stage", "search-query-assemble")
-
-    response = llm_client.call_model(
-        tier="ui_response",
-        prompt=prompt,
-        model_name="gemini-3.5-flash-lite",
-        log_context=ctx,
-    )
-    text = ""
-    if response.get("success"):
-        raw_out = (response.get("content") or "").strip()
-        if raw_out.startswith("```"):
-            lines = raw_out.split("\n")
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            while lines and lines[-1].strip() == "```":
-                lines.pop()
-            raw_out = "\n".join(lines).strip()
-        text = raw_out
-    else:
-        err = response.get("error", "不明なエラー")
-        raise RuntimeError(f"検索文統合 LLM の呼び出しに失敗しました: {err}")
-    if not text:
-        raise RuntimeError("検索文統合 LLM の出力が空です")
-    return _apply_mandatory_search_query_range(text, date_range_literal)
-
 
 def _query_with_intent_for_prompt(user_query: str, intent_spec: Optional[Dict[str, Any]]) -> str:
     """回答系モデルに渡す質問欄（元の発話＋正規化意図）。"""
@@ -488,18 +309,6 @@ def _query_with_intent_for_prompt(user_query: str, intent_spec: Optional[Dict[st
         f"【正規化された意図・手順（Step0 で固定。ここを最優先で解釈せよ）】\n{ri}"
     )
 
-
-def _llm_question_with_calendar_premise(query_for_llm: str, refined_query: str) -> str:
-    """統合済み検索文（カレンダー・読み込みコンテキスト等を含む）を回答プロンプトに載せる。"""
-    q = (query_for_llm or "").strip()
-    r = (refined_query or "").strip()
-    if not r:
-        return q
-    return (
-        f"{q}\n\n"
-        "【検索に使った統合文（機械ヒットの予定・読み込みコンテキスト等を含む。根拠として Evidence に引用してよい）】\n"
-        f"{r}"
-    )
 
 
 def _calendar_row_date_str(row: Dict[str, Any]) -> str:
@@ -531,6 +340,43 @@ def _calendar_premise_lines(rows: List[Dict[str, Any]], max_lines: int = 30) -> 
         else:
             out.append(f"- {d}")
     return out
+
+
+def _build_answer_llm_query(
+    user_query: str,
+    intent_spec: Optional[Dict[str, Any]],
+    refined_query: str,
+    calendar_rows: List[Dict[str, Any]],
+    person_names: Optional[List[str]],
+) -> str:
+    """
+    回答系モデルに渡す【１｜質問】ブロックを組み立てる。
+    - 元の発話＋正規化意図
+    - 検索に使った短い検索文
+    - 機械ヒットしたカレンダー予定（事実として別枠）
+    - 人物ごとの読み込みコンテキスト（別枠）
+    """
+    parts: List[str] = []
+    uq_block = _query_with_intent_for_prompt(user_query, intent_spec)
+    if uq_block:
+        parts.append(uq_block)
+
+    rq = (refined_query or "").strip()
+    if rq:
+        parts.append(f"【検索に使った短い検索文】\n{rq}")
+
+    cal_lines = _calendar_premise_lines(calendar_rows)
+    if cal_lines:
+        cal_body = "\n".join(cal_lines)
+    else:
+        cal_body = "なし"
+    parts.append(f"【機械ヒットしたカレンダー予定（根拠として Evidence に引用してよい）】\n{cal_body}")
+
+    rc_block = _build_reading_context_block(person_names).strip()
+    if rc_block:
+        parts.append(rc_block)
+
+    return "\n\n".join(parts)
 
 
 def _flatten_vector_hit_chunks(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -860,7 +706,7 @@ def search_documents():
         if not str(query).strip():
             return jsonify({'success': False, 'error': 'クエリが空です'}), 400
 
-        # 検索前処理: (1) 日付・意図の抽出 (2) カレンダー機械ヒット (3) 質問タイプ (4) LLM で検索文を統合
+        # 検索前処理: (1) 日付・意図の抽出と短い検索文 (2) カレンダー機械ヒット (3) 質問タイプ
         today = datetime.now().strftime('%Y-%m-%d')
         selected_persons = persons if isinstance(persons, list) else []
 
@@ -871,9 +717,10 @@ def search_documents():
             person_names=selected_persons,
             log_context={'app': 'doc-search', 'stage': 'search-refine'},
         )
-        llm_enriched_query = refined.get("query")
-        if not isinstance(llm_enriched_query, str) or not llm_enriched_query.strip():
+        refined_query = refined.get("query")
+        if not isinstance(refined_query, str) or not refined_query.strip():
             return jsonify({'success': False, 'error': 'クエリ精緻化（Step0）から有効なクエリが得られませんでした'}), 500
+        refined_query = refined_query.strip()
         date_range = refined.get("date_range", "")
         intent_spec = refined.get("intent_spec")
         if not isinstance(intent_spec, dict):
@@ -891,15 +738,6 @@ def search_documents():
             categories=categories if isinstance(categories, list) else None,
         )
 
-        cal_rows_for_unified_query = (
-            [] if _suppress_calendar_facts_for_integrated_query(query, date_range) else calendar_rows
-        )
-        if len(cal_rows_for_unified_query) < len(calendar_rows or []):
-            print(
-                "[INFO] 統合質問へのカレンダー機械結果を省略（広い窓／年単位スコープなど）",
-                flush=True,
-            )
-
         query_type_info = _detect_query_type(query)
         enum_recall = True
         print(
@@ -907,21 +745,9 @@ def search_documents():
             f"enumeration_recall={enum_recall}（全質問で広域候補）",
             flush=True,
         )
+        print(f"[INFO] 検索正規化 (短い検索文): '{query}' -> '{refined_query}' / date_range={date_range}", flush=True)
 
-        refined_query = _assemble_search_query_with_llm(
-            llm_client,
-            original_query=query,
-            llm_enriched_query=llm_enriched_query,
-            date_range_literal=date_range,
-            calendar_rows=cal_rows_for_unified_query,
-            query_type_info=query_type_info,
-            intent_spec=intent_spec,
-            person_names=selected_persons,
-            log_context={'app': 'doc-search', 'stage': 'search-query-assemble'},
-        )
-        print(f"[INFO] 検索正規化: '{query}' -> '{refined_query}' / date_range={date_range}", flush=True)
-
-        embedding = llm_client.generate_embedding(refined_query.strip())
+        embedding = llm_client.generate_embedding(refined_query)
 
         # Step3: 暦の窓を決め、RPC 内でその期間に日付が重なる文書のチャンクだけをベクトル評価する（v13）
         lo, hi = _resolve_retrieval_date_window(query, date_range, today)
@@ -1038,11 +864,11 @@ def generate_answer():
 
         today = datetime.now().strftime('%Y-%m-%d')
 
-        # Step0（日付・意図）※クライアントから草稿 refined があれば Step0 出力の代わりに使う → 統合 LLM で質問文を完成
+        # Step0（日付・意図・短い検索文）※クライアントから草稿 refined があれば Step0 出力の代わりに使う
         selected_persons = persons if isinstance(persons, list) else []
         if client_refined_query:
             keywords = data.get("keywords")
-            llm_enriched_query = client_refined_query
+            refined_query = client_refined_query
             date_range = _normalize_week_range_by_rule(
                 query=query,
                 today=today,
@@ -1060,9 +886,10 @@ def generate_answer():
                 person_names=selected_persons,
                 log_context={'app': 'doc-search', 'stage': 'search-refine', 'session_id': request_id},
             )
-            llm_enriched_query = refined.get("query")
-            if not isinstance(llm_enriched_query, str) or not llm_enriched_query.strip():
+            refined_query = refined.get("query")
+            if not isinstance(refined_query, str) or not refined_query.strip():
                 return jsonify({'success': False, 'error': 'クエリ精緻化（Step0）から有効なクエリが得られませんでした'}), 500
+            refined_query = refined_query.strip()
             date_range = refined.get("date_range", "")
             intent_spec = refined.get("intent_spec")
             if not isinstance(intent_spec, dict):
@@ -1088,32 +915,16 @@ def generate_answer():
             categories=categories if isinstance(categories, list) else None,
         )
 
-        cal_rows_for_unified_answer = (
-            [] if _suppress_calendar_facts_for_integrated_query(query, date_range) else calendar_rows_answer
-        )
-        if len(cal_rows_for_unified_answer) < len(calendar_rows_answer or []):
-            print(
-                "[INFO] 回答用・統合質問へのカレンダー機械結果を省略（広い窓／年単位スコープなど）",
-                flush=True,
-            )
-
         query_type_info = _detect_query_type(query)
         enum_recall = True
-        refined_query = _assemble_search_query_with_llm(
-            llm_client,
-            original_query=query,
-            llm_enriched_query=llm_enriched_query,
-            date_range_literal=date_range,
-            calendar_rows=cal_rows_for_unified_answer,
-            query_type_info=query_type_info,
-            intent_spec=intent_spec,
-            person_names=selected_persons,
-            log_context={'app': 'doc-search', 'stage': 'answer-query-assemble', 'session_id': request_id},
-        )
-        print(f"[INFO] クエリ統合: '{query}' → '{refined_query}' / date_range={date_range}", flush=True)
 
-        query_for_llm = _query_with_intent_for_prompt(query, intent_spec)
-        answer_llm_query = _llm_question_with_calendar_premise(query_for_llm, refined_query)
+        answer_llm_query = _build_answer_llm_query(
+            user_query=query,
+            intent_spec=intent_spec,
+            refined_query=refined_query,
+            calendar_rows=calendar_rows_answer,
+            person_names=selected_persons,
+        )
         print(f"[INFO] フィルタ: persons={persons}, sources={sources}, categories={categories}", flush=True)
 
         # Step2-4: 検索結果が渡されていればそれを優先、なければサーバで実行
@@ -1287,7 +1098,7 @@ def _answer_1step(
 【ルール】
 - {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - Evidenceが存在する内容のみ回答する（新しい主張の創作禁止）
-- 【１／質問】の【検索に使った統合文】等に載る機械ヒット予定がある場合のみ、根拠として Evidence にそのまま引用してよい（Source は Googleカレンダー / タイトル）。載っていない場合は無理に使わない
+- 【１／質問】の【機械ヒットしたカレンダー予定】等に載る機械ヒット予定がある場合のみ、根拠として Evidence にそのまま引用してよい（Source は Googleカレンダー / タイトル）。載っていない場合は無理に使わない
 - 根拠なし断定禁止
 - Evidenceは原文から1〜2文抜粋し、Sourceを必ず付ける（関連する抜粋は件数を惜しまず列挙する。同一文の繰り返しだけ避ける）
 - 不明・不足情報は「不確実性」欄に明示する
@@ -1387,7 +1198,7 @@ def _answer_from_evidence(
 【ルール】
 - {RAG_POLICY_ANSWER_UNIVERSAL_JA}
 - Evidenceがある内容のみ回答する（創作禁止）
-- 【検索に使った統合文】内の機械ヒットの予定は根拠として回答に含めてよい
+- 【機械ヒットしたカレンダー予定】内の機械ヒットの予定は根拠として回答に含めてよい
 - 不確実・不足情報は「不確実性」欄に明示する
 - 見出し・箇条書きを活用して読みやすく整形する
 - 重要情報（期限・場所・提出方法）は太字で強調する
@@ -1443,11 +1254,11 @@ def _regenerate_step0_dates_after_failure(
 
 【厳守】
 - 出力は JSON オブジェクト 1 個のみ（前後に説明を付けない）。
-- query は、失敗 JSON の query を**原則そのまま**返す。暦の修正のためだけに最小限触る場合のみ差し替え可。
+- query は、ベクトル検索に使う短い検索文（質問の中心の語を中心に、日付範囲の文字列や網羅方針の決まり文句を含めない）。失敗 JSON の query を原則そのまま返すか、日付や余計な修飾があれば削って短い検索文にする。空文字は禁止。
 - date_range は **空文字 ""** か **"YYYY-MM-DD..YYYY-MM-DD"** のどちらかだけ。それ以外の区切り・口語・片側欠けは禁止。
 - intent_spec はオブジェクトで返す。version / task / resolved_instruction_ja は失敗 JSON から流用してよいが、
   focal_dates・calendar_primary_range・document_context_range は **date_range と矛盾しない**ように必ず整合させる。
-- keywords は文字列の配列（List[str]）として必ず含めて出力してください（空の配列は禁止）。
+- keywords は質問に書かれた中心の語と、その言い換え（例: 宿題→課題・提出物）だけの文字列の配列（List[str]）として必ず含めて出力してください。人の名前（絞り込みで選ばれた人物名を含む）、ソース名、「連絡」「予定」「情報」「お知らせ」のような意味の広すぎる一般語は入れないこと（空の配列は禁止）。
 - 今日の日付 {today} を基準に相対日を絶対化する（Step0 と同じ暦ルール）。
 
 今日の日付: {today}
@@ -1536,8 +1347,8 @@ def _refine_query(
     Step0: クエリ改善（Flash-lite固定）
 
     相対日を絶対日付に直し、下流のモデルが迷わないよう intent_spec（手順・拘束の構造体）を付ける。
-    読み込みコンテキスト（人物ごとの MD）は Step0 には渡さない（検索文統合 LLM で初めて使用する）。
-    query の長さに上限は設けない。検索文の先頭への日付リテラル付与は行わない（後段の統合で行う）。
+    ベクトル検索に使う短い検索文（query）を出力する。
+    読み込みコンテキスト（人物ごとの MD）は Step0 には渡さない。
 
     Returns:
         query, date_range（互換）, intent_spec（version / task / resolved_instruction_ja / focal_dates /
@@ -1549,14 +1360,14 @@ def _refine_query(
 
     prompt = f"""あなたは検索・回答パイプラインの Step0 正規化器です。
 ユーザーの発話を、AIが迷わず解釈できるようにし、曖昧な情報をブレのない表現に置き換え、発話から推測しうる背景だけを足してください。
-組織・個人に固有の長いコンテキストはこの段では渡されない（後段の統合で付く）。
+組織・個人に固有の長いコンテキストはこの段では渡されない。
 
 出力は JSON オブジェクト 1 個のみ（前後に説明文を付けない）。
 
 【必須キー】
-- query: 検索のための自然語草稿。**短く要約してはならない。** 元の発話の情報を落とさず、趣旨・人物・種別を含め、検索エンジンが文脈を拾いやすい**情報豊かな一文〜数文**にする。date_range が空でないときは query に YYYY-MM-DD 形式の暦や「を含む週」「5/9から一週間」「明日から一週間」等の暦口語を含めない（暦の区間は date_range のキーだけ）。後段で検索用文字列の先頭に同一の暦区間リテラルが機械的に1回付く）
+- query: ベクトル検索に使う短い検索文。質問の中心の語を中心に簡潔にまとめ、日付範囲の文字列（YYYY-MM-DD や「明日」「来週」「今日」などの暦口語・日付文字列）や網羅方針の決まり文句（「漏れなく検索したい」「学校・保育・習い事…」等）を含めないこと。空文字は禁止。
 - date_range: 質問の主軸となる暦日レンジ "YYYY-MM-DD..YYYY-MM-DD"。日付が無ければ ""
-- keywords: 質問の核となる検索語・名詞の配列（1個以上の文字列のリスト。依頼口語「教えて」「ありますか」「確認して」や助詞などを除いた名詞・検索キーワード。例: ["宿題"]、["持ち物", "水筒"]）。空配列にしてはならない。
+- keywords: 質問に書かれた中心の語と、その言い換え（例: 宿題→課題・提出物）だけの配列（1個以上の文字列のリスト）。人の名前（絞り込みで選ばれた人物名を含む）、ソース名、「連絡」「予定」「情報」「お知らせ」のような意味の広すぎる一般語は入れないこと。空配列にしてはならない。
 - intent_spec: 下流モデル向けの固定スキーマ（必ずオブジェクト）
   - version: 1（整数）
   - task: 英語の短いスラッグ（例: schedule_day_with_related_context, general_question）
@@ -1582,7 +1393,7 @@ def _refine_query(
 元の質問: {query}
 
 参考（構造の例。内容は質問に合わせて変えよ。今日が {today} のとき）:
-{{"query":"本日に関係する予定・提出物・連絡・参加依頼・持ち物・場所変更など、学校・保育・習い事の文脈で起こりうる事項を漏れなく検索したい。人物・種別は元の発話に合わせて明示する。","date_range":"{today}..{today}","keywords":["予定","提出物","連絡","持ち物"],"intent_spec":{{"version":1,"task":"schedule_day_with_related_context","resolved_instruction_ja":"(1) ユーザーは本日の予定を把握したい。(2) カレンダー由来の情報から calendar_primary_range に含まれる日の予定・イベントをすべて抽出する。(3) 提出物・連絡・参加・宿題など予定に関連しうる文書は、document_context_range と日付が重なるものを抽出する。(4) (2)(3)を統合し時系列で列挙して答え、不足は不確実性に書く。","focal_dates":["{today}"],"calendar_primary_range":"{today}..{today}","document_context_range":""}}}}
+{{"query":"予定","date_range":"{today}..{today}","keywords":["行事","イベント"],"intent_spec":{{"version":1,"task":"schedule_day_with_related_context","resolved_instruction_ja":"(1) ユーザーは本日の予定を把握したい。(2) カレンダー由来の情報から calendar_primary_range に含まれる日の予定・イベントをすべて抽出する。(3) 提出物・連絡・参加・宿題など予定に関連しうる文書は、document_context_range と日付が重なるものを抽出する。(4) (2)(3)を統合し時系列で列挙して答え、不足は不確実性に書く。","focal_dates":["{today}"],"calendar_primary_range":"{today}..{today}","document_context_range":""}}}}
 出力:"""
     response = llm_client.call_model(
         tier="ui_response",
@@ -2494,7 +2305,7 @@ def _build_context_sections(
     """
     回答生成資料の構築（投稿単位の集約と新順ソート）:
     - Classroom の同一投稿を投稿URLで集約し、投稿本文は1回だけ記載。
-    - 添付ファイルは「post_body以外の断片類似度閾値以上 または 添付部分本文に質問の言葉を含む」のみ全文掲載。
+    - 添付ファイルは「その添付ファイルの中身の断片(post_body以外)の類似度の最大値が閾値以上」のみ掲載（添付部分本文にキーワードを含むだけでは掲載しない）。
     - 投稿（本文1回）は「いずれかの行のpost_body類似度閾値以上、投稿本文に質問の言葉を含む、または載せる添付ファイルが1つ以上ある」場合に掲載。
     - 投稿日（post_at）の新しい順（降順 DESC）にソート。
     - 投稿日(post_at)が無い文書は、日付のある投稿の後ろに「投稿日不明」と明示したまとまりとして並べる。
@@ -2586,14 +2397,12 @@ def _build_context_sections(
             if _text_contains_any_keyword(main_text, keywords):
                 groups_map[gkey]["main_body_kw_matched"] = True
 
-            # 修正点1: 添付ファイルを載せるかは、その行の「post_body 以外の断片」の類似度の最大値が閾値以上、
-            # または添付ファイル部分の本文（# PDF抽出Markdown 以降）に質問の言葉を含む場合だけ。
-            # 投稿の本文に質問の言葉があるだけで添付を載せない。
+            # 添付ファイルを載せる条件: その添付ファイルの中身の断片(post_body 以外)の類似度の最大値が閾値以上のみ。
+            # 添付部分の本文にキーワードを含むだけでは載せない。
             if attach_text:
                 att_sim = _ensure_float_sim(doc.get("attachment_similarity"), doc.get("id"), "attachment_similarity")
                 att_sim_ok = (att_sim is not None and att_sim >= threshold)
-                att_kw_ok = _text_contains_any_keyword(attach_text, keywords)
-                if att_sim_ok or att_kw_ok:
+                if att_sim_ok:
                     raw_fn = doc.get("file_name")
                     file_name = str(raw_fn).strip() if raw_fn and str(raw_fn).strip() else "(ファイル名なし)"
                     existing_att = groups_map[gkey]["attachments"]
