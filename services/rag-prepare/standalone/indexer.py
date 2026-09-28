@@ -367,11 +367,18 @@ class RagPrepareSearchIndexer:
 
         rt = ud.get("raw_table") or ""
         _set_str("classification1", raw_row.get("source"))
-        if rt in (
+        # クラスルーム行(03/04): classification2=コース名, classification3=NULL（投稿種別は不要）
+        # 05_ikuya_waseaca_01_raw: classification2=コース名, classification3=カテゴリ（従来どおり）
+        # それ以外: classification2=NULL, classification3=カテゴリ
+        _CLASSROOM_RAW_TABLES = (
             "03_ema_classroom_01_raw",
             "04_ikuya_classroom_01_raw",
-            "05_ikuya_waseaca_01_raw",
-        ):
+        )
+        if rt in _CLASSROOM_RAW_TABLES:
+            _set_str("classification2", raw_row.get("course_name"))
+            # classification3 は明示的に NULL にする（投稿種別を入れない）
+            updates["classification3"] = None
+        elif rt == "05_ikuya_waseaca_01_raw":
             _set_str("classification2", raw_row.get("course_name"))
             _set_str("classification3", raw_row.get("category"))
         else:
@@ -562,6 +569,18 @@ class RagPrepareSearchIndexer:
         raw_row = self._load_raw_row(raw_table, raw_id)
         if not raw_row:
             return None
+        # クラスルーム(03/04): classification2=コース名, classification3=NULL（投稿種別は不要）
+        # 05_ikuya_waseaca_01_raw: classification2=コース名, classification3=カテゴリ（従来どおり）
+        # それ以外: classification2=NULL, classification3=カテゴリ
+        _CLASSROOM_RAW_TABLES = (
+            "03_ema_classroom_01_raw",
+            "04_ikuya_classroom_01_raw",
+        )
+        _COURSE_RAW_TABLES = (
+            "03_ema_classroom_01_raw",
+            "04_ikuya_classroom_01_raw",
+            "05_ikuya_waseaca_01_raw",
+        )
         doc = {
             "id": str(raw_id),
             "raw_id": str(raw_id),
@@ -569,27 +588,16 @@ class RagPrepareSearchIndexer:
             "person": raw_row.get("person"),
             "classification1": raw_row.get("source"),
             "classification2": (
-                raw_row.get("course_name")
-                if raw_table
-                in (
-                    "03_ema_classroom_01_raw",
-                    "04_ikuya_classroom_01_raw",
-                    "05_ikuya_waseaca_01_raw",
-                )
-                else None
+                raw_row.get("course_name") if raw_table in _COURSE_RAW_TABLES else None
             ),
-            "classification3": raw_row.get("category"),
+            # クラスルーム(03/04)は classification3=None（投稿種別を入れない）
+            "classification3": (
+                None if raw_table in _CLASSROOM_RAW_TABLES else raw_row.get("category")
+            ),
             "title": raw_row.get("title"),
             "file_url": raw_row.get("file_url"),
             "post_at": (
-                raw_row.get("created_at")
-                if raw_table
-                in (
-                    "03_ema_classroom_01_raw",
-                    "04_ikuya_classroom_01_raw",
-                    "05_ikuya_waseaca_01_raw",
-                )
-                else None
+                raw_row.get("created_at") if raw_table in _COURSE_RAW_TABLES else None
             ),
             "due_date": raw_row.get("due_date"),
             "post_type": raw_row.get("post_type"),

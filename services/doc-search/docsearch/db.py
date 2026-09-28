@@ -62,7 +62,10 @@ class DocSearchDB:
             raise ValueError("doc-search は service_role 接続のみ想定です")
 
     def get_workspace_hierarchy(self) -> Dict[str, Dict[str, List[str]]]:
-        """09 から person→source→category の階層を構築。PostgREST の 1000 行既定を超える場合はページング。"""
+        """09 から person→source→category の階層を構築。PostgREST の 1000 行既定を超える場合はページング。
+        3段目の値は classification2（コース名）と classification3（カテゴリ）のうち値がある方。
+        両方に値がある行は契約違反として ValueError を送出する。
+        """
         try:
             hierarchy: Dict[str, Dict[str, set]] = {}
             offset = 0
@@ -78,9 +81,18 @@ class DocSearchDB:
                 for doc in batch:
                     person = (doc.get("person") or "").strip()
                     source = (doc.get("classification1") or "").strip()
-                    cat = doc.get("classification3")
+                    c2 = (doc.get("classification2") or "").strip()
+                    c3 = (doc.get("classification3") or "").strip()
                     if not person or not source:
                         continue
+                    # 契約違反チェック: classification2 と classification3 の両方に値がある行は不正
+                    if c2 and c3:
+                        raise ValueError(
+                            f"契約違反: classification2 と classification3 の両方に値がある行が存在します "
+                            f"(person={person!r}, source={source!r}, classification2={c2!r}, classification3={c3!r})"
+                        )
+                    # 3段目の値: c2 か c3 のうち値がある方
+                    cat = c2 if c2 else c3
                     hierarchy.setdefault(person, {}).setdefault(source, set())
                     if cat:
                         hierarchy[person][source].add(cat)
@@ -306,7 +318,8 @@ class DocSearchDB:
                     "title": result.get("title"),
                     "source": c1,
                     "person": result.get("person"),
-                    "category": c3,
+                    # 3段目の値: classification2（コース名）か classification3（カテゴリ）のどちらかに入っている
+                    "category": (c2 or "").strip() if c2 else c3,
                     "classification1": c1,
                     "classification2": c2,
                     "classification3": c3,
