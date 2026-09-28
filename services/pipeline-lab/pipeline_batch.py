@@ -101,8 +101,8 @@ def _is_image_file(name: str) -> bool:
 def _image_to_pdf(img_path: Path, pdf_path: Path) -> None:
     """写真・画像を 1ページの PDF に変換する。
     写真から作るページ画像が A4 の PDF を Matrix(3,3) で画像にした時の大きさ
-    （A4=595.28x841.89pt の3倍≒1786x2526px。横長なら縦横入れ替え）に収まるよう、
-    大きい写真は縦横比を保って縮小し、小さい写真は拡大しない。
+    （A4=595.28x841.89pt の3倍≒1786x2526px。横長なら縦横入れ替え）の枠に収まるよう、
+    大きい写真も小さい写真も、縦横比を保ったまま枠いっぱい（2つの比の小さい方の倍率）に拡大・縮小する。
     後続の render_page_to_png_bytes(doc, p_idx) による fitz.Matrix(3, 3) 処理と合わせて
     A4の3倍画像の枠内に収まる解像度のページ画像が生成される。
     """
@@ -110,21 +110,18 @@ def _image_to_pdf(img_path: Path, pdf_path: Path) -> None:
         img = ImageOps.exif_transpose(raw_img)
         orig_w, orig_h = img.size
 
-        # A4長辺 841.89pt の 3倍 (約2525.67px ≒ 2526px)、短辺 595.28pt の 3倍 (約1785.84px ≒ 1786px) を上限とする
+        # A4長辺 841.89pt の 3倍 (約2525.67px ≒ 2526px)、短辺 595.28pt の 3倍 (約1785.84px ≒ 1786px) の枠とする
         max_long_px = 841.89 * 3.0
         max_short_px = 595.28 * 3.0
         orig_long = max(orig_w, orig_h)
         orig_short = min(orig_w, orig_h)
 
         scale = min(max_long_px / orig_long, max_short_px / orig_short)
-        if scale < 1.0:
-            target_w = max(1, round(orig_w * scale))
-            target_h = max(1, round(orig_h * scale))
+        target_w = max(1, round(orig_w * scale))
+        target_h = max(1, round(orig_h * scale))
+        if (target_w, target_h) != (orig_w, orig_h):
             resample_filter = getattr(Image, "Resampling", Image).LANCZOS
             img = img.resize((target_w, target_h), resample=resample_filter)
-        else:
-            target_w = orig_w
-            target_h = orig_h
 
         buf = io.BytesIO()
         img.save(buf, format="PNG")
