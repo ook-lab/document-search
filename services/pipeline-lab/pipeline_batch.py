@@ -99,19 +99,45 @@ def _is_image_file(name: str) -> bool:
 
 
 def _image_to_pdf(img_path: Path, pdf_path: Path) -> None:
+    """写真・画像を 1ページの PDF に変換する。
+    写真から作るページ画像が A4 の PDF を Matrix(3,3) で画像にした時の大きさ
+    （A4=595.28x841.89pt の3倍≒1786x2526px。横長なら縦横入れ替え）に収まるよう、
+    大きい写真は縦横比を保って縮小し、小さい写真は拡大しない。
+    後続の render_page_to_png_bytes(doc, p_idx) による fitz.Matrix(3, 3) 処理と合わせて
+    A4の3倍画像の枠内に収まる解像度のページ画像が生成される。
+    """
     with Image.open(img_path) as raw_img:
         img = ImageOps.exif_transpose(raw_img)
+        orig_w, orig_h = img.size
+
+        # A4長辺 841.89pt の 3倍 (約2525.67px ≒ 2526px)、短辺 595.28pt の 3倍 (約1785.84px ≒ 1786px) を上限とする
+        max_long_px = 841.89 * 3.0
+        max_short_px = 595.28 * 3.0
+        orig_long = max(orig_w, orig_h)
+        orig_short = min(orig_w, orig_h)
+
+        scale = min(max_long_px / orig_long, max_short_px / orig_short)
+        if scale < 1.0:
+            target_w = max(1, round(orig_w * scale))
+            target_h = max(1, round(orig_h * scale))
+            resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+            img = img.resize((target_w, target_h), resample=resample_filter)
+        else:
+            target_w = orig_w
+            target_h = orig_h
+
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         img_bytes = buf.getvalue()
 
+    # 後続の render_page_to_png_bytes が fitz.Matrix(3, 3) でレンダリングした際に
+    # target_w x target_h (px) になるよう、PDF ページのサイズ (pt) を target / 3.0 に設定する
+    page_w_pt = target_w / 3.0
+    page_h_pt = target_h / 3.0
+
     doc = fitz.open()
-    img_doc = fitz.open(stream=img_bytes, filetype="png")
-    pdf_bytes = img_doc.convert_to_pdf()
-    img_doc.close()
-    img_pdf = fitz.open('pdf', pdf_bytes)
-    doc.insert_pdf(img_pdf)
-    img_pdf.close()
+    page = doc.new_page(width=page_w_pt, height=page_h_pt)
+    page.insert_image(page.rect, stream=img_bytes)
     doc.save(str(pdf_path))
     doc.close()
 
