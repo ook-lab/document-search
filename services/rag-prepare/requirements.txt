@@ -11,3 +11,4 @@ loguru
 gunicorn
 google-auth
 PyYAML==6.0.2
+typing_extensions
