@@ -90,11 +90,21 @@ _WORD_MIME_TYPES = frozenset({
     "text/rtf",  # .rtf
 })
 
+_GOOGLE_DOCUMENT_MIME_TYPES = frozenset({
+    "application/vnd.google-apps.document",
+})
+
 _SPREADSHEET_MIME_TYPES = frozenset({
     "application/vnd.google-apps.spreadsheet",
 })
 
-_SUPPORTED_MIME_TYPES = _PDF_MIME_TYPES | _IMAGE_MIME_TYPES | _WORD_MIME_TYPES | _SPREADSHEET_MIME_TYPES
+_SUPPORTED_MIME_TYPES = (
+    _PDF_MIME_TYPES
+    | _IMAGE_MIME_TYPES
+    | _WORD_MIME_TYPES
+    | _SPREADSHEET_MIME_TYPES
+    | _GOOGLE_DOCUMENT_MIME_TYPES
+)
 
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.tif', '.tiff'}
 
@@ -205,9 +215,11 @@ TEMPORARY_503_PREFIX = "[TEMPORARY_503] "
 
 
 def is_gemini_503_error(err: Any) -> bool:
-    """Gemini API や Google 側の一時的不調（HTTP 503 UNAVAILABLE 等）由来のエラーかを判定する。
+    """Gemini API や Google 側の一時的不調（HTTP 503 UNAVAILABLE 等）や残高切れ由来のエラーかを判定する。
 
     例外オブジェクトのステータスコード/属性、原因例外、エラーメッセージ文字列のいずれからでも判定可能。
+    残高切れ（prepayment credits are depleted）も一時的な失敗として再処理対象とする。
+    判定は "prepayment credits are depleted" という文言の明示的な一致で行い、402/429 の数字だけで広く一時扱いにしない。
     """
     if err is None:
         return False
@@ -216,7 +228,12 @@ def is_gemini_503_error(err: Any) -> bool:
     if isinstance(err, str) and "[TEMPORARY_503]" in err:
         return True
 
-    # 2. 例外オブジェクトの属性・原因例外の検査
+    # 2. 前払い残高切れの明示的文言チェック（402/429 の数字だけで広く一時扱いにしない）
+    s = str(err)
+    if "prepayment credits are depleted" in s.lower():
+        return True
+
+    # 3. 例外オブジェクトの属性・原因例外の検査
     if isinstance(err, BaseException):
         for attr in ("code", "status_code", "http_status"):
             val = getattr(err, attr, None)
@@ -1048,6 +1065,8 @@ def _run_pipeline_batch_process():
                     doc_format = "image"
                 elif mime_type in _WORD_MIME_TYPES:
                     doc_format = "word"
+                elif mime_type in _GOOGLE_DOCUMENT_MIME_TYPES:
+                    doc_format = "google_document"
                 elif mime_type in _SPREADSHEET_MIME_TYPES:
                     doc_format = "spreadsheet"
                 else:
@@ -1068,6 +1087,9 @@ def _run_pipeline_batch_process():
                     if doc_format == "spreadsheet":
                         err_reason = f"GoogleスプレッドシートのPDFエクスポートに失敗しました (fileId={drive_file_id}): {dl_ex}"
                         fail_code = "EXPORT_FAILED"
+                    elif doc_format == "google_document":
+                        err_reason = f"Googleドキュメントの書き出しに失敗しました (fileId={drive_file_id}): {dl_ex}"
+                        fail_code = "EXPORT_FAILED"
                     else:
                         err_reason = f"Drive からのファイルダウンロードに失敗しました (fileId={drive_file_id}): {dl_ex}"
                         fail_code = "DOWNLOAD_FAILED"
@@ -1084,6 +1106,9 @@ def _run_pipeline_batch_process():
                 if not downloaded:
                     if doc_format == "spreadsheet":
                         err_reason = f"GoogleスプレッドシートのPDFエクスポートに失敗しました (fileId={drive_file_id})"
+                        fail_code = "EXPORT_FAILED"
+                    elif doc_format == "google_document":
+                        err_reason = f"Googleドキュメントの書き出しに失敗しました (fileId={drive_file_id})"
                         fail_code = "EXPORT_FAILED"
                     else:
                         err_reason = f"Drive からのファイルダウンロードに失敗しました (fileId={drive_file_id})"
@@ -1102,7 +1127,7 @@ def _run_pipeline_batch_process():
                 pdf_path = temp_path / "input.pdf"
                 if doc_format == "image":
                     _image_to_pdf(dl_path, pdf_path)
-                elif doc_format == "word":
+                elif doc_format in ("word", "google_document"):
                     # Word は soffice --headless --convert-to pdf で PDF に変換してから今の PDF と同じ処理をする
                     # 変換失敗はそのファイルの失敗として明示記録
                     _convert_word_to_pdf(dl_path, pdf_path, temp_path)

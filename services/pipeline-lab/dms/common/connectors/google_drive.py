@@ -212,24 +212,21 @@ class GoogleDriveConnector:
                 # Google Docs -> DOCXとしてエクスポート
                 request = self.service.files().export(
                     fileId=file_id,
-                    mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    supportsAllDrives=True  # 共有ドライブ対応
+                    mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                 )
                 dest_path = dest_path.with_suffix('.docx')
             elif mime_type == 'application/vnd.google-apps.spreadsheet':
                 # Google Sheets -> PDFとしてエクスポート
                 request = self.service.files().export(
                     fileId=file_id,
-                    mimeType='application/pdf',
-                    supportsAllDrives=True  # 共有ドライブ対応
+                    mimeType='application/pdf'
                 )
                 dest_path = dest_path.with_suffix('.pdf')
             elif mime_type == 'application/vnd.google-apps.presentation':
                 # Google Slides -> PPTXとしてエクスポート
                 request = self.service.files().export(
                     fileId=file_id,
-                    mimeType='application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                    supportsAllDrives=True  # 共有ドライブ対応
+                    mimeType='application/vnd.openxmlformats-officedocument.presentationml.presentation'
                 )
                 dest_path = dest_path.with_suffix('.pptx')
             else:

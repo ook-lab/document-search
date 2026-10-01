@@ -1,4 +1,4 @@
-"""Gemini API 等の一時的エラー（HTTP 503 UNAVAILABLE）判定ユーティリティ。"""
+"""Gemini API 等の一時的エラー（HTTP 503 UNAVAILABLE、前払い残高切れ等）判定ユーティリティ。"""
 from __future__ import annotations
 
 import re
@@ -8,9 +8,11 @@ TEMPORARY_503_PREFIX = "[TEMPORARY_503] "
 
 
 def is_gemini_503_error(err: Any) -> bool:
-    """Gemini API や Google 側の一時的不調（HTTP 503 UNAVAILABLE 等）由来のエラーかを判定する。
+    """Gemini API や Google 側の一時的不調（HTTP 503 UNAVAILABLE 等）や残高切れ由来のエラーかを判定する。
 
     例外オブジェクトのステータスコード/属性、原因例外、エラーメッセージ文字列のいずれからでも判定可能。
+    残高切れ（prepayment credits are depleted）も一時的な失敗として再処理対象とする。
+    判定は "prepayment credits are depleted" という文言の明示的な一致で行い、402/429 の数字だけで広く一時扱いにしない。
     """
     if err is None:
         return False
@@ -19,7 +21,12 @@ def is_gemini_503_error(err: Any) -> bool:
     if isinstance(err, str) and "[TEMPORARY_503]" in err:
         return True
 
-    # 2. 例外オブジェクトの属性・原因例外の検査
+    # 2. 前払い残高切れの明示的文言チェック（402/429 の数字だけで広く一時扱いにしない）
+    s = str(err)
+    if "prepayment credits are depleted" in s.lower():
+        return True
+
+    # 3. 例外オブジェクトの属性・原因例外の検査
     if isinstance(err, BaseException):
         # 属性チェック (code, status_code, http_status)
         for attr in ("code", "status_code", "http_status"):
