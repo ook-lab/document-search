@@ -33,6 +33,7 @@ _load_env_file()
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     GOOGLE_AI_PAID_API_KEY: str = os.getenv("GOOGLE_AI_PAID_API_KEY", "")
+    GOOGLE_AI_FREE_API_KEY: str = os.getenv("GOOGLE_AI_FREE_API_KEY", "")
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
     SUPABASE_ADMIN_USER_ID: str = os.getenv("SUPABASE_ADMIN_USER_ID", "")

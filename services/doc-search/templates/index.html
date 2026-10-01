@@ -938,6 +938,13 @@
                         </select>
                     </label>
                     <label>
+                        APIキー:
+                        <select id="apiKeySelect" style="padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;" onchange="updateCostDisplay()">
+                            <option value="paid" selected>有料</option>
+                            <option value="free">無料</option>
+                        </select>
+                    </label>
+                    <label>
                         入力上限:
                         <input type="number" id="maxContextInput" value="30000" min="1000" max="1000000" step="1000"
                                style="width: 90px; padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;"
@@ -1072,6 +1079,19 @@
             }
             const flowId = document.getElementById('flow-select').value;
             const tokens = Math.round(chars / 4);
+
+            const apiKeySelect = document.getElementById('apiKeySelect');
+            if (!apiKeySelect) {
+                document.getElementById('costDisplay').textContent = 'エラー: apiKeySelect が見つかりません';
+                return;
+            }
+            const apiKeyType = apiKeySelect.value;
+
+            if (apiKeyType === 'free') {
+                document.getElementById('costDisplay').textContent = `≈${tokens.toLocaleString()} tokens / 無料 (¥0)`;
+                return;
+            }
+
             let costUsd = 0;
             try {
                 costUsd = getFlowCost(flowId, chars);
@@ -1432,6 +1452,17 @@
                     throw new Error('閾値には数値を入力してください');
                 }
 
+                const apiKeySelect = document.getElementById('apiKeySelect');
+                if (!apiKeySelect) {
+                    showError('apiKeySelect が見つかりません');
+                    return;
+                }
+                const selectedApiKey = apiKeySelect.value;
+                if (!selectedApiKey) {
+                    showError('APIキーを選択してください');
+                    return;
+                }
+
                 // ステップ1: ベクトル検索（person / source / category フィルタ送信）
                 const searchPayload = {
                     query,
@@ -1439,7 +1470,8 @@
                     persons: selectedPersons,
                     sources: selectedSources,
                     categories: selectedCategories,
-                    threshold: thresholdVal
+                    threshold: thresholdVal,
+                    api_key_type: selectedApiKey
                 };
 
                 console.log('[検索実行]', searchPayload);
@@ -1496,6 +1528,7 @@
                         persons: selectedPersons,
                         sources: selectedSources,
                         categories: selectedCategories,
+                        api_key_type: selectedApiKey
                     })
                 });
 
@@ -1687,7 +1720,8 @@
             const refinedSection = document.getElementById('refinedQuerySection');
             const refinedBox = document.getElementById('refinedQueryBox');
 
-            const modelInfo = `モデル: ${data.provider} / ${data.model}`;
+            const keyLabel = data.api_key_type === 'paid' ? '有料' : (data.api_key_type === 'free' ? '無料' : 'APIキー種別不明');
+            const modelInfo = `モデル: ${data.provider} / ${data.model} (APIキー: ${keyLabel})`;
 
             answerBox.innerHTML = `
                 <div>${data.answer.replace(/\n/g, '<br>')}</div>

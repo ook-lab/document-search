@@ -43,7 +43,6 @@ RAG_POLICY_ANSWER_UNIVERSAL_JA = (
 
 # クライアントの遅延初期化（Cloud Run起動高速化）
 db_client = None
-llm_client = None
 
 
 def _to_halfwidth_digits(s: str) -> str:
@@ -616,21 +615,47 @@ def _machine_hit_calendar_rows(
     return rows
 
 
+def _extract_and_validate_api_key_type(data: Optional[Dict[str, Any]]) -> str:
+    """
+    リクエストボディから API キー種別を取得・検証する。
+    "paid" または "free" 以外、あるいは未送信の場合は 400 エラー用の ValueError を送出する。
+    また、選んだキーの環境変数が未設定の場合も明示的な ValueError を送出する。
+    暗黙の切替・フォールバックは絶対禁止。
+    """
+    if data is None:
+        raise ValueError("リクエストボディが空です")
+
+    api_key_type = data.get("api_key_type")
+    if not api_key_type or api_key_type not in ("paid", "free"):
+        raise ValueError("APIキー種別 (api_key_type) は必須で 'paid' または 'free' を指定してください")
+
+    # 選択キーの環境変数が未設定なら明示エラー（別のキーに勝手に切り替えて続行しない）
+    from docsearch.config import settings
+    if api_key_type == "paid":
+        paid_key = (settings.GOOGLE_AI_PAID_API_KEY or "").strip()
+        if not paid_key:
+            raise ValueError("GOOGLE_AI_PAID_API_KEY が未設定です")
+    elif api_key_type == "free":
+        free_key = (settings.GOOGLE_AI_FREE_API_KEY or "").strip()
+        if not free_key:
+            raise ValueError("GOOGLE_AI_FREE_API_KEY が未設定です")
+
+    return api_key_type
+
+
 def get_clients():
     """クライアントを初回アクセス時に初期化（遅延読み込み）"""
-    global db_client, llm_client
+    global db_client
 
     if db_client is None:
         print("[INFO] クライアントを初期化中...")
         # 遅延import（起動高速化）
         from docsearch.db import DocSearchDB
-        from docsearch.llm import DocSearchLLM
 
         db_client = DocSearchDB(use_service_role=True)
-        llm_client = DocSearchLLM()
         print("[INFO] クライアント初期化完了")
 
-    return db_client, llm_client
+    return db_client, None
 
 
 @app.route('/')
@@ -684,12 +709,20 @@ def search_documents():
     前処理: 日付・意図の抽出 → カレンダー機械ヒット → 質問タイプ → 検索文の一括統合。
     """
     try:
-        # クライアント取得（遅延初期化）
-        db_client, llm_client = get_clients()
-
         data = request.get_json()
         if data is None:
             return jsonify({'success': False, 'error': 'リクエストボディが JSON ではありません'}), 400
+
+        try:
+            api_key_type = _extract_and_validate_api_key_type(data)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+
+        # クライアント取得（遅延初期化）
+        db_client, _ = get_clients()
+        from docsearch.llm import DocSearchLLM
+        llm_client = DocSearchLLM(api_key_type=api_key_type)
+
         query = data.get('query', '')
         # リランク機能のため、フロントエンドの指定を尊重（最大50件まで）
         requested_limit = data.get('limit', 3)
@@ -828,11 +861,19 @@ def generate_answer():
     """
     try:
         import uuid as _uuid
-        db_client, llm_client = get_clients()
-
         data = request.get_json()
         if data is None:
             return jsonify({'success': False, 'error': 'リクエストボディが JSON ではありません'}), 400
+
+        try:
+            api_key_type = _extract_and_validate_api_key_type(data)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+
+        db_client, _ = get_clients()
+        from docsearch.llm import DocSearchLLM
+        llm_client = DocSearchLLM(api_key_type=api_key_type)
+
         query = data.get('query', '')
         documents = data.get('documents')
         flow_id = data.get('flow')
@@ -1064,6 +1105,7 @@ def generate_answer():
             'answer': answer,
             'model': steps[-1],
             'provider': 'gemini',
+            'api_key_type': api_key_type,
             'flow': flow_id,
             'steps': rounds,
             'refined_query': refined_query,
@@ -2838,7 +2880,7 @@ def debug_database():
     errors = {}
 
     try:
-        db_client, llm_client = get_clients()
+        db_client, _ = get_clients()
     except Exception as e:
         return jsonify({'success': False, 'error': f'クライアント初期化失敗: {e}'}), 500
 
@@ -2915,6 +2957,7 @@ def debug_database():
         'service_role_key_set': 'YES' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else 'NO',
         'openai_key_set': 'YES' if os.getenv('OPENAI_API_KEY') else 'NO',
         'google_ai_paid_key_set': 'YES' if os.getenv('GOOGLE_AI_PAID_API_KEY') else 'NO',
+        'google_ai_free_key_set': 'YES' if os.getenv('GOOGLE_AI_FREE_API_KEY') else 'NO',
     }
 
     return jsonify({
@@ -2928,7 +2971,17 @@ def debug_database():
 def debug_search_raw():
     """実際のembeddingで unified_search_v2 を直接テストするデバッグエンドポイント"""
     try:
-        db_client, llm_client = get_clients()
+        api_key_type = request.args.get('api_key_type')
+        if not api_key_type or api_key_type not in ("paid", "free"):
+            return jsonify({'success': False, 'error': "クエリパラメータ api_key_type は必須で 'paid' または 'free' でなければなりません"}), 400
+
+        db_client, _ = get_clients()
+        from docsearch.llm import DocSearchLLM
+        try:
+            llm_client = DocSearchLLM(api_key_type=api_key_type)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+
         query = request.args.get('q')
         if not query or not query.strip():
             return jsonify({'success': False, 'error': 'クエリパラメータ q は必須です'}), 400

@@ -4,6 +4,7 @@ from __future__ import annotations
 import mimetypes
 import os
 from pathlib import Path
+import threading
 from typing import Any, Dict, List, Optional
 
 import google.generativeai as genai
@@ -16,16 +17,33 @@ from openai import OpenAI
 from docsearch.config import settings
 from docsearch.models import AIProvider, get_model_config
 
+_gemini_configure_lock = threading.Lock()
+
 
 class DocSearchLLM:
-    def __init__(self) -> None:
+    def __init__(self, api_key_type: str) -> None:
+        self.api_key_type = api_key_type
+        self.gemini_api_key: str = self.resolve_gemini_api_key(api_key_type)
         self.openai_api_key = settings.OPENAI_API_KEY
-        paid_key = (settings.GOOGLE_AI_PAID_API_KEY or "").strip()
-        if not paid_key:
-            raise ValueError("GOOGLE_AI_PAID_API_KEY が未設定です")
-        genai.configure(api_key=paid_key)
-        self.gemini_api_key = True
         self.openai_client = OpenAI(api_key=self.openai_api_key) if self.openai_api_key else None
+
+    @staticmethod
+    def resolve_gemini_api_key(api_key_type: str) -> str:
+        if api_key_type == "paid":
+            key = (settings.GOOGLE_AI_PAID_API_KEY or "").strip()
+            if not key:
+                raise ValueError("GOOGLE_AI_PAID_API_KEY が未設定です")
+            return key
+        elif api_key_type == "free":
+            key = (settings.GOOGLE_AI_FREE_API_KEY or "").strip()
+            if not key:
+                raise ValueError("GOOGLE_AI_FREE_API_KEY が未設定です")
+            return key
+        else:
+            raise ValueError(f"無効な API キー種別です: {api_key_type!r} ('paid' または 'free' のみ許可)")
+
+    def get_api_key(self) -> str:
+        return self.gemini_api_key
 
     def call_model(
         self,
@@ -46,8 +64,6 @@ class DocSearchLLM:
                 provider = AIProvider.OPENAI
 
         if provider == AIProvider.GEMINI:
-            if not self.gemini_api_key:
-                return {"success": False, "error": "Gemini API key is missing", "model": model_name}
             return self._call_gemini(model_name, prompt, file_path, config, **kwargs)
         if provider == AIProvider.OPENAI:
             if not self.openai_client:
@@ -65,39 +81,42 @@ class DocSearchLLM:
     ) -> Dict[str, Any]:
         uploaded_file = None
         try:
-            model = genai.GenerativeModel(model_name)
-            content_parts: List[Any] = [prompt]
-            if file_path and file_path.exists():
-                mime_type, _ = mimetypes.guess_type(str(file_path))
-                if not mime_type:
-                    raise ValueError(f"MIMEタイプを推測できませんでした: {file_path}")
-                with open(str(file_path), "rb") as f:
-                    file_data = f.read()
-                uploaded_file = {"mime_type": mime_type, "data": file_data}
-                content_parts.append(uploaded_file)
+            api_key = self.get_api_key()
+            with _gemini_configure_lock:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(model_name)
+                content_parts: List[Any] = [prompt]
+                if file_path and file_path.exists():
+                    mime_type, _ = mimetypes.guess_type(str(file_path))
+                    if not mime_type:
+                        raise ValueError(f"MIMEタイプを推測できませんでした: {file_path}")
+                    with open(str(file_path), "rb") as f:
+                        file_data = f.read()
+                    uploaded_file = {"mime_type": mime_type, "data": file_data}
+                    content_parts.append(uploaded_file)
 
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-            ]
-            max_out = int(kwargs.pop("max_tokens", config.get("max_tokens", 65536)))
-            temp = float(config.get("temperature", 0.1))
-            generation_config = GenerationConfig(max_output_tokens=max_out, temperature=temp)
-            response_format = kwargs.get("response_format")
-            if response_format in ("json", "json_object"):
-                generation_config = GenerationConfig(
-                    max_output_tokens=max_out,
-                    temperature=temp,
-                    response_mime_type="application/json",
+                safety_settings = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
+                max_out = int(kwargs.pop("max_tokens", config.get("max_tokens", 65536)))
+                temp = float(config.get("temperature", 0.1))
+                generation_config = GenerationConfig(max_output_tokens=max_out, temperature=temp)
+                response_format = kwargs.get("response_format")
+                if response_format in ("json", "json_object"):
+                    generation_config = GenerationConfig(
+                        max_output_tokens=max_out,
+                        temperature=temp,
+                        response_mime_type="application/json",
+                    )
+
+                response = model.generate_content(
+                    content_parts,
+                    generation_config=generation_config,
+                    safety_settings=safety_settings,
                 )
-
-            response = model.generate_content(
-                content_parts,
-                generation_config=generation_config,
-                safety_settings=safety_settings,
-            )
             if not response.candidates:
                 return {"success": False, "error": "Gemini returned no candidates", "model": model_name, "provider": "gemini"}
             candidate = response.candidates[0]
@@ -150,14 +169,16 @@ class DocSearchLLM:
         except Exception as e:
             return {"success": False, "error": str(e), "model": model_name, "provider": "openai"}
 
-    def generate_embedding(self, text: str, log_context: Optional[Dict] = None) -> List[float]:
+    def generate_embedding(
+        self,
+        text: str,
+        log_context: Optional[Dict] = None,
+    ) -> List[float]:
         _ = log_context
         if not text or not str(text).strip():
             raise ValueError("空のテキストはembedding化できません")
-        paid_key = (settings.GOOGLE_AI_PAID_API_KEY or "").strip()
-        if not paid_key:
-            raise ValueError("GOOGLE_AI_PAID_API_KEY is not set")
-        client = google_genai.Client(api_key=paid_key)
+        api_key = self.get_api_key()
+        client = google_genai.Client(api_key=api_key)
         content_payload = f"task: search result | query: {str(text).strip()}"
         dimensions = 1536
         response = client.models.embed_content(
