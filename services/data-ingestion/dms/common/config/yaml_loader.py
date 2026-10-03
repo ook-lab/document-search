@@ -103,7 +103,7 @@ def get_auth_info() -> dict:
 
     Returns:
         認証情報（辞書）
-        例: {'default_email': 'ookubo.y@workspace-o.com'}
+        例: {'default_email': 'ookubo.y@gmail.com'}
     """
     context = load_user_context()
     return context.get("auth", {})

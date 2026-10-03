@@ -37,7 +37,7 @@ organizations:
 
 # 認証・メール設定
 auth:
-  default_email: "ookubo.y@workspace-o.com"
+  default_email: "ookubo.y@gmail.com"
 
 # ワークスペース定義
 workspaces:

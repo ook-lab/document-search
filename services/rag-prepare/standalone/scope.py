@@ -5,10 +5,6 @@ rag-prepare: 検索データ準備でベクトル登録する raw テーブル�
 検索データ準備は pipeline_meta を読まない。
 """
 
-import os
-import re
-from typing import Optional
-
 RAG_PREPARE_VECTORIZE_RAW_TABLES = frozenset(
     {
         "03_ema_classroom_01_raw",
@@ -17,49 +13,3 @@ RAG_PREPARE_VECTORIZE_RAW_TABLES = frozenset(
         "08_file_only_01_raw",
     }
 )
-
-# Cloud Run の regional URL: {任意サービス名}-{プロジェクト番号}.{リージョン}.run.app
-_RUN_LEGACY_HOST = re.compile(
-    r"-(?P<num>\d+)\.(?P<region>[a-z0-9-]+)\.run\.app$",
-    re.IGNORECASE,
-)
-
-
-def _pdf_toolbox_from_cloud_run_host(host: Optional[str]) -> str:
-    """同一プロジェクトの Cloud Run ホスト名から pdf-toolbox URL を組み立てる（ヒューリスティック）。"""
-    if not host:
-        return ""
-    h = host.split(":")[0].strip().lower()
-    m = _RUN_LEGACY_HOST.search(h)
-    if not m:
-        return ""
-    num, region = m.group("num"), m.group("region")
-    return f"https://pdf-toolbox-{num}.{region}.run.app".rstrip("/")
-
-
-def resolve_pdf_toolbox_base(*, request_host: Optional[str] = None) -> str:
-    """
-    PDF ツールボックスのベース URL（末尾スラッシュなし）。
-
-    優先順: RAG_PREPARE_PDF_TOOLBOX_BASE / PDF_TOOLBOX_BASE_URL / PDF_TOOLBOX_URL。
-    いずれも無く Cloud Run（K_SERVICE あり）のとき、リクエストホストが
-    ``*-{プロジェクト番号}.{リージョン}.run.app`` なら pdf-toolbox の sibling URL を推定する。
-    ローカル（K_SERVICE なし）で未設定なら http://127.0.0.1:{PDF_TOOLBOX_PORT|5050}。
-    """
-    for key in (
-        "RAG_PREPARE_PDF_TOOLBOX_BASE",
-        "PDF_TOOLBOX_BASE_URL",
-        "PDF_TOOLBOX_URL",
-    ):
-        raw = os.environ.get(key)
-        if raw:
-            s = str(raw).strip().rstrip("/")
-            if s:
-                return s
-    if not os.environ.get("K_SERVICE"):
-        port = (os.environ.get("PDF_TOOLBOX_PORT") or "5050").strip()
-        return f"http://127.0.0.1:{port}".rstrip("/")
-    derived = _pdf_toolbox_from_cloud_run_host(request_host)
-    if derived:
-        return derived
-    return ""
