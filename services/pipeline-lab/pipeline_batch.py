@@ -53,7 +53,7 @@ pipeline_batch_bp = Blueprint('pipeline_batch', __name__)
 pipeline_batch_lock = threading.Lock()
 
 # 1回の処理で新しく送信する最大ファイル（バッチ）数
-MAX_NEW_BATCH_FILES_PER_RUN = 7
+MAX_NEW_BATCH_FILES_PER_RUN = int(os.environ.get("MAX_NEW_BATCH_FILES_PER_RUN", "15"))
 
 # 終了状態のジョブステータス一覧
 _TERMINAL_JOB_STATES = frozenset({
@@ -1351,7 +1351,7 @@ def _run_pipeline_batch_process():
                 len(submitted_files), MAX_NEW_BATCH_FILES_PER_RUN,
             )
 
-            # 送信したバッチ（ファイル）数が上限（最大7ファイル）に達したら終了
+            # 送信したバッチ（ファイル）数が上限に達したら終了
             if len(submitted_files) >= MAX_NEW_BATCH_FILES_PER_RUN:
                 logger.info("Submitted files count (%d) reached limit (%d). Stopping submission loop.", len(submitted_files), MAX_NEW_BATCH_FILES_PER_RUN)
                 break

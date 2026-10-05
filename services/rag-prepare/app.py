@@ -414,8 +414,8 @@ def batch_vectorize():
         ]
         candidate_count = len(candidate_docs)
 
-        MAX_DOCS = 20
-        MAX_DURATION_SEC = 180.0
+        MAX_DOCS = int(os.environ.get("BATCH_VECTORIZE_MAX_DOCS", "50"))
+        MAX_DURATION_SEC = float(os.environ.get("BATCH_VECTORIZE_MAX_DURATION_SEC", "240.0"))
 
         batch_targets = candidate_docs[:MAX_DOCS]
         target_count = len(batch_targets)
@@ -428,7 +428,7 @@ def batch_vectorize():
         timed_out_remaining = 0
 
         for i, doc in enumerate(batch_targets):
-            # 開始から180秒を超えたら次の文書に進まず打ち切る（残りは次回）
+            # 制限時間を超えたら次の文書に進まず打ち切る（残りは次回）
             elapsed = time.monotonic() - start_time
             if elapsed > MAX_DURATION_SEC:
                 logger.warning(
